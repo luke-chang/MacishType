@@ -68,6 +68,7 @@
 				86A0E7EC2F77ED4F00722BF2 /* Sources */,
 				86A0E7ED2F77ED4F00722BF2 /* Frameworks */,
 				86A0E7EE2F77ED4F00722BF2 /* Resources */,
+				86DDFF572F784E7800118E4C /* Set Build Info */,
 			);
 			buildRules = (
 			);
@@ -127,6 +128,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		86DDFF572F784E7800118E4C /* Set Build Info */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Set Build Info";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "PLIST=\"${BUILT_PRODUCTS_DIR}/${INFOPLIST_PATH}\"\nBUILD_NUMBER=$(date +\"%Y%m%d%H%M\")\nGIT_HASH=$(git -C \"${PROJECT_DIR}\" describe --always --dirty)\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion ${BUILD_NUMBER}\" \"${PLIST}\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommitHash ${GIT_HASH}\" \"${PLIST}\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommitHash string ${GIT_HASH}\" \"${PLIST}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		86A0E7EC2F77ED4F00722BF2 /* Sources */ = {
