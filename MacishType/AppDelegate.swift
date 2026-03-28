@@ -1,5 +1,6 @@
 import Cocoa
 import InputMethodKit
+import OSLog
 
 // Sets up the app delegate manually since there is no MainMenu.nib.
 class App: NSApplication {
@@ -26,5 +27,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: info?["InputMethodConnectionName"] as? String,
             bundleIdentifier: Bundle.main.bundleIdentifier
         )
+
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        let hash = info?["GitCommitHash"] as? String ?? "?"
+        #if DEBUG
+        Logger.app.info("Started (debug:v\(version, privacy: .public):\(build, privacy: .public):\(hash, privacy: .public))")
+        #else
+        Logger.app.info("Started (v\(version, privacy: .public):\(build, privacy: .public):\(hash, privacy: .public))")
+        #endif
     }
 }
