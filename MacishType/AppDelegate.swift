@@ -40,7 +40,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
 
         // Initialize shared resources
-        currentEngine = ExampleEngine.shared
         _ = ThemeManager.shared
     }
 }

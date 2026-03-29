@@ -1,7 +1,5 @@
 import Cocoa
 
-nonisolated(unsafe) var currentEngine: InputEngine!
-
 // MARK: - Per-Client State
 
 class InputEngineContext {
@@ -51,15 +49,36 @@ let usKeyboardLayout: [UInt16: (Character, Character)] = [
 
 class InputEngine {
 
+    // MARK: Engine Registry
+
+    private static let engines: [String: () -> InputEngine] = [
+        "Example": { ExampleEngine.shared },
+    ]
+
+    static func engine(for inputModeID: String) -> InputEngine? {
+        guard let prefix = Bundle.main.bundleIdentifier else { return nil }
+        guard inputModeID.hasPrefix(prefix + ".") else { return nil }
+        let suffix = String(inputModeID.dropFirst(prefix.count + 1))
+        return engines[suffix]?()
+    }
+
     // MARK: Factory
 
     func createContext() -> InputEngineContext { InputEngineContext() }
 
     // MARK: Lifecycle
 
-    func activate(context: InputEngineContext, clientIdentifier: String?) {}
+    func activate(context: InputEngineContext, clientIdentifier: String?) -> [EngineAction] {
+        guard context.isComposing else { return [] }
+        let candidates = lookupCandidates(context: context, context.composingText)
+        return [.updateMarkedText(context.composingText), .updateCandidates(candidates)]
+    }
 
-    func deactivate(context: InputEngineContext, clientIdentifier: String?) {}
+    func deactivate(context: InputEngineContext, clientIdentifier: String?) -> [EngineAction] {
+        guard context.isComposing else { return [] }
+        context.reset()
+        return [.updateMarkedText(""), .updateCandidates([])]
+    }
 
     // MARK: Event Handling
 

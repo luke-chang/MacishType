@@ -17,10 +17,6 @@ class ExampleEngine: InputEngine {
 
     override func createContext() -> InputEngineContext { ExampleEngineContext() }
 
-    override func deactivate(context: InputEngineContext, clientIdentifier: String?) {
-        context.reset()
-    }
-
     override func isValidCompositionCharacter(_ char: Character) -> Bool {
         validCompositionCharacters.contains(char)
     }
@@ -45,6 +41,8 @@ class ExampleEngine: InputEngine {
             modifiers: modifiers, candidateWindowVisible: candidateWindowVisible)
         if case .handled = base { return base }
 
+        let ctx = context as! ExampleEngineContext
+
         guard let text = characters, text.count == 1,
               let char = text.first else {
             return context.isComposing ? .handled([.noop]) : .notHandled
@@ -53,7 +51,6 @@ class ExampleEngine: InputEngine {
         switch keyCode {
         case 49: // Space
             guard context.isComposing else { return .notHandled }
-            let ctx = context as! ExampleEngineContext
             if let first = ctx.firstCandidate {
                 context.reset()
                 return .handled([.insert(first), .updateCandidates([])])
@@ -63,7 +60,6 @@ class ExampleEngine: InputEngine {
 
         case 51: // Backspace
             guard context.isComposing else { return .notHandled }
-            let ctx = context as! ExampleEngineContext
             _ = context.composingBuffer.popLast()
             if !context.isComposing {
                 return .handled([.updateMarkedText(""), .updateCandidates([])])
@@ -75,7 +71,6 @@ class ExampleEngine: InputEngine {
 
         default:
             if isValidCompositionCharacter(char) {
-                let ctx = context as! ExampleEngineContext
                 context.composingBuffer.append(transformInput(text))
                 let marked = context.composingText
                 let candidates = lookupCandidates(context: context, marked)

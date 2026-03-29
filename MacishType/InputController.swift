@@ -1,5 +1,6 @@
 import Cocoa
 import InputMethodKit
+import OSLog
 
 private extension NSRange {
     static let notFound = NSRange(location: NSNotFound, length: NSNotFound)
@@ -7,7 +8,8 @@ private extension NSRange {
 
 @objc(InputController)
 class InputController: IMKInputController {
-    private lazy var engineContext = currentEngine.createContext()
+    private var engine: InputEngine!
+    private var engineContext: InputEngineContext!
 
     private lazy var inputMethodMenu: NSMenu = {
         let menu = NSMenu()
@@ -27,28 +29,91 @@ class InputController: IMKInputController {
         WindowManager.shared.openAbout()
     }
 
+    // MARK: - Input Mode
+
+    override func setValue(_ value: Any!, forTag tag: Int, client sender: Any!) {
+        #if DEBUG
+        let clientID = (sender as? IMKTextInput)?.bundleIdentifier() ?? "unknown"
+        Logger.inputController.debug("setValue ctrl=\("\(ObjectIdentifier(self))", privacy: .public) tag=\(tag, privacy: .public) value=\(String(describing: value), privacy: .public) client=\(clientID, privacy: .public)")
+        #endif
+        if let modeID = value as? String {
+            switchEngine(to: modeID)
+        }
+        super.setValue(value, forTag: tag, client: sender)
+    }
+
+    private func switchEngine(to inputModeID: String) {
+        guard let newEngine = InputEngine.engine(for: inputModeID) else {
+            Logger.inputController.fault("switchEngine no match for \(inputModeID, privacy: .public)")
+            return
+        }
+        if engine === newEngine {
+            activateEngine()
+            return
+        }
+        #if DEBUG
+        Logger.inputController.debug("switchEngine ctrl=\("\(ObjectIdentifier(self))", privacy: .public) \(inputModeID, privacy: .public)")
+        #endif
+        deactivateEngine()
+        if let client = client() {
+            setMarkedText("", client: client)
+        }
+        if CandidateWindow.shared.candidateDelegate === self {
+            hideCandidateWindow()
+        }
+        engine = newEngine
+        engineContext = newEngine.createContext()
+        activateEngine()
+    }
+
+    private func activateEngine() {
+        guard let engine else { return }
+        #if DEBUG
+        Logger.inputController.debug("activateEngine ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\("\(type(of: engine))", privacy: .public)")
+        #endif
+        CandidateWindow.shared.indexBase = engine.indexBase
+        CandidateWindow.shared.pageSize = engine.pageSize
+        if let client = client() {
+            let actions = engine.activate(
+                context: engineContext,
+                clientIdentifier: client.bundleIdentifier())
+            executeActions(actions, client: client)
+        }
+    }
+
+    private func deactivateEngine() {
+        guard let engine, let engineContext else { return }
+        #if DEBUG
+        Logger.inputController.debug("deactivateEngine ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\("\(type(of: engine))", privacy: .public)")
+        #endif
+        let client = client()
+        let actions = engine.deactivate(
+            context: engineContext,
+            clientIdentifier: client?.bundleIdentifier())
+        if let client {
+            executeActions(actions, client: client)
+        }
+    }
+
     // MARK: - IMK Lifecycle
 
     override func activateServer(_ sender: Any!) {
+        #if DEBUG
+        let clientID = (sender as? IMKTextInput)?.bundleIdentifier() ?? "unknown"
+        Logger.inputController.debug("activateServer ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\(self.engine == nil ? "nil" : "set", privacy: .public) client=\(clientID, privacy: .public)")
+        #endif
         super.activateServer(sender)
         hideCandidateWindow()
         CandidateWindow.shared.candidateDelegate = self
         CandidateWindow.shared.bundleIdentifier = (sender as? IMKTextInput)?.bundleIdentifier()
-        CandidateWindow.shared.indexBase = currentEngine.indexBase
-        CandidateWindow.shared.pageSize = currentEngine.pageSize
-        currentEngine.activate(
-            context: engineContext,
-            clientIdentifier: (sender as? IMKTextInput)?.bundleIdentifier())
     }
 
     override func deactivateServer(_ sender: Any!) {
-        let client = sender as? IMKTextInput
-        currentEngine.deactivate(
-            context: engineContext,
-            clientIdentifier: client?.bundleIdentifier())
-        refreshMarkedText(client: client)
-        // IMKit may call activateServer on a new controller before deactivateServer
-        // on the old one. Only hide the candidate window if we still own it.
+        #if DEBUG
+        let clientID = (sender as? IMKTextInput)?.bundleIdentifier() ?? "unknown"
+        Logger.inputController.debug("deactivateServer ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\(self.engine == nil ? "nil" : "set", privacy: .public) client=\(clientID, privacy: .public)")
+        #endif
+        deactivateEngine()
         if CandidateWindow.shared.candidateDelegate === self {
             hideCandidateWindow()
         }
@@ -59,7 +124,7 @@ class InputController: IMKInputController {
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let client = sender as? IMKTextInput else { return false }
-        let result = currentEngine.handleKey(
+        let result = engine.handleKey(
             context: engineContext,
             keyCode: event.keyCode,
             characters: event.characters,
@@ -84,7 +149,7 @@ class InputController: IMKInputController {
             case .updateMarkedText(let text):
                 setMarkedText(text, client: client)
             case .updateCandidates(let candidates):
-                updateCandidates(candidates.isEmpty ? nil : candidates, client: client)
+                updateCandidates(candidates, client: client)
             case .commitSelectedCandidate:
                 CandidateWindow.shared.commitSelectedCandidate()
             case .commitCandidateByDigit(let digit):
@@ -114,10 +179,6 @@ class InputController: IMKInputController {
         )
     }
 
-    private func refreshMarkedText(client: IMKTextInput?) {
-        guard let client else { return }
-        setMarkedText(engineContext.composingText, client: client)
-    }
 
     // MARK: - Candidate Window
 
@@ -140,8 +201,8 @@ class InputController: IMKInputController {
         CandidateWindow.shared.hide()
     }
 
-    private func updateCandidates(_ candidates: [String]?, client: IMKTextInput) {
-        guard let candidates, !candidates.isEmpty else {
+    private func updateCandidates(_ candidates: [String], client: IMKTextInput) {
+        guard !candidates.isEmpty else {
             hideCandidateWindow()
             return
         }
@@ -155,13 +216,13 @@ class InputController: IMKInputController {
 extension InputController: CandidateWindowDelegate {
     func candidateSelected(_ candidate: String) {
         guard let client = client() else { return }
-        let actions = currentEngine.candidateConfirmed(context: engineContext, candidate)
+        let actions = engine.candidateConfirmed(context: engineContext, candidate)
         executeActions(actions, client: client)
     }
 
     func candidateSelectionChanged(_ candidate: String) {
         guard let client = client() else { return }
-        let actions = currentEngine.candidateSelectionChanged(context: engineContext, candidate)
+        let actions = engine.candidateSelectionChanged(context: engineContext, candidate)
         executeActions(actions, client: client)
     }
 }

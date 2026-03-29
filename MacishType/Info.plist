@@ -25,9 +25,13 @@
 		<string>Hant</string>
 	</array>
 	<key>tsInputMethodIconFileKey</key>
-	<string>MenuIcon.tiff</string>
+	<string>ExampleMenuIcon.tiff</string>
 	<key>ComponentInputModeDict</key>
 	<dict>
+		<key>tsVisibleInputModeOrderedArrayKey</key>
+		<array>
+			<string>net.lukechang.inputmethod.MacishType.Example</string>
+		</array>
 		<key>tsInputModeListKey</key>
 		<dict>
 			<key>net.lukechang.inputmethod.MacishType.Example</key>
@@ -42,12 +46,14 @@
 				<array>
 					<string>Hant</string>
 				</array>
+				<key>tsInputModeDefaultStateKey</key>
+				<true/>
 				<key>tsInputModeIsVisibleKey</key>
 				<true/>
 				<key>tsInputModeMenuIconFileKey</key>
-				<string>MenuIcon.tiff</string>
+				<string>ExampleMenuIcon.tiff</string>
 				<key>tsInputModePaletteIconFileKey</key>
-				<string>MenuIcon.tiff</string>
+				<string>ExampleMenuIcon.tiff</string>
 				<key>tsInputModePrimaryInScriptKey</key>
 				<true/>
 				<key>TISIconLabels</key>
