@@ -34,6 +34,8 @@ class InputController: IMKInputController {
         hideCandidateWindow()
         CandidateWindow.shared.candidateDelegate = self
         CandidateWindow.shared.bundleIdentifier = (sender as? IMKTextInput)?.bundleIdentifier()
+        CandidateWindow.shared.indexBase = currentEngine.indexBase
+        CandidateWindow.shared.pageSize = currentEngine.pageSize
         currentEngine.activate(
             context: engineContext,
             clientIdentifier: (sender as? IMKTextInput)?.bundleIdentifier())

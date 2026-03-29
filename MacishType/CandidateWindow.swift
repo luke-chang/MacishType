@@ -143,8 +143,8 @@ class CandidateWindow: NSPanel {
         case expanded
     }
 
-    private let indexBase = 1
-    private let pageSize = 9
+    var indexBase = 1
+    var pageSize = 9
     private let maxPoolSize = 100
     private let maxDisplayCandidates = 200
     private var candidates: [String] = []
