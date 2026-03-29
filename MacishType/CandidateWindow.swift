@@ -25,6 +25,13 @@ private class CandidateItemView: NSView {
         didSet { updateAppearance() }
     }
 
+    var highlightColor: NSColor = .selectedContentBackgroundColor {
+        didSet {
+            guard highlightColor != oldValue else { return }
+            updateAppearance()
+        }
+    }
+
     var showIndex: Bool = true {
         didSet {
             guard showIndex != oldValue else { return }
@@ -71,7 +78,7 @@ private class CandidateItemView: NSView {
 
     private func updateAppearance() {
         if isHighlighted {
-            layer?.backgroundColor = NSColor.selectedContentBackgroundColor.cgColor
+            layer?.backgroundColor = highlightColor.cgColor
             indexLabel.textColor = .white
             candidateLabel.textColor = .white
         } else {
@@ -155,7 +162,15 @@ class CandidateWindow: NSPanel {
     private var chevronImageView: ClickableImageView!
     private var chevronSeparator: NSBox!
     private var chevronSeparatorHeight: NSLayoutConstraint?
+    private(set) var highlightColor: NSColor = .selectedContentBackgroundColor
     weak var candidateDelegate: CandidateWindowDelegate?
+    var bundleIdentifier: String? {
+        didSet {
+            guard bundleIdentifier != oldValue else { return }
+            updateHighlightColor()
+        }
+    }
+    private var accentColorObserver: (any NSObjectProtocol)?
 
     // MARK: - Init
 
@@ -166,6 +181,19 @@ class CandidateWindow: NSPanel {
         self.backgroundColor = .clear
         self.hasShadow = true
         setupUI()
+        accentColorObserver = NotificationCenter.default.addObserver(
+            forName: ThemeManager.accentColorDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateHighlightColor()
+        }
+    }
+
+    deinit {
+        if let observer = accentColorObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     private func setupUI() {
@@ -218,6 +246,18 @@ class CandidateWindow: NSPanel {
             outerStackView.trailingAnchor.constraint(equalTo: visualEffect.trailingAnchor),
             bottomConstraint,
         ])
+    }
+
+    private func updateHighlightColor() {
+        if ThemeManager.shared.isMulticolor,
+           let bundleID = bundleIdentifier,
+           let color = ThemeManager.shared.bundleAccentColor(bundleIdentifier: bundleID) {
+            highlightColor = color
+        } else {
+            highlightColor = .selectedContentBackgroundColor
+        }
+        for item in allItemViews { item.highlightColor = highlightColor }
+        for item in itemViewPool { item.highlightColor = highlightColor }
     }
 
     // MARK: - Public API
@@ -478,7 +518,9 @@ class CandidateWindow: NSPanel {
             item.showIndex = true
             return item
         }
-        return CandidateItemView()
+        let item = CandidateItemView()
+        item.highlightColor = highlightColor
+        return item
     }
 
     private func recycleItemViews() {

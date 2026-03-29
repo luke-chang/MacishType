@@ -61,6 +61,7 @@ class InputController: IMKInputController {
         super.activateServer(sender)
         hideCandidateWindow()
         CandidateWindow.shared.candidateDelegate = self
+        CandidateWindow.shared.bundleIdentifier = (sender as? IMKTextInput)?.bundleIdentifier()
     }
 
     override func deactivateServer(_ sender: Any!) {
