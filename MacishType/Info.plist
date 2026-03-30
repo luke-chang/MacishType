@@ -25,7 +25,7 @@
 		<string>Hant</string>
 	</array>
 	<key>tsInputMethodIconFileKey</key>
-	<string>ExampleMenuIcon.tiff</string>
+	<string>MenuIcon.tiff</string>
 	<key>ComponentInputModeDict</key>
 	<dict>
 		<key>tsVisibleInputModeOrderedArrayKey</key>

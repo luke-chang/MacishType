@@ -9,32 +9,34 @@ let args = Array(CommandLine.arguments.dropFirst())
 guard let character = args.first else {
     let script = URL(fileURLWithPath: CommandLine.arguments[0]).lastPathComponent
     print("""
-    Usage: swift \(script) <character> [output_filename]
+    Usage: swift \(script) <character> [output_path]
 
     Generate a menu bar icon TIFF for macOS input methods.
     The icon is a rounded rectangle with the character cut out as transparent.
 
     Arguments:
-      character        One CJK character or up to two Latin letters (e.g. "注", "MT")
-      output_filename  Output filename without extension (default: "MenuIcon")
+      character    One CJK character or up to two Latin letters (e.g. "注", "MT")
+      output_path  Relative path under MacishType/ without extension (default: "Resources/MenuIcon")
 
     Output:
-      MacishType/Resources/<output_filename>.tiff (multi-image TIFF with 1x and 2x)
+      MacishType/<output_path>.tiff (multi-image TIFF with 1x and 2x)
 
     Examples:
       swift \(script) 注
-      swift \(script) 倉 Cangjie
+      swift \(script) 例 ExampleEngine/Resources/ExampleMenuIcon
     """)
     exit(1)
 }
 
-let outputName = args.count >= 2 ? args[1] : "MenuIcon"
+let outputPath = args.count >= 2 ? args[1] : "Resources/MenuIcon"
+let outputName = URL(fileURLWithPath: outputPath).lastPathComponent
 
 // MARK: - Path resolution
 
 let scriptDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let projectDir = scriptDir.deletingLastPathComponent()
-let resourceDir = projectDir.appendingPathComponent("MacishType/Resources").path
+let outputDir = projectDir.appendingPathComponent("MacishType")
+    .appendingPathComponent(URL(fileURLWithPath: outputPath).deletingLastPathComponent().relativePath).path
 
 // MARK: - Icon generation
 
@@ -129,13 +131,13 @@ try! sips.run()
 sips.waitUntilExit()
 
 // Merge into single multi-image TIFF
-let outputPath = "\(resourceDir)/\(outputName).tiff"
+let finalPath = "\(outputDir)/\(outputName).tiff"
 let tiffutil = Process()
 tiffutil.executableURL = URL(fileURLWithPath: "/usr/bin/tiffutil")
-tiffutil.arguments = ["-cathidpicheck", path1x, path2x, "-out", outputPath]
+tiffutil.arguments = ["-cathidpicheck", path1x, path2x, "-out", finalPath]
 tiffutil.standardOutput = FileHandle.nullDevice
 tiffutil.standardError = FileHandle.nullDevice
 try! tiffutil.run()
 tiffutil.waitUntilExit()
 
-print("Generated: \(outputPath)")
+print("Generated: \(finalPath)")
