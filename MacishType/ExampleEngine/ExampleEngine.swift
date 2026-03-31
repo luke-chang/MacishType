@@ -41,12 +41,16 @@ class ExampleEngine: InputEngine {
             modifiers: modifiers, candidateWindowVisible: candidateWindowVisible)
         if case .handled = base { return base }
 
-        let ctx = context as! ExampleEngineContext
+        if !modifiers.intersection(.deviceIndependentFlagsMask).isEmpty {
+            return .notHandled
+        }
 
         guard let text = characters, text.count == 1,
               let char = text.first else {
             return context.isComposing ? .handled([.noop]) : .notHandled
         }
+
+        let ctx = context as! ExampleEngineContext
 
         switch keyCode {
         case 49: // Space
