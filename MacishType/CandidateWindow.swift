@@ -15,11 +15,19 @@ private extension NSImage {
 private class CandidateItemView: NSView {
     private static let indexFontSize: CGFloat = 8
     private static let candidateFontSize: CGFloat = 16
-    private static let padding: CGFloat = 6
+
+    private static let maxDisplayLength = 5
+    private static let indexWidth: CGFloat = {
+        let font = NSFont.systemFont(ofSize: indexFontSize)
+        return (0...9).map { digit in
+            ceil(("\(digit)" as NSString).size(withAttributes: [.font: font]).width)
+        }.max()!
+    }()
 
     let indexLabel = NSTextField(labelWithString: "")
     let candidateLabel = NSTextField(labelWithString: "")
     var absoluteIndex: Int = 0
+    private var widthConstraint: NSLayoutConstraint?
 
     var isHighlighted: Bool = false {
         didSet { updateAppearance() }
@@ -45,6 +53,7 @@ private class CandidateItemView: NSView {
 
         indexLabel.font = .systemFont(ofSize: Self.indexFontSize)
         indexLabel.translatesAutoresizingMaskIntoConstraints = false
+        indexLabel.alignment = .center
 
         candidateLabel.font = .systemFont(ofSize: Self.candidateFontSize)
         candidateLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -53,13 +62,14 @@ private class CandidateItemView: NSView {
         addSubview(candidateLabel)
 
         NSLayoutConstraint.activate([
-            indexLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.padding),
+            indexLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 5),
             indexLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            candidateLabel.leadingAnchor.constraint(equalTo: indexLabel.trailingAnchor, constant: Self.padding),
+            indexLabel.widthAnchor.constraint(equalToConstant: Self.indexWidth),
+            candidateLabel.leadingAnchor.constraint(equalTo: indexLabel.trailingAnchor, constant: 6),
             candidateLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            candidateLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.padding),
+            candidateLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -7),
             candidateLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: Self.candidateFontSize),
-            heightAnchor.constraint(greaterThanOrEqualToConstant: Self.candidateFontSize + Self.padding * 2),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: Self.candidateFontSize + 12),
         ])
     }
 
@@ -68,7 +78,35 @@ private class CandidateItemView: NSView {
 
     func configure(index: Int, candidate: String) {
         indexLabel.stringValue = "\(index)"
-        candidateLabel.stringValue = candidate
+        candidateLabel.stringValue = Self.displayText(for: candidate)
+    }
+
+    func setFixedWidth(_ width: CGFloat?) {
+        if let width {
+            if let wc = widthConstraint {
+                wc.constant = width
+                wc.isActive = true
+            } else {
+                widthConstraint = widthAnchor.constraint(equalToConstant: width)
+                widthConstraint!.isActive = true
+            }
+        } else {
+            widthConstraint?.isActive = false
+        }
+    }
+
+    static func displayText(for candidate: String) -> String {
+        if candidate.count > maxDisplayLength {
+            return String(candidate.prefix(maxDisplayLength - 1)) + "…"
+        }
+        return candidate
+    }
+
+    private static let templateView = CandidateItemView()
+
+    static func measureWidth(index: Int, candidate: String) -> CGFloat {
+        templateView.configure(index: index, candidate: candidate)
+        return ceil(templateView.fittingSize.width)
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -138,6 +176,16 @@ class CandidateWindow: NSPanel {
         defer: false
     )
 
+    private struct GridItem {
+        let candidateIndex: Int
+        let columnStart: Int
+        let columnSpan: Int
+    }
+
+    private struct GridRow {
+        let items: [GridItem]
+    }
+
     private enum DisplayMode {
         case collapsed
         case expanded
@@ -145,6 +193,7 @@ class CandidateWindow: NSPanel {
 
     var indexBase = 1
     var pageSize = 9
+    var animationDuration: TimeInterval = 0.15
     private let maxPoolSize = 100
     private let maxDisplayCandidates = 200
     private var candidates: [String] = []
@@ -152,7 +201,8 @@ class CandidateWindow: NSPanel {
     private var displayMode: DisplayMode = .collapsed
     private var lastShowNearRect: NSRect = .zero
     private var isAnimating = false
-    private var expandedRowsBuilt = false
+    private var gridRows: [GridRow] = []
+    private var baseColumnWidth: CGFloat = 0
     private(set) var didDrag = false
 
     private var outerStackView: NSStackView!
@@ -211,9 +261,9 @@ class CandidateWindow: NSPanel {
         chevronImageView.contentTintColor = .secondaryLabelColor
         chevronImageView.translatesAutoresizingMaskIntoConstraints = false
         chevronImageView.onClick = { [weak self] in
-            guard let self, !self.isAnimating,
-                  self.displayMode == .collapsed, self.candidates.count > self.pageSize
-            else { return }
+            guard let self, !self.isAnimating, self.displayMode == .collapsed else { return }
+            let collapsedCount = self.collapsedVisibleCount
+            guard self.displayCount > collapsedCount else { return }
             self.expandWindow(animated: true)
         }
         NSLayoutConstraint.activate([
@@ -267,11 +317,21 @@ class CandidateWindow: NSPanel {
         self.selectedIndex = 0
         self.displayMode = .collapsed
         self.isAnimating = false
+        self.gridRows = []
         rebuildLayout(animated: false)
     }
 
     func handleNavigation(direction: NavigationDirection, wrapping: Bool = false) {
         guard !candidates.isEmpty, !isAnimating else { return }
+
+        // Down in collapsed mode: expand if there are more candidates
+        if displayMode == .collapsed, direction == .down {
+            let collapsedCount = collapsedVisibleCount
+            if displayCount > collapsedCount {
+                expandWindow(animated: true)
+            }
+            return
+        }
 
         let target = navigationTarget(direction: direction)
             ?? (wrapping ? wrappingTarget(direction: direction) : nil)
@@ -283,12 +343,17 @@ class CandidateWindow: NSPanel {
             return
         }
 
-        if displayMode == .collapsed, target >= pageSize {
-            selectedIndex = target
-            expandWindow(animated: true)
-        } else {
-            moveSelection(to: target)
+        // Expand if target is beyond collapsed row
+        if displayMode == .collapsed {
+            let collapsedCount = collapsedVisibleCount
+            if target >= collapsedCount {
+                selectedIndex = target
+                expandWindow(animated: true)
+                return
+            }
         }
+
+        moveSelection(to: target)
     }
 
     func commitSelectedCandidate() {
@@ -298,9 +363,16 @@ class CandidateWindow: NSPanel {
 
     func commitCandidateForDigit(_ digit: Int) {
         guard isVisible else { return }
-        let index = selectedIndex / pageSize * pageSize + digit - indexBase
-        guard index >= 0, index < displayCount else { return }
-        candidateDelegate?.candidateSelected(candidates[index])
+        let itemOffset = digit - indexBase
+        guard itemOffset >= 0 else { return }
+
+        guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return }
+        let row = gridRows[rowIdx]
+        guard itemOffset < row.items.count else { return }
+
+        let candidateIndex = row.items[itemOffset].candidateIndex
+        guard candidateIndex < candidates.count else { return }
+        candidateDelegate?.candidateSelected(candidates[candidateIndex])
     }
 
     func hide() {
@@ -319,7 +391,7 @@ class CandidateWindow: NSPanel {
             isAnimating = true
             let newFrame = NSRect(origin: newOrigin, size: self.frame.size)
             NSAnimationContext.runAnimationGroup({ context in
-                context.duration = 0.15
+                context.duration = self.animationDuration
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 self.animator().setFrame(newFrame, display: true)
             }, completionHandler: { [weak self] in
@@ -396,41 +468,82 @@ class CandidateWindow: NSPanel {
         min(candidates.count, maxDisplayCandidates)
     }
 
+    private var collapsedVisibleCount: Int {
+        gridRows.first?.items.count ?? 0
+    }
+
     private static let collapseDirections: Set<NavigationDirection> = [.left, .up, .home]
 
+    private func findGridPosition(of candidateIndex: Int) -> (rowIndex: Int, item: GridItem)? {
+        for (rowIdx, row) in gridRows.enumerated() {
+            if let item = row.items.first(where: { $0.candidateIndex == candidateIndex }) {
+                return (rowIdx, item)
+            }
+        }
+        return nil
+    }
+
+    private func findOverlappingItem(
+        in row: GridRow, columnStart: Int, columnEnd: Int
+    ) -> Int? {
+        var bestIndex: Int?
+        for item in row.items {
+            let itemEnd = item.columnStart + item.columnSpan
+            if item.columnStart < columnEnd, itemEnd > columnStart {
+                if bestIndex == nil || item.candidateIndex < bestIndex! {
+                    bestIndex = item.candidateIndex
+                }
+            }
+        }
+        return bestIndex
+    }
+
+    private func gridNavigateVertical(direction: Int) -> Int? {
+        guard let (rowIdx, item) = findGridPosition(of: selectedIndex) else { return nil }
+        let targetRowIdx = rowIdx + direction
+        guard targetRowIdx >= 0, targetRowIdx < gridRows.count else { return nil }
+
+        let targetRow = gridRows[targetRowIdx]
+        return findOverlappingItem(
+            in: targetRow,
+            columnStart: item.columnStart,
+            columnEnd: item.columnStart + item.columnSpan
+        ) ?? targetRow.items.last?.candidateIndex
+    }
+
     private func wrappingTarget(direction: NavigationDirection) -> Int? {
-        let currentCol = selectedIndex % pageSize
-        let totalRows = (displayCount + pageSize - 1) / pageSize
         switch direction {
         case .right where selectedIndex >= displayCount - 1:
             return 0
         case .left where selectedIndex <= 0:
             return displayCount - 1
-        case .down where selectedIndex / pageSize >= totalRows - 1:
-            return min(currentCol, displayCount - 1)
-        case .up where selectedIndex / pageSize <= 0:
-            return min((totalRows - 1) * pageSize + currentCol, displayCount - 1)
+        case .down, .up:
+            guard let (rowIdx, item) = findGridPosition(of: selectedIndex) else { return nil }
+            let colStart = item.columnStart
+            let colEnd = colStart + item.columnSpan
+            if direction == .down, rowIdx >= gridRows.count - 1 {
+                return findOverlappingItem(in: gridRows[0], columnStart: colStart, columnEnd: colEnd)
+            }
+            if direction == .up, rowIdx <= 0 {
+                let lastRow = gridRows[gridRows.count - 1]
+                return findOverlappingItem(in: lastRow, columnStart: colStart, columnEnd: colEnd)
+            }
+            return nil
         default:
             return nil
         }
     }
 
     private func navigationTarget(direction: NavigationDirection) -> Int? {
-        let currentRow = selectedIndex / pageSize
-        let currentCol = selectedIndex % pageSize
-        let totalRows = (displayCount + pageSize - 1) / pageSize
-
         switch direction {
         case .right:
             return selectedIndex + 1 < displayCount ? selectedIndex + 1 : nil
         case .left:
             return selectedIndex > 0 ? selectedIndex - 1 : nil
         case .down:
-            guard currentRow < totalRows - 1 else { return nil }
-            return min((currentRow + 1) * pageSize + currentCol, displayCount - 1)
+            return gridNavigateVertical(direction: 1)
         case .up:
-            guard currentRow > 0 else { return nil }
-            return (currentRow - 1) * pageSize + currentCol
+            return gridNavigateVertical(direction: -1)
         case .home:
             return selectedIndex > 0 ? 0 : nil
         case .end:
@@ -443,71 +556,12 @@ class CandidateWindow: NSPanel {
 
     private func expandWindow(animated: Bool) {
         displayMode = .expanded
-        if !expandedRowsBuilt {
-            buildExpandedRows()
-        }
-        applyDisplayMode()
-        animateToFittingSize(repositionAfter: true)
-    }
-
-    private func buildExpandedRows() {
-        let totalRows = (displayCount + pageSize - 1) / pageSize
-        let selectedRow = selectedIndex / pageSize
-
-        for row in 1..<totalRows {
-            let startIndex = row * pageSize
-            let count = min(pageSize, displayCount - startIndex)
-            let isSelectedRow = row == selectedRow
-            let rowContainer = makeRow(
-                startIndex: startIndex,
-                count: count,
-                showIndices: isSelectedRow,
-                highlighted: isSelectedRow
-            )
-            outerStackView.addArrangedSubview(rowContainer)
-        }
-
-        if rowContainers.count > 1 {
-            for i in 1..<rowContainers.count {
-                rowContainers[i].widthAnchor.constraint(
-                    equalTo: rowContainers[0].widthAnchor
-                ).isActive = true
-            }
-        }
-
-        expandedRowsBuilt = true
+        rebuildLayout(animated: animated, repositionAfter: true)
     }
 
     private func collapseWindow(animated: Bool) {
         displayMode = .collapsed
-        applyDisplayMode()
-        animateToFittingSize(repositionAfter: true)
-    }
-
-    private func applyDisplayMode() {
-        let isCollapsed = displayMode == .collapsed
-
-        chevronImageView.isHidden = !isCollapsed
-        chevronSeparator.isHidden = !isCollapsed
-
-        for (rowIndex, container) in rowContainers.enumerated() where rowIndex > 0 {
-            container.isHidden = isCollapsed
-        }
-
-        if isCollapsed {
-            for (rowIndex, container) in rowContainers.enumerated() {
-                container.isRowHighlighted = false
-                let startIndex = rowIndex * pageSize
-                let endIndex = min(startIndex + pageSize, displayCount)
-                for i in startIndex..<endIndex {
-                    allItemViews[i].showIndex = (rowIndex == 0)
-                }
-            }
-        } else {
-            updateRowHighlightsAndIndices()
-        }
-
-        updateSelection()
+        rebuildLayout(animated: false, repositionAfter: true)
     }
 
     // MARK: - View Pool
@@ -516,6 +570,7 @@ class CandidateWindow: NSPanel {
         if let item = itemViewPool.popLast() {
             item.isHighlighted = false
             item.showIndex = true
+            item.setFixedWidth(nil)
             return item
         }
         let item = CandidateItemView()
@@ -545,14 +600,66 @@ class CandidateWindow: NSPanel {
         }
         recycleItemViews()
         rowContainers.removeAll()
+        gridRows.removeAll()
 
         guard !candidates.isEmpty else { return }
 
-        let count = min(pageSize, displayCount)
-        let firstRow = makeRow(
-            startIndex: 0, count: count, showIndices: true, highlighted: false)
+        baseColumnWidth = CandidateItemView.measureWidth(index: indexBase, candidate: "字")
 
-        if candidates.count > pageSize {
+        if displayMode == .collapsed {
+            buildCollapsedLayout()
+        } else {
+            buildExpandedLayout()
+        }
+
+        // Clamp selectedIndex for collapsed mode
+        if displayMode == .collapsed, let firstRow = gridRows.first {
+            let maxValid = firstRow.items.last?.candidateIndex ?? 0
+            if selectedIndex > maxValid {
+                selectedIndex = maxValid
+            }
+        }
+
+        updateSelection()
+
+        if animated {
+            animateToFittingSize(repositionAfter: repositionAfter)
+        } else {
+            sizeToFit()
+            if repositionAfter, !lastShowNearRect.isEmpty {
+                showNear(rect: lastShowNearRect)
+            }
+        }
+    }
+
+    private func buildCollapsedLayout() {
+        let maxWidth = baseColumnWidth * CGFloat(pageSize)
+
+        var packedItems: [(candidateIndex: Int, width: CGFloat)] = []
+        var usedWidth: CGFloat = 0
+
+        for i in 0..<displayCount {
+            if packedItems.count >= pageSize { break }
+            let w = CandidateItemView.measureWidth(
+                index: packedItems.count + indexBase, candidate: candidates[i]
+            )
+            if usedWidth + w > maxWidth, !packedItems.isEmpty { break }
+            usedWidth += w
+            packedItems.append((i, w))
+        }
+
+        let allFit = packedItems.count >= displayCount
+
+        let gridItems = packedItems.enumerated().map { pos, item in
+            GridItem(candidateIndex: item.candidateIndex, columnStart: pos, columnSpan: 1)
+        }
+        gridRows = [GridRow(items: gridItems)]
+
+        let firstRow = makeRow(
+            gridItems: gridItems, showIndices: true, highlighted: false, fixedWidths: false
+        )
+
+        if !allFit {
             let wrapper = NSStackView()
             wrapper.orientation = .horizontal
             wrapper.spacing = 0
@@ -573,22 +680,63 @@ class CandidateWindow: NSPanel {
         } else {
             outerStackView.addArrangedSubview(firstRow)
         }
+    }
 
-        expandedRowsBuilt = false
-        updateSelection()
+    private func buildExpandedLayout() {
+        // Compute column spans for all items
+        var allSpans: [Int] = []
+        for i in 0..<displayCount {
+            let w = CandidateItemView.measureWidth(index: indexBase, candidate: candidates[i])
+            let span = max(1, min(pageSize, Int(ceil(w / baseColumnWidth))))
+            allSpans.append(span)
+        }
 
-        if animated {
-            animateToFittingSize(repositionAfter: repositionAfter)
-        } else {
-            sizeToFit()
-            if repositionAfter, !lastShowNearRect.isEmpty {
-                showNear(rect: lastShowNearRect)
+        // Pack items into grid rows
+        var currentRowItems: [GridItem] = []
+        var currentColumn = 0
+
+        for i in 0..<displayCount {
+            let span = allSpans[i]
+            if currentColumn + span > pageSize, !currentRowItems.isEmpty {
+                gridRows.append(GridRow(items: currentRowItems))
+                currentRowItems = []
+                currentColumn = 0
+            }
+            currentRowItems.append(GridItem(
+                candidateIndex: i, columnStart: currentColumn, columnSpan: span
+            ))
+            currentColumn += span
+        }
+        if !currentRowItems.isEmpty {
+            gridRows.append(GridRow(items: currentRowItems))
+        }
+
+        // Build visual rows
+        let selectedRowIdx = findGridPosition(of: selectedIndex)?.rowIndex ?? 0
+
+        for (rowIndex, gridRow) in gridRows.enumerated() {
+            let isSelectedRow = rowIndex == selectedRowIdx
+            let row = makeRow(
+                gridItems: gridRow.items,
+                showIndices: isSelectedRow,
+                highlighted: isSelectedRow,
+                fixedWidths: true
+            )
+            outerStackView.addArrangedSubview(row)
+        }
+
+        // Synchronize row widths
+        if rowContainers.count > 1 {
+            for i in 1..<rowContainers.count {
+                rowContainers[i].widthAnchor.constraint(
+                    equalTo: rowContainers[0].widthAnchor
+                ).isActive = true
             }
         }
     }
 
     private func makeRow(
-        startIndex: Int, count: Int, showIndices: Bool, highlighted: Bool
+        gridItems: [GridItem], showIndices: Bool, highlighted: Bool, fixedWidths: Bool
     ) -> RowContainerView {
         let container = RowContainerView()
         container.isRowHighlighted = highlighted
@@ -607,14 +755,32 @@ class CandidateWindow: NSPanel {
             stackView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
 
-        for i in 0..<count {
-            let absoluteIndex = startIndex + i
+        for (position, gridItem) in gridItems.enumerated() {
             let item = dequeueItemView()
-            item.absoluteIndex = absoluteIndex
-            item.configure(index: i % pageSize + indexBase, candidate: candidates[absoluteIndex])
+            item.absoluteIndex = gridItem.candidateIndex
+            item.configure(
+                index: position + indexBase, candidate: candidates[gridItem.candidateIndex]
+            )
             item.showIndex = showIndices
+            if fixedWidths {
+                item.setFixedWidth(CGFloat(gridItem.columnSpan) * baseColumnWidth)
+            }
             stackView.addArrangedSubview(item)
             allItemViews.append(item)
+        }
+
+        // Spacer absorbs remaining width in expanded mode
+        if fixedWidths {
+            let usedColumns = gridItems.reduce(0) { $0 + $1.columnSpan }
+            let remainingColumns = pageSize - usedColumns
+            if remainingColumns > 0 {
+                let spacer = NSView()
+                spacer.translatesAutoresizingMaskIntoConstraints = false
+                spacer.widthAnchor.constraint(
+                    equalToConstant: CGFloat(remainingColumns) * baseColumnWidth
+                ).isActive = true
+                stackView.addArrangedSubview(spacer)
+            }
         }
 
         rowContainers.append(container)
@@ -631,10 +797,10 @@ class CandidateWindow: NSPanel {
     }
 
     private func moveSelection(to newIndex: Int) {
-        let oldRow = selectedIndex / pageSize
+        let oldRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
         selectedIndex = newIndex
         updateSelection()
-        if displayMode == .expanded && oldRow != selectedIndex / pageSize {
+        if displayMode == .expanded, oldRowIdx != findGridPosition(of: selectedIndex)?.rowIndex {
             updateRowHighlightsAndIndices()
         }
         candidateDelegate?.candidateSelectionChanged(candidates[newIndex])
@@ -648,16 +814,13 @@ class CandidateWindow: NSPanel {
 
     private func updateRowHighlightsAndIndices() {
         guard displayMode == .expanded else { return }
-        let selectedRow = selectedIndex / pageSize
+        guard let (selectedRowIdx, _) = findGridPosition(of: selectedIndex) else { return }
 
-        for (rowIndex, container) in rowContainers.enumerated() {
-            let isSelected = rowIndex == selectedRow
-            container.isRowHighlighted = isSelected
-
-            let startIndex = rowIndex * pageSize
-            let endIndex = min(startIndex + pageSize, displayCount)
-            for i in startIndex..<endIndex {
-                allItemViews[i].showIndex = isSelected
+        for (rowIndex, row) in gridRows.enumerated() {
+            let isSelected = rowIndex == selectedRowIdx
+            rowContainers[rowIndex].isRowHighlighted = isSelected
+            for gridItem in row.items {
+                allItemViews[gridItem.candidateIndex].showIndex = isSelected
             }
         }
     }
@@ -705,7 +868,7 @@ class CandidateWindow: NSPanel {
 
         isAnimating = true
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.15
+            context.duration = self.animationDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             self.animator().setFrame(newFrame, display: true)
         }, completionHandler: { [weak self] in
