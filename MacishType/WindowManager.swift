@@ -48,6 +48,7 @@ class WindowManager {
             panel.hidesOnDeactivate = false
         }
 
+        window.setContentSize(controller.view.fittingSize)
         centerOnMouseScreen(window)
 
         if let observer = closeObservers[id] { NotificationCenter.default.removeObserver(observer) }
