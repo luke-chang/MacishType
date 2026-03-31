@@ -105,7 +105,7 @@ class InputController: IMKInputController {
         super.activateServer(sender)
         hideCandidateWindow()
         CandidateWindow.shared.candidateDelegate = self
-        CandidateWindow.shared.bundleIdentifier = (sender as? IMKTextInput)?.bundleIdentifier()
+        CandidateWindow.shared.bundleIdentifier = Self.resolvedBundleIdentifier(sender)
     }
 
     override func deactivateServer(_ sender: Any!) {
@@ -118,6 +118,18 @@ class InputController: IMKInputController {
             hideCandidateWindow()
         }
         super.deactivateServer(sender)
+    }
+
+    // Some clients (e.g. Open/Save panels) are XPC services whose bundle ID
+    // has no matching .app. Use the frontmost application as the real owner.
+    private static func resolvedBundleIdentifier(_ sender: Any?) -> String? {
+        guard let clientID = (sender as? IMKTextInput)?.bundleIdentifier() else { return nil }
+        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: clientID) == nil {
+            let resolved = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            Logger.inputController.info("Client \(clientID, privacy: .public) is not an app, resolved to \(resolved ?? "nil", privacy: .public)")
+            return resolved
+        }
+        return clientID
     }
 
     // MARK: - Event Handling
