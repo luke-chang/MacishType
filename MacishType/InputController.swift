@@ -132,6 +132,21 @@ class InputController: IMKInputController {
         return clientID
     }
 
+    // Called by the system when composition must end (e.g. Cmd+A select
+    // all, mouse click outside). Do NOT call super — it triggers an
+    // immediate deactivateServer, which crashes or switches away from
+    // the input method.
+    override func commitComposition(_ sender: Any!) {
+        #if DEBUG
+        Logger.inputController.debug("commitComposition ctrl=\("\(ObjectIdentifier(self))", privacy: .public) isComposing=\(self.engineContext?.isComposing ?? false, privacy: .public)")
+        #endif
+        if let engineContext, engineContext.isComposing, let client = sender as? IMKTextInput {
+            engineContext.reset()
+            setMarkedText("", client: client)
+            hideCandidateWindow()
+        }
+    }
+
     // MARK: - Event Handling
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
