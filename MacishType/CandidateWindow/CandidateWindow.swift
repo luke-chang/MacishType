@@ -68,6 +68,7 @@ class CandidateWindow: NSPanel {
 
     // MARK: - Private State
 
+    private let maxExpandedVisibleRows = 5
     private let maxDisplayCandidates = 200
     private var candidates: [String] = []
     private var selectedIndex: Int = 0
@@ -86,10 +87,12 @@ class CandidateWindow: NSPanel {
     private var row0ItemViews: [CandidateItemView] = []
     // Items in rows 1+ (created on first expand)
     private var expandedItemViews: [CandidateItemView] = []
+    private var scrollView: NSScrollView!
     private var candidateContainer: FlippedView!
     private var chevronView: ChevronView!
     private var rowHighlightView: HighlightBackgroundView!
     private var accentColorObserver: (any NSObjectProtocol)?
+    private var scrollerStyleObserver: (any NSObjectProtocol)?
 
     // MARK: - Init
 
@@ -107,10 +110,20 @@ class CandidateWindow: NSPanel {
         ) { [weak self] _ in
             self?.updateHighlightColor()
         }
+        scrollerStyleObserver = NotificationCenter.default.addObserver(
+            forName: NSScroller.preferredScrollerStyleDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleScrollerStyleChange()
+        }
     }
 
     deinit {
         if let observer = accentColorObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = scrollerStyleObserver {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -125,15 +138,23 @@ class CandidateWindow: NSPanel {
         visualEffect.layer?.masksToBounds = true
         self.contentView = visualEffect
 
-        candidateContainer = FlippedView()
-        candidateContainer.translatesAutoresizingMaskIntoConstraints = false
-        visualEffect.addSubview(candidateContainer)
+        scrollView = NSScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
+        visualEffect.addSubview(scrollView)
         NSLayoutConstraint.activate([
-            candidateContainer.topAnchor.constraint(equalTo: visualEffect.topAnchor),
-            candidateContainer.leadingAnchor.constraint(equalTo: visualEffect.leadingAnchor),
-            candidateContainer.trailingAnchor.constraint(equalTo: visualEffect.trailingAnchor),
-            candidateContainer.bottomAnchor.constraint(equalTo: visualEffect.bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: visualEffect.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: visualEffect.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: visualEffect.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: visualEffect.bottomAnchor),
         ])
+
+        candidateContainer = FlippedView()
+        scrollView.documentView = candidateContainer
 
         rowHighlightView = HighlightBackgroundView()
         candidateContainer.addSubview(rowHighlightView)
@@ -560,7 +581,18 @@ class CandidateWindow: NSPanel {
             let y = yForRow(rowIdx)
             rowHighlightView.frame = NSRect(x: 0, y: y, width: contentWidth, height: itemHeight)
         }
-        return NSSize(width: contentWidth, height: contentHeight)
+
+        let maxVisibleHeight = (CGFloat(maxExpandedVisibleRows) + 0.5) * itemHeight
+        let needsScrolling = displayMode == .expanded && contentHeight > maxVisibleHeight
+        let windowHeight = needsScrolling ? maxVisibleHeight : contentHeight
+
+        var windowWidth = contentWidth
+        if needsScrolling, NSScroller.preferredScrollerStyle == .legacy {
+            windowWidth += NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+        }
+
+        candidateContainer.frame.size = NSSize(width: contentWidth, height: contentHeight)
+        return NSSize(width: windowWidth, height: windowHeight)
     }
 
     /// Indices of row 0 candidates that overflow when expanded (not in expanded row 0).
@@ -650,6 +682,10 @@ class CandidateWindow: NSPanel {
         // Compute final layout (sets frames and isHidden states)
         let contentSize = layoutItems()
 
+        // Reset scroll to top
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
         // Update after layout so hidden state is correct
         updateRowHighlightsAndIndices()
         updateSelection()
@@ -713,6 +749,11 @@ class CandidateWindow: NSPanel {
         // Row highlight starts invisible
         rowHighlightView.alphaValue = 0
 
+        let hideScroller = NSScroller.preferredScrollerStyle != .legacy
+        if hideScroller {
+            scrollView.hasVerticalScroller = false
+        }
+
         isAnimating = true
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = self.animationDuration
@@ -771,6 +812,9 @@ class CandidateWindow: NSPanel {
             }
             self.chevronView.isHidden = true
             self.isAnimating = false
+            if hideScroller {
+                self.scrollView.hasVerticalScroller = true
+            }
         })
     }
 
@@ -789,6 +833,10 @@ class CandidateWindow: NSPanel {
                 item.configure(index: pos + indexBase, candidate: candidates[gridItem.candidateIndex])
             }
         }
+
+        // Reset scroll to top
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
 
         // Clamp selectedIndex
         let maxValid = gridRows[0].items.last?.candidateIndex ?? 0
@@ -954,11 +1002,28 @@ class CandidateWindow: NSPanel {
             let newRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
             if oldRowIdx != newRowIdx {
                 updateRowHighlightsAndIndices()
-                // Snap highlight position (no animation within expanded mode)
                 layoutHighlight()
+                scrollSelectedRowIntoView()
             }
         }
         candidateDelegate?.candidateSelectionChanged(candidates[newIndex])
+    }
+
+    private func scrollSelectedRowIntoView() {
+        guard displayMode == .expanded,
+              let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return }
+        let rowY = yForRow(rowIdx)
+        let rowBottom = rowY + itemHeight
+        let visible = scrollView.contentView.bounds
+
+        if rowY < visible.minY {
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: rowY))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        } else if rowBottom > visible.maxY {
+            let targetY = rowBottom + 0.5 * itemHeight - visible.height
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
     }
 
     private func updateSelection() {
@@ -992,6 +1057,14 @@ class CandidateWindow: NSPanel {
         let gridWidth = baseColumnWidth * CGFloat(pageSize)
         let y = yForRow(rowIdx)
         rowHighlightView.frame = NSRect(x: 0, y: y, width: gridWidth, height: itemHeight)
+    }
+
+    private func handleScrollerStyleChange() {
+        scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
+        guard isVisible, displayMode == .expanded, !candidates.isEmpty else { return }
+        let contentSize = layoutItems()
+        let targetFrame = windowFrame(for: contentSize, reposition: false)
+        setFrame(targetFrame, display: true)
     }
 
     // MARK: - Sizing
