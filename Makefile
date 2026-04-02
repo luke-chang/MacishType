@@ -114,7 +114,10 @@ candidate-window-test:
 	@swiftc -o ./build/CandidateWindowTest.app/Contents/MacOS/CandidateWindowTest \
 		-framework Cocoa -target $(shell uname -m)-apple-macos14.0 \
 		CandidateWindowTest/main.swift \
-		MacishType/CandidateWindow.swift \
+		MacishType/CandidateWindow/CandidateWindow.swift \
+		MacishType/CandidateWindow/CandidateItemView.swift \
+		MacishType/CandidateWindow/ChevronView.swift \
+		MacishType/CandidateWindow/HighlightBackgroundView.swift \
 		MacishType/ThemeManager.swift \
 		MacishType/Logger.swift
 	@echo "✓ Built. Launching..."
