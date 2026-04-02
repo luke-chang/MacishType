@@ -3,7 +3,6 @@ import Cocoa
 class CandidateItemView: NSView {
     private static let indexFontSize: CGFloat = 8
     private static let candidateFontSize: CGFloat = 16
-    private static let maxDisplayLength = 5
     private static let indexWidth: CGFloat = {
         let font = NSFont.systemFont(ofSize: indexFontSize)
         return (0...9).map { digit in
@@ -43,6 +42,7 @@ class CandidateItemView: NSView {
         indexLabel.alignment = .center
 
         candidateLabel.font = .systemFont(ofSize: Self.candidateFontSize)
+        candidateLabel.lineBreakMode = .byTruncatingTail
         candidateLabel.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(indexLabel)
@@ -75,15 +75,8 @@ class CandidateItemView: NSView {
 
     func configure(index: Int, candidate: String) {
         indexLabel.stringValue = "\(index)"
-        candidateLabel.stringValue = Self.displayText(for: candidate)
+        candidateLabel.stringValue = candidate
         invalidateIntrinsicContentSize()
-    }
-
-    static func displayText(for candidate: String) -> String {
-        if candidate.count > maxDisplayLength {
-            return String(candidate.prefix(maxDisplayLength - 1)) + "…"
-        }
-        return candidate
     }
 
     private static let templateView = CandidateItemView()

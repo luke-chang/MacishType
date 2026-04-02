@@ -460,8 +460,9 @@ class CandidateWindow: NSPanel {
 
         for i in 0..<displayCount {
             if packedItems.count >= pageSize { break }
-            let w = CandidateItemView.measureWidth(
-                index: packedItems.count + indexBase, candidate: candidates[i]
+            let w = min(
+                CandidateItemView.measureWidth(index: packedItems.count + indexBase, candidate: candidates[i]),
+                maxWidth
             )
             if usedWidth + w > maxWidth, !packedItems.isEmpty { break }
             usedWidth += w
