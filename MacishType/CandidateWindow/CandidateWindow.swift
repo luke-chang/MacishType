@@ -19,7 +19,7 @@ private class FlippedView: NSView {
 // MARK: -
 
 enum NavigationDirection: Hashable {
-    case up, down, left, right, home, end
+    case up, down, left, right, home, end, pageUp, pageDown
 }
 
 protocol CandidateWindowDelegate: AnyObject {
@@ -197,27 +197,26 @@ class CandidateWindow: NSPanel {
     func handleNavigation(direction: NavigationDirection, wrapping: Bool = false) {
         guard !candidates.isEmpty, !isAnimating else { return }
 
-        if displayMode == .collapsed, direction == .down {
+        if displayMode == .collapsed, direction == .down || direction == .pageDown {
             let collapsedCount = collapsedVisibleCount
             if displayCount > collapsedCount {
                 if !expandedRowsBuilt {
                     expandedGridRows = computeExpandedGrid()
                 }
-                // Find target in row 1 of expanded grid, clamping overflow items
-                let row1 = expandedGridRows[1]
+                let jumpRows = direction == .pageDown ? maxExpandedVisibleRows : 1
+                let targetRowIdx = min(jumpRows, expandedGridRows.count - 1)
+                let targetRow = expandedGridRows[targetRowIdx]
                 let savedGridRows = gridRows
                 gridRows = expandedGridRows
                 if let (rowIdx, item) = findGridPosition(of: selectedIndex) {
                     if rowIdx == 0 {
-                        // Normal: selected item is in expanded row 0, navigate down to row 1
-                        if let target = findOverlappingItem(in: row1, columnStart: item.columnStart, columnEnd: item.columnStart + item.columnSpan) {
+                        if let target = findOverlappingItem(in: targetRow, columnStart: item.columnStart, columnEnd: item.columnStart + item.columnSpan) {
                             selectedIndex = target
                         } else {
-                            selectedIndex = row1.items.last!.candidateIndex
+                            selectedIndex = targetRow.items.last!.candidateIndex
                         }
                     } else {
-                        // Overflow item already in row 1+: clamp to last item in row 1
-                        selectedIndex = row1.items.last!.candidateIndex
+                        selectedIndex = targetRow.items.last!.candidateIndex
                     }
                 }
                 gridRows = savedGridRows
@@ -364,7 +363,7 @@ class CandidateWindow: NSPanel {
         gridRows.first?.items.count ?? 0
     }
 
-    private static let collapseDirections: Set<NavigationDirection> = [.left, .up, .home]
+    private static let collapseDirections: Set<NavigationDirection> = [.left, .up, .pageUp]
 
     private func findGridPosition(of candidateIndex: Int) -> (rowIndex: Int, item: GridItem)? {
         findGridPosition(of: candidateIndex, in: gridRows)
@@ -394,12 +393,13 @@ class CandidateWindow: NSPanel {
         return bestIndex
     }
 
-    private func gridNavigateVertical(direction: Int) -> Int? {
+    private func gridNavigateVertical(direction: Int, rowCount: Int = 1) -> Int? {
         guard let (rowIdx, item) = findGridPosition(of: selectedIndex) else { return nil }
-        let targetRowIdx = rowIdx + direction
-        guard targetRowIdx >= 0, targetRowIdx < gridRows.count else { return nil }
+        let targetRowIdx = rowIdx + direction * rowCount
+        let clampedRowIdx = max(0, min(targetRowIdx, gridRows.count - 1))
+        guard clampedRowIdx != rowIdx else { return nil }
 
-        let targetRow = gridRows[targetRowIdx]
+        let targetRow = gridRows[clampedRowIdx]
         return findOverlappingItem(
             in: targetRow,
             columnStart: item.columnStart,
@@ -441,10 +441,17 @@ class CandidateWindow: NSPanel {
         case .up:
             return gridNavigateVertical(direction: -1)
         case .home:
-            return selectedIndex > 0 ? 0 : nil
+            guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return nil }
+            let first = gridRows[rowIdx].items.first!.candidateIndex
+            return selectedIndex != first ? first : nil
         case .end:
-            let last = displayCount - 1
-            return selectedIndex < last ? last : nil
+            guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return nil }
+            let last = gridRows[rowIdx].items.last!.candidateIndex
+            return selectedIndex != last ? last : nil
+        case .pageUp:
+            return gridNavigateVertical(direction: -1, rowCount: maxExpandedVisibleRows)
+        case .pageDown:
+            return gridNavigateVertical(direction: 1, rowCount: maxExpandedVisibleRows)
         }
     }
 
@@ -694,6 +701,7 @@ class CandidateWindow: NSPanel {
         if !animated {
             rowHighlightView.alphaValue = 1
             setContentSize(contentSize)
+            scrollSelectedRowIntoView()
             if !lastShowNearRect.isEmpty { showNear(rect: lastShowNearRect) }
             return
         }
@@ -815,6 +823,7 @@ class CandidateWindow: NSPanel {
             if hideScroller {
                 self.scrollView.hasVerticalScroller = true
             }
+            self.scrollSelectedRowIntoView()
         })
     }
 

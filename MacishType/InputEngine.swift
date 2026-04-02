@@ -190,8 +190,10 @@ class InputEngine {
             return (modifiers.contains(.shift) ? .left : .right, wrapping: true)
         case 123: return (.left, wrapping: false)
         case 124: return (.right, wrapping: false)
-        case 125, 121: return (.down, wrapping: false)
-        case 126, 116: return (.up, wrapping: false)
+        case 125: return (.down, wrapping: false)
+        case 126: return (.up, wrapping: false)
+        case 116: return (.pageUp, wrapping: false)
+        case 121: return (.pageDown, wrapping: false)
         case 115: return (.home, wrapping: false)
         case 119: return (.end, wrapping: false)
         default: return nil

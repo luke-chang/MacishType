@@ -169,8 +169,10 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
             }
             if isEditing { return event }
             switch event.keyCode {
-            case 125, 121: self.candidateWindow.handleNavigation(direction: .down); return nil
-            case 126, 116: self.candidateWindow.handleNavigation(direction: .up); return nil
+            case 125: self.candidateWindow.handleNavigation(direction: .down); return nil
+            case 126: self.candidateWindow.handleNavigation(direction: .up); return nil
+            case 116: self.candidateWindow.handleNavigation(direction: .pageUp); return nil
+            case 121: self.candidateWindow.handleNavigation(direction: .pageDown); return nil
             case 123: self.candidateWindow.handleNavigation(direction: .left); return nil
             case 124: self.candidateWindow.handleNavigation(direction: .right); return nil
             case 115: self.candidateWindow.handleNavigation(direction: .home); return nil
