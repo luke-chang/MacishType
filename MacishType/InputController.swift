@@ -181,8 +181,8 @@ class InputController: IMKInputController {
                 CandidateWindow.shared.commitSelectedCandidate()
             case .commitCandidateByDigit(let digit):
                 CandidateWindow.shared.commitCandidateForDigit(digit)
-            case .navigateCandidates(let direction, let wrapping):
-                CandidateWindow.shared.handleNavigation(direction: direction, wrapping: wrapping)
+            case .navigateCandidates(let direction, let wrapping, let moveOnExpand):
+                CandidateWindow.shared.handleNavigation(direction: direction, wrapping: wrapping, moveOnExpand: moveOnExpand)
             case .noop:
                 break
             }

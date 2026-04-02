@@ -67,7 +67,6 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         candidateWindow.indexBase = 1
         candidateWindow.pageSize = 9
         defaultAnimationDuration = candidateWindow.animationDuration
-        candidateWindow.animationDuration = 1.0
 
         // Create window
         let screenFrame = NSScreen.main?.visibleFrame ?? .zero
@@ -110,7 +109,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
 
         // Slow motion checkbox
         let slowMotionCheckbox = NSButton(checkboxWithTitle: "Slow animations (1s)", target: self, action: #selector(slowMotionToggled(_:)))
-        slowMotionCheckbox.state = .on
+        slowMotionCheckbox.state = .off
         slowMotionCheckbox.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(slowMotionCheckbox)
 
@@ -169,14 +168,26 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
             }
             if isEditing { return event }
             switch event.keyCode {
-            case 125: self.candidateWindow.handleNavigation(direction: .down); return nil
-            case 126: self.candidateWindow.handleNavigation(direction: .up); return nil
-            case 116: self.candidateWindow.handleNavigation(direction: .pageUp); return nil
-            case 121: self.candidateWindow.handleNavigation(direction: .pageDown); return nil
-            case 123: self.candidateWindow.handleNavigation(direction: .left); return nil
-            case 124: self.candidateWindow.handleNavigation(direction: .right); return nil
-            case 115: self.candidateWindow.handleNavigation(direction: .home); return nil
-            case 119: self.candidateWindow.handleNavigation(direction: .end); return nil
+            case 48: // Tab
+                let dir: NavigationDirection = event.modifierFlags.contains(.shift) ? .left : .right
+                self.candidateWindow.handleNavigation(direction: dir, wrapping: true, moveOnExpand: true)
+                return nil
+            case 125: // Down
+                self.candidateWindow.handleNavigation(direction: .down); return nil
+            case 126: // Up
+                self.candidateWindow.handleNavigation(direction: .up); return nil
+            case 116: // Page Up
+                self.candidateWindow.handleNavigation(direction: .pageUp); return nil
+            case 121: // Page Down
+                self.candidateWindow.handleNavigation(direction: .pageDown); return nil
+            case 123: // Left
+                self.candidateWindow.handleNavigation(direction: .left); return nil
+            case 124: // Right
+                self.candidateWindow.handleNavigation(direction: .right, moveOnExpand: true); return nil
+            case 115: // Home
+                self.candidateWindow.handleNavigation(direction: .home); return nil
+            case 119: // End
+                self.candidateWindow.handleNavigation(direction: .end); return nil
             default: return event
             }
         }

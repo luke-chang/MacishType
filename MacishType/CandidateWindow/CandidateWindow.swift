@@ -194,7 +194,7 @@ class CandidateWindow: NSPanel {
         rebuildLayout(animated: false)
     }
 
-    func handleNavigation(direction: NavigationDirection, wrapping: Bool = false) {
+    func handleNavigation(direction: NavigationDirection, wrapping: Bool = false, moveOnExpand: Bool = false) {
         guard !candidates.isEmpty, !isAnimating else { return }
 
         if displayMode == .collapsed, direction == .down || direction == .pageDown {
@@ -203,23 +203,25 @@ class CandidateWindow: NSPanel {
                 if !expandedRowsBuilt {
                     expandedGridRows = computeExpandedGrid()
                 }
-                let jumpRows = direction == .pageDown ? maxExpandedVisibleRows : 1
-                let targetRowIdx = min(jumpRows, expandedGridRows.count - 1)
-                let targetRow = expandedGridRows[targetRowIdx]
-                let savedGridRows = gridRows
-                gridRows = expandedGridRows
-                if let (rowIdx, item) = findGridPosition(of: selectedIndex) {
-                    if rowIdx == 0 {
-                        if let target = findOverlappingItem(in: targetRow, columnStart: item.columnStart, columnEnd: item.columnStart + item.columnSpan) {
-                            selectedIndex = target
+                if moveOnExpand {
+                    let jumpRows = direction == .pageDown ? maxExpandedVisibleRows - 1 : 1
+                    let targetRowIdx = min(jumpRows, expandedGridRows.count - 1)
+                    let targetRow = expandedGridRows[targetRowIdx]
+                    let savedGridRows = gridRows
+                    gridRows = expandedGridRows
+                    if let (rowIdx, item) = findGridPosition(of: selectedIndex) {
+                        if rowIdx == 0 {
+                            if let target = findOverlappingItem(in: targetRow, columnStart: item.columnStart, columnEnd: item.columnStart + item.columnSpan) {
+                                selectedIndex = target
+                            } else {
+                                selectedIndex = targetRow.items.last!.candidateIndex
+                            }
                         } else {
                             selectedIndex = targetRow.items.last!.candidateIndex
                         }
-                    } else {
-                        selectedIndex = targetRow.items.last!.candidateIndex
                     }
+                    gridRows = savedGridRows
                 }
-                gridRows = savedGridRows
                 expandWindow(animated: true)
             }
             return
@@ -238,7 +240,9 @@ class CandidateWindow: NSPanel {
         if displayMode == .collapsed {
             let collapsedCount = collapsedVisibleCount
             if target >= collapsedCount {
-                selectedIndex = target
+                if moveOnExpand {
+                    selectedIndex = target
+                }
                 expandWindow(animated: true)
                 return
             }
@@ -449,9 +453,9 @@ class CandidateWindow: NSPanel {
             let last = gridRows[rowIdx].items.last!.candidateIndex
             return selectedIndex != last ? last : nil
         case .pageUp:
-            return gridNavigateVertical(direction: -1, rowCount: maxExpandedVisibleRows)
+            return gridNavigateVertical(direction: -1, rowCount: maxExpandedVisibleRows - 1)
         case .pageDown:
-            return gridNavigateVertical(direction: 1, rowCount: maxExpandedVisibleRows)
+            return gridNavigateVertical(direction: 1, rowCount: maxExpandedVisibleRows - 1)
         }
     }
 

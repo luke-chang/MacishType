@@ -20,7 +20,7 @@ enum EngineAction {
     case updateCandidates([String])
     case commitSelectedCandidate
     case commitCandidateByDigit(Int)
-    case navigateCandidates(direction: NavigationDirection, wrapping: Bool)
+    case navigateCandidates(direction: NavigationDirection, wrapping: Bool, moveOnExpand: Bool)
     case noop
 }
 
@@ -114,11 +114,9 @@ class InputEngine {
         }
 
         // 4. Navigation (arrow keys, Tab, Home/End)
-        if let (direction, wrapping) = Self.navigationDirection(
-            keyCode: keyCode, modifiers: modifiers
-        ) {
+        if let action = Self.navigationAction(keyCode: keyCode, modifiers: modifiers) {
             guard context.isComposing else { return .notHandled }
-            return .handled([.navigateCandidates(direction: direction, wrapping: wrapping)])
+            return .handled([action])
         }
 
         // 5. Enter
@@ -182,21 +180,31 @@ class InputEngine {
         return Character(UnicodeScalar(UInt32(ascii) + 0xFEE0)!)
     }
 
-    private static func navigationDirection(
+    private static func navigationAction(
         keyCode: UInt16, modifiers: NSEvent.ModifierFlags
-    ) -> (NavigationDirection, wrapping: Bool)? {
+    ) -> EngineAction? {
         switch keyCode {
-        case 48:
-            return (modifiers.contains(.shift) ? .left : .right, wrapping: true)
-        case 123: return (.left, wrapping: false)
-        case 124: return (.right, wrapping: false)
-        case 125: return (.down, wrapping: false)
-        case 126: return (.up, wrapping: false)
-        case 116: return (.pageUp, wrapping: false)
-        case 121: return (.pageDown, wrapping: false)
-        case 115: return (.home, wrapping: false)
-        case 119: return (.end, wrapping: false)
-        default: return nil
+        case 48: // Tab
+            let dir: NavigationDirection = modifiers.contains(.shift) ? .left : .right
+            return .navigateCandidates(direction: dir, wrapping: true, moveOnExpand: true)
+        case 123: // Left
+            return .navigateCandidates(direction: .left, wrapping: false, moveOnExpand: true)
+        case 124: // Right
+            return .navigateCandidates(direction: .right, wrapping: false, moveOnExpand: true)
+        case 125: // Down
+            return .navigateCandidates(direction: .down, wrapping: false, moveOnExpand: false)
+        case 126: // Up
+            return .navigateCandidates(direction: .up, wrapping: false, moveOnExpand: false)
+        case 116: // Page Up
+            return .navigateCandidates(direction: .pageUp, wrapping: false, moveOnExpand: false)
+        case 121: // Page Down
+            return .navigateCandidates(direction: .pageDown, wrapping: false, moveOnExpand: false)
+        case 115: // Home
+            return .navigateCandidates(direction: .home, wrapping: false, moveOnExpand: false)
+        case 119: // End
+            return .navigateCandidates(direction: .end, wrapping: false, moveOnExpand: false)
+        default:
+            return nil
         }
     }
 }
