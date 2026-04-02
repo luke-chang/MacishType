@@ -1,4 +1,4 @@
-.PHONY: help build debug reload release release-universal install uninstall clean log log-history
+.PHONY: help build debug reload release release-universal install uninstall clean log log-history candidate-window-test
 
 APP_NAME = MacishType
 BUNDLE_ID = net.lukechang.inputmethod.$(APP_NAME)
@@ -8,16 +8,17 @@ LOG_SHOW_LAST = 1h
 help:
 	@echo "$(APP_NAME) - Available Commands:"
 	@echo ""
-	@echo "  make build             - Build Debug version"
-	@echo "  make debug             - Build Debug, deploy, and reload"
-	@echo "  make reload            - Force restart input method by killing its process"
-	@echo "  make release           - Build Release version (current architecture)"
-	@echo "  make release-universal - Build Release version (universal binary)"
-	@echo "  make install           - Build Release, deploy, and reload"
-	@echo "  make uninstall         - Remove installed input method"
-	@echo "  make clean             - Clean build artifacts"
-	@echo "  make log               - Stream live OSLog output"
-	@echo "  make log-history       - Show recent log history (default $(LOG_SHOW_LAST), use LOG_SHOW_LAST=24h to override)"
+	@echo "  make build                  - Build Debug version"
+	@echo "  make debug                  - Build Debug, deploy, and reload"
+	@echo "  make reload                 - Force restart input method by killing its process"
+	@echo "  make release                - Build Release version (current architecture)"
+	@echo "  make release-universal      - Build Release version (universal binary)"
+	@echo "  make install                - Build Release, deploy, and reload"
+	@echo "  make uninstall              - Remove installed input method"
+	@echo "  make clean                  - Clean build artifacts"
+	@echo "  make log                    - Stream live OSLog output"
+	@echo "  make log-history            - Show recent log history (default $(LOG_SHOW_LAST), use LOG_SHOW_LAST=24h to override)"
+	@echo "  make candidate-window-test  - Build and run standalone CandidateWindow test app"
 	@echo ""
 	@echo "Quick Start:"
 	@echo "  make debug"
@@ -104,6 +105,22 @@ log:
 	@echo "Press Ctrl+C to stop"
 	@echo ""
 	log stream --predicate 'subsystem == "$(BUNDLE_ID)"' --level debug --style compact
+
+# Build and run CandidateWindow test app
+candidate-window-test:
+	@echo "Building CandidateWindow test app..."
+	@mkdir -p ./build/CandidateWindowTest.app/Contents/MacOS
+	@cp CandidateWindowTest/Info.plist ./build/CandidateWindowTest.app/Contents/
+	@swiftc -o ./build/CandidateWindowTest.app/Contents/MacOS/CandidateWindowTest \
+		-framework Cocoa -target $(shell uname -m)-apple-macos14.0 \
+		CandidateWindowTest/main.swift \
+		MacishType/CandidateWindow.swift \
+		MacishType/ThemeManager.swift \
+		MacishType/Logger.swift
+	@echo "✓ Built. Launching..."
+	@killall CandidateWindowTest 2>/dev/null || true
+	@sleep 0.3
+	@open ./build/CandidateWindowTest.app
 
 # Show recent log history
 log-history:
