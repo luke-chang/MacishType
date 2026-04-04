@@ -20,6 +20,7 @@ private class FlippedView: NSView {
 
 enum NavigationDirection: Hashable {
     case up, down, left, right, home, end, pageUp, pageDown
+    case tabForward, tabBackward
 }
 
 protocol CandidateWindowDelegate: AnyObject {
@@ -197,7 +198,7 @@ class CandidateWindow: NSPanel {
     func handleNavigation(direction: NavigationDirection, wrapping: Bool = false, moveOnExpand: Bool = false) {
         guard !candidates.isEmpty, !isAnimating else { return }
 
-        if displayMode == .collapsed, direction == .down || direction == .pageDown {
+        if displayMode == .collapsed, direction == .down || direction == .pageDown || direction == .tabForward {
             let collapsedCount = collapsedVisibleCount
             if displayCount > collapsedCount {
                 if !expandedRowsBuilt {
@@ -415,7 +416,11 @@ class CandidateWindow: NSPanel {
         switch direction {
         case .right where selectedIndex >= displayCount - 1:
             return 0
+        case .tabForward where selectedIndex >= displayCount - 1:
+            return 0
         case .left where selectedIndex <= 0:
+            return displayCount - 1
+        case .tabBackward where selectedIndex <= 0:
             return displayCount - 1
         case .down, .up:
             guard let (rowIdx, item) = findGridPosition(of: selectedIndex) else { return nil }
@@ -456,6 +461,10 @@ class CandidateWindow: NSPanel {
             return gridNavigateVertical(direction: -1, rowCount: maxExpandedVisibleRows - 1)
         case .pageDown:
             return gridNavigateVertical(direction: 1, rowCount: maxExpandedVisibleRows - 1)
+        case .tabForward:
+            return selectedIndex + 1 < displayCount ? selectedIndex + 1 : nil
+        case .tabBackward:
+            return selectedIndex > 0 ? selectedIndex - 1 : nil
         }
     }
 
