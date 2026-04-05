@@ -722,18 +722,19 @@ class CandidateWindow: NSPanel {
             }
         }
 
-        if displayMode == .expanded, let (rowIdx, _) = findGridPosition(of: selectedIndex) {
-            let y = yForRow(rowIdx)
-            rowHighlightView.frame = NSRect(x: 0, y: y, width: contentWidth, height: itemHeight)
-        }
-
         let maxVisibleHeight = (CGFloat(maxExpandedVisibleRows) + 0.5) * itemHeight
         let needsScrolling = displayMode == .expanded && contentHeight > maxVisibleHeight
         let windowHeight = needsScrolling ? maxVisibleHeight : contentHeight
 
         var windowWidth = contentWidth
-        if needsScrolling, NSScroller.preferredScrollerStyle == .legacy {
-            windowWidth += NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+        if needsScrolling {
+            windowWidth += NSScroller.scrollerWidth(
+                for: .regular, scrollerStyle: NSScroller.preferredScrollerStyle)
+        }
+
+        if displayMode == .expanded, let (rowIdx, _) = findGridPosition(of: selectedIndex) {
+            let y = yForRow(rowIdx)
+            rowHighlightView.frame = NSRect(x: 0, y: y, width: windowWidth, height: itemHeight)
         }
 
         candidateContainer.frame.size = NSSize(width: contentWidth, height: contentHeight)
@@ -904,10 +905,7 @@ class CandidateWindow: NSPanel {
         // Row highlight starts invisible
         rowHighlightView.alphaValue = 0
 
-        let hideScroller = NSScroller.preferredScrollerStyle != .legacy
-        if hideScroller {
-            scrollView.hasVerticalScroller = false
-        }
+        scrollView.hasVerticalScroller = false
 
         // Animate corner radius from pill to uniform
         animateCornerRadius(from: frame.size.height / 2, to: Self.defaultCornerRadius)
@@ -970,8 +968,12 @@ class CandidateWindow: NSPanel {
             }
             self.chevronView.isHidden = true
             self.isAnimating = false
-            if hideScroller {
-                self.scrollView.hasVerticalScroller = true
+            let hasOverflow = self.scrollView.documentView!.frame.height
+                > self.scrollView.contentView.bounds.height
+            self.scrollView.hasVerticalScroller = hasOverflow
+            if hasOverflow, NSScroller.preferredScrollerStyle != .legacy {
+                self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
+                self.scrollView.flashScrollers()
             }
             self.scrollSelectedRowIntoView()
         })
@@ -1218,9 +1220,8 @@ class CandidateWindow: NSPanel {
 
     private func layoutHighlight() {
         guard displayMode == .expanded, let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return }
-        let gridWidth = expandedColumnWidth * CGFloat(expandedPageSize)
         let y = yForRow(rowIdx)
-        rowHighlightView.frame = NSRect(x: 0, y: y, width: gridWidth, height: itemHeight)
+        rowHighlightView.frame = NSRect(x: 0, y: y, width: frame.width, height: itemHeight)
     }
 
     private func handleScrollerStyleChange() {
