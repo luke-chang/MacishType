@@ -92,7 +92,8 @@ class CandidateWindow: NSPanel {
 
     var indexBase = 1
     var pageSize = 9
-    var animationDuration: TimeInterval = 0.15
+    var widerExpandedColumns = true
+    var animationDuration: TimeInterval = 0.183
     private(set) var highlightColor: NSColor = .selectedContentBackgroundColor
     private(set) var didDrag = false
     weak var candidateDelegate: CandidateWindowDelegate?
@@ -115,6 +116,8 @@ class CandidateWindow: NSPanel {
     private var gridRows: [GridRow] = []
     private var expandedGridRows: [GridRow] = []
     private var baseColumnWidth: CGFloat = 0
+    private var expandedColumnWidth: CGFloat = 0
+    private var expandedPageSize: Int = 0
     private var itemHeight: CGFloat = 0
     private var expandedRowsBuilt = false
 
@@ -578,8 +581,8 @@ class CandidateWindow: NSPanel {
 
         for i in 0..<displayCount {
             let w = CandidateItemView.measureWidth(index: indexBase, candidate: candidates[i])
-            let span = max(1, min(pageSize, Int(ceil(w / baseColumnWidth))))
-            if currentColumn + span > pageSize, !currentRowItems.isEmpty {
+            let span = max(1, min(expandedPageSize, Int(ceil(w / expandedColumnWidth))))
+            if currentColumn + span > expandedPageSize, !currentRowItems.isEmpty {
                 rows.append(GridRow(items: currentRowItems))
                 currentRowItems = []
                 currentColumn = 0
@@ -636,7 +639,7 @@ class CandidateWindow: NSPanel {
             expandedRow0Indices = []
         }
 
-        let gridWidth = baseColumnWidth * CGFloat(pageSize)
+        let gridWidth = expandedColumnWidth * CGFloat(expandedPageSize)
         let row0Y = yForRow(0)
         var row0Width: CGFloat = 0
 
@@ -652,7 +655,7 @@ class CandidateWindow: NSPanel {
             let w: CGFloat
             if let gridItem = gridRows[0].items.first(where: { $0.candidateIndex == item.absoluteIndex }) {
                 w = displayMode == .expanded
-                    ? CGFloat(gridItem.columnSpan) * baseColumnWidth
+                    ? CGFloat(gridItem.columnSpan) * expandedColumnWidth
                     : max(baseColumnWidth, gridItem.measuredWidth)
             } else {
                 w = baseColumnWidth
@@ -687,9 +690,9 @@ class CandidateWindow: NSPanel {
                     item.isHidden = true
                     continue
                 }
-                let x = CGFloat(gridItem.columnStart) * baseColumnWidth
+                let x = CGFloat(gridItem.columnStart) * expandedColumnWidth
                 let y = yForRow(rowIdx)
-                let w = CGFloat(gridItem.columnSpan) * baseColumnWidth
+                let w = CGFloat(gridItem.columnSpan) * expandedColumnWidth
                 item.frame = NSRect(x: x, y: y, width: w, height: itemHeight)
             }
         } else {
@@ -739,6 +742,13 @@ class CandidateWindow: NSPanel {
         }
 
         baseColumnWidth = CandidateItemView.measureWidth(index: indexBase, candidate: "字")
+        if widerExpandedColumns {
+            expandedPageSize = pageSize - pageSize / 3
+            expandedColumnWidth = baseColumnWidth * CGFloat(pageSize) / CGFloat(expandedPageSize)
+        } else {
+            expandedPageSize = pageSize
+            expandedColumnWidth = baseColumnWidth
+        }
         itemHeight = CandidateItemView(frame: .zero).fittingSize.height
         gridRows = computeCollapsedGrid()
 
@@ -1012,8 +1022,8 @@ class CandidateWindow: NSPanel {
         let expandedRow0Y = yForRow(0)
         for item in row0ItemViews {
             if !overflow.contains(item.absoluteIndex), let gridItem = expandedGridRows[0].items.first(where: { $0.candidateIndex == item.absoluteIndex }) {
-                let w = CGFloat(gridItem.columnSpan) * baseColumnWidth
-                item.frame = NSRect(x: CGFloat(gridItem.columnStart) * baseColumnWidth, y: expandedRow0Y, width: w, height: itemHeight)
+                let w = CGFloat(gridItem.columnSpan) * expandedColumnWidth
+                item.frame = NSRect(x: CGFloat(gridItem.columnStart) * expandedColumnWidth, y: expandedRow0Y, width: w, height: itemHeight)
             }
         }
 
@@ -1026,7 +1036,7 @@ class CandidateWindow: NSPanel {
 
         // Chevron: start at expanded right edge, will slide to final position + fade in
         let hasOverflow = displayCount > collapsedVisibleCount
-        let expandedContentWidth = baseColumnWidth * CGFloat(pageSize)
+        let expandedContentWidth = expandedColumnWidth * CGFloat(expandedPageSize)
         if hasOverflow {
             chevronView.isHidden = false
             chevronView.alphaValue = 0
@@ -1187,7 +1197,7 @@ class CandidateWindow: NSPanel {
 
     private func layoutHighlight() {
         guard displayMode == .expanded, let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return }
-        let gridWidth = baseColumnWidth * CGFloat(pageSize)
+        let gridWidth = expandedColumnWidth * CGFloat(expandedPageSize)
         let y = yForRow(rowIdx)
         rowHighlightView.frame = NSRect(x: 0, y: y, width: gridWidth, height: itemHeight)
     }

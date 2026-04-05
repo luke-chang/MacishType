@@ -107,11 +107,16 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         instructionLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(instructionLabel)
 
-        // Slow motion checkbox
+        // Checkboxes
         let slowMotionCheckbox = NSButton(checkboxWithTitle: "Slow animations (1s)", target: self, action: #selector(slowMotionToggled(_:)))
         slowMotionCheckbox.state = .off
         slowMotionCheckbox.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(slowMotionCheckbox)
+
+        let widerColumnsCheckbox = NSButton(checkboxWithTitle: "Wider expanded columns", target: self, action: #selector(widerColumnsToggled(_:)))
+        widerColumnsCheckbox.state = candidateWindow.widerExpandedColumns ? .on : .off
+        widerColumnsCheckbox.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(widerColumnsCheckbox)
 
         // Text view with scroll view
         let scrollView = NSScrollView()
@@ -141,6 +146,9 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
 
             slowMotionCheckbox.topAnchor.constraint(equalTo: instructionLabel.bottomAnchor, constant: 8),
             slowMotionCheckbox.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
+
+            widerColumnsCheckbox.centerYAnchor.constraint(equalTo: slowMotionCheckbox.centerYAnchor),
+            widerColumnsCheckbox.leadingAnchor.constraint(equalTo: slowMotionCheckbox.trailingAnchor, constant: 16),
 
             scrollView.topAnchor.constraint(equalTo: slowMotionCheckbox.bottomAnchor, constant: 8),
             scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
@@ -215,6 +223,11 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
 
     @objc func slowMotionToggled(_ sender: NSButton) {
         candidateWindow.animationDuration = sender.state == .on ? 1.0 : defaultAnimationDuration
+    }
+
+    @objc func widerColumnsToggled(_ sender: NSButton) {
+        candidateWindow.widerExpandedColumns = sender.state == .on
+        applyCandidates()
     }
 
     func candidateSelected(_ candidate: String) {
