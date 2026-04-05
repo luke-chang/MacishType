@@ -59,6 +59,12 @@ enum NavigationDirection: Hashable {
     case tabForward, tabBackward
 }
 
+struct CandidateWindowConfiguration {
+    var indexBase = 1
+    var pageSize = 9
+    var widerExpandedColumns = true
+}
+
 protocol CandidateWindowDelegate: AnyObject {
     func candidateSelected(_ candidate: String)
     func candidateSelectionChanged(_ candidate: String)
@@ -90,9 +96,9 @@ class CandidateWindow: NSPanel {
 
     // MARK: - Public Properties
 
-    var indexBase = 1
-    var pageSize = 9
-    var widerExpandedColumns = true
+    private(set) var indexBase = 1
+    private(set) var pageSize = 9
+    private(set) var widerExpandedColumns = true
     var animationDuration: TimeInterval = 0.183
     private(set) var highlightColor: NSColor = .selectedContentBackgroundColor
     private(set) var didDrag = false
@@ -288,15 +294,30 @@ class CandidateWindow: NSPanel {
 
     // MARK: - Public API
 
+    func apply(_ configuration: CandidateWindowConfiguration) {
+        indexBase = configuration.indexBase
+        pageSize = configuration.pageSize
+        widerExpandedColumns = configuration.widerExpandedColumns
+        if isVisible, !candidates.isEmpty {
+            resetState()
+            rebuildLayout(animated: false, repositionAfter: true)
+        }
+    }
+
     func updateCandidates(_ candidates: [String]) {
         self.candidates = candidates
         self.selectedIndex = 0
-        self.displayMode = .collapsed
-        self.isAnimating = false
+        resetState()
         self.gridRows = []
-        self.expandedGridRows = []
-        self.expandedRowsBuilt = false
         rebuildLayout(animated: false)
+    }
+
+    private func resetState() {
+        displayMode = .collapsed
+        isAnimating = false
+        expandedGridRows = []
+        expandedRowsBuilt = false
+        stopCornerAnimation()
     }
 
     func handleNavigation(direction: NavigationDirection, wrapping: Bool = false, moveOnExpand: Bool = false) {

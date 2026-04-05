@@ -64,8 +64,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         NSApp.mainMenu = mainMenu
 
         candidateWindow.candidateDelegate = self
-        candidateWindow.indexBase = 1
-        candidateWindow.pageSize = 9
+        candidateWindow.apply(.init())
         defaultAnimationDuration = candidateWindow.animationDuration
 
         // Create window
@@ -226,8 +225,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
     }
 
     @objc func widerColumnsToggled(_ sender: NSButton) {
-        candidateWindow.widerExpandedColumns = sender.state == .on
-        applyCandidates()
+        candidateWindow.apply(.init(widerExpandedColumns: sender.state == .on))
     }
 
     func candidateSelected(_ candidate: String) {

@@ -129,7 +129,8 @@ class InputEngine {
         if let text = characters, text.count == 1,
            let char = text.first,
            let digit = char.wholeNumberValue,
-           digit >= indexBase, digit <= min(9, indexBase + pageSize - 1),
+           digit >= candidateWindowConfiguration.indexBase,
+           digit <= min(9, candidateWindowConfiguration.indexBase + candidateWindowConfiguration.pageSize - 1),
            context.isComposing {
             return .handled([.commitCandidateByDigit(digit)])
         }
@@ -165,8 +166,7 @@ class InputEngine {
 
     // MARK: Subclass Override Points
 
-    var indexBase: Int { 1 }
-    var pageSize: Int { 9 }
+    var candidateWindowConfiguration: CandidateWindowConfiguration { .init() }
 
     func lookupCandidates(context: InputEngineContext, _ key: String) -> [String] { [] }
     func isValidCompositionCharacter(_ char: Character) -> Bool { false }
