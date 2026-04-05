@@ -27,11 +27,11 @@ class ChevronView: NSView {
         NSLayoutConstraint.activate([
             separator.leadingAnchor.constraint(equalTo: leadingAnchor),
             separator.centerYAnchor.constraint(equalTo: centerYAnchor),
-            separator.heightAnchor.constraint(equalTo: heightAnchor, multiplier: 0.5),
-            imageView.leadingAnchor.constraint(equalTo: separator.trailingAnchor, constant: 1),
+            separator.heightAnchor.constraint(equalTo: heightAnchor),
+            imageView.leadingAnchor.constraint(equalTo: separator.trailingAnchor, constant: 4),
             imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
             imageView.widthAnchor.constraint(equalToConstant: 16),
-            imageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            imageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
         ])
 
     }
@@ -40,8 +40,8 @@ class ChevronView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize {
-        // separator(1) + spacing(1) + image(16) + padding(2)
-        NSSize(width: 20, height: NSView.noIntrinsicMetric)
+        // separator(1) + spacing(4) + image(16) + padding(6)
+        NSSize(width: 27, height: NSView.noIntrinsicMetric)
     }
 
     override func mouseUp(with event: NSEvent) {

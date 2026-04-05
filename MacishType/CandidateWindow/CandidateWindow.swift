@@ -1,7 +1,7 @@
 import Cocoa
 
 private extension NSImage {
-    static func cornerMask(radius: CGFloat) -> NSImage {
+    static func uniformCornerMask(radius: CGFloat) -> NSImage {
         let image = NSImage(size: NSSize(width: radius * 2, height: radius * 2), flipped: false) { rect in
             NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
             return true
@@ -9,6 +9,42 @@ private extension NSImage {
         image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
         image.resizingMode = .stretch
         return image
+    }
+
+    static func asymmetricCornerMask(height: CGFloat, leftRadius: CGFloat, rightRadius: CGFloat) -> NSImage {
+        let rr = min(rightRadius, height / 2)
+        let width = leftRadius + rr + 1
+        let image = asymmetricCornerMask(
+            size: NSSize(width: width, height: height),
+            leftRadius: leftRadius, rightRadius: rightRadius
+        )
+        image.capInsets = NSEdgeInsets(top: rr, left: leftRadius, bottom: rr, right: rr)
+        image.resizingMode = .stretch
+        return image
+    }
+
+    static func asymmetricCornerMask(size: NSSize, leftRadius: CGFloat, rightRadius: CGFloat) -> NSImage {
+        NSImage(size: size, flipped: false) { rect in
+            let path = NSBezierPath()
+            let lr = min(leftRadius, rect.height / 2)
+            let rr = min(rightRadius, rect.height / 2)
+            path.move(to: NSPoint(x: lr, y: rect.maxY))
+            path.line(to: NSPoint(x: rect.maxX - rr, y: rect.maxY))
+            path.appendArc(withCenter: NSPoint(x: rect.maxX - rr, y: rect.maxY - rr),
+                           radius: rr, startAngle: 90, endAngle: 0, clockwise: true)
+            path.line(to: NSPoint(x: rect.maxX, y: rr))
+            path.appendArc(withCenter: NSPoint(x: rect.maxX - rr, y: rr),
+                           radius: rr, startAngle: 0, endAngle: -90, clockwise: true)
+            path.line(to: NSPoint(x: lr, y: 0))
+            path.appendArc(withCenter: NSPoint(x: lr, y: lr),
+                           radius: lr, startAngle: -90, endAngle: -180, clockwise: true)
+            path.line(to: NSPoint(x: 0, y: rect.maxY - lr))
+            path.appendArc(withCenter: NSPoint(x: lr, y: rect.maxY - lr),
+                           radius: lr, startAngle: 180, endAngle: 90, clockwise: true)
+            path.close()
+            path.fill()
+            return true
+        }
     }
 }
 
@@ -88,12 +124,17 @@ class CandidateWindow: NSPanel {
     private var row0ItemViews: [CandidateItemView] = []
     // Items in rows 1+ (created on first expand)
     private var expandedItemViews: [CandidateItemView] = []
+    private var visualEffectView: NSVisualEffectView!
     private var scrollView: NSScrollView!
     private var candidateContainer: FlippedView!
     private var chevronView: ChevronView!
     private var rowHighlightView: HighlightBackgroundView!
     private var accentColorObserver: (any NSObjectProtocol)?
     private var scrollerStyleObserver: (any NSObjectProtocol)?
+    private var cornerDisplayLink: (any NSObjectProtocol)?
+    private var cornerAnimationStart: CFTimeInterval = 0
+    private var cornerRadiusFrom: CGFloat = 0
+    private var cornerRadiusTo: CGFloat = 0
 
     // MARK: - Init
 
@@ -129,15 +170,75 @@ class CandidateWindow: NSPanel {
         }
     }
 
+    private static let defaultCornerRadius: CGFloat = 6
+    private static let uniformMask = NSImage.uniformCornerMask(radius: defaultCornerRadius)
+    private var pillMask: NSImage?
+    private var pillMaskHeight: CGFloat = 0
+
+    private func pillCornerMask(height: CGFloat) -> NSImage {
+        if height == pillMaskHeight, let pillMask { return pillMask }
+        let lr = Self.defaultCornerRadius
+        let rr = height / 2
+        let mask = NSImage.asymmetricCornerMask(height: height, leftRadius: lr, rightRadius: rr)
+        pillMask = mask
+        pillMaskHeight = height
+        return mask
+    }
+
+    private func updateMaskImage() {
+        let size = frame.size
+        guard size.width > 0, size.height > 0 else { return }
+        let showChevron = displayMode == .collapsed && displayCount > collapsedVisibleCount
+        if showChevron {
+            visualEffectView.maskImage = pillCornerMask(height: size.height)
+        } else {
+            visualEffectView.maskImage = Self.uniformMask
+        }
+    }
+
+    private func animateCornerRadius(from: CGFloat, to: CGFloat) {
+        stopCornerAnimation()
+        cornerRadiusFrom = from
+        cornerRadiusTo = to
+        cornerAnimationStart = CACurrentMediaTime()
+        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] _ in
+            self?.cornerAnimationTick()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        cornerDisplayLink = timer
+    }
+
+    private func stopCornerAnimation() {
+        (cornerDisplayLink as? Timer)?.invalidate()
+        cornerDisplayLink = nil
+    }
+
+    private func cornerAnimationTick() {
+        let elapsed = CACurrentMediaTime() - cornerAnimationStart
+        let progress = min(elapsed / animationDuration, 1.0)
+        // Ease in-out approximation matching CAMediaTimingFunction(.easeInEaseOut)
+        let t = progress < 0.5
+            ? 2 * progress * progress
+            : -1 + (4 - 2 * progress) * progress
+        let radius = cornerRadiusFrom + (cornerRadiusTo - cornerRadiusFrom) * t
+        let size = frame.size
+        guard size.width > 0, size.height > 0 else { return }
+        visualEffectView.maskImage = .asymmetricCornerMask(
+            size: size, leftRadius: Self.defaultCornerRadius, rightRadius: radius
+        )
+        if progress >= 1.0 {
+            stopCornerAnimation()
+        }
+    }
+
     private func setupUI() {
-        let visualEffect = NSVisualEffectView()
-        visualEffect.material = .hudWindow
-        visualEffect.state = .active
-        visualEffect.blendingMode = .behindWindow
-        visualEffect.maskImage = .cornerMask(radius: 6)
-        visualEffect.wantsLayer = true
-        visualEffect.layer?.masksToBounds = true
-        self.contentView = visualEffect
+        visualEffectView = NSVisualEffectView()
+        visualEffectView.material = .hudWindow
+        visualEffectView.state = .active
+        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.wantsLayer = true
+        visualEffectView.layer?.masksToBounds = true
+        self.contentView = visualEffectView
 
         scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -146,12 +247,12 @@ class CandidateWindow: NSPanel {
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
-        visualEffect.addSubview(scrollView)
+        visualEffectView.addSubview(scrollView)
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: visualEffect.topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: visualEffect.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: visualEffect.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: visualEffect.bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: visualEffectView.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor),
         ])
 
         candidateContainer = FlippedView()
@@ -654,6 +755,7 @@ class CandidateWindow: NSPanel {
 
         let contentSize = layoutItems()
         setContentSize(contentSize)
+        updateMaskImage()
 
         if repositionAfter, !lastShowNearRect.isEmpty {
             showNear(rect: lastShowNearRect)
@@ -714,6 +816,7 @@ class CandidateWindow: NSPanel {
         if !animated {
             rowHighlightView.alphaValue = 1
             setContentSize(contentSize)
+            updateMaskImage()
             scrollSelectedRowIntoView()
             if !lastShowNearRect.isEmpty { showNear(rect: lastShowNearRect) }
             return
@@ -774,6 +877,9 @@ class CandidateWindow: NSPanel {
         if hideScroller {
             scrollView.hasVerticalScroller = false
         }
+
+        // Animate corner radius from pill to uniform
+        animateCornerRadius(from: frame.size.height / 2, to: Self.defaultCornerRadius)
 
         isAnimating = true
         NSAnimationContext.runAnimationGroup({ context in
@@ -875,6 +981,7 @@ class CandidateWindow: NSPanel {
             rowHighlightView.alphaValue = 0
             for item in row0ItemViews { item.alphaValue = 1 }
             setContentSize(contentSize)
+            updateMaskImage()
             if !lastShowNearRect.isEmpty { showNear(rect: lastShowNearRect) }
             return
         }
@@ -929,6 +1036,10 @@ class CandidateWindow: NSPanel {
             )
             chevronView.frame = NSRect(x: chevronStartX, y: yForRow(0), width: chevronView.intrinsicContentSize.width, height: itemHeight)
         }
+
+        // Animate corner radius from uniform to pill
+        let targetRightRadius = hasOverflow ? contentSize.height / 2 : Self.defaultCornerRadius
+        animateCornerRadius(from: Self.defaultCornerRadius, to: targetRightRadius)
 
         isAnimating = true
         NSAnimationContext.runAnimationGroup({ context in
@@ -1087,6 +1198,7 @@ class CandidateWindow: NSPanel {
         let contentSize = layoutItems()
         let targetFrame = windowFrame(for: contentSize, reposition: false)
         setFrame(targetFrame, display: true)
+        updateMaskImage()
     }
 
     // MARK: - Sizing
