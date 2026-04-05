@@ -118,6 +118,7 @@ candidate-window-test:
 		MacishType/CandidateWindow/CandidateItemView.swift \
 		MacishType/CandidateWindow/ChevronView.swift \
 		MacishType/CandidateWindow/HighlightBackgroundView.swift \
+		MacishType/CandidateWindow/SeparatorLineView.swift \
 		MacishType/ThemeManager.swift \
 		MacishType/Logger.swift
 	@echo "✓ Built. Launching..."

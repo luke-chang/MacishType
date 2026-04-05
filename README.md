@@ -50,7 +50,8 @@ MacishType/
 │   │   ├── CandidateWindow.swift            # NSPanel-based candidate window (singleton)
 │   │   ├── CandidateItemView.swift          # Single candidate cell with index and label
 │   │   ├── ChevronView.swift                # Expand/collapse toggle button
-│   │   └── HighlightBackgroundView.swift    # Alternating row background for expanded mode
+│   │   ├── HighlightBackgroundView.swift    # Selected row background for expanded mode
+│   │   └── SeparatorLineView.swift          # Horizontal separator between candidate rows
 │   ├── ExampleEngine/                       # Example input engine implementation
 │   │   ├── ExampleEngine.swift              # Reverse-lookup demo engine
 │   │   └── Resources/                       # ExampleEngine assets

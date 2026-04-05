@@ -112,6 +112,7 @@ class CandidateWindow: NSPanel {
 
     // MARK: - Private State
 
+    private static let separatorHeight: CGFloat = 1
     private let maxExpandedVisibleRows = 5
     private let maxDisplayCandidates = 200
     private var candidates: [String] = []
@@ -138,6 +139,7 @@ class CandidateWindow: NSPanel {
     private var candidateContainer: FlippedView!
     private var chevronView: ChevronView!
     private var rowHighlightView: HighlightBackgroundView!
+    private var separatorViews: [SeparatorLineView] = []
     private var accentColorObserver: (any NSObjectProtocol)?
     private var scrollerStyleObserver: (any NSObjectProtocol)?
     private var cornerDisplayLink: (any NSObjectProtocol)?
@@ -645,13 +647,14 @@ class CandidateWindow: NSPanel {
 
     // Container is flipped, so row 0 is at y=0 (top).
     private func yForRow(_ rowIndex: Int) -> CGFloat {
-        CGFloat(rowIndex) * itemHeight
+        CGFloat(rowIndex) * (itemHeight + Self.separatorHeight)
     }
 
     @discardableResult
     private func layoutItems() -> NSSize {
         let rowCount = displayMode == .expanded ? gridRows.count : 1
         let contentHeight = CGFloat(rowCount) * itemHeight
+            + CGFloat(max(rowCount - 1, 0)) * Self.separatorHeight
 
         let expandedRow0Indices: Set<Int>
         if displayMode == .expanded {
@@ -723,6 +726,7 @@ class CandidateWindow: NSPanel {
         }
 
         let maxVisibleHeight = (CGFloat(maxExpandedVisibleRows) + 0.5) * itemHeight
+            + CGFloat(maxExpandedVisibleRows - 1) * Self.separatorHeight
         let needsScrolling = displayMode == .expanded && contentHeight > maxVisibleHeight
         let windowHeight = needsScrolling ? maxVisibleHeight : contentHeight
 
@@ -735,6 +739,20 @@ class CandidateWindow: NSPanel {
         if displayMode == .expanded, let (rowIdx, _) = findGridPosition(of: selectedIndex) {
             let y = yForRow(rowIdx)
             rowHighlightView.frame = NSRect(x: 0, y: y, width: windowWidth, height: itemHeight)
+        }
+
+        // Row separators
+        let separatorCount = max(rowCount - 1, 0)
+        while separatorViews.count < separatorCount {
+            let sep = SeparatorLineView()
+            candidateContainer.addSubview(sep, positioned: .above, relativeTo: rowHighlightView)
+            separatorViews.append(sep)
+        }
+        for i in 0..<separatorCount {
+            separatorViews[i].frame = NSRect(
+                x: 0, y: yForRow(i) + itemHeight,
+                width: windowWidth, height: Self.separatorHeight)
+            separatorViews[i].needsDisplay = true
         }
 
         candidateContainer.frame.size = NSSize(width: contentWidth, height: contentHeight)
@@ -756,6 +774,8 @@ class CandidateWindow: NSPanel {
 
     private func rebuildLayout(animated: Bool, repositionAfter: Bool = false) {
         removeAllItemViews()
+        separatorViews.forEach { $0.removeFromSuperview() }
+        separatorViews.removeAll()
         rowHighlightView.alphaValue = 0
 
         guard !candidates.isEmpty else {
@@ -1186,7 +1206,8 @@ class CandidateWindow: NSPanel {
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: rowY))
             scrollView.reflectScrolledClipView(scrollView.contentView)
         } else if rowBottom > visible.maxY {
-            let targetY = rowBottom + 0.5 * itemHeight - visible.height
+            let maxScrollY = scrollView.documentView!.frame.height - visible.height
+            let targetY = min(rowBottom + 0.5 * itemHeight - visible.height, maxScrollY)
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
             scrollView.reflectScrolledClipView(scrollView.contentView)
         }
