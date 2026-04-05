@@ -4,22 +4,15 @@ class HighlightBackgroundView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = true
-        wantsLayer = true
         alphaValue = 0
-        updateColor()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        updateColor()
-    }
-
-    private func updateColor() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = NSColor.alternatingContentBackgroundColors[1].cgColor
-        }
+    override func draw(_ dirtyRect: NSRect) {
+        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        NSColor.white.withAlphaComponent(isDark ? 0.1 : 0.6).setFill()
+        bounds.fill()
     }
 }
