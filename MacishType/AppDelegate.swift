@@ -41,5 +41,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Initialize shared resources
         _ = ThemeManager.shared
+        InputEngine.observeEnabledEngines()
     }
 }

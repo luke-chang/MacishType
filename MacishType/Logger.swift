@@ -7,4 +7,5 @@ extension Logger {
     static let windowManager = Logger(subsystem: subsystem, category: "WindowManager")
     static let themeManager = Logger(subsystem: subsystem, category: "ThemeManager")
     static let inputController = Logger(subsystem: subsystem, category: "InputController")
+    static let inputEngine = Logger(subsystem: subsystem, category: "InputEngine")
 }

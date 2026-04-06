@@ -1,4 +1,6 @@
+import Carbon
 import Cocoa
+import OSLog
 
 // MARK: - Per-Client State
 
@@ -62,13 +64,84 @@ class InputEngine {
         return engines[suffix]?()
     }
 
+    // MARK: Input Source Monitoring
+
+    private(set) static var enabledEngines: Set<String> = []
+    private static var pendingWorkItem: DispatchWorkItem?
+
+    static func observeEnabledEngines() {
+        enabledEngines = queryEnabledEngines()
+        #if DEBUG
+        Logger.inputEngine.debug("Initial enabled engines: \(enabledEngines.sorted(), privacy: .public)")
+        #endif
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: .init(kTISNotifyEnabledKeyboardInputSourcesChanged as String),
+            object: nil,
+            queue: .main
+        ) { _ in
+            Self.pendingWorkItem?.cancel()
+            let item = DispatchWorkItem { Self.updateEnabledEngines() }
+            Self.pendingWorkItem = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
+        }
+    }
+
+    private static func queryEnabledEngines() -> Set<String> {
+        let bundleID = Bundle.main.bundleIdentifier!
+        let conditions = [
+            kTISPropertyBundleID as String: bundleID,
+            kTISPropertyInputSourceIsEnabled as String: true,
+        ] as CFDictionary
+        guard let sources = TISCreateInputSourceList(conditions, false)?
+            .takeRetainedValue() as? [TISInputSource] else { return [] }
+        let ids = sources.compactMap { source in
+            TISGetInputSourceProperty(source, kTISPropertyInputSourceID)
+                .map { Unmanaged<CFString>.fromOpaque($0).takeUnretainedValue() as String }
+        }
+        let prefix = bundleID + "."
+        guard ids.contains(bundleID) else { return [] }
+        return Set(ids.compactMap { $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil })
+    }
+
+    private static func updateEnabledEngines() {
+        let newEngines = queryEnabledEngines()
+        guard newEngines != enabledEngines else { return }
+        let removed = enabledEngines.subtracting(newEngines)
+        enabledEngines = newEngines
+        #if DEBUG
+        Logger.inputEngine.debug("Enabled engines: \(newEngines.sorted(), privacy: .public)")
+        #endif
+        for key in removed {
+            if let engine = engines[key]?(), engine.isLoaded {
+                #if DEBUG
+                Logger.inputEngine.debug("Unloading engine: \("\(type(of: engine))", privacy: .public)")
+                #endif
+                engine.unload()
+                engine.isLoaded = false
+            }
+        }
+    }
+
     // MARK: Factory
 
     func createContext() -> InputEngineContext { InputEngineContext() }
 
     // MARK: Lifecycle
 
+    private(set) var isLoaded = false
+
+    func load() {}
+    func unload() {}
+
     func activate(context: InputEngineContext, clientIdentifier: String?) -> [EngineAction] {
+        if !isLoaded {
+            #if DEBUG
+            Logger.inputEngine.debug("Loading engine: \("\(type(of: self))", privacy: .public)")
+            #endif
+            load()
+            isLoaded = true
+        }
         guard context.isComposing else { return [] }
         let candidates = lookupCandidates(context: context, context.composingText)
         return [.updateMarkedText(context.composingText), .updateCandidates(candidates)]
