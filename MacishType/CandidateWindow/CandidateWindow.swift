@@ -443,7 +443,7 @@ class CandidateWindow: NSPanel {
         var point = NSPoint(x: rect.minX, y: rect.minY - margin)
 
         if point.y - windowSize.height < screenRect.minY {
-            point.y = rect.maxY + windowSize.height
+            point.y = rect.maxY + windowSize.height + margin
         }
 
         if point.x + windowSize.width >= screenRect.maxX {

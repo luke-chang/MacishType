@@ -174,8 +174,8 @@ class InputController: IMKInputController {
                 client.insertText(text, replacementRange: .notFound)
             case .updateMarkedText(let text, let cursor, let emphasis):
                 setMarkedText(text, cursor: cursor, emphasis: emphasis, client: client)
-            case .updateCandidates(let candidates):
-                updateCandidates(candidates, client: client)
+            case .updateCandidates(let candidates, let anchor):
+                updateCandidates(candidates, anchor: anchor, client: client)
             case .commitSelectedCandidate:
                 CandidateWindow.shared.commitSelectedCandidate()
             case .commitCandidateByDigit(let digit):
@@ -218,16 +218,26 @@ class InputController: IMKInputController {
     // MARK: - Candidate Window
 
     // Some apps (e.g. iMessage) return origin (0, 0) for certain character
-    // indices. Start from index 0 to anchor the window at the composition
-    // start, and try subsequent indices as fallback.
-    // Reference: McBopomofo and vChewing use the same retry pattern.
-    private func showCandidateWindow(client: IMKTextInput) {
+    // indices. Fallback strategy: try forward from the target index to the
+    // end, then wrap around from 0 up to the target index.
+    private func showCandidateWindow(anchor: Int, client: IMKTextInput) {
         var lineHeightRect = NSRect.zero
-        let markedTextLength = engineContext.composingText.utf16.count
-        var cursor = 0
-        while lineHeightRect.origin == .zero && cursor < markedTextLength {
+        let length = engineContext.composingText.utf16.count
+        guard length > 0 else { return }
+        let target = min(anchor, length - 1)
+        // Try from target forward to end
+        var cursor = target
+        while lineHeightRect.origin == .zero && cursor < length {
             _ = client.attributes(forCharacterIndex: cursor, lineHeightRectangle: &lineHeightRect)
             cursor += 1
+        }
+        // Wrap around: try from 0 up to target
+        if lineHeightRect.origin == .zero {
+            cursor = 0
+            while lineHeightRect.origin == .zero && cursor < target {
+                _ = client.attributes(forCharacterIndex: cursor, lineHeightRectangle: &lineHeightRect)
+                cursor += 1
+            }
         }
         CandidateWindow.shared.showNear(rect: lineHeightRect)
     }
@@ -236,13 +246,13 @@ class InputController: IMKInputController {
         CandidateWindow.shared.hide()
     }
 
-    private func updateCandidates(_ candidates: [String], client: IMKTextInput) {
+    private func updateCandidates(_ candidates: [String], anchor: Int, client: IMKTextInput) {
         guard !candidates.isEmpty else {
             hideCandidateWindow()
             return
         }
         CandidateWindow.shared.updateCandidates(candidates)
-        showCandidateWindow(client: client)
+        showCandidateWindow(anchor: anchor, client: client)
     }
 }
 
