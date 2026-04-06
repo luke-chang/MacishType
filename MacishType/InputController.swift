@@ -172,8 +172,8 @@ class InputController: IMKInputController {
             switch action {
             case .insert(let text):
                 client.insertText(text, replacementRange: .notFound)
-            case .updateMarkedText(let text):
-                setMarkedText(text, client: client)
+            case .updateMarkedText(let text, let cursor, let emphasis):
+                setMarkedText(text, cursor: cursor, emphasis: emphasis, client: client)
             case .updateCandidates(let candidates):
                 updateCandidates(candidates, client: client)
             case .commitSelectedCandidate:
@@ -190,17 +190,26 @@ class InputController: IMKInputController {
 
     // MARK: - Marked Text
 
-    private func setMarkedText(_ text: String, client: IMKTextInput) {
-        let attributedText = NSAttributedString(
+    private func setMarkedText(
+        _ text: String, cursor: Int? = nil, emphasis: Range<Int>? = nil, client: IMKTextInput
+    ) {
+        let cursorPosition = cursor ?? text.utf16.count
+        let attr = NSMutableAttributedString(
             string: text,
             attributes: [
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
                 .markedClauseSegment: 0
             ]
         )
+        if let emphasis, !emphasis.isEmpty {
+            attr.addAttribute(
+                .underlineStyle, value: NSUnderlineStyle.thick.rawValue,
+                range: NSRange(location: emphasis.lowerBound, length: emphasis.count)
+            )
+        }
         client.setMarkedText(
-            attributedText,
-            selectionRange: NSRange(location: text.utf16.count, length: 0),
+            attr,
+            selectionRange: NSRange(location: cursorPosition, length: 0),
             replacementRange: .notFound
         )
     }

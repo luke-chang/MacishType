@@ -16,7 +16,7 @@ class InputEngineContext {
 
 enum EngineAction {
     case insert(String)
-    case updateMarkedText(String)
+    case updateMarkedText(String, cursor: Int? = nil, emphasis: Range<Int>? = nil)
     case updateCandidates([String])
     case commitSelectedCandidate
     case commitCandidateByDigit(Int)
