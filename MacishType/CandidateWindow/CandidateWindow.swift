@@ -63,6 +63,7 @@ struct CandidateWindowConfiguration {
     var indexBase = 1
     var pageSize = 9
     var widerExpandedColumns = true
+    var moveOnExpand = false
 }
 
 protocol CandidateWindowDelegate: AnyObject {
@@ -99,6 +100,7 @@ class CandidateWindow: NSPanel {
     private(set) var indexBase = 1
     private(set) var pageSize = 9
     private(set) var widerExpandedColumns = true
+    private(set) var moveOnExpand = false
     var animationDuration: TimeInterval = 0.183
     private(set) var highlightColor: NSColor = .selectedContentBackgroundColor
     private(set) var didDrag = false
@@ -300,6 +302,7 @@ class CandidateWindow: NSPanel {
         indexBase = configuration.indexBase
         pageSize = configuration.pageSize
         widerExpandedColumns = configuration.widerExpandedColumns
+        moveOnExpand = configuration.moveOnExpand
         if isVisible, !candidates.isEmpty {
             resetState()
             rebuildLayout(animated: false, repositionAfter: true)
@@ -322,8 +325,11 @@ class CandidateWindow: NSPanel {
         stopCornerAnimation()
     }
 
-    func handleNavigation(direction: NavigationDirection, wrapping: Bool = false, moveOnExpand: Bool = false) {
+    func handleNavigation(direction: NavigationDirection, wrapping: Bool = false) {
         guard !candidates.isEmpty, !isAnimating else { return }
+
+        let shouldMoveOnExpand = direction == .right || direction == .tabForward
+            || (moveOnExpand && (direction == .down || direction == .pageDown))
 
         if displayMode == .collapsed, direction == .down || direction == .pageDown || direction == .tabForward {
             let collapsedCount = collapsedVisibleCount
@@ -331,7 +337,7 @@ class CandidateWindow: NSPanel {
                 if !expandedRowsBuilt {
                     expandedGridRows = computeExpandedGrid()
                 }
-                if moveOnExpand {
+                if shouldMoveOnExpand {
                     let jumpRows = direction == .pageDown ? maxExpandedVisibleRows - 1 : 1
                     let targetRowIdx = min(jumpRows, expandedGridRows.count - 1)
                     let targetRow = expandedGridRows[targetRowIdx]
@@ -368,7 +374,7 @@ class CandidateWindow: NSPanel {
         if displayMode == .collapsed {
             let collapsedCount = collapsedVisibleCount
             if target >= collapsedCount {
-                if moveOnExpand {
+                if shouldMoveOnExpand {
                     selectedIndex = target
                 }
                 expandWindow(animated: true)

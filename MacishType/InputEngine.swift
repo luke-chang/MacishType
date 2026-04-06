@@ -22,7 +22,7 @@ enum EngineAction {
     case updateCandidates([String], anchor: Int = 0)
     case commitSelectedCandidate
     case commitCandidateByDigit(Int)
-    case navigateCandidates(NavigationDirection, wrapping: Bool = false, moveOnExpand: Bool = false)
+    case navigateCandidates(NavigationDirection, wrapping: Bool = false)
     case noop
 }
 
@@ -259,11 +259,11 @@ class InputEngine {
         switch keyCode {
         case 48: // Tab
             let dir: NavigationDirection = modifiers.contains(.shift) ? .tabBackward : .tabForward
-            return .navigateCandidates(dir, wrapping: true, moveOnExpand: true)
+            return .navigateCandidates(dir, wrapping: true)
         case 123: // Left
-            return .navigateCandidates(.left, moveOnExpand: true)
+            return .navigateCandidates(.left)
         case 124: // Right
-            return .navigateCandidates(.right, moveOnExpand: true)
+            return .navigateCandidates(.right)
         case 125: // Down
             return .navigateCandidates(.down)
         case 126: // Up

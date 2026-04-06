@@ -117,6 +117,11 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         widerColumnsCheckbox.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(widerColumnsCheckbox)
 
+        let moveOnExpandCheckbox = NSButton(checkboxWithTitle: "Move on expand", target: self, action: #selector(moveOnExpandToggled(_:)))
+        moveOnExpandCheckbox.state = candidateWindow.moveOnExpand ? .on : .off
+        moveOnExpandCheckbox.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(moveOnExpandCheckbox)
+
         // Text view with scroll view
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -146,10 +151,13 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
             slowMotionCheckbox.topAnchor.constraint(equalTo: instructionLabel.bottomAnchor, constant: 8),
             slowMotionCheckbox.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
 
-            widerColumnsCheckbox.centerYAnchor.constraint(equalTo: slowMotionCheckbox.centerYAnchor),
-            widerColumnsCheckbox.leadingAnchor.constraint(equalTo: slowMotionCheckbox.trailingAnchor, constant: 16),
+            widerColumnsCheckbox.topAnchor.constraint(equalTo: slowMotionCheckbox.bottomAnchor, constant: 4),
+            widerColumnsCheckbox.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
 
-            scrollView.topAnchor.constraint(equalTo: slowMotionCheckbox.bottomAnchor, constant: 8),
+            moveOnExpandCheckbox.topAnchor.constraint(equalTo: widerColumnsCheckbox.bottomAnchor, constant: 4),
+            moveOnExpandCheckbox.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
+
+            scrollView.topAnchor.constraint(equalTo: moveOnExpandCheckbox.bottomAnchor, constant: 8),
             scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
             scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -padding),
             scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -padding),
@@ -177,7 +185,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
             switch event.keyCode {
             case 48: // Tab
                 let dir: NavigationDirection = event.modifierFlags.contains(.shift) ? .left : .right
-                self.candidateWindow.handleNavigation(direction: dir, wrapping: true, moveOnExpand: true)
+                self.candidateWindow.handleNavigation(direction: dir, wrapping: true)
                 return nil
             case 125: // Down
                 self.candidateWindow.handleNavigation(direction: .down); return nil
@@ -190,7 +198,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
             case 123: // Left
                 self.candidateWindow.handleNavigation(direction: .left); return nil
             case 124: // Right
-                self.candidateWindow.handleNavigation(direction: .right, moveOnExpand: true); return nil
+                self.candidateWindow.handleNavigation(direction: .right); return nil
             case 115: // Home
                 self.candidateWindow.handleNavigation(direction: .home); return nil
             case 119: // End
@@ -225,7 +233,11 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
     }
 
     @objc func widerColumnsToggled(_ sender: NSButton) {
-        candidateWindow.apply(.init(widerExpandedColumns: sender.state == .on))
+        candidateWindow.apply(.init(widerExpandedColumns: sender.state == .on, moveOnExpand: candidateWindow.moveOnExpand))
+    }
+
+    @objc func moveOnExpandToggled(_ sender: NSButton) {
+        candidateWindow.apply(.init(widerExpandedColumns: candidateWindow.widerExpandedColumns, moveOnExpand: sender.state == .on))
     }
 
     func candidateSelected(_ candidate: String) {
