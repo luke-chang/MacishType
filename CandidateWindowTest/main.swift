@@ -70,7 +70,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         // Create window
         let screenFrame = NSScreen.main?.visibleFrame ?? .zero
         let windowWidth: CGFloat = 420
-        let windowHeight: CGFloat = 200
+        let windowHeight: CGFloat = 240
         let windowX = screenFrame.maxX - windowWidth - 20
         let titleBarHeight = NSWindow.frameRect(forContentRect: .zero, styleMask: [.titled, .closable, .resizable]).height
         let windowY = screenFrame.maxY - windowHeight - titleBarHeight - 20
@@ -184,9 +184,11 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
             if isEditing { return event }
             switch event.keyCode {
             case 48: // Tab
-                let dir: NavigationDirection = event.modifierFlags.contains(.shift) ? .left : .right
+                let dir: NavigationDirection = event.modifierFlags.contains(.shift) ? .itemBackward : .itemForward
                 self.candidateWindow.handleNavigation(direction: dir, wrapping: true)
                 return nil
+            case 49: // Space
+                self.candidateWindow.handleNavigation(direction: .pageForward, wrapping: true); return nil
             case 125: // Down
                 self.candidateWindow.handleNavigation(direction: .down); return nil
             case 126: // Up
@@ -203,7 +205,16 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
                 self.candidateWindow.handleNavigation(direction: .home); return nil
             case 119: // End
                 self.candidateWindow.handleNavigation(direction: .end); return nil
-            default: return event
+            default:
+                if let chars = event.characters {
+                    if chars == ">" {
+                        self.candidateWindow.handleNavigation(direction: .pageForward); return nil
+                    }
+                    if chars == "<" {
+                        self.candidateWindow.handleNavigation(direction: .pageBackward); return nil
+                    }
+                }
+                return event
             }
         }
 

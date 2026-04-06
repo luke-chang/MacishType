@@ -56,7 +56,8 @@ private class FlippedView: NSView {
 
 enum NavigationDirection: Hashable {
     case up, down, left, right, home, end, pageUp, pageDown
-    case tabForward, tabBackward
+    case itemForward, itemBackward
+    case pageForward, pageBackward
 }
 
 struct CandidateWindowConfiguration {
@@ -328,10 +329,12 @@ class CandidateWindow: NSPanel {
     func handleNavigation(direction: NavigationDirection, wrapping: Bool = false) {
         guard !candidates.isEmpty, !isAnimating else { return }
 
-        let shouldMoveOnExpand = direction == .right || direction == .tabForward
+        let shouldMoveOnExpand = direction == .right || direction == .itemForward
+            || ((direction == .itemBackward || direction == .left) && wrapping)
+            || direction == .pageForward
             || (moveOnExpand && (direction == .down || direction == .pageDown))
 
-        if displayMode == .collapsed, direction == .down || direction == .pageDown || direction == .tabForward {
+        if displayMode == .collapsed, direction == .down || direction == .pageDown || direction == .pageForward {
             let collapsedCount = collapsedVisibleCount
             if displayCount > collapsedCount {
                 if !expandedRowsBuilt {
@@ -501,7 +504,7 @@ class CandidateWindow: NSPanel {
         gridRows.first?.items.count ?? 0
     }
 
-    private static let collapseDirections: Set<NavigationDirection> = [.left, .up, .pageUp]
+    private static let collapseDirections: Set<NavigationDirection> = [.left, .up, .pageUp, .pageBackward, .itemBackward]
 
     private func findGridPosition(of candidateIndex: Int) -> (rowIndex: Int, item: GridItem)? {
         findGridPosition(of: candidateIndex, in: gridRows)
@@ -549,20 +552,20 @@ class CandidateWindow: NSPanel {
         switch direction {
         case .right where selectedIndex >= displayCount - 1:
             return 0
-        case .tabForward where selectedIndex >= displayCount - 1:
+        case .itemForward where selectedIndex >= displayCount - 1:
             return 0
         case .left where selectedIndex <= 0:
             return displayCount - 1
-        case .tabBackward where selectedIndex <= 0:
+        case .itemBackward where selectedIndex <= 0:
             return displayCount - 1
-        case .down, .up:
+        case .down, .up, .pageForward, .pageBackward:
             guard let (rowIdx, item) = findGridPosition(of: selectedIndex) else { return nil }
             let colStart = item.columnStart
             let colEnd = colStart + item.columnSpan
-            if direction == .down, rowIdx >= gridRows.count - 1 {
+            if direction == .down || direction == .pageForward, rowIdx >= gridRows.count - 1 {
                 return findOverlappingItem(in: gridRows[0], columnStart: colStart, columnEnd: colEnd)
             }
-            if direction == .up, rowIdx <= 0 {
+            if direction == .up || direction == .pageBackward, rowIdx <= 0 {
                 let lastRow = gridRows[gridRows.count - 1]
                 return findOverlappingItem(in: lastRow, columnStart: colStart, columnEnd: colEnd)
             }
@@ -594,10 +597,14 @@ class CandidateWindow: NSPanel {
             return gridNavigateVertical(direction: -1, rowCount: maxExpandedVisibleRows - 1)
         case .pageDown:
             return gridNavigateVertical(direction: 1, rowCount: maxExpandedVisibleRows - 1)
-        case .tabForward:
+        case .itemForward:
             return selectedIndex + 1 < displayCount ? selectedIndex + 1 : nil
-        case .tabBackward:
+        case .itemBackward:
             return selectedIndex > 0 ? selectedIndex - 1 : nil
+        case .pageForward:
+            return gridNavigateVertical(direction: 1)
+        case .pageBackward:
+            return gridNavigateVertical(direction: -1)
         }
     }
 

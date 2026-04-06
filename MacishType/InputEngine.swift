@@ -258,7 +258,7 @@ class InputEngine {
     ) -> EngineAction? {
         switch keyCode {
         case 48: // Tab
-            let dir: NavigationDirection = modifiers.contains(.shift) ? .tabBackward : .tabForward
+            let dir: NavigationDirection = modifiers.contains(.shift) ? .itemBackward : .itemForward
             return .navigateCandidates(dir, wrapping: true)
         case 123: // Left
             return .navigateCandidates(.left)
