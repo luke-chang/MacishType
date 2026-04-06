@@ -20,7 +20,7 @@ enum EngineAction {
     case updateCandidates([String])
     case commitSelectedCandidate
     case commitCandidateByDigit(Int)
-    case navigateCandidates(direction: NavigationDirection, wrapping: Bool, moveOnExpand: Bool)
+    case navigateCandidates(NavigationDirection, wrapping: Bool = false, moveOnExpand: Bool = false)
     case noop
 }
 
@@ -186,23 +186,23 @@ class InputEngine {
         switch keyCode {
         case 48: // Tab
             let dir: NavigationDirection = modifiers.contains(.shift) ? .tabBackward : .tabForward
-            return .navigateCandidates(direction: dir, wrapping: true, moveOnExpand: true)
+            return .navigateCandidates(dir, wrapping: true, moveOnExpand: true)
         case 123: // Left
-            return .navigateCandidates(direction: .left, wrapping: false, moveOnExpand: true)
+            return .navigateCandidates(.left, moveOnExpand: true)
         case 124: // Right
-            return .navigateCandidates(direction: .right, wrapping: false, moveOnExpand: true)
+            return .navigateCandidates(.right, moveOnExpand: true)
         case 125: // Down
-            return .navigateCandidates(direction: .down, wrapping: false, moveOnExpand: false)
+            return .navigateCandidates(.down)
         case 126: // Up
-            return .navigateCandidates(direction: .up, wrapping: false, moveOnExpand: false)
+            return .navigateCandidates(.up)
         case 116: // Page Up
-            return .navigateCandidates(direction: .pageUp, wrapping: false, moveOnExpand: false)
+            return .navigateCandidates(.pageUp)
         case 121: // Page Down
-            return .navigateCandidates(direction: .pageDown, wrapping: false, moveOnExpand: false)
+            return .navigateCandidates(.pageDown)
         case 115: // Home
-            return .navigateCandidates(direction: .home, wrapping: false, moveOnExpand: false)
+            return .navigateCandidates(.home)
         case 119: // End
-            return .navigateCandidates(direction: .end, wrapping: false, moveOnExpand: false)
+            return .navigateCandidates(.end)
         default:
             return nil
         }
