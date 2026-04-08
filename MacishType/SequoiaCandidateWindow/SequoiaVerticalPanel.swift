@@ -9,6 +9,8 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
     private var isFullyRendered = false
     private var initialContentWidth: CGFloat = 0
     private var maxContentWidth: CGFloat = 0
+    private var naturalContentHeight: CGFloat = 0
+    private var minVisibleRows = 0
     private var boundsObserver: (any NSObjectProtocol)?
 
     // MARK: - Init
@@ -32,8 +34,6 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
     }
 
     // MARK: - Configuration
-
-    private var minVisibleRows = 0
 
     override func apply(_ configuration: CandidateWindowConfiguration) {
         lastAppliedConfiguration = configuration
@@ -99,14 +99,12 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
             + CGFloat(max(visibleRows - 1, 0)) * Self.separatorHeight
             + bottomPeek
 
-        // Content height is page-aligned: the last page can scroll to the
-        // top even if it has fewer than pageSize items (empty space below).
-        let pageCount = max(1, (displayCount + pageSize - 1) / pageSize)
-        let lastPageAnchor = (pageCount - 1) * pageSize
-        let contentHeight = max(
-            CGFloat(displayCount) * itemHeight + CGFloat(max(displayCount - 1, 0)) * Self.separatorHeight,
-            CGFloat(lastPageAnchor) * rowHeight + windowHeight
-        )
+        // Natural content height: all items + 0.5 row bottom padding.
+        // Page navigation may temporarily expand beyond this in scrollToRow().
+        let contentHeight = CGFloat(displayCount) * itemHeight
+            + CGFloat(max(displayCount - 1, 0)) * Self.separatorHeight
+            + bottomPeek
+        naturalContentHeight = contentHeight
 
         candidateContainer.frame.size = NSSize(width: windowWidth, height: contentHeight)
 
@@ -133,7 +131,9 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         updateSelection()
         updateMaskImage()
 
-        setContentSize(NSSize(width: windowWidth, height: windowHeight))
+        let windowSize = NSSize(width: windowWidth, height: windowHeight)
+        let targetFrame = windowFrame(for: windowSize, reposition: !lastShowNearRect.isEmpty)
+        setFrame(targetFrame, display: true)
 
         if hasOverflow, NSScroller.preferredScrollerStyle != .legacy {
             scrollView.flashScrollers()
@@ -218,6 +218,14 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
             performFullRender()
         }
 
+        // Shrink container back toward natural height (never expand — only scrollToRow expands)
+        let viewportHeight = scrollView.contentView.bounds.height
+        let neededHeight = scrollOffset + viewportHeight
+        let targetHeight = max(naturalContentHeight, neededHeight)
+        if targetHeight < candidateContainer.frame.height {
+            candidateContainer.frame.size.height = targetHeight
+        }
+
         updateNumbering()
     }
 
@@ -225,7 +233,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
 
     private func updateNumbering() {
         let scrollOffset = max(0, scrollView.contentView.bounds.origin.y)
-        anchorIndex = max(0, Int(floor(scrollOffset / rowHeight)))
+        anchorIndex = max(0, Int(floor((scrollOffset + 0.5 * itemHeight) / rowHeight)))
 
         let numberedStart = anchorIndex
         let numberedEnd = min(anchorIndex + pageSize, displayCount)
@@ -273,6 +281,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
             }
 
         case .right, .pageDown, .pageForward:
+            ensureSelectionVisible()
             let visualOffset = selectedIndex - anchorIndex
             let newAnchor = anchorIndex + pageSize
             if newAnchor < displayCount {
@@ -288,6 +297,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
             }
 
         case .left, .pageUp, .pageBackward:
+            ensureSelectionVisible()
             let visualOffset = selectedIndex - anchorIndex
             let newAnchor = anchorIndex - pageSize
             if newAnchor >= 0 {
@@ -320,12 +330,25 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         }
     }
 
+    private func ensureSelectionVisible() {
+        if selectedIndex < anchorIndex || selectedIndex >= anchorIndex + pageSize {
+            scrollSelectedIntoView()
+            updateNumbering()
+        }
+    }
+
     private func scrollToRow(_ index: Int, atVisiblePosition position: Int) {
         let targetAnchor = max(0, index - position)
         let targetY = CGFloat(targetAnchor) * rowHeight
-        let maxScrollY = max(0, candidateContainer.frame.height - scrollView.contentView.bounds.height)
-        let clampedY = min(targetY, maxScrollY)
-        scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
+        let viewportHeight = scrollView.contentView.bounds.height
+
+        // Expand container if page navigation needs to go beyond natural range
+        let neededHeight = targetY + viewportHeight
+        if neededHeight > candidateContainer.frame.height {
+            candidateContainer.frame.size.height = neededHeight
+        }
+
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
