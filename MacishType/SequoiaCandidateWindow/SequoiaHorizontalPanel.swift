@@ -4,8 +4,11 @@ private extension NSImage {
     static func asymmetricCornerMask(height: CGFloat, leftRadius: CGFloat, rightRadius: CGFloat) -> NSImage {
         let rr = min(rightRadius, height / 2)
         let width = leftRadius + rr + 1
+        // +1 ensures at least 1pt of stretchable center between top/bottom cap insets,
+        // preventing rendering artifacts when the mask is stretched to a taller view.
+        let imageHeight = rr * 2 + 1
         let image = asymmetricCornerMask(
-            size: NSSize(width: width, height: height),
+            size: NSSize(width: width, height: imageHeight),
             leftRadius: leftRadius, rightRadius: rightRadius
         )
         image.capInsets = NSEdgeInsets(top: rr, left: leftRadius, bottom: rr, right: rr)
@@ -581,13 +584,14 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             ? 2 * progress * progress
             : -1 + (4 - 2 * progress) * progress
         let radius = cornerRadiusFrom + (cornerRadiusTo - cornerRadiusFrom) * t
-        let size = frame.size
-        guard size.width > 0, size.height > 0 else { return }
+        let height = frame.size.height
+        guard height > 0 else { return }
         visualEffectView.maskImage = .asymmetricCornerMask(
-            size: size, leftRadius: Self.defaultCornerRadius, rightRadius: radius
+            height: height, leftRadius: Self.defaultCornerRadius, rightRadius: radius
         )
         if progress >= 1.0 {
             stopCornerAnimation()
+            updateHorizontalMaskImage()
         }
     }
 
