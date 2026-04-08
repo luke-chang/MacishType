@@ -265,7 +265,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
             }
             if let target {
                 moveSelection(to: target)
-                scrollSelectedIntoView()
+                ensureSelectionVisible()
             }
 
         case .down, .itemForward:
@@ -277,7 +277,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
             }
             if let target {
                 moveSelection(to: target)
-                scrollSelectedIntoView()
+                ensureSelectionVisible()
             }
 
         case .right, .pageDown, .pageForward:
@@ -293,7 +293,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
                 scrollToRow(0, atVisiblePosition: 0)
             } else if selectedIndex < displayCount - 1 {
                 moveSelection(to: displayCount - 1)
-                scrollSelectedIntoView()
+                ensureSelectionVisible()
             }
 
         case .left, .pageUp, .pageBackward:
@@ -310,7 +310,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
                 scrollToRow(target, atVisiblePosition: min(visualOffset, target))
             } else if wrapping {
                 moveSelection(to: displayCount - 1)
-                scrollSelectedIntoView()
+                ensureSelectionVisible()
             } else if selectedIndex > 0 {
                 moveSelection(to: 0)
                 scrollToRow(0, atVisiblePosition: 0)
@@ -325,16 +325,29 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         case .end:
             if selectedIndex != displayCount - 1 {
                 moveSelection(to: displayCount - 1)
-                scrollSelectedIntoView()
+                ensureSelectionVisible()
             }
         }
     }
 
-    private func ensureSelectionVisible() {
-        if selectedIndex < anchorIndex || selectedIndex >= anchorIndex + pageSize {
-            scrollSelectedIntoView()
-            updateNumbering()
+    override func ensureSelectionVisible() {
+        guard selectedIndex < anchorIndex || selectedIndex >= anchorIndex + pageSize else { return }
+
+        let itemTop = yForRow(selectedIndex)
+        let itemBottom = itemTop + itemHeight
+        let visible = scrollView.contentView.bounds
+
+        if itemTop < visible.minY {
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: itemTop))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        } else if itemBottom > visible.maxY {
+            let maxScrollY = candidateContainer.frame.height - visible.height
+            let targetY = min(itemBottom + 0.5 * itemHeight - visible.height, maxScrollY)
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: max(0, targetY)))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
         }
+
+        updateNumbering()
     }
 
     private func scrollToRow(_ index: Int, atVisiblePosition position: Int) {
@@ -363,22 +376,6 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
     private func updateSelection() {
         for item in itemViews {
             item.isHighlighted = item.absoluteIndex == selectedIndex
-        }
-    }
-
-    private func scrollSelectedIntoView() {
-        let itemTop = yForRow(selectedIndex)
-        let itemBottom = itemTop + itemHeight
-        let visible = scrollView.contentView.bounds
-
-        if itemTop < visible.minY {
-            scrollView.contentView.scroll(to: NSPoint(x: 0, y: itemTop))
-            scrollView.reflectScrolledClipView(scrollView.contentView)
-        } else if itemBottom > visible.maxY {
-            let maxScrollY = candidateContainer.frame.height - visible.height
-            let targetY = min(itemBottom + 0.5 * itemHeight - visible.height, maxScrollY)
-            scrollView.contentView.scroll(to: NSPoint(x: 0, y: max(0, targetY)))
-            scrollView.reflectScrolledClipView(scrollView.contentView)
         }
     }
 

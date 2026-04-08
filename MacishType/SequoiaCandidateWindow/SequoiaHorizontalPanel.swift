@@ -225,7 +225,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             if oldRowIdx != newRowIdx {
                 updateRowHighlightsAndIndices()
                 layoutHighlight()
-                scrollSelectedRowIntoView()
+                ensureSelectionVisible()
             }
         }
         impl?.candidateDelegate?.candidateSelectionChanged(candidates[newIndex])
@@ -650,7 +650,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             rowHighlightView.alphaValue = 1
             setContentSize(contentSize)
             updateHorizontalMaskImage()
-            scrollSelectedRowIntoView()
+            ensureSelectionVisible()
             if !lastShowNearRect.isEmpty { show(near: lastShowNearRect) }
             return
         }
@@ -773,7 +773,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
                 self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
                 self.scrollView.flashScrollers()
             }
-            self.scrollSelectedRowIntoView()
+            self.ensureSelectionVisible()
         })
     }
 
@@ -935,7 +935,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
     // MARK: - Selection & Highlights
 
-    private func scrollSelectedRowIntoView() {
+    override func ensureSelectionVisible() {
         guard displayMode == .expanded,
               let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return }
         let rowY = yForRow(rowIdx)
