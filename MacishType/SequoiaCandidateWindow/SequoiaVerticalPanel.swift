@@ -54,7 +54,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         candidates = newCandidates
         selectedIndex = 0
         isFullyRendered = false
-        anchorIndex = 0
+        anchorIndex = -1
         rebuildLayout()
     }
 
@@ -67,7 +67,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         separatorViews.forEach { $0.removeFromSuperview() }
         separatorViews.removeAll()
         isFullyRendered = false
-        anchorIndex = 0
+        anchorIndex = -1
 
         guard !candidates.isEmpty else {
             setContentSize(.zero)
@@ -229,7 +229,9 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
 
     private func updateNumbering() {
         let scrollOffset = max(0, scrollView.contentView.bounds.origin.y)
-        anchorIndex = max(0, Int(floor((scrollOffset + 0.5 * itemHeight) / rowHeight)))
+        let newAnchor = max(0, Int(floor((scrollOffset + 0.5 * itemHeight) / rowHeight)))
+        guard newAnchor != anchorIndex else { return }
+        anchorIndex = newAnchor
 
         let numberedStart = anchorIndex
         let numberedEnd = min(anchorIndex + pageSize, displayCount)
