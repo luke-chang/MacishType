@@ -323,5 +323,9 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     func commitSelectedCandidate() {}
     func commitCandidateForDigit(_ digit: Int) {}
     func ensureSelectionVisible() {}
+    func restoreSelection(to index: Int) {
+        moveSelection(to: min(index, max(displayCount - 1, 0)))
+        ensureSelectionVisible()
+    }
     func handleScrollerStyleChange() {}
 }

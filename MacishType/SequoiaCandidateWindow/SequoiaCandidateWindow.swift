@@ -49,9 +49,7 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
         newPanel.updateHighlightColor()
         if !savedCandidates.isEmpty {
             newPanel.updateCandidates(savedCandidates)
-            if savedSelectedIndex < savedCandidates.count {
-                newPanel.moveSelection(to: savedSelectedIndex)
-            }
+            newPanel.restoreSelection(to: savedSelectedIndex)
         }
 
         if wasVisible {

@@ -933,6 +933,16 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         expandedItemViews.removeAll()
     }
 
+    override func restoreSelection(to index: Int) {
+        let target = min(index, max(displayCount - 1, 0))
+        if displayMode == .collapsed, target >= collapsedVisibleCount, displayCount > collapsedVisibleCount {
+            selectedIndex = target
+            expandWindow(animated: false)
+        } else {
+            moveSelection(to: target)
+        }
+    }
+
     // MARK: - Selection & Highlights
 
     override func ensureSelectionVisible() {
