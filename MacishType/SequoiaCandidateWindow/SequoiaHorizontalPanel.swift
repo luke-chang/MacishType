@@ -62,7 +62,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
     private(set) var widerExpandedColumns = true
     private(set) var moveOnExpand = false
-    private let maxExpandedVisibleRows = 5
+    private var maxVisibleRows = 5
 
     private var displayMode: DisplayMode = .collapsed
     private var gridRows: [GridRow] = []
@@ -115,6 +115,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         indexBase = configuration.indexBase
         pageSize = configuration.pageSize
         animationDuration = configuration.animationDuration
+        maxVisibleRows = configuration.horizontalMaxVisibleRows
         widerExpandedColumns = configuration.widerExpandedColumns
         moveOnExpand = configuration.moveOnExpand
         if isVisible, !candidates.isEmpty {
@@ -146,7 +147,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
                     expandedGridRows = computeExpandedGrid()
                 }
                 if shouldMoveOnExpand {
-                    let jumpRows = direction == .pageDown ? maxExpandedVisibleRows - 1 : 1
+                    let jumpRows = direction == .pageDown ? maxVisibleRows - 1 : 1
                     let targetRowIdx = min(jumpRows, expandedGridRows.count - 1)
                     let targetRow = expandedGridRows[targetRowIdx]
                     let savedGridRows = gridRows
@@ -323,9 +324,9 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             let last = gridRows[rowIdx].items.last!.candidateIndex
             return selectedIndex != last ? last : nil
         case .pageUp:
-            return gridNavigateVertical(direction: -1, rowCount: maxExpandedVisibleRows - 1)
+            return gridNavigateVertical(direction: -1, rowCount: maxVisibleRows - 1)
         case .pageDown:
-            return gridNavigateVertical(direction: 1, rowCount: maxExpandedVisibleRows - 1)
+            return gridNavigateVertical(direction: 1, rowCount: maxVisibleRows - 1)
         case .itemForward:
             return selectedIndex + 1 < displayCount ? selectedIndex + 1 : nil
         case .itemBackward:
@@ -462,8 +463,8 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             }
         }
 
-        let maxVisibleHeight = (CGFloat(maxExpandedVisibleRows) + 0.5) * itemHeight
-            + CGFloat(maxExpandedVisibleRows - 1) * Self.separatorHeight
+        let maxVisibleHeight = (CGFloat(maxVisibleRows) + 0.5) * itemHeight
+            + CGFloat(maxVisibleRows - 1) * Self.separatorHeight
         let needsScrolling = displayMode == .expanded && contentHeight > maxVisibleHeight
         let windowHeight = needsScrolling ? maxVisibleHeight : contentHeight
 
@@ -482,7 +483,8 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         let separatorCount = max(rowCount - 1, 0)
         ensureSeparators(count: separatorCount, width: windowWidth)
 
-        candidateContainer.frame.size = NSSize(width: contentWidth, height: contentHeight)
+        let totalContentHeight = needsScrolling ? contentHeight + 0.5 * itemHeight : contentHeight
+        candidateContainer.frame.size = NSSize(width: contentWidth, height: totalContentHeight)
         return NSSize(width: windowWidth, height: windowHeight)
     }
 
