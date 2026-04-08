@@ -266,7 +266,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         candidateWindow.direction = sender.state == .on ? .vertical : .horizontal
     }
 
-    func candidateSelected(_ candidate: String) {
+    func candidateConfirmed(_ candidate: String) {
         print("Selected: \(candidate)")
     }
 

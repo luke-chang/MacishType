@@ -203,7 +203,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
         let candidateIndex = row.items[itemOffset].candidateIndex
         guard candidateIndex < candidates.count else { return }
-        impl?.candidateDelegate?.candidateSelected(candidates[candidateIndex])
+        impl?.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
     }
 
     override func moveSelection(to newIndex: Int) {

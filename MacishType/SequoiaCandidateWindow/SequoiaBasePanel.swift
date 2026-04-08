@@ -265,7 +265,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     func itemClicked(at index: Int, doubleClick: Bool) {
         guard !isAnimating else { return }
         if doubleClick {
-            impl?.candidateDelegate?.candidateSelected(candidates[index])
+            impl?.candidateDelegate?.candidateConfirmed(candidates[index])
         } else {
             moveSelection(to: index)
         }
@@ -273,7 +273,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
 
     func commitSelectedCandidate() {
         guard isVisible, selectedIndex >= 0, selectedIndex < displayCount else { return }
-        impl?.candidateDelegate?.candidateSelected(candidates[selectedIndex])
+        impl?.candidateDelegate?.candidateConfirmed(candidates[selectedIndex])
     }
 
     // MARK: - Selection

@@ -20,7 +20,7 @@ struct CandidateWindowConfiguration {
 }
 
 protocol CandidateWindowDelegate: AnyObject {
-    func candidateSelected(_ candidate: String)
+    func candidateConfirmed(_ candidate: String)
     func candidateSelectionChanged(_ candidate: String)
 }
 

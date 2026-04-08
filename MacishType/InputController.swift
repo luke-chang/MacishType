@@ -266,7 +266,7 @@ class InputController: IMKInputController {
 // MARK: - CandidateWindowDelegate
 
 extension InputController: CandidateWindowDelegate {
-    func candidateSelected(_ candidate: String) {
+    func candidateConfirmed(_ candidate: String) {
         guard let client = client() else { return }
         let actions = engine.candidateConfirmed(context: engineContext, candidate)
         executeActions(actions, client: client)

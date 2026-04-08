@@ -371,7 +371,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         guard offset >= 0, offset < pageSize else { return }
         let candidateIndex = anchorIndex + offset
         guard candidateIndex < displayCount else { return }
-        impl?.candidateDelegate?.candidateSelected(candidates[candidateIndex])
+        impl?.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
     }
 
     // MARK: - Scroller Style
