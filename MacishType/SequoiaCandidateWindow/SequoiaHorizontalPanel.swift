@@ -80,6 +80,8 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
     private var expandedItemViews: [SequoiaCandidateItemView] = []
     private var chevronView: SequoiaChevronView!
 
+    override var allItemViews: [SequoiaCandidateItemView] { row0ItemViews + expandedItemViews }
+
     // MARK: - Corner Animation State
 
     private var cornerDisplayLink: (any NSObjectProtocol)?
@@ -102,13 +104,6 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             self.expandWindow(animated: true)
         }
         candidateContainer.addSubview(chevronView)
-    }
-
-    // MARK: - Highlight Color
-
-    override func highlightColorDidChange() {
-        for item in row0ItemViews { item.highlightColor = highlightColor }
-        for item in expandedItemViews { item.highlightColor = highlightColor }
     }
 
     // MARK: - Public API Overrides
@@ -197,11 +192,6 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         moveSelection(to: target)
     }
 
-    override func commitSelectedCandidate() {
-        guard isVisible, selectedIndex >= 0, selectedIndex < displayCount else { return }
-        impl?.candidateDelegate?.candidateSelected(candidates[selectedIndex])
-    }
-
     override func commitCandidateForDigit(_ digit: Int) {
         guard isVisible else { return }
         let itemOffset = digit - indexBase
@@ -218,8 +208,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
     override func moveSelection(to newIndex: Int) {
         let oldRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
-        selectedIndex = newIndex
-        updateSelection()
+        super.moveSelection(to: newIndex)
         if displayMode == .expanded {
             let newRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
             if oldRowIdx != newRowIdx {
@@ -228,7 +217,6 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
                 ensureSelectionVisible()
             }
         }
-        impl?.candidateDelegate?.candidateSelectionChanged(candidates[newIndex])
     }
 
     // MARK: - Navigation Helpers
@@ -963,13 +951,6 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         }
     }
 
-    private func updateSelection() {
-        let allItems = row0ItemViews + expandedItemViews
-        for item in allItems {
-            item.isHighlighted = item.absoluteIndex == selectedIndex
-        }
-    }
-
     private func updateRowHighlightsAndIndices() {
         guard displayMode == .expanded else { return }
         guard let (selectedRowIdx, _) = findGridPosition(of: selectedIndex) else { return }
@@ -981,8 +962,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             }
         }
 
-        let allItems = row0ItemViews + expandedItemViews
-        for item in allItems where !item.isHidden {
+        for item in allItemViews where !item.isHidden {
             if let rowIndex = rowForCandidate[item.absoluteIndex] {
                 item.showIndex = rowIndex == selectedRowIdx
             }

@@ -13,6 +13,8 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
     private var minVisibleRows = 0
     private var boundsObserver: (any NSObjectProtocol)?
 
+    override var allItemViews: [SequoiaCandidateItemView] { itemViews }
+
     // MARK: - Init
 
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
@@ -54,12 +56,6 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         isFullyRendered = false
         anchorIndex = 0
         rebuildLayout()
-    }
-
-    // MARK: - Highlight Color
-
-    override func highlightColorDidChange() {
-        for item in itemViews { item.highlightColor = highlightColor }
     }
 
     // MARK: - Layout
@@ -365,26 +361,9 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
-    // MARK: - Selection
 
-    override func moveSelection(to newIndex: Int) {
-        selectedIndex = newIndex
-        updateSelection()
-        impl?.candidateDelegate?.candidateSelectionChanged(candidates[newIndex])
-    }
-
-    private func updateSelection() {
-        for item in itemViews {
-            item.isHighlighted = item.absoluteIndex == selectedIndex
-        }
-    }
 
     // MARK: - Commit
-
-    override func commitSelectedCandidate() {
-        guard isVisible, selectedIndex >= 0, selectedIndex < displayCount else { return }
-        impl?.candidateDelegate?.candidateSelected(candidates[selectedIndex])
-    }
 
     override func commitCandidateForDigit(_ digit: Int) {
         guard isVisible else { return }

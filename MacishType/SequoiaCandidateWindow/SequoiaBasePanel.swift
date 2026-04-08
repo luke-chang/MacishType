@@ -139,7 +139,9 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
         updateHighlightColor()
     }
 
-    func highlightColorDidChange() {}
+    func highlightColorDidChange() {
+        for item in allItemViews { item.highlightColor = highlightColor }
+    }
 
     // MARK: - Positioning
 
@@ -258,7 +260,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
         ))
     }
 
-    // MARK: - Item Clicked
+    // MARK: - Commit
 
     func itemClicked(at index: Int, doubleClick: Bool) {
         guard !isAnimating else { return }
@@ -269,11 +271,28 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
         }
     }
 
+    func commitSelectedCandidate() {
+        guard isVisible, selectedIndex >= 0, selectedIndex < displayCount else { return }
+        impl?.candidateDelegate?.candidateSelected(candidates[selectedIndex])
+    }
+
     // MARK: - Selection
 
     func moveSelection(to newIndex: Int) {
         selectedIndex = newIndex
+        updateSelection()
         impl?.candidateDelegate?.candidateSelectionChanged(candidates[newIndex])
+    }
+
+    func updateSelection() {
+        for item in allItemViews {
+            item.isHighlighted = item.absoluteIndex == selectedIndex
+        }
+    }
+
+    func restoreSelection(to index: Int) {
+        moveSelection(to: min(index, max(displayCount - 1, 0)))
+        ensureSelectionVisible()
     }
 
     // MARK: - Helpers
@@ -317,15 +336,11 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
 
     // MARK: - Subclass Override Points
 
+    var allItemViews: [SequoiaCandidateItemView] { [] }
     func apply(_ configuration: CandidateWindowConfiguration) {}
     func updateCandidates(_ candidates: [String]) {}
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}
-    func commitSelectedCandidate() {}
     func commitCandidateForDigit(_ digit: Int) {}
     func ensureSelectionVisible() {}
-    func restoreSelection(to index: Int) {
-        moveSelection(to: min(index, max(displayCount - 1, 0)))
-        ensureSelectionVisible()
-    }
     func handleScrollerStyleChange() {}
 }
