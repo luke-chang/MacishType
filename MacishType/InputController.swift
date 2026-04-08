@@ -103,8 +103,6 @@ class InputController: IMKInputController {
         #endif
         super.activateServer(sender)
         hideCandidateWindow()
-        CandidateWindow.shared.candidateDelegate = self
-        CandidateWindow.shared.bundleIdentifier = Self.resolvedBundleIdentifier(sender)
     }
 
     override func deactivateServer(_ sender: Any!) {
@@ -150,6 +148,10 @@ class InputController: IMKInputController {
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let client = sender as? IMKTextInput else { return false }
+        if CandidateWindow.shared.candidateDelegate !== self {
+            CandidateWindow.shared.candidateDelegate = self
+            CandidateWindow.shared.bundleIdentifier = Self.resolvedBundleIdentifier(sender)
+        }
         let result = engine.handleKey(
             context: engineContext,
             keyCode: event.keyCode,
