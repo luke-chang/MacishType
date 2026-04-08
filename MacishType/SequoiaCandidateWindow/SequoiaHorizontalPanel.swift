@@ -644,8 +644,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         }
 
         // --- Animated expand ---
-        let overflow = overflowIndices
-        let overflowDups = overflowDuplicateIndices
+        let (overflow, overflowDups) = computeOverflowSets()
 
         // Save target frames, then set initial animation state
         var targetRow0Frames: [Int: NSRect] = [:]
@@ -768,8 +767,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
     private func collapseWindow(animated: Bool) {
         // Capture state before changes
         let oldExpandedFrames = expandedItemViews.map { ($0, $0.frame) }
-        let overflow = overflowIndices
-        let overflowDups = overflowDuplicateIndices
+        let (overflow, overflowDups) = computeOverflowSets()
 
         displayMode = .collapsed
         gridRows = computeCollapsedGrid()
@@ -998,14 +996,11 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
     // MARK: - Overflow Helpers
 
-    private var overflowIndices: Set<Int> {
+    private func computeOverflowSets() -> (overflow: Set<Int>, duplicates: Set<Int>) {
         let expandedRow0 = Set(expandedGridRows[0].items.map(\.candidateIndex))
         let allRow0 = Set(row0ItemViews.map(\.absoluteIndex))
-        return allRow0.subtracting(expandedRow0)
-    }
-
-    private var overflowDuplicateIndices: Set<Int> {
-        let overflow = overflowIndices
-        return Set(expandedItemViews.filter { overflow.contains($0.absoluteIndex) }.map(\.absoluteIndex))
+        let overflow = allRow0.subtracting(expandedRow0)
+        let duplicates = Set(expandedItemViews.filter { overflow.contains($0.absoluteIndex) }.map(\.absoluteIndex))
+        return (overflow, duplicates)
     }
 }
