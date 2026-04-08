@@ -1,6 +1,6 @@
 import Cocoa
 
-class HighlightBackgroundView: NSView {
+class SequoiaHighlightView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = true

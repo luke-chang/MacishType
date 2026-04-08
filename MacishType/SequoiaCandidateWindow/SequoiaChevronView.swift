@@ -1,6 +1,6 @@
 import Cocoa
 
-class ChevronView: NSView {
+class SequoiaChevronView: NSView {
     var onClick: (() -> Void)?
 
     private let separator = NSBox()
@@ -45,7 +45,7 @@ class ChevronView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        if (window as? CandidateWindow)?.didDrag != true {
+        if (window as? CandidateItemClickable)?.didDrag != true {
             onClick?()
         }
     }

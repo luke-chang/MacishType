@@ -1,6 +1,6 @@
 import Cocoa
 
-class CandidateItemView: NSView {
+class SequoiaCandidateItemView: NSView {
     private static let indexFontSize: CGFloat = 8
     private static let candidateFontSize: CGFloat = 16
     private static let indexWidth: CGFloat = {
@@ -79,16 +79,20 @@ class CandidateItemView: NSView {
         invalidateIntrinsicContentSize()
     }
 
-    private static let templateView = CandidateItemView()
+    private static let templateView = SequoiaCandidateItemView()
 
     static func measureWidth(index: Int, candidate: String) -> CGFloat {
         templateView.configure(index: index, candidate: candidate)
         return ceil(templateView.fittingSize.width)
     }
 
+    static var measureHeight: CGFloat {
+        ceil(templateView.fittingSize.height)
+    }
+
     override func mouseUp(with event: NSEvent) {
-        guard (window as? CandidateWindow)?.didDrag != true else { return }
-        (window as? CandidateWindow)?.itemClicked(at: absoluteIndex, doubleClick: event.clickCount >= 2)
+        guard (window as? CandidateItemClickable)?.didDrag != true else { return }
+        (window as? CandidateItemClickable)?.itemClicked(at: absoluteIndex, doubleClick: event.clickCount >= 2)
     }
 
     private func updateAppearance() {

@@ -36,7 +36,7 @@ class KeyWindow: NSWindow {
 
 class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NSTextStorageDelegate {
     let candidateWindow = CandidateWindow.shared
-    var defaultAnimationDuration: TimeInterval = 0
+    var currentConfig = CandidateWindowConfiguration()
     var keyWindow: KeyWindow!
     var textView: NSTextView!
 
@@ -65,7 +65,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
 
         candidateWindow.candidateDelegate = self
         candidateWindow.apply(.init())
-        defaultAnimationDuration = candidateWindow.animationDuration
+        candidateWindow.apply(currentConfig)
 
         // Create window
         let screenFrame = NSScreen.main?.visibleFrame ?? .zero
@@ -113,12 +113,12 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         contentView.addSubview(slowMotionCheckbox)
 
         let widerColumnsCheckbox = NSButton(checkboxWithTitle: "Wider expanded columns", target: self, action: #selector(widerColumnsToggled(_:)))
-        widerColumnsCheckbox.state = candidateWindow.widerExpandedColumns ? .on : .off
+        widerColumnsCheckbox.state = currentConfig.widerExpandedColumns ? .on : .off
         widerColumnsCheckbox.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(widerColumnsCheckbox)
 
         let moveOnExpandCheckbox = NSButton(checkboxWithTitle: "Move on expand", target: self, action: #selector(moveOnExpandToggled(_:)))
-        moveOnExpandCheckbox.state = candidateWindow.moveOnExpand ? .on : .off
+        moveOnExpandCheckbox.state = currentConfig.moveOnExpand ? .on : .off
         moveOnExpandCheckbox.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(moveOnExpandCheckbox)
 
@@ -227,7 +227,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         guard !candidates.isEmpty else { return }
         candidateWindow.updateCandidates(candidates)
         let rect = keyWindow.frame
-        candidateWindow.showNear(rect: NSRect(x: rect.minX, y: rect.minY - 10, width: 0, height: 20))
+        candidateWindow.show(near: NSRect(x: rect.minX, y: rect.minY - 10, width: 0, height: 20))
     }
 
     // NSTextStorageDelegate — called on every text change
@@ -240,15 +240,18 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
     }
 
     @objc func slowMotionToggled(_ sender: NSButton) {
-        candidateWindow.animationDuration = sender.state == .on ? 1.0 : defaultAnimationDuration
+        currentConfig.animationDuration = sender.state == .on ? 1.0 : CandidateWindowConfiguration().animationDuration
+        candidateWindow.apply(currentConfig)
     }
 
     @objc func widerColumnsToggled(_ sender: NSButton) {
-        candidateWindow.apply(.init(widerExpandedColumns: sender.state == .on, moveOnExpand: candidateWindow.moveOnExpand))
+        currentConfig.widerExpandedColumns = sender.state == .on
+        candidateWindow.apply(currentConfig)
     }
 
     @objc func moveOnExpandToggled(_ sender: NSButton) {
-        candidateWindow.apply(.init(widerExpandedColumns: candidateWindow.widerExpandedColumns, moveOnExpand: sender.state == .on))
+        currentConfig.moveOnExpand = sender.state == .on
+        candidateWindow.apply(currentConfig)
     }
 
     func candidateSelected(_ candidate: String) {

@@ -241,7 +241,7 @@ class InputController: IMKInputController {
                 cursor += 1
             }
         }
-        CandidateWindow.shared.showNear(rect: lineHeightRect)
+        CandidateWindow.shared.show(near: lineHeightRect)
     }
 
     private func hideCandidateWindow() {

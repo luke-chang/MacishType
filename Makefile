@@ -114,11 +114,14 @@ candidate-window-test:
 	@swiftc -o ./build/CandidateWindowTest.app/Contents/MacOS/CandidateWindowTest \
 		-framework Cocoa -target $(shell uname -m)-apple-macos14.0 \
 		CandidateWindowTest/main.swift \
-		MacishType/CandidateWindow/CandidateWindow.swift \
-		MacishType/CandidateWindow/CandidateItemView.swift \
-		MacishType/CandidateWindow/ChevronView.swift \
-		MacishType/CandidateWindow/HighlightBackgroundView.swift \
-		MacishType/CandidateWindow/SeparatorLineView.swift \
+		MacishType/CandidateWindow.swift \
+		MacishType/SequoiaCandidateWindow/SequoiaCandidateWindow.swift \
+		MacishType/SequoiaCandidateWindow/SequoiaBasePanel.swift \
+		MacishType/SequoiaCandidateWindow/SequoiaHorizontalPanel.swift \
+		MacishType/SequoiaCandidateWindow/SequoiaCandidateItemView.swift \
+		MacishType/SequoiaCandidateWindow/SequoiaChevronView.swift \
+		MacishType/SequoiaCandidateWindow/SequoiaHighlightView.swift \
+		MacishType/SequoiaCandidateWindow/SequoiaSeparatorView.swift \
 		MacishType/ThemeManager.swift \
 		MacishType/Logger.swift
 	@echo "✓ Built. Launching..."

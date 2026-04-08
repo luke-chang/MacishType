@@ -1,6 +1,6 @@
 import Cocoa
 
-class SeparatorLineView: NSView {
+class SequoiaSeparatorView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = true

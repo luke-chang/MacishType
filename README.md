@@ -46,16 +46,19 @@ MacishType/
 │   ├── AppDelegate.swift                    # App lifecycle and IMKServer setup
 │   ├── InputController.swift                # IMKInputController subclass, key event routing
 │   ├── InputEngine.swift                    # Base input engine with shared key handling logic
-│   ├── CandidateWindow/                     # Custom candidate window UI
-│   │   ├── CandidateWindow.swift            # NSPanel-based candidate window (singleton)
-│   │   ├── CandidateItemView.swift          # Single candidate cell with index and label
-│   │   ├── ChevronView.swift                # Expand/collapse toggle button
-│   │   ├── HighlightBackgroundView.swift    # Selected row background for expanded mode
-│   │   └── SeparatorLineView.swift          # Horizontal separator between candidate rows
 │   ├── ExampleEngine/                       # Example input engine implementation
 │   │   ├── ExampleEngine.swift              # Reverse-lookup demo engine
 │   │   └── Resources/                       # ExampleEngine assets
 │   │       └── ExampleMenuIcon.tiff         # Menu bar icon for ExampleEngine
+│   ├── CandidateWindow.swift                # Singleton router, shared types, CandidateWindowImpl base
+│   ├── SequoiaCandidateWindow/              # macOS Sequoia style candidate window
+│   │   ├── SequoiaCandidateWindow.swift     # Style controller (horizontal/vertical switching)
+│   │   ├── SequoiaBasePanel.swift           # NSPanel base (vibrancy, positioning, theming)
+│   │   ├── SequoiaHorizontalPanel.swift     # Horizontal/grid layout with expand/collapse
+│   │   ├── SequoiaCandidateItemView.swift   # Single candidate cell with index and label
+│   │   ├── SequoiaChevronView.swift         # Expand/collapse toggle button
+│   │   ├── SequoiaHighlightView.swift       # Selected row background for expanded mode
+│   │   └── SequoiaSeparatorView.swift       # Horizontal separator between candidate rows
 │   ├── ThemeManager.swift                   # Per-app accent color caching and theme events
 │   ├── WindowManager.swift                  # Singleton manager for non-candidate windows
 │   ├── AboutView.swift                      # About window (SwiftUI)

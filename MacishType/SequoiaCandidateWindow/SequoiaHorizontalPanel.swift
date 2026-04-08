@@ -1,16 +1,6 @@
 import Cocoa
 
 private extension NSImage {
-    static func uniformCornerMask(radius: CGFloat) -> NSImage {
-        let image = NSImage(size: NSSize(width: radius * 2, height: radius * 2), flipped: false) { rect in
-            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-            return true
-        }
-        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
-        image.resizingMode = .stretch
-        return image
-    }
-
     static func asymmetricCornerMask(height: CGFloat, leftRadius: CGFloat, rightRadius: CGFloat) -> NSImage {
         let rr = min(rightRadius, height / 2)
         let width = leftRadius + rr + 1
@@ -48,37 +38,9 @@ private extension NSImage {
     }
 }
 
-private class FlippedView: NSView {
-    override var isFlipped: Bool { true }
-}
-
 // MARK: -
 
-enum NavigationDirection: Hashable {
-    case up, down, left, right, home, end, pageUp, pageDown
-    case itemForward, itemBackward
-    case pageForward, pageBackward
-}
-
-struct CandidateWindowConfiguration {
-    var indexBase = 1
-    var pageSize = 9
-    var widerExpandedColumns = true
-    var moveOnExpand = false
-}
-
-protocol CandidateWindowDelegate: AnyObject {
-    func candidateSelected(_ candidate: String)
-    func candidateSelectionChanged(_ candidate: String)
-}
-
-class CandidateWindow: NSPanel {
-    static let shared = CandidateWindow(
-        contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
-        styleMask: [.borderless],
-        backing: .buffered,
-        defer: false
-    )
+class SequoiaHorizontalPanel: SequoiaBasePanel {
 
     private struct GridItem {
         let candidateIndex: Int
@@ -96,186 +58,40 @@ class CandidateWindow: NSPanel {
         case expanded
     }
 
-    // MARK: - Public Properties
+    // MARK: - Properties
 
-    private(set) var indexBase = 1
-    private(set) var pageSize = 9
     private(set) var widerExpandedColumns = true
     private(set) var moveOnExpand = false
-    var animationDuration: TimeInterval = 0.183
-    private(set) var highlightColor: NSColor = .selectedContentBackgroundColor
-    private(set) var didDrag = false
-    weak var candidateDelegate: CandidateWindowDelegate?
-    var bundleIdentifier: String? {
-        didSet {
-            guard bundleIdentifier != oldValue else { return }
-            updateHighlightColor()
-        }
-    }
-
-    // MARK: - Private State
-
-    private static let separatorHeight: CGFloat = 1
     private let maxExpandedVisibleRows = 5
-    private let maxDisplayCandidates = 200
-    private var candidates: [String] = []
-    private var selectedIndex: Int = 0
+
     private var displayMode: DisplayMode = .collapsed
-    private var lastShowNearRect: NSRect = .zero
-    private var isAnimating = false
     private var gridRows: [GridRow] = []
     private var expandedGridRows: [GridRow] = []
-    private var baseColumnWidth: CGFloat = 0
     private var expandedColumnWidth: CGFloat = 0
     private var expandedPageSize: Int = 0
-    private var itemHeight: CGFloat = 0
     private var expandedRowsBuilt = false
 
-    // MARK: - View Hierarchy
+    // MARK: - View State
 
-    // All items in row 0 (collapsed visible + overflow)
-    private var row0ItemViews: [CandidateItemView] = []
-    // Items in rows 1+ (created on first expand)
-    private var expandedItemViews: [CandidateItemView] = []
-    private var visualEffectView: NSVisualEffectView!
-    private var scrollView: NSScrollView!
-    private var candidateContainer: FlippedView!
-    private var chevronView: ChevronView!
-    private var rowHighlightView: HighlightBackgroundView!
-    private var separatorViews: [SeparatorLineView] = []
-    private var accentColorObserver: (any NSObjectProtocol)?
-    private var scrollerStyleObserver: (any NSObjectProtocol)?
+    private var row0ItemViews: [SequoiaCandidateItemView] = []
+    private var expandedItemViews: [SequoiaCandidateItemView] = []
+    private var chevronView: SequoiaChevronView!
+
+    // MARK: - Corner Animation State
+
     private var cornerDisplayLink: (any NSObjectProtocol)?
     private var cornerAnimationStart: CFTimeInterval = 0
     private var cornerRadiusFrom: CGFloat = 0
     private var cornerRadiusTo: CGFloat = 0
+    private var pillMask: NSImage?
+    private var pillMaskHeight: CGFloat = 0
 
     // MARK: - Init
 
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
-        super.init(contentRect: contentRect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        self.level = .floating
-        self.isOpaque = false
-        self.backgroundColor = .clear
-        self.hasShadow = true
-        setupUI()
-        accentColorObserver = NotificationCenter.default.addObserver(
-            forName: ThemeManager.accentColorDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.updateHighlightColor()
-        }
-        scrollerStyleObserver = NotificationCenter.default.addObserver(
-            forName: NSScroller.preferredScrollerStyleDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.handleScrollerStyleChange()
-        }
-    }
+        super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
 
-    deinit {
-        if let observer = accentColorObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = scrollerStyleObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-    }
-
-    private static let defaultCornerRadius: CGFloat = 6
-    private static let uniformMask = NSImage.uniformCornerMask(radius: defaultCornerRadius)
-    private var pillMask: NSImage?
-    private var pillMaskHeight: CGFloat = 0
-
-    private func pillCornerMask(height: CGFloat) -> NSImage {
-        if height == pillMaskHeight, let pillMask { return pillMask }
-        let lr = Self.defaultCornerRadius
-        let rr = height / 2
-        let mask = NSImage.asymmetricCornerMask(height: height, leftRadius: lr, rightRadius: rr)
-        pillMask = mask
-        pillMaskHeight = height
-        return mask
-    }
-
-    private func updateMaskImage() {
-        let size = frame.size
-        guard size.width > 0, size.height > 0 else { return }
-        let showChevron = displayMode == .collapsed && displayCount > collapsedVisibleCount
-        if showChevron {
-            visualEffectView.maskImage = pillCornerMask(height: size.height)
-        } else {
-            visualEffectView.maskImage = Self.uniformMask
-        }
-    }
-
-    private func animateCornerRadius(from: CGFloat, to: CGFloat) {
-        stopCornerAnimation()
-        cornerRadiusFrom = from
-        cornerRadiusTo = to
-        cornerAnimationStart = CACurrentMediaTime()
-        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] _ in
-            self?.cornerAnimationTick()
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        cornerDisplayLink = timer
-    }
-
-    private func stopCornerAnimation() {
-        (cornerDisplayLink as? Timer)?.invalidate()
-        cornerDisplayLink = nil
-    }
-
-    private func cornerAnimationTick() {
-        let elapsed = CACurrentMediaTime() - cornerAnimationStart
-        let progress = min(elapsed / animationDuration, 1.0)
-        // Ease in-out approximation matching CAMediaTimingFunction(.easeInEaseOut)
-        let t = progress < 0.5
-            ? 2 * progress * progress
-            : -1 + (4 - 2 * progress) * progress
-        let radius = cornerRadiusFrom + (cornerRadiusTo - cornerRadiusFrom) * t
-        let size = frame.size
-        guard size.width > 0, size.height > 0 else { return }
-        visualEffectView.maskImage = .asymmetricCornerMask(
-            size: size, leftRadius: Self.defaultCornerRadius, rightRadius: radius
-        )
-        if progress >= 1.0 {
-            stopCornerAnimation()
-        }
-    }
-
-    private func setupUI() {
-        visualEffectView = NSVisualEffectView()
-        visualEffectView.material = .hudWindow
-        visualEffectView.state = .active
-        visualEffectView.blendingMode = .behindWindow
-        visualEffectView.wantsLayer = true
-        visualEffectView.layer?.masksToBounds = true
-        self.contentView = visualEffectView
-
-        scrollView = NSScrollView()
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
-        scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
-        visualEffectView.addSubview(scrollView)
-        NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: visualEffectView.topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor),
-        ])
-
-        candidateContainer = FlippedView()
-        scrollView.documentView = candidateContainer
-
-        rowHighlightView = HighlightBackgroundView()
-        candidateContainer.addSubview(rowHighlightView)
-
-        chevronView = ChevronView()
+        chevronView = SequoiaChevronView()
         chevronView.onClick = { [weak self] in
             guard let self, !self.isAnimating, self.displayMode == .collapsed else { return }
             let collapsedCount = self.collapsedVisibleCount
@@ -285,23 +101,19 @@ class CandidateWindow: NSPanel {
         candidateContainer.addSubview(chevronView)
     }
 
-    private func updateHighlightColor() {
-        if ThemeManager.shared.isMulticolor,
-           let bundleID = bundleIdentifier,
-           let color = ThemeManager.shared.bundleAccentColor(bundleIdentifier: bundleID) {
-            highlightColor = color
-        } else {
-            highlightColor = .selectedContentBackgroundColor
-        }
+    // MARK: - Highlight Color
+
+    override func highlightColorDidChange() {
         for item in row0ItemViews { item.highlightColor = highlightColor }
         for item in expandedItemViews { item.highlightColor = highlightColor }
     }
 
-    // MARK: - Public API
+    // MARK: - Public API Overrides
 
-    func apply(_ configuration: CandidateWindowConfiguration) {
+    override func apply(_ configuration: CandidateWindowConfiguration) {
         indexBase = configuration.indexBase
         pageSize = configuration.pageSize
+        animationDuration = configuration.animationDuration
         widerExpandedColumns = configuration.widerExpandedColumns
         moveOnExpand = configuration.moveOnExpand
         if isVisible, !candidates.isEmpty {
@@ -310,7 +122,7 @@ class CandidateWindow: NSPanel {
         }
     }
 
-    func updateCandidates(_ candidates: [String]) {
+    override func updateCandidates(_ candidates: [String]) {
         self.candidates = candidates
         self.selectedIndex = 0
         resetState()
@@ -318,15 +130,7 @@ class CandidateWindow: NSPanel {
         rebuildLayout(animated: false)
     }
 
-    private func resetState() {
-        displayMode = .collapsed
-        isAnimating = false
-        expandedGridRows = []
-        expandedRowsBuilt = false
-        stopCornerAnimation()
-    }
-
-    func handleNavigation(direction: NavigationDirection, wrapping: Bool = false) {
+    override func handleNavigation(direction: NavigationDirection, wrapping: Bool) {
         guard !candidates.isEmpty, !isAnimating else { return }
 
         let shouldMoveOnExpand = direction == .right || direction == .itemForward
@@ -388,12 +192,12 @@ class CandidateWindow: NSPanel {
         moveSelection(to: target)
     }
 
-    func commitSelectedCandidate() {
+    override func commitSelectedCandidate() {
         guard isVisible, selectedIndex >= 0, selectedIndex < displayCount else { return }
-        candidateDelegate?.candidateSelected(candidates[selectedIndex])
+        impl?.candidateDelegate?.candidateSelected(candidates[selectedIndex])
     }
 
-    func commitCandidateForDigit(_ digit: Int) {
+    override func commitCandidateForDigit(_ digit: Int) {
         guard isVisible else { return }
         let itemOffset = digit - indexBase
         guard itemOffset >= 0 else { return }
@@ -404,101 +208,25 @@ class CandidateWindow: NSPanel {
 
         let candidateIndex = row.items[itemOffset].candidateIndex
         guard candidateIndex < candidates.count else { return }
-        candidateDelegate?.candidateSelected(candidates[candidateIndex])
+        impl?.candidateDelegate?.candidateSelected(candidates[candidateIndex])
     }
 
-    func hide() {
-        orderOut(nil)
-    }
-
-    func showNear(rect: NSRect) {
-        lastShowNearRect = rect
-        let topLeftPoint = topLeftPoint(forWindowSize: self.frame.size, near: rect)
-        let newOrigin = NSPoint(x: topLeftPoint.x, y: topLeftPoint.y - self.frame.height)
-        let dx = newOrigin.x - self.frame.origin.x
-        let dy = newOrigin.y - self.frame.origin.y
-        let distanceSq = dx * dx + dy * dy
-
-        if isVisible, !isAnimating, distanceSq > 400 {
-            isAnimating = true
-            let newFrame = NSRect(origin: newOrigin, size: self.frame.size)
-            NSAnimationContext.runAnimationGroup({ context in
-                context.duration = self.animationDuration
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                self.animator().setFrame(newFrame, display: true)
-            }, completionHandler: { [weak self] in
-                self?.isAnimating = false
-            })
-        } else if !isAnimating {
-            self.setFrameTopLeftPoint(topLeftPoint)
+    override func moveSelection(to newIndex: Int) {
+        let oldRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
+        selectedIndex = newIndex
+        updateSelection()
+        if displayMode == .expanded {
+            let newRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
+            if oldRowIdx != newRowIdx {
+                updateRowHighlightsAndIndices()
+                layoutHighlight()
+                scrollSelectedRowIntoView()
+            }
         }
-        self.orderFrontRegardless()
-    }
-
-    private func screen(containing rect: NSRect) -> NSScreen? {
-        NSScreen.screens.first { $0.frame.contains(rect.origin) }
-            ?? NSScreen.screens.max(by: { a, b in
-                let aRect = a.frame.intersection(rect)
-                let bRect = b.frame.intersection(rect)
-                let aArea = aRect.isNull ? 0 : aRect.width * aRect.height
-                let bArea = bRect.isNull ? 0 : bRect.width * bRect.height
-                return aArea < bArea
-            })
-    }
-
-    private func topLeftPoint(forWindowSize windowSize: NSSize, near rect: NSRect) -> NSPoint {
-        let screenRect = screen(containing: rect)?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-        let margin: CGFloat = 4.0
-        var point = NSPoint(x: rect.minX, y: rect.minY - margin)
-
-        if point.y - windowSize.height < screenRect.minY {
-            point.y = rect.maxY + windowSize.height + margin
-        }
-
-        if point.x + windowSize.width >= screenRect.maxX {
-            point.x = screenRect.maxX - windowSize.width
-        }
-        if point.x < screenRect.minX {
-            point.x = screenRect.minX
-        }
-
-        if point.y >= screenRect.maxY {
-            point.y = screenRect.maxY - 1.0
-        }
-
-        return point
-    }
-
-    // MARK: - Dragging
-
-    private var dragOffset: NSPoint = .zero
-    private var dragStartScreen: NSPoint = .zero
-
-    override func mouseDown(with event: NSEvent) {
-        dragOffset = event.locationInWindow
-        dragStartScreen = NSEvent.mouseLocation
-        didDrag = false
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        let screenPoint = NSEvent.mouseLocation
-        if !didDrag {
-            let dx = screenPoint.x - dragStartScreen.x
-            let dy = screenPoint.y - dragStartScreen.y
-            guard dx * dx + dy * dy > 9 else { return }
-            didDrag = true
-        }
-        setFrameOrigin(NSPoint(
-            x: screenPoint.x - dragOffset.x,
-            y: screenPoint.y - dragOffset.y
-        ))
+        impl?.candidateDelegate?.candidateSelectionChanged(candidates[newIndex])
     }
 
     // MARK: - Navigation Helpers
-
-    private var displayCount: Int {
-        min(candidates.count, maxDisplayCandidates)
-    }
 
     private var collapsedVisibleCount: Int {
         gridRows.first?.items.count ?? 0
@@ -616,7 +344,7 @@ class CandidateWindow: NSPanel {
         var currentColumn = 0
 
         for i in 0..<displayCount {
-            let w = CandidateItemView.measureWidth(index: indexBase, candidate: candidates[i])
+            let w = SequoiaCandidateItemView.measureWidth(index: indexBase, candidate: candidates[i])
             let span = max(1, min(expandedPageSize, Int(ceil(w / expandedColumnWidth))))
             if currentColumn + span > expandedPageSize, !currentRowItems.isEmpty {
                 rows.append(GridRow(items: currentRowItems))
@@ -642,7 +370,7 @@ class CandidateWindow: NSPanel {
         for i in 0..<displayCount {
             if packedItems.count >= pageSize { break }
             let w = min(
-                CandidateItemView.measureWidth(index: packedItems.count + indexBase, candidate: candidates[i]),
+                SequoiaCandidateItemView.measureWidth(index: packedItems.count + indexBase, candidate: candidates[i]),
                 maxWidth
             )
             if usedWidth + w > maxWidth, !packedItems.isEmpty { break }
@@ -657,11 +385,6 @@ class CandidateWindow: NSPanel {
     }
 
     // MARK: - Layout
-
-    // Container is flipped, so row 0 is at y=0 (top).
-    private func yForRow(_ rowIndex: Int) -> CGFloat {
-        CGFloat(rowIndex) * (itemHeight + Self.separatorHeight)
-    }
 
     @discardableResult
     private func layoutItems() -> NSSize {
@@ -756,33 +479,10 @@ class CandidateWindow: NSPanel {
 
         // Row separators
         let separatorCount = max(rowCount - 1, 0)
-        while separatorViews.count < separatorCount {
-            let sep = SeparatorLineView()
-            candidateContainer.addSubview(sep, positioned: .above, relativeTo: rowHighlightView)
-            separatorViews.append(sep)
-        }
-        for i in 0..<separatorCount {
-            separatorViews[i].frame = NSRect(
-                x: 0, y: yForRow(i) + itemHeight,
-                width: windowWidth, height: Self.separatorHeight)
-            separatorViews[i].needsDisplay = true
-        }
+        ensureSeparators(count: separatorCount, width: windowWidth)
 
         candidateContainer.frame.size = NSSize(width: contentWidth, height: contentHeight)
         return NSSize(width: windowWidth, height: windowHeight)
-    }
-
-    /// Indices of row 0 candidates that overflow when expanded (not in expanded row 0).
-    private var overflowIndices: Set<Int> {
-        let expandedRow0 = Set(expandedGridRows[0].items.map(\.candidateIndex))
-        let allRow0 = Set(row0ItemViews.map(\.absoluteIndex))
-        return allRow0.subtracting(expandedRow0)
-    }
-
-    /// Indices in rows 1+ that duplicate overflow items from row 0.
-    private var overflowDuplicateIndices: Set<Int> {
-        let overflow = overflowIndices
-        return Set(expandedItemViews.filter { overflow.contains($0.absoluteIndex) }.map(\.absoluteIndex))
     }
 
     private func rebuildLayout(animated: Bool, repositionAfter: Bool = false) {
@@ -796,7 +496,7 @@ class CandidateWindow: NSPanel {
             return
         }
 
-        baseColumnWidth = CandidateItemView.measureWidth(index: indexBase, candidate: "字")
+        computeBaseMetrics()
         if widerExpandedColumns {
             expandedPageSize = pageSize - pageSize / 3
             expandedColumnWidth = baseColumnWidth * CGFloat(pageSize) / CGFloat(expandedPageSize)
@@ -804,7 +504,6 @@ class CandidateWindow: NSPanel {
             expandedPageSize = pageSize
             expandedColumnWidth = baseColumnWidth
         }
-        itemHeight = CandidateItemView(frame: .zero).fittingSize.height
         gridRows = computeCollapsedGrid()
 
         // Create row 0 items
@@ -820,10 +519,72 @@ class CandidateWindow: NSPanel {
 
         let contentSize = layoutItems()
         setContentSize(contentSize)
-        updateMaskImage()
+        updateHorizontalMaskImage()
 
         if repositionAfter, !lastShowNearRect.isEmpty {
-            showNear(rect: lastShowNearRect)
+            show(near: lastShowNearRect)
+        }
+    }
+
+    // MARK: - Corner Radius Animation
+
+    private func pillCornerMask(height: CGFloat) -> NSImage {
+        if height == pillMaskHeight, let pillMask { return pillMask }
+        let lr = Self.defaultCornerRadius
+        let rr = height / 2
+        let mask = NSImage.asymmetricCornerMask(height: height, leftRadius: lr, rightRadius: rr)
+        pillMask = mask
+        pillMaskHeight = height
+        return mask
+    }
+
+    private func updateHorizontalMaskImage() {
+        let size = frame.size
+        guard size.width > 0, size.height > 0 else { return }
+        let showChevron = displayMode == .collapsed && displayCount > collapsedVisibleCount
+        if showChevron {
+            visualEffectView.maskImage = pillCornerMask(height: size.height)
+        } else {
+            visualEffectView.maskImage = Self.uniformMask
+        }
+    }
+
+    override func updateMaskImage() {
+        updateHorizontalMaskImage()
+    }
+
+    private func animateCornerRadius(from: CGFloat, to: CGFloat) {
+        stopCornerAnimation()
+        cornerRadiusFrom = from
+        cornerRadiusTo = to
+        cornerAnimationStart = CACurrentMediaTime()
+        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] _ in
+            self?.cornerAnimationTick()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        cornerDisplayLink = timer
+    }
+
+    private func stopCornerAnimation() {
+        (cornerDisplayLink as? Timer)?.invalidate()
+        cornerDisplayLink = nil
+    }
+
+    private func cornerAnimationTick() {
+        let elapsed = CACurrentMediaTime() - cornerAnimationStart
+        let progress = min(elapsed / animationDuration, 1.0)
+        // Ease in-out approximation matching CAMediaTimingFunction(.easeInEaseOut)
+        let t = progress < 0.5
+            ? 2 * progress * progress
+            : -1 + (4 - 2 * progress) * progress
+        let radius = cornerRadiusFrom + (cornerRadiusTo - cornerRadiusFrom) * t
+        let size = frame.size
+        guard size.width > 0, size.height > 0 else { return }
+        visualEffectView.maskImage = .asymmetricCornerMask(
+            size: size, leftRadius: Self.defaultCornerRadius, rightRadius: radius
+        )
+        if progress >= 1.0 {
+            stopCornerAnimation()
         }
     }
 
@@ -881,9 +642,9 @@ class CandidateWindow: NSPanel {
         if !animated {
             rowHighlightView.alphaValue = 1
             setContentSize(contentSize)
-            updateMaskImage()
+            updateHorizontalMaskImage()
             scrollSelectedRowIntoView()
-            if !lastShowNearRect.isEmpty { showNear(rect: lastShowNearRect) }
+            if !lastShowNearRect.isEmpty { show(near: lastShowNearRect) }
             return
         }
 
@@ -954,14 +715,12 @@ class CandidateWindow: NSPanel {
             // Row 0 staying items: animate to target
             for item in self.row0ItemViews where !overflow.contains(item.absoluteIndex) {
                 if let target = targetRow0Frames[item.absoluteIndex] {
-
                     item.animator().frame = target
                 }
             }
 
             // Row 0 overflow items: fade out + slide right
             for item in self.row0ItemViews where overflow.contains(item.absoluteIndex) {
-
                 let slideTarget = collapsedWidth - item.frame.origin.x
                 item.animator().alphaValue = 0
                 var f = item.frame
@@ -972,7 +731,6 @@ class CandidateWindow: NSPanel {
             // Rows 1+ overflow duplicates: slide in from left + fade in
             for item in self.expandedItemViews where overflowDups.contains(item.absoluteIndex) {
                 if let target = targetExpandedFrames[item.absoluteIndex] {
-
                     item.animator().frame = target
                     item.animator().alphaValue = 1
                 }
@@ -1047,8 +805,8 @@ class CandidateWindow: NSPanel {
             rowHighlightView.alphaValue = 0
             for item in row0ItemViews { item.alphaValue = 1 }
             setContentSize(contentSize)
-            updateMaskImage()
-            if !lastShowNearRect.isEmpty { showNear(rect: lastShowNearRect) }
+            updateHorizontalMaskImage()
+            if !lastShowNearRect.isEmpty { show(near: lastShowNearRect) }
             return
         }
 
@@ -1118,7 +876,6 @@ class CandidateWindow: NSPanel {
             // Row 0 staying items: animate to collapsed frames
             for item in self.row0ItemViews where !overflow.contains(item.absoluteIndex) {
                 if let target = targetRow0Frames[item.absoluteIndex] {
-
                     item.animator().frame = target
                 }
             }
@@ -1126,7 +883,6 @@ class CandidateWindow: NSPanel {
             // Row 0 overflow items: slide in from right + fade in
             for item in self.row0ItemViews where overflow.contains(item.absoluteIndex) {
                 if let target = targetRow0Frames[item.absoluteIndex] {
-
                     item.animator().frame = target
                     item.animator().alphaValue = 1
                 }
@@ -1134,16 +890,10 @@ class CandidateWindow: NSPanel {
 
             // Rows 1+ overflow duplicates: slide out to left + fade out
             for item in self.expandedItemViews where overflowDups.contains(item.absoluteIndex) {
-
                 item.animator().alphaValue = 0
                 var f = item.frame
                 f.origin.x = -f.width
                 item.animator().frame = f
-            }
-
-            // Rows 1+ other items: just fade out (window shrink clips them)
-            for item in self.expandedItemViews where !overflowDups.contains(item.absoluteIndex) {
-                // They stay in place, window shrinking clips them from below
             }
 
             // Chevron: slide to final position + fade in
@@ -1169,12 +919,6 @@ class CandidateWindow: NSPanel {
 
     // MARK: - Item View Lifecycle
 
-    private func createItemView() -> CandidateItemView {
-        let item = CandidateItemView()
-        item.highlightColor = highlightColor
-        return item
-    }
-
     private func removeAllItemViews() {
         for item in row0ItemViews { item.removeFromSuperview() }
         for item in expandedItemViews { item.removeFromSuperview() }
@@ -1183,30 +927,6 @@ class CandidateWindow: NSPanel {
     }
 
     // MARK: - Selection & Highlights
-
-    func itemClicked(at index: Int, doubleClick: Bool) {
-        guard !isAnimating else { return }
-        if doubleClick {
-            candidateDelegate?.candidateSelected(candidates[index])
-        } else {
-            moveSelection(to: index)
-        }
-    }
-
-    private func moveSelection(to newIndex: Int) {
-        let oldRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
-        selectedIndex = newIndex
-        updateSelection()
-        if displayMode == .expanded {
-            let newRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
-            if oldRowIdx != newRowIdx {
-                updateRowHighlightsAndIndices()
-                layoutHighlight()
-                scrollSelectedRowIntoView()
-            }
-        }
-        candidateDelegate?.candidateSelectionChanged(candidates[newIndex])
-    }
 
     private func scrollSelectedRowIntoView() {
         guard displayMode == .expanded,
@@ -1258,44 +978,37 @@ class CandidateWindow: NSPanel {
         rowHighlightView.frame = NSRect(x: 0, y: y, width: frame.width, height: itemHeight)
     }
 
-    private func handleScrollerStyleChange() {
+    // MARK: - Scroller Style
+
+    override func handleScrollerStyleChange() {
         scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
         guard isVisible, displayMode == .expanded, !candidates.isEmpty else { return }
         let contentSize = layoutItems()
         let targetFrame = windowFrame(for: contentSize, reposition: false)
         setFrame(targetFrame, display: true)
-        updateMaskImage()
+        updateHorizontalMaskImage()
     }
 
-    // MARK: - Sizing
+    // MARK: - Reset
 
-    private func windowFrame(for contentSize: NSSize, reposition: Bool) -> NSRect {
-        if reposition, !lastShowNearRect.isEmpty {
-            let topLeft = topLeftPoint(forWindowSize: contentSize, near: lastShowNearRect)
-            return NSRect(
-                x: topLeft.x,
-                y: topLeft.y - contentSize.height,
-                width: contentSize.width,
-                height: contentSize.height
-            )
-        }
-        let currentFrame = self.frame
-        let screenRect = screen(containing: lastShowNearRect)?.visibleFrame
-            ?? NSScreen.main?.visibleFrame ?? .zero
-        var newOrigin = NSPoint(
-            x: currentFrame.origin.x,
-            y: currentFrame.maxY - contentSize.height
-        )
-        if newOrigin.y < screenRect.minY {
-            if !lastShowNearRect.isEmpty {
-                newOrigin.y = lastShowNearRect.maxY
-            } else {
-                newOrigin.y = screenRect.minY
-            }
-        }
-        if newOrigin.x + contentSize.width > screenRect.maxX {
-            newOrigin.x = screenRect.maxX - contentSize.width
-        }
-        return NSRect(origin: newOrigin, size: contentSize)
+    private func resetState() {
+        displayMode = .collapsed
+        isAnimating = false
+        expandedGridRows = []
+        expandedRowsBuilt = false
+        stopCornerAnimation()
+    }
+
+    // MARK: - Overflow Helpers
+
+    private var overflowIndices: Set<Int> {
+        let expandedRow0 = Set(expandedGridRows[0].items.map(\.candidateIndex))
+        let allRow0 = Set(row0ItemViews.map(\.absoluteIndex))
+        return allRow0.subtracting(expandedRow0)
+    }
+
+    private var overflowDuplicateIndices: Set<Int> {
+        let overflow = overflowIndices
+        return Set(expandedItemViews.filter { overflow.contains($0.absoluteIndex) }.map(\.absoluteIndex))
     }
 }
