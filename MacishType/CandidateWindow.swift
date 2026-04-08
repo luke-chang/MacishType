@@ -14,6 +14,7 @@ struct CandidateWindowConfiguration {
     var widerExpandedColumns = true
     var moveOnExpand = false
     var animationDuration: TimeInterval = 0.183
+    var verticalMinVisibleRows: Int? = nil
     var layoutDirection: CandidateWindow.LayoutDirection = .horizontal
 }
 
@@ -69,6 +70,7 @@ class CandidateWindow {
     var isVisible: Bool { activeImpl.isVisible }
 
     func apply(_ configuration: CandidateWindowConfiguration) {
+        direction = configuration.layoutDirection
         activeImpl.apply(configuration)
     }
 

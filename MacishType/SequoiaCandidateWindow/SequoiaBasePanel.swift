@@ -26,6 +26,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     static let defaultCornerRadius: CGFloat = 6
     static let uniformMask = NSImage.uniformCornerMask(radius: defaultCornerRadius)
 
+    var lastAppliedConfiguration = CandidateWindowConfiguration()
     private(set) var highlightColor: NSColor = .selectedContentBackgroundColor
     private(set) var didDrag = false
     var animationDuration: TimeInterval = 0.183

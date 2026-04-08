@@ -122,6 +122,11 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         moveOnExpandCheckbox.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(moveOnExpandCheckbox)
 
+        let verticalCheckbox = NSButton(checkboxWithTitle: "Vertical layout", target: self, action: #selector(verticalToggled(_:)))
+        verticalCheckbox.state = .off
+        verticalCheckbox.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(verticalCheckbox)
+
         // Text view with scroll view
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -157,7 +162,10 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
             moveOnExpandCheckbox.topAnchor.constraint(equalTo: widerColumnsCheckbox.bottomAnchor, constant: 4),
             moveOnExpandCheckbox.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
 
-            scrollView.topAnchor.constraint(equalTo: moveOnExpandCheckbox.bottomAnchor, constant: 8),
+            verticalCheckbox.topAnchor.constraint(equalTo: moveOnExpandCheckbox.bottomAnchor, constant: 4),
+            verticalCheckbox.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
+
+            scrollView.topAnchor.constraint(equalTo: verticalCheckbox.bottomAnchor, constant: 8),
             scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
             scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -padding),
             scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -padding),
@@ -252,6 +260,10 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
     @objc func moveOnExpandToggled(_ sender: NSButton) {
         currentConfig.moveOnExpand = sender.state == .on
         candidateWindow.apply(currentConfig)
+    }
+
+    @objc func verticalToggled(_ sender: NSButton) {
+        candidateWindow.direction = sender.state == .on ? .vertical : .horizontal
     }
 
     func candidateSelected(_ candidate: String) {

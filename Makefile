@@ -118,6 +118,7 @@ candidate-window-test:
 		MacishType/SequoiaCandidateWindow/SequoiaCandidateWindow.swift \
 		MacishType/SequoiaCandidateWindow/SequoiaBasePanel.swift \
 		MacishType/SequoiaCandidateWindow/SequoiaHorizontalPanel.swift \
+		MacishType/SequoiaCandidateWindow/SequoiaVerticalPanel.swift \
 		MacishType/SequoiaCandidateWindow/SequoiaCandidateItemView.swift \
 		MacishType/SequoiaCandidateWindow/SequoiaChevronView.swift \
 		MacishType/SequoiaCandidateWindow/SequoiaHighlightView.swift \

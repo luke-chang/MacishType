@@ -32,6 +32,20 @@ class SequoiaCandidateItemView: NSView {
         }
     }
 
+    private static let defaultTrailingPadding: CGFloat = 7
+
+    var reservesScrollerSpace: Bool = false {
+        didSet {
+            guard reservesScrollerSpace != oldValue else { return }
+            let padding: CGFloat = reservesScrollerSpace
+                ? max(NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy), Self.defaultTrailingPadding)
+                : Self.defaultTrailingPadding
+            trailingConstraint.constant = -padding
+        }
+    }
+
+    private var trailingConstraint: NSLayoutConstraint!
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = true
@@ -48,13 +62,16 @@ class SequoiaCandidateItemView: NSView {
         addSubview(indexLabel)
         addSubview(candidateLabel)
 
+        trailingConstraint = candidateLabel.trailingAnchor.constraint(
+            lessThanOrEqualTo: trailingAnchor, constant: -Self.defaultTrailingPadding)
+
         NSLayoutConstraint.activate([
             indexLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 5),
             indexLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             indexLabel.widthAnchor.constraint(equalToConstant: Self.indexWidth),
             candidateLabel.leadingAnchor.constraint(equalTo: indexLabel.trailingAnchor, constant: 6),
             candidateLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            candidateLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -7),
+            trailingConstraint,
             candidateLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: Self.candidateFontSize),
             heightAnchor.constraint(greaterThanOrEqualToConstant: Self.candidateFontSize + 12),
         ])

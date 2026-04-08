@@ -9,6 +9,13 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
         defer: false
     )
 
+    private lazy var verticalPanel = SequoiaVerticalPanel(
+        contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+        styleMask: [.borderless],
+        backing: .buffered,
+        defer: false
+    )
+
     private var activePanel: SequoiaBasePanel { panel(for: direction) }
 
     override init() {
@@ -18,8 +25,11 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
 
     private func panel(for direction: CandidateWindow.LayoutDirection) -> SequoiaBasePanel {
         switch direction {
-        case .horizontal: horizontalPanel
-        case .vertical: horizontalPanel // TODO: replace with verticalPanel
+        case .horizontal:
+            return horizontalPanel
+        case .vertical:
+            verticalPanel.impl = self
+            return verticalPanel
         }
     }
 
@@ -31,15 +41,17 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
         guard oldPanel !== newPanel else { return }
 
         let wasVisible = oldPanel.isVisible
+        let savedCandidates = oldPanel.candidates
+        let savedSelectedIndex = oldPanel.selectedIndex
         oldPanel.hide()
 
-        // Transfer candidate state to new panel
-        newPanel.apply(CandidateWindowConfiguration(
-            indexBase: oldPanel.indexBase,
-            pageSize: oldPanel.pageSize
-        ))
-        if !oldPanel.candidates.isEmpty {
-            newPanel.updateCandidates(oldPanel.candidates)
+        newPanel.apply(oldPanel.lastAppliedConfiguration)
+        newPanel.updateHighlightColor()
+        if !savedCandidates.isEmpty {
+            newPanel.updateCandidates(savedCandidates)
+            if savedSelectedIndex < savedCandidates.count {
+                newPanel.moveSelection(to: savedSelectedIndex)
+            }
         }
 
         if wasVisible {

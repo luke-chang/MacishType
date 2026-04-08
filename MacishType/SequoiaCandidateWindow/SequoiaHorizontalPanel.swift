@@ -111,6 +111,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
     // MARK: - Public API Overrides
 
     override func apply(_ configuration: CandidateWindowConfiguration) {
+        lastAppliedConfiguration = configuration
         indexBase = configuration.indexBase
         pageSize = configuration.pageSize
         animationDuration = configuration.animationDuration
