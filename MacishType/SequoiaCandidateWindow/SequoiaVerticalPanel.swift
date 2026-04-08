@@ -80,7 +80,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
 
         computeBaseMetrics()
 
-        // Width: measure top-3 by utf16 length
+        // Width: measure top-3 by character count
         let contentWidth = measureContentWidth(candidates: candidates)
         initialContentWidth = contentWidth
         maxContentWidth = baseColumnWidth * CGFloat(pageSize)
@@ -141,10 +141,10 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
     }
 
     private func measureContentWidth(candidates: [String]) -> CGFloat {
-        // Find top-3 candidates by utf16 length, measure their actual pixel width
+        // Find top-3 candidates by character count, measure their actual pixel width
         let sorted = candidates.prefix(displayCount)
             .enumerated()
-            .sorted { $0.element.utf16.count > $1.element.utf16.count }
+            .sorted { $0.element.count > $1.element.count }
             .prefix(3)
 
         var maxWidth = baseColumnWidth

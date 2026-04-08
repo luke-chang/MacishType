@@ -195,7 +195,8 @@ class InputController: IMKInputController {
     private func setMarkedText(
         _ text: String, cursor: Int? = nil, emphasis: Range<Int>? = nil, client: IMKTextInput
     ) {
-        let cursorPosition = cursor ?? text.utf16.count
+        let charIndex = cursor ?? text.count
+        let cursorPosition = text.prefix(charIndex).utf16.count
         let attr = NSMutableAttributedString(
             string: text,
             attributes: [
@@ -204,9 +205,11 @@ class InputController: IMKInputController {
             ]
         )
         if let emphasis, !emphasis.isEmpty {
+            let utf16Start = text.prefix(emphasis.lowerBound).utf16.count
+            let utf16End = text.prefix(emphasis.upperBound).utf16.count
             attr.addAttribute(
                 .underlineStyle, value: NSUnderlineStyle.thick.rawValue,
-                range: NSRange(location: emphasis.lowerBound, length: emphasis.count)
+                range: NSRange(location: utf16Start, length: utf16End - utf16Start)
             )
         }
         client.setMarkedText(
@@ -224,9 +227,11 @@ class InputController: IMKInputController {
     // end, then wrap around from 0 up to the target index.
     private func showCandidateWindow(anchor: Int, client: IMKTextInput) {
         var lineHeightRect = NSRect.zero
-        let length = engineContext.composingText.utf16.count
-        guard length > 0 else { return }
-        let target = min(anchor, length - 1)
+        let text = engineContext.composingText
+        guard !text.isEmpty else { return }
+        let clampedAnchor = min(anchor, text.count - 1)
+        let target = text.prefix(clampedAnchor).utf16.count
+        let length = text.utf16.count
         // Try from target forward to end
         var cursor = target
         while lineHeightRect.origin == .zero && cursor < length {
