@@ -124,10 +124,11 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
     override func updateCandidates(_ candidates: [String]) {
         self.candidates = candidates
-        self.selectedIndex = 0
+        resetSelectedIndex()
         resetState()
         self.gridRows = []
         rebuildLayout(animated: false)
+        notifySelectionChanged()
     }
 
     override func handleNavigation(direction: NavigationDirection, wrapping: Bool) {
@@ -153,12 +154,12 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
                     if let (rowIdx, item) = findGridPosition(of: selectedIndex) {
                         if rowIdx == 0 {
                             if let target = findOverlappingItem(in: targetRow, columnStart: item.columnStart, columnEnd: item.columnStart + item.columnSpan) {
-                                selectedIndex = target
+                                moveSelection(to: target)
                             } else {
-                                selectedIndex = targetRow.items.last!.candidateIndex
+                                moveSelection(to: targetRow.items.last!.candidateIndex)
                             }
                         } else {
-                            selectedIndex = targetRow.items.last!.candidateIndex
+                            moveSelection(to: targetRow.items.last!.candidateIndex)
                         }
                     }
                     gridRows = savedGridRows
@@ -182,7 +183,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             let collapsedCount = collapsedVisibleCount
             if target >= collapsedCount {
                 if shouldMoveOnExpand {
-                    selectedIndex = target
+                    moveSelection(to: target)
                 }
                 expandWindow(animated: true)
                 return
@@ -620,6 +621,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
                 }
             }
             expandedRowsBuilt = true
+            updateSelection()
         }
 
         // Compute final layout (sets frames and isHidden states)
@@ -631,7 +633,6 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
         // Update after layout so hidden state is correct
         updateRowHighlightsAndIndices()
-        updateSelection()
         let targetWindowFrame = windowFrame(for: contentSize, reposition: true)
 
         if !animated {
@@ -786,9 +787,10 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         // Clamp selectedIndex
         let maxValid = gridRows[0].items.last?.candidateIndex ?? 0
         if selectedIndex > maxValid {
-            selectedIndex = maxValid
+            moveSelection(to: maxValid)
+        } else {
+            updateSelection()
         }
-        updateSelection()
 
         // Compute final layout
         let contentSize = layoutItems()
@@ -922,7 +924,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
     override func restoreSelection(to index: Int) {
         let target = min(index, max(displayCount - 1, 0))
         if displayMode == .collapsed, target >= collapsedVisibleCount, displayCount > collapsedVisibleCount {
-            selectedIndex = target
+            moveSelection(to: target)
             expandWindow(animated: false)
         } else {
             moveSelection(to: target)

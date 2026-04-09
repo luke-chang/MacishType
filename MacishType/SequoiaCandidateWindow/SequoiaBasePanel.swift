@@ -31,7 +31,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     private(set) var didDrag = false
     var animationDuration: TimeInterval = 0.183
     var candidates: [String] = []
-    var selectedIndex: Int = 0
+    private(set) var selectedIndex: Int = 0
     var indexBase = 1
     var pageSize = 9
     let maxDisplayCandidates = 200
@@ -281,7 +281,16 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     func moveSelection(to newIndex: Int) {
         selectedIndex = newIndex
         updateSelection()
-        impl?.candidateDelegate?.candidateSelectionChanged(candidates[newIndex])
+        notifySelectionChanged()
+    }
+
+    func resetSelectedIndex() {
+        selectedIndex = 0
+    }
+
+    func notifySelectionChanged() {
+        guard !candidates.isEmpty else { return }
+        impl?.candidateDelegate?.candidateSelectionChanged(candidates[selectedIndex])
     }
 
     func updateSelection() {

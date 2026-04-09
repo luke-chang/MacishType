@@ -52,10 +52,11 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
 
     override func updateCandidates(_ newCandidates: [String]) {
         candidates = newCandidates
-        selectedIndex = 0
+        resetSelectedIndex()
         isFullyRendered = false
         anchorIndex = -1
         rebuildLayout()
+        notifySelectionChanged()
     }
 
     // MARK: - Layout
