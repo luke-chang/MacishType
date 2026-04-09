@@ -104,6 +104,11 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
     // MARK: - Configuration
 
+    override func updateFontSize(_ fontSize: CGFloat) {
+        super.updateFontSize(fontSize)
+        chevronView.updateFontSize(fontSize)
+    }
+
     override func apply(_ configuration: CandidateWindowConfiguration) {
         super.apply(configuration)
         indexBase = configuration.indexBase
@@ -304,7 +309,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         setContentSize(contentSize)
         updateHorizontalMaskImage()
 
-        if isVisible, !lastShowNearRect.isEmpty {
+        if isVisible, lastShowNearRect != .zero {
             show(near: lastShowNearRect)
         }
     }
@@ -428,7 +433,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             setContentSize(contentSize)
             updateHorizontalMaskImage()
             ensureSelectionVisible()
-            if !lastShowNearRect.isEmpty { show(near: lastShowNearRect) }
+            if lastShowNearRect != .zero { show(near: lastShowNearRect) }
             return
         }
 
@@ -589,7 +594,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             for item in row0ItemViews { item.alphaValue = 1 }
             setContentSize(contentSize)
             updateHorizontalMaskImage()
-            if !lastShowNearRect.isEmpty { show(near: lastShowNearRect) }
+            if lastShowNearRect != .zero { show(near: lastShowNearRect) }
             return
         }
 

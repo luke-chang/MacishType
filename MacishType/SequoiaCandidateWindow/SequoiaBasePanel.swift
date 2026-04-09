@@ -198,7 +198,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     }
 
     func windowFrame(for contentSize: NSSize, reposition: Bool) -> NSRect {
-        if reposition, !lastShowNearRect.isEmpty {
+        if reposition, lastShowNearRect != .zero {
             let topLeft = topLeftPoint(forWindowSize: contentSize, near: lastShowNearRect)
             return NSRect(
                 x: topLeft.x,
@@ -215,7 +215,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
             y: currentFrame.maxY - contentSize.height
         )
         if newOrigin.y < screenRect.minY {
-            if !lastShowNearRect.isEmpty {
+            if lastShowNearRect != .zero {
                 newOrigin.y = lastShowNearRect.maxY
             } else {
                 newOrigin.y = screenRect.minY
@@ -301,7 +301,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
 
     func computeBaseMetrics() {
         baseColumnWidth = SequoiaCandidateItemView.measureWidth(index: indexBase, candidate: "\u{5B57}")
-        itemHeight = SequoiaCandidateItemView.measureHeight
+        itemHeight = SequoiaCandidateItemView.itemHeight
     }
 
     func yForRow(_ rowIndex: Int) -> CGFloat {
@@ -339,6 +339,9 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     // MARK: - Subclass Override Points
 
     var allItemViews: [SequoiaCandidateItemView] { [] }
+    func updateFontSize(_ fontSize: CGFloat) {
+        SequoiaCandidateItemView.updateFontSize(fontSize)
+    }
     func apply(_ configuration: CandidateWindowConfiguration) {}
     func buildCandidateLayout() {}
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}

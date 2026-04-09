@@ -119,7 +119,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         updateMaskImage()
 
         let windowSize = NSSize(width: windowWidth, height: windowHeight)
-        let targetFrame = windowFrame(for: windowSize, reposition: isVisible && !lastShowNearRect.isEmpty)
+        let targetFrame = windowFrame(for: windowSize, reposition: isVisible && lastShowNearRect != .zero)
         setFrame(targetFrame, display: true)
 
         if hasOverflow, NSScroller.preferredScrollerStyle != .legacy {

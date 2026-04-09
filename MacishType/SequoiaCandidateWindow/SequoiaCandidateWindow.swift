@@ -38,6 +38,7 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
         oldPanel.hide()
 
         newPanel.apply(lastAppliedConfiguration)
+        newPanel.updateFontSize(fontSize)
         newPanel.updateHighlightColor()
         if !candidates.isEmpty {
             newPanel.buildCandidateLayout()
@@ -46,6 +47,14 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
 
         if wasVisible {
             newPanel.show(near: lastShowNearRect)
+        }
+    }
+
+    override func fontSizeDidChange() {
+        activePanel.updateFontSize(fontSize)
+        if !candidates.isEmpty {
+            activePanel.buildCandidateLayout()
+            activePanel.restoreSelection(to: selectedIndex)
         }
     }
 

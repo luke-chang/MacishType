@@ -131,6 +131,21 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         verticalCheckbox.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(verticalCheckbox)
 
+        let fontSizeLabel = NSTextField(labelWithString: "Font size:")
+        fontSizeLabel.font = .systemFont(ofSize: 13)
+        fontSizeLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(fontSizeLabel)
+
+        let fontSizePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        fontSizePopup.translatesAutoresizingMaskIntoConstraints = false
+        for size in [14, 16, 18, 24, 36] {
+            fontSizePopup.addItem(withTitle: "\(size)")
+        }
+        fontSizePopup.selectItem(withTitle: "\(Int(candidateWindow.fontSize))")
+        fontSizePopup.target = self
+        fontSizePopup.action = #selector(fontSizeChanged(_:))
+        contentView.addSubview(fontSizePopup)
+
         // Text view with scroll view
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -168,6 +183,11 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
 
             verticalCheckbox.topAnchor.constraint(equalTo: moveOnExpandCheckbox.bottomAnchor, constant: 4),
             verticalCheckbox.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
+
+            fontSizeLabel.topAnchor.constraint(equalTo: slowMotionCheckbox.topAnchor),
+            fontSizeLabel.leadingAnchor.constraint(equalTo: contentView.centerXAnchor),
+            fontSizePopup.centerYAnchor.constraint(equalTo: fontSizeLabel.centerYAnchor),
+            fontSizePopup.leadingAnchor.constraint(equalTo: fontSizeLabel.trailingAnchor, constant: 4),
 
             scrollView.topAnchor.constraint(equalTo: verticalCheckbox.bottomAnchor, constant: 8),
             scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
@@ -268,6 +288,12 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
 
     @objc func verticalToggled(_ sender: NSButton) {
         currentConfig.layoutDirection = sender.state == .on ? .vertical : .horizontal
+        candidateWindow.apply(currentConfig)
+    }
+
+    @objc func fontSizeChanged(_ sender: NSPopUpButton) {
+        guard let title = sender.selectedItem?.title, let size = Int(title) else { return }
+        currentConfig.fontSize = CGFloat(size)
         candidateWindow.apply(currentConfig)
     }
 

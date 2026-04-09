@@ -1,14 +1,34 @@
 import Cocoa
 
 class SequoiaCandidateItemView: NSView {
-    private static let indexFontSize: CGFloat = 8
-    private static let candidateFontSize: CGFloat = 16
-    private static let indexWidth: CGFloat = {
-        let font = NSFont.systemFont(ofSize: indexFontSize)
+    private static var candidateFontSize: CGFloat = 16
+    private static var indexFontSize: CGFloat = 8
+    private static var indexWidth: CGFloat = computeIndexWidth(fontSize: 8)
+    private static var leadingPadding: CGFloat = 5
+    private static var indexCandidateGap: CGFloat = 6
+    private static var defaultTrailingPadding: CGFloat = 7
+    private static var verticalPadding: CGFloat = 12
+
+    private static func computeIndexWidth(fontSize: CGFloat) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: fontSize)
         return (0...9).map { digit in
             ceil(("\(digit)" as NSString).size(withAttributes: [.font: font]).width)
         }.max()!
-    }()
+    }
+
+    static func updateFontSize(_ newSize: CGFloat) {
+        let size = max(newSize, 8)
+        guard size != candidateFontSize else { return }
+        let scale = size / 16
+        candidateFontSize = size
+        indexFontSize = round(size / 2)
+        indexWidth = computeIndexWidth(fontSize: indexFontSize)
+        leadingPadding = round(5 * scale)
+        indexCandidateGap = round(6 * scale)
+        defaultTrailingPadding = round(7 * scale)
+        verticalPadding = round(12 * scale)
+        templateView = nil
+    }
 
     let indexLabel = NSTextField(labelWithString: "")
     let candidateLabel = NSTextField(labelWithString: "")
@@ -31,8 +51,6 @@ class SequoiaCandidateItemView: NSView {
             indexLabel.alphaValue = showIndex ? 1 : 0
         }
     }
-
-    private static let defaultTrailingPadding: CGFloat = 7
 
     var reservesScrollerSpace: Bool = false {
         didSet {
@@ -66,14 +84,14 @@ class SequoiaCandidateItemView: NSView {
             lessThanOrEqualTo: trailingAnchor, constant: -Self.defaultTrailingPadding)
 
         NSLayoutConstraint.activate([
-            indexLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 5),
+            indexLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.leadingPadding),
             indexLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             indexLabel.widthAnchor.constraint(equalToConstant: Self.indexWidth),
-            candidateLabel.leadingAnchor.constraint(equalTo: indexLabel.trailingAnchor, constant: 6),
+            candidateLabel.leadingAnchor.constraint(equalTo: indexLabel.trailingAnchor, constant: Self.indexCandidateGap),
             candidateLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             trailingConstraint,
             candidateLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: Self.candidateFontSize),
-            heightAnchor.constraint(greaterThanOrEqualToConstant: Self.candidateFontSize + 12),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: Self.candidateFontSize + Self.verticalPadding),
         ])
     }
 
@@ -85,8 +103,8 @@ class SequoiaCandidateItemView: NSView {
             Self.candidateFontSize,
             ceil(candidateLabel.intrinsicContentSize.width)
         )
-        let w = 5 + Self.indexWidth + 6 + candidateWidth + 7
-        let h = Self.candidateFontSize + 12
+        let w = Self.leadingPadding + Self.indexWidth + Self.indexCandidateGap + candidateWidth + Self.defaultTrailingPadding
+        let h = Self.itemHeight
         return NSSize(width: ceil(w), height: h)
     }
 
@@ -96,15 +114,18 @@ class SequoiaCandidateItemView: NSView {
         invalidateIntrinsicContentSize()
     }
 
-    private static let templateView = SequoiaCandidateItemView()
+    static var itemHeight: CGFloat { candidateFontSize + verticalPadding }
+
+    private static var templateView: SequoiaCandidateItemView?
 
     static func measureWidth(index: Int, candidate: String) -> CGFloat {
-        templateView.configure(index: index, candidate: candidate)
-        return ceil(templateView.fittingSize.width)
-    }
-
-    static var measureHeight: CGFloat {
-        ceil(templateView.fittingSize.height)
+        let view = templateView ?? {
+            let v = SequoiaCandidateItemView()
+            templateView = v
+            return v
+        }()
+        view.configure(index: index, candidate: candidate)
+        return ceil(view.fittingSize.width)
     }
 
     override func mouseUp(with event: NSEvent) {

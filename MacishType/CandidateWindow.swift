@@ -1,8 +1,11 @@
 import Cocoa
 
 private extension UserDefaults {
-    @objc dynamic var candidateWindowDirection: String? {
+    @objc dynamic var CandidateWindowDirection: String? {
         string(forKey: CandidateWindow.directionKey)
+    }
+    @objc dynamic var FontSize: Int {
+        integer(forKey: CandidateWindow.fontSizeKey)
     }
 }
 
@@ -23,6 +26,7 @@ struct CandidateWindowConfiguration {
     var horizontalMaxVisibleRows = 5
     var verticalMinVisibleRows: Int? = nil
     var layoutDirection: CandidateWindow.LayoutDirection? = nil
+    var fontSize: CGFloat? = nil
 }
 
 protocol CandidateWindowDelegate: AnyObject {
@@ -55,8 +59,10 @@ class CandidateWindow {
     // MARK: - UserDefaults
 
     fileprivate static let directionKey = "CandidateWindowDirection"
+    fileprivate static let fontSizeKey = "FontSize"
 
     private var engineLayoutDirection: LayoutDirection?
+    private var engineFontSize: CGFloat?
 
     private var userDefaultsDirection: LayoutDirection {
         guard let value = UserDefaults.standard.string(forKey: Self.directionKey) else { return .horizontal }
@@ -70,9 +76,25 @@ class CandidateWindow {
         engineLayoutDirection ?? userDefaultsDirection
     }
 
+    private var userDefaultsFontSize: CGFloat {
+        let raw = UserDefaults.standard.integer(forKey: Self.fontSizeKey)
+        return raw >= 8 ? CGFloat(raw) : 16
+    }
+
+    private var resolvedFontSize: CGFloat {
+        engineFontSize ?? userDefaultsFontSize
+    }
+
     // MARK: - Authoritative State
 
     private(set) var lastShowNearRect: NSRect = .zero
+
+    var fontSize: CGFloat = 16 {
+        didSet {
+            guard fontSize != oldValue else { return }
+            activeImpl.fontSizeDidChange()
+        }
+    }
 
     var direction: LayoutDirection = .horizontal {
         didSet {
@@ -96,7 +118,9 @@ class CandidateWindow {
 
     func apply(_ configuration: CandidateWindowConfiguration) {
         engineLayoutDirection = configuration.layoutDirection
+        engineFontSize = configuration.fontSize
         direction = resolvedDirection
+        fontSize = resolvedFontSize
         activeImpl.apply(configuration)
     }
 
@@ -127,15 +151,27 @@ class CandidateWindow {
 
     // MARK: - Init
 
-    private var defaultsObservation: NSKeyValueObservation?
+    private var directionObservation: NSKeyValueObservation?
+    private var fontSizeObservation: NSKeyValueObservation?
 
     private init() {
         sequoia.owner = self
-        defaultsObservation = UserDefaults.standard.observe(
-            \.candidateWindowDirection, options: [.new]
+
+        // didSet does not fire during init, so trigger manually
+        fontSize = userDefaultsFontSize
+        activeImpl.fontSizeDidChange()
+
+        directionObservation = UserDefaults.standard.observe(
+            \.CandidateWindowDirection, options: [.new]
         ) { [weak self] _, _ in
             guard let self, self.engineLayoutDirection == nil else { return }
             self.direction = self.userDefaultsDirection
+        }
+        fontSizeObservation = UserDefaults.standard.observe(
+            \.FontSize, options: [.new]
+        ) { [weak self] _, _ in
+            guard let self, self.engineFontSize == nil else { return }
+            self.fontSize = self.userDefaultsFontSize
         }
     }
 }
@@ -151,6 +187,7 @@ class CandidateWindowImpl {
     var candidateDelegate: CandidateWindowDelegate? { owner?.candidateDelegate }
     var bundleIdentifier: String? { owner?.bundleIdentifier }
     var direction: CandidateWindow.LayoutDirection { owner?.direction ?? .horizontal }
+    var fontSize: CGFloat { owner?.fontSize ?? 16 }
     var lastShowNearRect: NSRect { owner?.lastShowNearRect ?? .zero }
 
     // MARK: - Candidate State
@@ -169,6 +206,7 @@ class CandidateWindowImpl {
     var isVisible: Bool { false }
 
     func directionDidChange(from oldDirection: CandidateWindow.LayoutDirection) {}
+    func fontSizeDidChange() {}
     func bundleIdentifierDidChange() {}
 
     func apply(_ configuration: CandidateWindowConfiguration) {
