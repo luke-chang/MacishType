@@ -222,29 +222,15 @@ class InputController: IMKInputController {
 
     // MARK: - Candidate Window
 
-    // Some apps (e.g. iMessage) return origin (0, 0) for certain character
-    // indices. Fallback strategy: try forward from the target index to the
-    // end, then wrap around from 0 up to the target index.
     private func showCandidateWindow(anchor: Int, client: IMKTextInput) {
         var lineHeightRect = NSRect.zero
         let text = engineContext.composingText
         guard !text.isEmpty else { return }
         let clampedAnchor = min(anchor, text.count - 1)
         let target = text.prefix(clampedAnchor).utf16.count
-        let length = text.utf16.count
-        // Try from target forward to end
-        var cursor = target
-        while lineHeightRect.origin == .zero && cursor < length {
-            _ = client.attributes(forCharacterIndex: cursor, lineHeightRectangle: &lineHeightRect)
-            cursor += 1
-        }
-        // Wrap around: try from 0 up to target
+        _ = client.attributes(forCharacterIndex: target, lineHeightRectangle: &lineHeightRect)
         if lineHeightRect.origin == .zero {
-            cursor = 0
-            while lineHeightRect.origin == .zero && cursor < target {
-                _ = client.attributes(forCharacterIndex: cursor, lineHeightRectangle: &lineHeightRect)
-                cursor += 1
-            }
+            _ = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &lineHeightRect)
         }
         CandidateWindow.shared.show(near: lineHeightRect)
     }
