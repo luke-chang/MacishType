@@ -61,7 +61,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         case expanded
     }
 
-    // MARK: - Properties
+    // MARK: - State
 
     private(set) var widerExpandedColumns = true
     private(set) var moveOnExpand = false
@@ -74,15 +74,11 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
     private var expandedPageSize: Int = 0
     private var expandedRowsBuilt = false
 
-    // MARK: - View State
-
     private var row0ItemViews: [SequoiaCandidateItemView] = []
     private var expandedItemViews: [SequoiaCandidateItemView] = []
     private var chevronView: SequoiaChevronView!
 
     override var allItemViews: [SequoiaCandidateItemView] { row0ItemViews + expandedItemViews }
-
-    // MARK: - Corner Animation State
 
     private var cornerDisplayLink: (any NSObjectProtocol)?
     private var cornerAnimationStart: CFTimeInterval = 0
@@ -106,7 +102,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         candidateContainer.addSubview(chevronView)
     }
 
-    // MARK: - Public API Overrides
+    // MARK: - Configuration
 
     override func apply(_ configuration: CandidateWindowConfiguration) {
         super.apply(configuration)
@@ -118,205 +114,6 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         moveOnExpand = configuration.moveOnExpand
         if isVisible, !candidates.isEmpty {
             buildCandidateLayout(repositionAfter: true)
-        }
-    }
-
-    override func handleNavigation(direction: NavigationDirection, wrapping: Bool) {
-        guard !candidates.isEmpty, !isAnimating else { return }
-
-        let shouldMoveOnExpand = direction == .right || direction == .itemForward
-            || ((direction == .itemBackward || direction == .left) && wrapping)
-            || direction == .pageForward
-            || (moveOnExpand && (direction == .down || direction == .pageDown))
-
-        if displayMode == .collapsed, direction == .down || direction == .pageDown || direction == .pageForward {
-            let collapsedCount = collapsedVisibleCount
-            if displayCount > collapsedCount {
-                if !expandedRowsBuilt {
-                    expandedGridRows = computeExpandedGrid()
-                }
-                if shouldMoveOnExpand {
-                    let jumpRows = direction == .pageDown ? maxVisibleRows - 1 : 1
-                    let targetRowIdx = min(jumpRows, expandedGridRows.count - 1)
-                    let targetRow = expandedGridRows[targetRowIdx]
-                    let savedGridRows = gridRows
-                    gridRows = expandedGridRows
-                    if let (rowIdx, item) = findGridPosition(of: selectedIndex) {
-                        if rowIdx == 0 {
-                            if let target = findOverlappingItem(in: targetRow, columnStart: item.columnStart, columnEnd: item.columnStart + item.columnSpan) {
-                                moveSelection(to: target)
-                            } else {
-                                moveSelection(to: targetRow.items.last!.candidateIndex)
-                            }
-                        } else {
-                            moveSelection(to: targetRow.items.last!.candidateIndex)
-                        }
-                    }
-                    gridRows = savedGridRows
-                }
-                expandWindow(animated: true)
-            }
-            return
-        }
-
-        let target = navigationTarget(direction: direction)
-            ?? (wrapping ? wrappingTarget(direction: direction) : nil)
-
-        guard let target else {
-            if displayMode == .expanded, Self.collapseDirections.contains(direction) {
-                collapseWindow(animated: true)
-            }
-            return
-        }
-
-        if displayMode == .collapsed {
-            let collapsedCount = collapsedVisibleCount
-            if target >= collapsedCount {
-                if shouldMoveOnExpand {
-                    moveSelection(to: target)
-                }
-                expandWindow(animated: true)
-                return
-            }
-        }
-
-        moveSelection(to: target)
-    }
-
-    override func commitCandidateForDigit(_ digit: Int) {
-        guard isVisible else { return }
-        let itemOffset = digit - indexBase
-        guard itemOffset >= 0 else { return }
-
-        guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return }
-        let row = gridRows[rowIdx]
-        guard itemOffset < row.items.count else { return }
-
-        let candidateIndex = row.items[itemOffset].candidateIndex
-        guard candidateIndex < candidates.count else { return }
-        impl.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
-    }
-
-    override func moveSelection(to newIndex: Int) {
-        let oldRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
-        super.moveSelection(to: newIndex)
-        if displayMode == .expanded {
-            let newRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
-            if oldRowIdx != newRowIdx {
-                updateRowHighlightsAndIndices()
-                layoutHighlight()
-                ensureSelectionVisible()
-            }
-        }
-    }
-
-    // MARK: - Navigation Helpers
-
-    private var collapsedVisibleCount: Int {
-        gridRows.first?.items.count ?? 0
-    }
-
-    private static let collapseDirections: Set<NavigationDirection> = [.left, .up, .pageUp, .pageBackward, .itemBackward]
-
-    private func findGridPosition(of candidateIndex: Int) -> (rowIndex: Int, item: GridItem)? {
-        findGridPosition(of: candidateIndex, in: gridRows)
-    }
-
-    private func findGridPosition(of candidateIndex: Int, in rows: [GridRow]) -> (rowIndex: Int, item: GridItem)? {
-        for (rowIdx, row) in rows.enumerated() {
-            if let item = row.items.first(where: { $0.candidateIndex == candidateIndex }) {
-                return (rowIdx, item)
-            }
-        }
-        return nil
-    }
-
-    private func findOverlappingItem(
-        in row: GridRow, columnStart: Int, columnEnd: Int
-    ) -> Int? {
-        var bestIndex: Int?
-        for item in row.items {
-            let itemEnd = item.columnStart + item.columnSpan
-            if item.columnStart < columnEnd, itemEnd > columnStart {
-                if bestIndex == nil || item.candidateIndex < bestIndex! {
-                    bestIndex = item.candidateIndex
-                }
-            }
-        }
-        return bestIndex
-    }
-
-    private func gridNavigateVertical(direction: Int, rowCount: Int = 1) -> Int? {
-        guard let (rowIdx, item) = findGridPosition(of: selectedIndex) else { return nil }
-        let targetRowIdx = rowIdx + direction * rowCount
-        let clampedRowIdx = max(0, min(targetRowIdx, gridRows.count - 1))
-        guard clampedRowIdx != rowIdx else { return nil }
-
-        let targetRow = gridRows[clampedRowIdx]
-        return findOverlappingItem(
-            in: targetRow,
-            columnStart: item.columnStart,
-            columnEnd: item.columnStart + item.columnSpan
-        ) ?? targetRow.items.last?.candidateIndex
-    }
-
-    private func wrappingTarget(direction: NavigationDirection) -> Int? {
-        switch direction {
-        case .right where selectedIndex >= displayCount - 1:
-            return 0
-        case .itemForward where selectedIndex >= displayCount - 1:
-            return 0
-        case .left where selectedIndex <= 0:
-            return displayCount - 1
-        case .itemBackward where selectedIndex <= 0:
-            return displayCount - 1
-        case .down, .up, .pageForward, .pageBackward:
-            guard let (rowIdx, item) = findGridPosition(of: selectedIndex) else { return nil }
-            let colStart = item.columnStart
-            let colEnd = colStart + item.columnSpan
-            if direction == .down || direction == .pageForward, rowIdx >= gridRows.count - 1 {
-                return findOverlappingItem(in: gridRows[0], columnStart: colStart, columnEnd: colEnd)
-            }
-            if direction == .up || direction == .pageBackward, rowIdx <= 0 {
-                let lastRow = gridRows[gridRows.count - 1]
-                return findOverlappingItem(in: lastRow, columnStart: colStart, columnEnd: colEnd)
-            }
-            return nil
-        default:
-            return nil
-        }
-    }
-
-    private func navigationTarget(direction: NavigationDirection) -> Int? {
-        switch direction {
-        case .right:
-            return selectedIndex + 1 < displayCount ? selectedIndex + 1 : nil
-        case .left:
-            return selectedIndex > 0 ? selectedIndex - 1 : nil
-        case .down:
-            return gridNavigateVertical(direction: 1)
-        case .up:
-            return gridNavigateVertical(direction: -1)
-        case .home:
-            guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return nil }
-            let first = gridRows[rowIdx].items.first!.candidateIndex
-            return selectedIndex != first ? first : nil
-        case .end:
-            guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return nil }
-            let last = gridRows[rowIdx].items.last!.candidateIndex
-            return selectedIndex != last ? last : nil
-        case .pageUp:
-            return gridNavigateVertical(direction: -1, rowCount: maxVisibleRows - 1)
-        case .pageDown:
-            return gridNavigateVertical(direction: 1, rowCount: maxVisibleRows - 1)
-        case .itemForward:
-            return selectedIndex + 1 < displayCount ? selectedIndex + 1 : nil
-        case .itemBackward:
-            return selectedIndex > 0 ? selectedIndex - 1 : nil
-        case .pageForward:
-            return gridNavigateVertical(direction: 1)
-        case .pageBackward:
-            return gridNavigateVertical(direction: -1)
         }
     }
 
@@ -903,14 +700,179 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         })
     }
 
-    // MARK: - Item View Lifecycle
+    // MARK: - Navigation
 
-    private func removeAllItemViews() {
-        for item in row0ItemViews { item.removeFromSuperview() }
-        for item in expandedItemViews { item.removeFromSuperview() }
-        row0ItemViews.removeAll()
-        expandedItemViews.removeAll()
+    override func handleNavigation(direction: NavigationDirection, wrapping: Bool) {
+        guard !candidates.isEmpty, !isAnimating else { return }
+
+        let shouldMoveOnExpand = direction == .right || direction == .itemForward
+            || ((direction == .itemBackward || direction == .left) && wrapping)
+            || direction == .pageForward
+            || (moveOnExpand && (direction == .down || direction == .pageDown))
+
+        if displayMode == .collapsed, direction == .down || direction == .pageDown || direction == .pageForward {
+            let collapsedCount = collapsedVisibleCount
+            if displayCount > collapsedCount {
+                if !expandedRowsBuilt {
+                    expandedGridRows = computeExpandedGrid()
+                }
+                if shouldMoveOnExpand {
+                    let jumpRows = direction == .pageDown ? maxVisibleRows - 1 : 1
+                    let targetRowIdx = min(jumpRows, expandedGridRows.count - 1)
+                    let targetRow = expandedGridRows[targetRowIdx]
+                    let savedGridRows = gridRows
+                    gridRows = expandedGridRows
+                    if let (rowIdx, item) = findGridPosition(of: selectedIndex) {
+                        if rowIdx == 0 {
+                            if let target = findOverlappingItem(in: targetRow, columnStart: item.columnStart, columnEnd: item.columnStart + item.columnSpan) {
+                                moveSelection(to: target)
+                            } else {
+                                moveSelection(to: targetRow.items.last!.candidateIndex)
+                            }
+                        } else {
+                            moveSelection(to: targetRow.items.last!.candidateIndex)
+                        }
+                    }
+                    gridRows = savedGridRows
+                }
+                expandWindow(animated: true)
+            }
+            return
+        }
+
+        let target = navigationTarget(direction: direction)
+            ?? (wrapping ? wrappingTarget(direction: direction) : nil)
+
+        guard let target else {
+            if displayMode == .expanded, Self.collapseDirections.contains(direction) {
+                collapseWindow(animated: true)
+            }
+            return
+        }
+
+        if displayMode == .collapsed {
+            let collapsedCount = collapsedVisibleCount
+            if target >= collapsedCount {
+                if shouldMoveOnExpand {
+                    moveSelection(to: target)
+                }
+                expandWindow(animated: true)
+                return
+            }
+        }
+
+        moveSelection(to: target)
     }
+
+    private var collapsedVisibleCount: Int {
+        gridRows.first?.items.count ?? 0
+    }
+
+    private static let collapseDirections: Set<NavigationDirection> = [.left, .up, .pageUp, .pageBackward, .itemBackward]
+
+    private func findGridPosition(of candidateIndex: Int) -> (rowIndex: Int, item: GridItem)? {
+        findGridPosition(of: candidateIndex, in: gridRows)
+    }
+
+    private func findGridPosition(of candidateIndex: Int, in rows: [GridRow]) -> (rowIndex: Int, item: GridItem)? {
+        for (rowIdx, row) in rows.enumerated() {
+            if let item = row.items.first(where: { $0.candidateIndex == candidateIndex }) {
+                return (rowIdx, item)
+            }
+        }
+        return nil
+    }
+
+    private func findOverlappingItem(
+        in row: GridRow, columnStart: Int, columnEnd: Int
+    ) -> Int? {
+        var bestIndex: Int?
+        for item in row.items {
+            let itemEnd = item.columnStart + item.columnSpan
+            if item.columnStart < columnEnd, itemEnd > columnStart {
+                if bestIndex == nil || item.candidateIndex < bestIndex! {
+                    bestIndex = item.candidateIndex
+                }
+            }
+        }
+        return bestIndex
+    }
+
+    private func gridNavigateVertical(direction: Int, rowCount: Int = 1) -> Int? {
+        guard let (rowIdx, item) = findGridPosition(of: selectedIndex) else { return nil }
+        let targetRowIdx = rowIdx + direction * rowCount
+        let clampedRowIdx = max(0, min(targetRowIdx, gridRows.count - 1))
+        guard clampedRowIdx != rowIdx else { return nil }
+
+        let targetRow = gridRows[clampedRowIdx]
+        return findOverlappingItem(
+            in: targetRow,
+            columnStart: item.columnStart,
+            columnEnd: item.columnStart + item.columnSpan
+        ) ?? targetRow.items.last?.candidateIndex
+    }
+
+    private func wrappingTarget(direction: NavigationDirection) -> Int? {
+        switch direction {
+        case .right where selectedIndex >= displayCount - 1:
+            return 0
+        case .itemForward where selectedIndex >= displayCount - 1:
+            return 0
+        case .left where selectedIndex <= 0:
+            return displayCount - 1
+        case .itemBackward where selectedIndex <= 0:
+            return displayCount - 1
+        case .down, .up, .pageForward, .pageBackward:
+            guard let (rowIdx, item) = findGridPosition(of: selectedIndex) else { return nil }
+            let colStart = item.columnStart
+            let colEnd = colStart + item.columnSpan
+            if direction == .down || direction == .pageForward, rowIdx >= gridRows.count - 1 {
+                return findOverlappingItem(in: gridRows[0], columnStart: colStart, columnEnd: colEnd)
+            }
+            if direction == .up || direction == .pageBackward, rowIdx <= 0 {
+                let lastRow = gridRows[gridRows.count - 1]
+                return findOverlappingItem(in: lastRow, columnStart: colStart, columnEnd: colEnd)
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    private func navigationTarget(direction: NavigationDirection) -> Int? {
+        switch direction {
+        case .right:
+            return selectedIndex + 1 < displayCount ? selectedIndex + 1 : nil
+        case .left:
+            return selectedIndex > 0 ? selectedIndex - 1 : nil
+        case .down:
+            return gridNavigateVertical(direction: 1)
+        case .up:
+            return gridNavigateVertical(direction: -1)
+        case .home:
+            guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return nil }
+            let first = gridRows[rowIdx].items.first!.candidateIndex
+            return selectedIndex != first ? first : nil
+        case .end:
+            guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return nil }
+            let last = gridRows[rowIdx].items.last!.candidateIndex
+            return selectedIndex != last ? last : nil
+        case .pageUp:
+            return gridNavigateVertical(direction: -1, rowCount: maxVisibleRows - 1)
+        case .pageDown:
+            return gridNavigateVertical(direction: 1, rowCount: maxVisibleRows - 1)
+        case .itemForward:
+            return selectedIndex + 1 < displayCount ? selectedIndex + 1 : nil
+        case .itemBackward:
+            return selectedIndex > 0 ? selectedIndex - 1 : nil
+        case .pageForward:
+            return gridNavigateVertical(direction: 1)
+        case .pageBackward:
+            return gridNavigateVertical(direction: -1)
+        }
+    }
+
+    // MARK: - Selection & Highlights
 
     override func restoreSelection(to index: Int) {
         let target = min(index, max(displayCount - 1, 0))
@@ -922,7 +884,18 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         }
     }
 
-    // MARK: - Selection & Highlights
+    override func moveSelection(to newIndex: Int) {
+        let oldRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
+        super.moveSelection(to: newIndex)
+        if displayMode == .expanded {
+            let newRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
+            if oldRowIdx != newRowIdx {
+                updateRowHighlightsAndIndices()
+                layoutHighlight()
+                ensureSelectionVisible()
+            }
+        }
+    }
 
     override func ensureSelectionVisible() {
         guard displayMode == .expanded,
@@ -966,6 +939,22 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         rowHighlightView.frame = NSRect(x: 0, y: y, width: frame.width, height: itemHeight)
     }
 
+    // MARK: - Commit
+
+    override func commitCandidateForDigit(_ digit: Int) {
+        guard isVisible else { return }
+        let itemOffset = digit - indexBase
+        guard itemOffset >= 0 else { return }
+
+        guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return }
+        let row = gridRows[rowIdx]
+        guard itemOffset < row.items.count else { return }
+
+        let candidateIndex = row.items[itemOffset].candidateIndex
+        guard candidateIndex < candidates.count else { return }
+        impl.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
+    }
+
     // MARK: - Scroller Style
 
     override func handleScrollerStyleChange() {
@@ -995,5 +984,14 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         let overflow = allRow0.subtracting(expandedRow0)
         let duplicates = Set(expandedItemViews.filter { overflow.contains($0.absoluteIndex) }.map(\.absoluteIndex))
         return (overflow, duplicates)
+    }
+
+    // MARK: - Item View Lifecycle
+
+    private func removeAllItemViews() {
+        for item in row0ItemViews { item.removeFromSuperview() }
+        for item in expandedItemViews { item.removeFromSuperview() }
+        row0ItemViews.removeAll()
+        expandedItemViews.removeAll()
     }
 }
