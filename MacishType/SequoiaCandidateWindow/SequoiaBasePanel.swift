@@ -271,6 +271,13 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
         impl.candidateDelegate?.candidateConfirmed(candidates[selectedIndex])
     }
 
+    func updateCandidates(_ candidates: [String]) {
+        impl.candidates = candidates
+        impl.selectedIndex = 0
+        buildCandidateLayout()
+        impl.notifySelectionChanged()
+    }
+
     // MARK: - Selection
 
     func moveSelection(to newIndex: Int) {
@@ -333,13 +340,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
 
     var allItemViews: [SequoiaCandidateItemView] { [] }
     func apply(_ configuration: CandidateWindowConfiguration) {}
-    func updateCandidates(_ candidates: [String]) {
-        impl.candidates = candidates
-        impl.selectedIndex = 0
-        buildCandidateLayout()
-        impl.notifySelectionChanged()
-    }
-    func buildCandidateLayout() {}
+    func buildCandidateLayout(repositionAfter: Bool = false) {}
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}
     func commitCandidateForDigit(_ digit: Int) {}
     func ensureSelectionVisible() {}

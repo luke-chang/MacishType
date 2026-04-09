@@ -117,15 +117,8 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         widerExpandedColumns = configuration.widerExpandedColumns
         moveOnExpand = configuration.moveOnExpand
         if isVisible, !candidates.isEmpty {
-            resetState()
-            rebuildLayout(animated: false, repositionAfter: true)
+            buildCandidateLayout(repositionAfter: true)
         }
-    }
-
-    override func buildCandidateLayout() {
-        resetState()
-        gridRows = []
-        rebuildLayout(animated: false)
     }
 
     override func handleNavigation(direction: NavigationDirection, wrapping: Bool) {
@@ -477,7 +470,8 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         return NSSize(width: windowWidth, height: windowHeight)
     }
 
-    private func rebuildLayout(animated: Bool, repositionAfter: Bool = false) {
+    override func buildCandidateLayout(repositionAfter: Bool = false) {
+        resetState()
         removeAllItemViews()
         separatorViews.forEach { $0.removeFromSuperview() }
         separatorViews.removeAll()

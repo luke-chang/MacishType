@@ -44,28 +44,20 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         minVisibleRows = configuration.verticalMinVisibleRows ?? configuration.pageSize
         animationDuration = configuration.animationDuration
         if isVisible, !candidates.isEmpty {
-            rebuildLayout()
+            buildCandidateLayout(repositionAfter: true)
         }
-    }
-
-    // MARK: - Candidates
-
-    override func buildCandidateLayout() {
-        isFullyRendered = false
-        anchorIndex = -1
-        rebuildLayout()
     }
 
     // MARK: - Layout
 
     private var rowHeight: CGFloat { itemHeight + Self.separatorHeight }
 
-    private func rebuildLayout() {
+    override func buildCandidateLayout(repositionAfter: Bool = false) {
+        isFullyRendered = false
+        anchorIndex = -1
         removeAllItemViews()
         separatorViews.forEach { $0.removeFromSuperview() }
         separatorViews.removeAll()
-        isFullyRendered = false
-        anchorIndex = -1
 
         guard !candidates.isEmpty else {
             setContentSize(.zero)
@@ -126,7 +118,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         updateMaskImage()
 
         let windowSize = NSSize(width: windowWidth, height: windowHeight)
-        let targetFrame = windowFrame(for: windowSize, reposition: !lastShowNearRect.isEmpty)
+        let targetFrame = windowFrame(for: windowSize, reposition: repositionAfter && !lastShowNearRect.isEmpty)
         setFrame(targetFrame, display: true)
 
         if hasOverflow, NSScroller.preferredScrollerStyle != .legacy {
@@ -379,7 +371,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
     override func handleScrollerStyleChange() {
         scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
         guard isVisible, !candidates.isEmpty else { return }
-        rebuildLayout()
+        buildCandidateLayout()
     }
 
     // MARK: - Item View Lifecycle
