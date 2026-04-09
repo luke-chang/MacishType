@@ -113,7 +113,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         widerExpandedColumns = configuration.widerExpandedColumns
         moveOnExpand = configuration.moveOnExpand
         if isVisible, !candidates.isEmpty {
-            buildCandidateLayout(repositionAfter: true)
+            buildCandidateLayout()
         }
     }
 
@@ -267,7 +267,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         return NSSize(width: windowWidth, height: windowHeight)
     }
 
-    override func buildCandidateLayout(repositionAfter: Bool = false) {
+    override func buildCandidateLayout() {
         resetState()
         removeAllItemViews()
         separatorViews.forEach { $0.removeFromSuperview() }
@@ -304,7 +304,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         setContentSize(contentSize)
         updateHorizontalMaskImage()
 
-        if repositionAfter, !lastShowNearRect.isEmpty {
+        if isVisible, !lastShowNearRect.isEmpty {
             show(near: lastShowNearRect)
         }
     }

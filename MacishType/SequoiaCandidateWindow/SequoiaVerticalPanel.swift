@@ -44,7 +44,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         minVisibleRows = configuration.verticalMinVisibleRows ?? configuration.pageSize
         animationDuration = configuration.animationDuration
         if isVisible, !candidates.isEmpty {
-            buildCandidateLayout(repositionAfter: true)
+            buildCandidateLayout()
         }
     }
 
@@ -52,7 +52,8 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
 
     private var rowHeight: CGFloat { itemHeight + Self.separatorHeight }
 
-    override func buildCandidateLayout(repositionAfter: Bool = false) {
+    // Always repositions to avoid animated position correction that covers the composing text.
+    override func buildCandidateLayout() {
         isFullyRendered = false
         anchorIndex = -1
         removeAllItemViews()
@@ -118,7 +119,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         updateMaskImage()
 
         let windowSize = NSSize(width: windowWidth, height: windowHeight)
-        let targetFrame = windowFrame(for: windowSize, reposition: repositionAfter && !lastShowNearRect.isEmpty)
+        let targetFrame = windowFrame(for: windowSize, reposition: isVisible && !lastShowNearRect.isEmpty)
         setFrame(targetFrame, display: true)
 
         if hasOverflow, NSScroller.preferredScrollerStyle != .legacy {
