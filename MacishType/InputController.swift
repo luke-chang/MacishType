@@ -13,6 +13,15 @@ class InputController: IMKInputController {
 
     private lazy var inputMethodMenu: NSMenu = {
         let menu = NSMenu()
+        let settingsItem = NSMenuItem(
+            title: String(localized: "Settings…"),
+            action: #selector(showPreferences(_:)),
+            keyEquivalent: ""
+        )
+        settingsItem.target = self
+        settingsItem.keyEquivalentModifierMask = [.command]
+        settingsItem.keyEquivalent = ","
+        menu.addItem(settingsItem)
         let aboutItem = NSMenuItem(
             title: String(localized: "About MacishType"),
             action: #selector(showAboutWindow(_:)),
@@ -24,6 +33,10 @@ class InputController: IMKInputController {
     }()
 
     override func menu() -> NSMenu! { inputMethodMenu }
+
+    @MainActor override func showPreferences(_ sender: Any!) {
+        WindowManager.shared.openSettings()
+    }
 
     @MainActor @objc private func showAboutWindow(_ sender: Any?) {
         WindowManager.shared.openAbout()

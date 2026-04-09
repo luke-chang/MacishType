@@ -8,6 +8,7 @@ class WindowManager {
 
     enum Identifier: String {
         case about
+        case settings
     }
 
     private var windows: [Identifier: NSWindow] = [:]
@@ -19,6 +20,7 @@ class WindowManager {
         _ id: Identifier,
         title: String,
         asPanel: Bool = false,
+        transparentTitlebar: Bool = false,
         content: @escaping () -> Content
     ) {
         // Activate before showing the window. For LSUIElement input methods,
@@ -39,10 +41,14 @@ class WindowManager {
             ? NSPanel(contentViewController: controller)
             : NSWindow(contentViewController: controller)
         window.title = title
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
-        window.isMovableByWindowBackground = true
+        if transparentTitlebar {
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.styleMask = [.titled, .closable, .fullSizeContentView]
+            window.isMovableByWindowBackground = true
+        } else {
+            window.styleMask = [.titled, .closable]
+        }
         window.isReleasedWhenClosed = false
         if let panel = window as? NSPanel {
             panel.hidesOnDeactivate = false
@@ -90,8 +96,14 @@ class WindowManager {
 
 extension WindowManager {
     func openAbout() {
-        showWindow(.about, title: "MacishType", asPanel: true) {
+        showWindow(.about, title: "MacishType", asPanel: true, transparentTitlebar: true) {
             AboutView()
+        }
+    }
+
+    func openSettings() {
+        showWindow(.settings, title: String(localized: "MacishType Settings")) {
+            SettingsView()
         }
     }
 }
