@@ -2,7 +2,7 @@ import Cocoa
 
 class SequoiaCandidateWindow: CandidateWindowImpl {
 
-    private let horizontalPanel = SequoiaHorizontalPanel(
+    private lazy var horizontalPanel = SequoiaHorizontalPanel(
         contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
         styleMask: [.borderless],
         backing: .buffered,
@@ -18,19 +18,13 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
 
     private var activePanel: SequoiaBasePanel { panel(for: direction) }
 
-    override init() {
-        super.init()
-        horizontalPanel.impl = self
-    }
-
     private func panel(for direction: CandidateWindow.LayoutDirection) -> SequoiaBasePanel {
-        switch direction {
-        case .horizontal:
-            return horizontalPanel
-        case .vertical:
-            verticalPanel.impl = self
-            return verticalPanel
+        let panel: SequoiaBasePanel = switch direction {
+        case .horizontal: horizontalPanel
+        case .vertical: verticalPanel
         }
+        panel.impl = self
+        return panel
     }
 
     // MARK: - Direction Switching
@@ -41,15 +35,13 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
         guard oldPanel !== newPanel else { return }
 
         let wasVisible = oldPanel.isVisible
-        let savedCandidates = oldPanel.candidates
-        let savedSelectedIndex = oldPanel.selectedIndex
         oldPanel.hide()
 
-        newPanel.apply(oldPanel.lastAppliedConfiguration)
+        newPanel.apply(lastAppliedConfiguration)
         newPanel.updateHighlightColor()
-        if !savedCandidates.isEmpty {
-            newPanel.updateCandidates(savedCandidates)
-            newPanel.restoreSelection(to: savedSelectedIndex)
+        if !candidates.isEmpty {
+            newPanel.buildCandidateLayout()
+            newPanel.restoreSelection(to: selectedIndex)
         }
 
         if wasVisible {
@@ -66,6 +58,7 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
     override var isVisible: Bool { activePanel.isVisible }
 
     override func apply(_ configuration: CandidateWindowConfiguration) {
+        super.apply(configuration)
         activePanel.apply(configuration)
     }
 

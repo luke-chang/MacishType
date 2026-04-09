@@ -38,7 +38,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
     // MARK: - Configuration
 
     override func apply(_ configuration: CandidateWindowConfiguration) {
-        lastAppliedConfiguration = configuration
+        super.apply(configuration)
         indexBase = configuration.indexBase
         pageSize = configuration.pageSize
         minVisibleRows = configuration.verticalMinVisibleRows ?? configuration.pageSize
@@ -50,13 +50,10 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
 
     // MARK: - Candidates
 
-    override func updateCandidates(_ newCandidates: [String]) {
-        candidates = newCandidates
-        resetSelectedIndex()
+    override func buildCandidateLayout() {
         isFullyRendered = false
         anchorIndex = -1
         rebuildLayout()
-        notifySelectionChanged()
     }
 
     // MARK: - Layout
@@ -125,7 +122,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         scrollView.reflectScrolledClipView(scrollView.contentView)
 
         updateNumbering()
-        updateSelection()
+        updateItemHighlights()
         updateMaskImage()
 
         let windowSize = NSSize(width: windowWidth, height: windowHeight)
@@ -202,7 +199,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         }
 
         updateNumbering()
-        updateSelection()
+        updateItemHighlights()
     }
 
     // MARK: - Scroll Handling
@@ -374,7 +371,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         guard offset >= 0, offset < pageSize else { return }
         let candidateIndex = anchorIndex + offset
         guard candidateIndex < displayCount else { return }
-        impl?.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
+        impl.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
     }
 
     // MARK: - Scroller Style

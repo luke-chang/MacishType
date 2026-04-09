@@ -109,7 +109,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
     // MARK: - Public API Overrides
 
     override func apply(_ configuration: CandidateWindowConfiguration) {
-        lastAppliedConfiguration = configuration
+        super.apply(configuration)
         indexBase = configuration.indexBase
         pageSize = configuration.pageSize
         animationDuration = configuration.animationDuration
@@ -122,13 +122,10 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         }
     }
 
-    override func updateCandidates(_ candidates: [String]) {
-        self.candidates = candidates
-        resetSelectedIndex()
+    override func buildCandidateLayout() {
         resetState()
-        self.gridRows = []
+        gridRows = []
         rebuildLayout(animated: false)
-        notifySelectionChanged()
     }
 
     override func handleNavigation(direction: NavigationDirection, wrapping: Bool) {
@@ -204,7 +201,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
         let candidateIndex = row.items[itemOffset].candidateIndex
         guard candidateIndex < candidates.count else { return }
-        impl?.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
+        impl.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
     }
 
     override func moveSelection(to newIndex: Int) {
@@ -510,7 +507,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             row0ItemViews.append(item)
         }
 
-        updateSelection()
+        updateItemHighlights()
 
         let contentSize = layoutItems()
         setContentSize(contentSize)
@@ -621,7 +618,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
                 }
             }
             expandedRowsBuilt = true
-            updateSelection()
+            updateItemHighlights()
         }
 
         // Compute final layout (sets frames and isHidden states)
@@ -789,7 +786,7 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         if selectedIndex > maxValid {
             moveSelection(to: maxValid)
         } else {
-            updateSelection()
+            updateItemHighlights()
         }
 
         // Compute final layout

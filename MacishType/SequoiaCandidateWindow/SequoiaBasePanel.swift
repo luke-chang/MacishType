@@ -20,18 +20,17 @@ class FlippedView: NSView {
 
 class SequoiaBasePanel: NSPanel, CandidateItemClickable {
 
-    weak var impl: CandidateWindowImpl?
+    var impl: CandidateWindowImpl!
 
     static let separatorHeight: CGFloat = 1
     static let defaultCornerRadius: CGFloat = 6
     static let uniformMask = NSImage.uniformCornerMask(radius: defaultCornerRadius)
 
-    var lastAppliedConfiguration = CandidateWindowConfiguration()
     private(set) var highlightColor: NSColor = .selectedContentBackgroundColor
     private(set) var didDrag = false
     var animationDuration: TimeInterval = 0.183
-    var candidates: [String] = []
-    private(set) var selectedIndex: Int = 0
+    var candidates: [String] { impl.candidates }
+    var selectedIndex: Int { impl.selectedIndex }
     var indexBase = 1
     var pageSize = 9
     let maxDisplayCandidates = 200
@@ -55,7 +54,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     // MARK: - Computed
 
     var displayCount: Int { min(candidates.count, maxDisplayCandidates) }
-    var lastShowNearRect: NSRect { impl?.lastShowNearRect ?? .zero }
+    var lastShowNearRect: NSRect { impl.lastShowNearRect }
 
     // MARK: - Init
 
@@ -126,21 +125,17 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
 
     func updateHighlightColor() {
         if ThemeManager.shared.isMulticolor,
-           let bundleID = impl?.bundleIdentifier,
+           let bundleID = impl.bundleIdentifier,
            let color = ThemeManager.shared.bundleAccentColor(bundleIdentifier: bundleID) {
             highlightColor = color
         } else {
             highlightColor = .selectedContentBackgroundColor
         }
-        highlightColorDidChange()
+        for item in allItemViews { item.highlightColor = highlightColor }
     }
 
     func bundleIdentifierDidChange() {
         updateHighlightColor()
-    }
-
-    func highlightColorDidChange() {
-        for item in allItemViews { item.highlightColor = highlightColor }
     }
 
     // MARK: - Positioning
@@ -265,7 +260,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     func itemClicked(at index: Int, doubleClick: Bool) {
         guard !isAnimating else { return }
         if doubleClick {
-            impl?.candidateDelegate?.candidateConfirmed(candidates[index])
+            impl.candidateDelegate?.candidateConfirmed(candidates[index])
         } else {
             moveSelection(to: index)
         }
@@ -273,27 +268,18 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
 
     func commitSelectedCandidate() {
         guard isVisible, selectedIndex >= 0, selectedIndex < displayCount else { return }
-        impl?.candidateDelegate?.candidateConfirmed(candidates[selectedIndex])
+        impl.candidateDelegate?.candidateConfirmed(candidates[selectedIndex])
     }
 
     // MARK: - Selection
 
     func moveSelection(to newIndex: Int) {
-        selectedIndex = newIndex
-        updateSelection()
-        notifySelectionChanged()
+        impl.selectedIndex = newIndex
+        updateItemHighlights()
+        impl.notifySelectionChanged()
     }
 
-    func resetSelectedIndex() {
-        selectedIndex = 0
-    }
-
-    func notifySelectionChanged() {
-        guard !candidates.isEmpty else { return }
-        impl?.candidateDelegate?.candidateSelectionChanged(candidates[selectedIndex])
-    }
-
-    func updateSelection() {
+    func updateItemHighlights() {
         for item in allItemViews {
             item.isHighlighted = item.absoluteIndex == selectedIndex
         }
@@ -347,7 +333,13 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
 
     var allItemViews: [SequoiaCandidateItemView] { [] }
     func apply(_ configuration: CandidateWindowConfiguration) {}
-    func updateCandidates(_ candidates: [String]) {}
+    func updateCandidates(_ candidates: [String]) {
+        impl.candidates = candidates
+        impl.selectedIndex = 0
+        buildCandidateLayout()
+        impl.notifySelectionChanged()
+    }
+    func buildCandidateLayout() {}
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}
     func commitCandidateForDigit(_ digit: Int) {}
     func ensureSelectionVisible() {}

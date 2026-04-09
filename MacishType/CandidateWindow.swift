@@ -113,21 +113,38 @@ class CandidateWindowImpl {
 
     weak var owner: CandidateWindow?
 
-    // Read shared state from owner
+    // MARK: - Shared State (from owner)
+
     var candidateDelegate: CandidateWindowDelegate? { owner?.candidateDelegate }
     var bundleIdentifier: String? { owner?.bundleIdentifier }
     var direction: CandidateWindow.LayoutDirection { owner?.direction ?? .horizontal }
     var lastShowNearRect: NSRect { owner?.lastShowNearRect ?? .zero }
 
+    // MARK: - Candidate State
+
+    var candidates: [String] = []
+    var selectedIndex: Int = 0
+    var lastAppliedConfiguration = CandidateWindowConfiguration()
+
+    func notifySelectionChanged() {
+        guard !candidates.isEmpty else { return }
+        candidateDelegate?.candidateSelectionChanged(candidates[selectedIndex])
+    }
+
     // MARK: - Subclass Override Points
+
+    var isVisible: Bool { false }
 
     func directionDidChange(from oldDirection: CandidateWindow.LayoutDirection) {}
     func bundleIdentifierDidChange() {}
-    var isVisible: Bool { false }
-    func apply(_ configuration: CandidateWindowConfiguration) {}
+
+    func apply(_ configuration: CandidateWindowConfiguration) {
+        lastAppliedConfiguration = configuration
+    }
     func updateCandidates(_ candidates: [String]) {}
     func show(near rect: NSRect) {}
     func hide() {}
+
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}
     func commitSelectedCandidate() {}
     func commitCandidateForDigit(_ digit: Int) {}
@@ -142,8 +159,13 @@ class CandidateWindowImpl {
     }
 
     func snapshot() -> Snapshot {
-        Snapshot(candidates: [], selectedIndex: 0, configuration: .init(), wasVisible: false)
+        Snapshot(candidates: candidates, selectedIndex: selectedIndex,
+                 configuration: lastAppliedConfiguration, wasVisible: isVisible)
     }
 
-    func restore(_ snapshot: Snapshot) {}
+    func restore(_ snapshot: Snapshot) {
+        apply(snapshot.configuration)
+        candidates = snapshot.candidates
+        selectedIndex = snapshot.selectedIndex
+    }
 }
