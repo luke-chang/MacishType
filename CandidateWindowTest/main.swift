@@ -36,7 +36,11 @@ class KeyWindow: NSWindow {
 
 class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NSTextStorageDelegate {
     let candidateWindow = CandidateWindow.shared
-    var currentConfig = CandidateWindowConfiguration()
+    var currentConfig: CandidateWindowConfiguration = {
+        var config = CandidateWindowConfiguration()
+        config.layoutDirection = .horizontal
+        return config
+    }()
     var keyWindow: KeyWindow!
     var textView: NSTextView!
 
@@ -263,7 +267,8 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
     }
 
     @objc func verticalToggled(_ sender: NSButton) {
-        candidateWindow.direction = sender.state == .on ? .vertical : .horizontal
+        currentConfig.layoutDirection = sender.state == .on ? .vertical : .horizontal
+        candidateWindow.apply(currentConfig)
     }
 
     func candidateConfirmed(_ candidate: String) {

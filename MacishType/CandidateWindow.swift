@@ -1,5 +1,11 @@
 import Cocoa
 
+private extension UserDefaults {
+    @objc dynamic var candidateWindowDirection: String? {
+        string(forKey: CandidateWindow.directionKey)
+    }
+}
+
 // MARK: - Shared Types
 
 enum NavigationDirection: Hashable {
@@ -16,7 +22,7 @@ struct CandidateWindowConfiguration {
     var animationDuration: TimeInterval = 0.183
     var horizontalMaxVisibleRows = 5
     var verticalMinVisibleRows: Int? = nil
-    var layoutDirection: CandidateWindow.LayoutDirection = .horizontal
+    var layoutDirection: CandidateWindow.LayoutDirection? = nil
 }
 
 protocol CandidateWindowDelegate: AnyObject {
@@ -46,6 +52,24 @@ class CandidateWindow {
 
     private var activeImpl: CandidateWindowImpl { sequoia }
 
+    // MARK: - UserDefaults
+
+    fileprivate static let directionKey = "CandidateWindowDirection"
+
+    private var engineLayoutDirection: LayoutDirection?
+
+    private var userDefaultsDirection: LayoutDirection {
+        guard let value = UserDefaults.standard.string(forKey: Self.directionKey) else { return .horizontal }
+        return switch value {
+        case "vertical": .vertical
+        default: .horizontal
+        }
+    }
+
+    private var resolvedDirection: LayoutDirection {
+        engineLayoutDirection ?? userDefaultsDirection
+    }
+
     // MARK: - Authoritative State
 
     private(set) var lastShowNearRect: NSRect = .zero
@@ -71,7 +95,8 @@ class CandidateWindow {
     var isVisible: Bool { activeImpl.isVisible }
 
     func apply(_ configuration: CandidateWindowConfiguration) {
-        direction = configuration.layoutDirection
+        engineLayoutDirection = configuration.layoutDirection
+        direction = resolvedDirection
         activeImpl.apply(configuration)
     }
 
@@ -102,8 +127,16 @@ class CandidateWindow {
 
     // MARK: - Init
 
+    private var defaultsObservation: NSKeyValueObservation?
+
     private init() {
         sequoia.owner = self
+        defaultsObservation = UserDefaults.standard.observe(
+            \.candidateWindowDirection, options: [.new]
+        ) { [weak self] _, _ in
+            guard let self, self.engineLayoutDirection == nil else { return }
+            self.direction = self.userDefaultsDirection
+        }
     }
 }
 
