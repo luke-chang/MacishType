@@ -6,12 +6,14 @@ struct AboutView: View {
     private let version: String
     private let gitHash: String
     private let buildNumber: String
+    private let copyright: String
 
     init() {
         let info = Bundle.main.infoDictionary
         version = info?["CFBundleShortVersionString"] as? String ?? "?"
         gitHash = info?["GitCommitHash"] as? String ?? "?"
         buildNumber = info?["CFBundleVersion"] as? String ?? "?"
+        copyright = info?["NSHumanReadableCopyright"] as? String ?? ""
     }
 
     var body: some View {
@@ -20,7 +22,7 @@ struct AboutView: View {
                 .resizable()
                 .frame(width: 96, height: 96)
 
-            Text("MacishType")
+            Text(verbatim: "MacishType")
                 .font(.title)
                 .bold()
 
@@ -29,17 +31,17 @@ struct AboutView: View {
                     Text("Version")
                         .foregroundStyle(.secondary)
                         .gridColumnAlignment(.trailing)
-                    Text("\(version) (\(showBuildNumber ? buildNumber : gitHash))")
+                    Text(verbatim: "\(version) (\(showBuildNumber ? buildNumber : gitHash))")
                         .onTapGesture { showBuildNumber.toggle() }
                 }
                 GridRow {
                     Text("Author")
                         .foregroundStyle(.secondary)
-                    Text("Luke Chang")
+                    Text(verbatim: "Luke Chang")
                 }
             }
 
-            Text("Copyright © 2026 Luke Chang")
+            Text(copyright)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

@@ -6,7 +6,7 @@
       "localizations" : {
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "MacishType"
           }
         },
@@ -19,11 +19,11 @@
       }
     },
     "net.lukechang.inputmethod.MacishType.Example" : {
-      "extractionState" : "extractedWithValue",
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "Example"
           }
         },
@@ -31,6 +31,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "範例"
+          }
+        }
+      }
+    },
+    "NSHumanReadableCopyright" : {
+      "comment" : "Copyright (human-readable)",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copyright © 2026 Luke Chang"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copyright © 2026 Luke Chang"
           }
         }
       }
