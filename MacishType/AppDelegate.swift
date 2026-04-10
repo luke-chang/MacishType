@@ -42,5 +42,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Initialize shared resources
         _ = ThemeManager.shared
         InputEngine.observeEnabledEngines()
+
+        setupMainMenu()
+    }
+
+    private func setupMainMenu() {
+        let mainMenu = NSMenu()
+
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Quit MacishType", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let appMenuItem = NSMenuItem()
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let fileMenuItem = NSMenuItem()
+        fileMenuItem.submenu = fileMenu
+        mainMenu.addItem(fileMenuItem)
+
+        NSApp.mainMenu = mainMenu
     }
 }
