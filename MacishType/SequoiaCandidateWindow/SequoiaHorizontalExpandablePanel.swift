@@ -180,16 +180,16 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
 
         // Layout rows 1+ items
         if displayMode == .expanded {
-            for item in expandedItemViews {
-                item.isHidden = false
-                guard let (rowIdx, gridItem) = findGridPosition(of: item.absoluteIndex, in: expandedGridRows) else {
-                    item.isHidden = true
-                    continue
+            let viewByIndex = Dictionary(uniqueKeysWithValues: expandedItemViews.map { ($0.absoluteIndex, $0) })
+            for rowIdx in 1..<expandedGridRows.count {
+                for gridItem in expandedGridRows[rowIdx].items {
+                    guard let item = viewByIndex[gridItem.candidateIndex] else { continue }
+                    item.isHidden = false
+                    let x = CGFloat(gridItem.columnStart) * expandedColumnWidth
+                    let y = yForRow(rowIdx)
+                    let w = CGFloat(gridItem.columnSpan) * expandedColumnWidth
+                    item.frame = NSRect(x: x, y: y, width: w, height: itemHeight)
                 }
-                let x = CGFloat(gridItem.columnStart) * expandedColumnWidth
-                let y = yForRow(rowIdx)
-                let w = CGFloat(gridItem.columnSpan) * expandedColumnWidth
-                item.frame = NSRect(x: x, y: y, width: w, height: itemHeight)
             }
         } else {
             for item in expandedItemViews {
