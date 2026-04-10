@@ -117,10 +117,13 @@ candidate-window-test:
 		MacishType/CandidateWindow.swift \
 		MacishType/SequoiaCandidateWindow/SequoiaCandidateWindow.swift \
 		MacishType/SequoiaCandidateWindow/SequoiaBasePanel.swift \
-		MacishType/SequoiaCandidateWindow/SequoiaHorizontalPanel.swift \
+		MacishType/SequoiaCandidateWindow/SequoiaHorizontalBasePanel.swift \
+		MacishType/SequoiaCandidateWindow/SequoiaHorizontalExpandablePanel.swift \
+		MacishType/SequoiaCandidateWindow/SequoiaHorizontalSimplePanel.swift \
 		MacishType/SequoiaCandidateWindow/SequoiaVerticalPanel.swift \
 		MacishType/SequoiaCandidateWindow/SequoiaCandidateItemView.swift \
 		MacishType/SequoiaCandidateWindow/SequoiaChevronView.swift \
+		MacishType/SequoiaCandidateWindow/SequoiaPageArrowView.swift \
 		MacishType/SequoiaCandidateWindow/SequoiaHighlightView.swift \
 		MacishType/SequoiaCandidateWindow/SequoiaSeparatorView.swift \
 		MacishType/ThemeManager.swift \

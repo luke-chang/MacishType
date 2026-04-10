@@ -342,7 +342,11 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     func updateFontSize(_ fontSize: CGFloat) {
         SequoiaCandidateItemView.updateFontSize(fontSize)
     }
-    func apply(_ configuration: CandidateWindowConfiguration) {}
+    func apply(_ configuration: CandidateWindowConfiguration) {
+        indexBase = configuration.indexBase
+        pageSize = configuration.pageSize
+        animationDuration = configuration.animationDuration
+    }
     func buildCandidateLayout() {}
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}
     func commitCandidateForDigit(_ digit: Int) {}

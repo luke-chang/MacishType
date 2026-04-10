@@ -1,49 +1,6 @@
 import Cocoa
 
-private extension NSImage {
-    static func asymmetricCornerMask(height: CGFloat, leftRadius: CGFloat, rightRadius: CGFloat) -> NSImage {
-        let rr = min(rightRadius, height / 2)
-        let width = leftRadius + rr + 1
-        // +1 ensures at least 1pt of stretchable center between top/bottom cap insets,
-        // preventing rendering artifacts when the mask is stretched to a taller view.
-        let imageHeight = rr * 2 + 1
-        let image = asymmetricCornerMask(
-            size: NSSize(width: width, height: imageHeight),
-            leftRadius: leftRadius, rightRadius: rightRadius
-        )
-        image.capInsets = NSEdgeInsets(top: rr, left: leftRadius, bottom: rr, right: rr)
-        image.resizingMode = .stretch
-        return image
-    }
-
-    static func asymmetricCornerMask(size: NSSize, leftRadius: CGFloat, rightRadius: CGFloat) -> NSImage {
-        NSImage(size: size, flipped: false) { rect in
-            let path = NSBezierPath()
-            let lr = min(leftRadius, rect.height / 2)
-            let rr = min(rightRadius, rect.height / 2)
-            path.move(to: NSPoint(x: lr, y: rect.maxY))
-            path.line(to: NSPoint(x: rect.maxX - rr, y: rect.maxY))
-            path.appendArc(withCenter: NSPoint(x: rect.maxX - rr, y: rect.maxY - rr),
-                           radius: rr, startAngle: 90, endAngle: 0, clockwise: true)
-            path.line(to: NSPoint(x: rect.maxX, y: rr))
-            path.appendArc(withCenter: NSPoint(x: rect.maxX - rr, y: rr),
-                           radius: rr, startAngle: 0, endAngle: -90, clockwise: true)
-            path.line(to: NSPoint(x: lr, y: 0))
-            path.appendArc(withCenter: NSPoint(x: lr, y: lr),
-                           radius: lr, startAngle: -90, endAngle: -180, clockwise: true)
-            path.line(to: NSPoint(x: 0, y: rect.maxY - lr))
-            path.appendArc(withCenter: NSPoint(x: lr, y: rect.maxY - lr),
-                           radius: lr, startAngle: 180, endAngle: 90, clockwise: true)
-            path.close()
-            path.fill()
-            return true
-        }
-    }
-}
-
-// MARK: -
-
-class SequoiaHorizontalPanel: SequoiaBasePanel {
+class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
 
     private struct GridItem {
         let candidateIndex: Int
@@ -80,12 +37,10 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
     override var allItemViews: [SequoiaCandidateItemView] { row0ItemViews + expandedItemViews }
 
-    private var cornerDisplayLink: (any NSObjectProtocol)?
+    private var cornerAnimationTimer: Timer?
     private var cornerAnimationStart: CFTimeInterval = 0
     private var cornerRadiusFrom: CGFloat = 0
     private var cornerRadiusTo: CGFloat = 0
-    private var pillMask: NSImage?
-    private var pillMaskHeight: CGFloat = 0
 
     // MARK: - Init
 
@@ -111,9 +66,6 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
     override func apply(_ configuration: CandidateWindowConfiguration) {
         super.apply(configuration)
-        indexBase = configuration.indexBase
-        pageSize = configuration.pageSize
-        animationDuration = configuration.animationDuration
         maxVisibleRows = configuration.horizontalMaxVisibleRows
         widerExpandedColumns = configuration.widerExpandedColumns
         moveOnExpand = configuration.moveOnExpand
@@ -155,10 +107,8 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
         for i in 0..<displayCount {
             if packedItems.count >= pageSize { break }
-            let w = min(
-                SequoiaCandidateItemView.measureWidth(index: packedItems.count + indexBase, candidate: candidates[i]),
-                maxWidth
-            )
+            let raw = SequoiaCandidateItemView.measureWidth(index: packedItems.count + indexBase, candidate: candidates[i])
+            let w = max(baseColumnWidth, min(raw, maxWidth))
             if usedWidth + w > maxWidth, !packedItems.isEmpty { break }
             usedWidth += w
             packedItems.append((i, w))
@@ -316,16 +266,6 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
 
     // MARK: - Corner Radius Animation
 
-    private func pillCornerMask(height: CGFloat) -> NSImage {
-        if height == pillMaskHeight, let pillMask { return pillMask }
-        let lr = Self.defaultCornerRadius
-        let rr = height / 2
-        let mask = NSImage.asymmetricCornerMask(height: height, leftRadius: lr, rightRadius: rr)
-        pillMask = mask
-        pillMaskHeight = height
-        return mask
-    }
-
     private func updateHorizontalMaskImage() {
         let size = frame.size
         guard size.width > 0, size.height > 0 else { return }
@@ -350,12 +290,12 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             self?.cornerAnimationTick()
         }
         RunLoop.main.add(timer, forMode: .common)
-        cornerDisplayLink = timer
+        cornerAnimationTimer = timer
     }
 
     private func stopCornerAnimation() {
-        (cornerDisplayLink as? Timer)?.invalidate()
-        cornerDisplayLink = nil
+        cornerAnimationTimer?.invalidate()
+        cornerAnimationTimer = nil
     }
 
     private func cornerAnimationTick() {
@@ -789,18 +729,20 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
     }
 
     private func findOverlappingItem(
-        in row: GridRow, columnStart: Int, columnEnd: Int
+        in row: GridRow, columnStart: Int, columnEnd: Int, forward: Bool = true
     ) -> Int? {
-        var bestIndex: Int?
-        for item in row.items {
+        for (i, item) in row.items.enumerated() {
             let itemEnd = item.columnStart + item.columnSpan
-            if item.columnStart < columnEnd, itemEnd > columnStart {
-                if bestIndex == nil || item.candidateIndex < bestIndex! {
-                    bestIndex = item.candidateIndex
+            guard item.columnStart < columnEnd, itemEnd > columnStart else { continue }
+            if !forward, item.columnStart < columnStart, i + 1 < row.items.count {
+                let next = row.items[i + 1]
+                if next.columnStart < columnEnd {
+                    return next.candidateIndex
                 }
             }
+            return item.candidateIndex
         }
-        return bestIndex
+        return nil
     }
 
     private func gridNavigateVertical(direction: Int, rowCount: Int = 1) -> Int? {
@@ -813,7 +755,8 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
         return findOverlappingItem(
             in: targetRow,
             columnStart: item.columnStart,
-            columnEnd: item.columnStart + item.columnSpan
+            columnEnd: item.columnStart + item.columnSpan,
+            forward: direction > 0
         ) ?? targetRow.items.last?.candidateIndex
     }
 
@@ -832,11 +775,11 @@ class SequoiaHorizontalPanel: SequoiaBasePanel {
             let colStart = item.columnStart
             let colEnd = colStart + item.columnSpan
             if direction == .down || direction == .pageForward, rowIdx >= gridRows.count - 1 {
-                return findOverlappingItem(in: gridRows[0], columnStart: colStart, columnEnd: colEnd)
+                return findOverlappingItem(in: gridRows[0], columnStart: colStart, columnEnd: colEnd, forward: true)
             }
             if direction == .up || direction == .pageBackward, rowIdx <= 0 {
                 let lastRow = gridRows[gridRows.count - 1]
-                return findOverlappingItem(in: lastRow, columnStart: colStart, columnEnd: colEnd)
+                return findOverlappingItem(in: lastRow, columnStart: colStart, columnEnd: colEnd, forward: false)
             }
             return nil
         default:

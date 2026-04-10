@@ -39,10 +39,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
 
     override func apply(_ configuration: CandidateWindowConfiguration) {
         super.apply(configuration)
-        indexBase = configuration.indexBase
-        pageSize = configuration.pageSize
         minVisibleRows = configuration.verticalMinVisibleRows ?? configuration.pageSize
-        animationDuration = configuration.animationDuration
         if isVisible, !candidates.isEmpty {
             buildCandidateLayout()
         }

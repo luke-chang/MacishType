@@ -25,6 +25,7 @@ struct CandidateWindowConfiguration {
     var animationDuration: TimeInterval = 0.183
     var horizontalMaxVisibleRows = 5
     var verticalMinVisibleRows: Int? = nil
+    var expandable = true
     var layoutDirection: CandidateWindow.LayoutDirection? = nil
     var fontSize: CGFloat? = nil
 }

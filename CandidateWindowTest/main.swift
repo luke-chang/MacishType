@@ -43,6 +43,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
     }()
     var keyWindow: KeyWindow!
     var textView: NSTextView!
+    var expandableCheckbox: NSButton!
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
@@ -131,6 +132,11 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         verticalCheckbox.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(verticalCheckbox)
 
+        expandableCheckbox = NSButton(checkboxWithTitle: "Expandable", target: self, action: #selector(expandableToggled(_:)))
+        expandableCheckbox.state = currentConfig.expandable ? .on : .off
+        expandableCheckbox.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(expandableCheckbox)
+
         let fontSizeLabel = NSTextField(labelWithString: "Font size:")
         fontSizeLabel.font = .systemFont(ofSize: 13)
         fontSizeLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -181,15 +187,18 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
             moveOnExpandCheckbox.topAnchor.constraint(equalTo: widerColumnsCheckbox.bottomAnchor, constant: 4),
             moveOnExpandCheckbox.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
 
-            verticalCheckbox.topAnchor.constraint(equalTo: moveOnExpandCheckbox.bottomAnchor, constant: 4),
-            verticalCheckbox.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
-
             fontSizeLabel.topAnchor.constraint(equalTo: slowMotionCheckbox.topAnchor),
             fontSizeLabel.leadingAnchor.constraint(equalTo: contentView.centerXAnchor),
             fontSizePopup.centerYAnchor.constraint(equalTo: fontSizeLabel.centerYAnchor),
             fontSizePopup.leadingAnchor.constraint(equalTo: fontSizeLabel.trailingAnchor, constant: 4),
 
-            scrollView.topAnchor.constraint(equalTo: verticalCheckbox.bottomAnchor, constant: 8),
+            verticalCheckbox.topAnchor.constraint(equalTo: widerColumnsCheckbox.topAnchor),
+            verticalCheckbox.leadingAnchor.constraint(equalTo: contentView.centerXAnchor),
+
+            expandableCheckbox.topAnchor.constraint(equalTo: moveOnExpandCheckbox.topAnchor),
+            expandableCheckbox.leadingAnchor.constraint(equalTo: contentView.centerXAnchor),
+
+            scrollView.topAnchor.constraint(equalTo: moveOnExpandCheckbox.bottomAnchor, constant: 8),
             scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
             scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -padding),
             scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -padding),
@@ -256,7 +265,10 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
     func applyCandidates() {
         let text = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         let candidates = text.split(separator: " ").map(String.init).filter { !$0.isEmpty }
-        guard !candidates.isEmpty else { return }
+        guard !candidates.isEmpty else {
+            candidateWindow.hide()
+            return
+        }
         candidateWindow.updateCandidates(candidates)
         let rect = keyWindow.frame
         candidateWindow.show(near: NSRect(x: rect.minX, y: rect.minY - 10, width: 0, height: 20))
@@ -288,6 +300,12 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
 
     @objc func verticalToggled(_ sender: NSButton) {
         currentConfig.layoutDirection = sender.state == .on ? .vertical : .horizontal
+        expandableCheckbox.isEnabled = sender.state != .on
+        candidateWindow.apply(currentConfig)
+    }
+
+    @objc func expandableToggled(_ sender: NSButton) {
+        currentConfig.expandable = sender.state == .on
         candidateWindow.apply(currentConfig)
     }
 
