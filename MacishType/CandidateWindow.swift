@@ -57,13 +57,12 @@ class CandidateWindow {
 
     private var activeImpl: CandidateWindowImpl { sequoia }
 
-    // MARK: - UserDefaults
+    // MARK: - Configuration
 
     fileprivate static let directionKey = "CandidateWindowDirection"
     fileprivate static let fontSizeKey = "FontSize"
 
-    private var engineLayoutDirection: LayoutDirection?
-    private var engineFontSize: CGFloat?
+    private var engineConfiguration = CandidateWindowConfiguration()
 
     private var userDefaultsDirection: LayoutDirection {
         guard let value = UserDefaults.standard.string(forKey: Self.directionKey) else { return .horizontal }
@@ -74,7 +73,7 @@ class CandidateWindow {
     }
 
     private var resolvedDirection: LayoutDirection {
-        engineLayoutDirection ?? userDefaultsDirection
+        engineConfiguration.layoutDirection ?? userDefaultsDirection
     }
 
     private var userDefaultsFontSize: CGFloat {
@@ -83,26 +82,12 @@ class CandidateWindow {
     }
 
     private var resolvedFontSize: CGFloat {
-        engineFontSize ?? userDefaultsFontSize
+        engineConfiguration.fontSize ?? userDefaultsFontSize
     }
 
-    // MARK: - Authoritative State
+    // MARK: - State
 
     private(set) var lastShowNearRect: NSRect = .zero
-
-    var fontSize: CGFloat = 16 {
-        didSet {
-            guard fontSize != oldValue else { return }
-            activeImpl.fontSizeDidChange()
-        }
-    }
-
-    var direction: LayoutDirection = .horizontal {
-        didSet {
-            guard direction != oldValue else { return }
-            activeImpl.directionDidChange(from: oldValue)
-        }
-    }
 
     weak var candidateDelegate: CandidateWindowDelegate?
 
@@ -117,12 +102,16 @@ class CandidateWindow {
 
     var isVisible: Bool { activeImpl.isVisible }
 
-    func apply(_ configuration: CandidateWindowConfiguration) {
-        engineLayoutDirection = configuration.layoutDirection
-        engineFontSize = configuration.fontSize
-        direction = resolvedDirection
-        fontSize = resolvedFontSize
-        activeImpl.apply(configuration)
+    func configure(_ configuration: CandidateWindowConfiguration) {
+        engineConfiguration = configuration
+        apply()
+    }
+
+    private func apply() {
+        var resolved = engineConfiguration
+        resolved.layoutDirection = resolvedDirection
+        resolved.fontSize = resolvedFontSize
+        activeImpl.apply(resolved)
     }
 
     func updateCandidates(_ candidates: [String]) {
@@ -158,22 +147,20 @@ class CandidateWindow {
     private init() {
         sequoia.owner = self
 
-        // didSet does not fire during init, so trigger manually
-        fontSize = userDefaultsFontSize
-        activeImpl.fontSizeDidChange()
-
         directionObservation = UserDefaults.standard.observe(
             \.CandidateWindowDirection, options: [.new]
         ) { [weak self] _, _ in
-            guard let self, self.engineLayoutDirection == nil else { return }
-            self.direction = self.userDefaultsDirection
+            guard let self, case .none = self.engineConfiguration.layoutDirection else { return }
+            self.apply()
         }
         fontSizeObservation = UserDefaults.standard.observe(
             \.FontSize, options: [.new]
         ) { [weak self] _, _ in
-            guard let self, self.engineFontSize == nil else { return }
-            self.fontSize = self.userDefaultsFontSize
+            guard let self, self.engineConfiguration.fontSize == nil else { return }
+            self.apply()
         }
+
+        apply()
     }
 }
 
@@ -187,15 +174,12 @@ class CandidateWindowImpl {
 
     var candidateDelegate: CandidateWindowDelegate? { owner?.candidateDelegate }
     var bundleIdentifier: String? { owner?.bundleIdentifier }
-    var direction: CandidateWindow.LayoutDirection { owner?.direction ?? .horizontal }
-    var fontSize: CGFloat { owner?.fontSize ?? 16 }
     var lastShowNearRect: NSRect { owner?.lastShowNearRect ?? .zero }
 
     // MARK: - Candidate State
 
     var candidates: [String] = []
     var selectedIndex: Int = 0
-    var lastAppliedConfiguration = CandidateWindowConfiguration()
 
     func notifySelectionChanged() {
         guard !candidates.isEmpty else { return }
@@ -206,13 +190,9 @@ class CandidateWindowImpl {
 
     var isVisible: Bool { false }
 
-    func directionDidChange(from oldDirection: CandidateWindow.LayoutDirection) {}
-    func fontSizeDidChange() {}
     func bundleIdentifierDidChange() {}
 
-    func apply(_ configuration: CandidateWindowConfiguration) {
-        lastAppliedConfiguration = configuration
-    }
+    func apply(_ configuration: CandidateWindowConfiguration) {}
     func updateCandidates(_ candidates: [String]) {}
     func show(near rect: NSRect) {}
     func hide() {}
@@ -220,24 +200,4 @@ class CandidateWindowImpl {
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}
     func commitSelectedCandidate() {}
     func commitCandidateForDigit(_ digit: Int) {}
-
-    // MARK: - Snapshot / Restore
-
-    struct Snapshot {
-        let candidates: [String]
-        let selectedIndex: Int
-        let configuration: CandidateWindowConfiguration
-        let wasVisible: Bool
-    }
-
-    func snapshot() -> Snapshot {
-        Snapshot(candidates: candidates, selectedIndex: selectedIndex,
-                 configuration: lastAppliedConfiguration, wasVisible: isVisible)
-    }
-
-    func restore(_ snapshot: Snapshot) {
-        apply(snapshot.configuration)
-        candidates = snapshot.candidates
-        selectedIndex = snapshot.selectedIndex
-    }
 }

@@ -23,12 +23,13 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
         defer: false
     )
 
-    private var activePanel: SequoiaBasePanel { panel(for: direction) }
+    private var activePanel: SequoiaBasePanel!
 
-    private func panel(for direction: CandidateWindow.LayoutDirection) -> SequoiaBasePanel {
+    private func panel(for direction: CandidateWindow.LayoutDirection,
+                       expandable: Bool) -> SequoiaBasePanel {
         let panel: SequoiaBasePanel = switch direction {
         case .horizontal:
-            lastAppliedConfiguration.expandable ? horizontalPanel : horizontalSimplePanel
+            expandable ? horizontalPanel : horizontalSimplePanel
         case .vertical:
             verticalPanel
         }
@@ -38,11 +39,12 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
 
     // MARK: - Panel Switching
 
-    private func transitionPanel(from oldPanel: SequoiaBasePanel, to newPanel: SequoiaBasePanel, configuration: CandidateWindowConfiguration) {
+    private func transitionPanel(from oldPanel: SequoiaBasePanel,
+                                 to newPanel: SequoiaBasePanel,
+                                 configuration: CandidateWindowConfiguration) {
         let wasVisible = oldPanel.isVisible
         oldPanel.hide()
         newPanel.apply(configuration)
-        newPanel.updateFontSize(fontSize)
         newPanel.updateHighlightColor()
         if !candidates.isEmpty {
             newPanel.buildCandidateLayout()
@@ -50,21 +52,6 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
         }
         if wasVisible {
             newPanel.show(near: lastShowNearRect)
-        }
-    }
-
-    override func directionDidChange(from oldDirection: CandidateWindow.LayoutDirection) {
-        let oldPanel = panel(for: oldDirection)
-        let newPanel = activePanel
-        guard oldPanel !== newPanel else { return }
-        transitionPanel(from: oldPanel, to: newPanel, configuration: lastAppliedConfiguration)
-    }
-
-    override func fontSizeDidChange() {
-        activePanel.updateFontSize(fontSize)
-        if !candidates.isEmpty {
-            activePanel.buildCandidateLayout()
-            activePanel.restoreSelection(to: selectedIndex)
         }
     }
 
@@ -78,10 +65,11 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
 
     override func apply(_ configuration: CandidateWindowConfiguration) {
         let oldPanel = activePanel
-        super.apply(configuration)
-        let newPanel = activePanel
+        let newPanel = panel(for: configuration.layoutDirection!,
+                             expandable: configuration.expandable)
+        activePanel = newPanel
 
-        if oldPanel !== newPanel {
+        if let oldPanel, oldPanel !== newPanel {
             transitionPanel(from: oldPanel, to: newPanel, configuration: configuration)
         } else {
             newPanel.apply(configuration)

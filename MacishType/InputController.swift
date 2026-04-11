@@ -84,7 +84,7 @@ class InputController: IMKInputController {
         #if DEBUG
         Logger.inputController.debug("activateEngine ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\("\(type(of: engine))", privacy: .public)")
         #endif
-        CandidateWindow.shared.apply(engine.candidateWindowConfiguration)
+        CandidateWindow.shared.configure(engine.candidateWindowConfiguration)
         if let client = client() {
             let actions = engine.activate(
                 context: engineContext,

@@ -53,6 +53,7 @@ class SequoiaHorizontalSimplePanel: SequoiaHorizontalBasePanel {
         super.apply(configuration)
         if isVisible, !candidates.isEmpty {
             buildCandidateLayout()
+            restoreSelection(to: impl?.selectedIndex ?? 0)
         }
     }
 

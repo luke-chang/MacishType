@@ -343,6 +343,9 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
         SequoiaCandidateItemView.updateFontSize(fontSize)
     }
     func apply(_ configuration: CandidateWindowConfiguration) {
+        if let fontSize = configuration.fontSize {
+            updateFontSize(fontSize)
+        }
         indexBase = configuration.indexBase
         pageSize = configuration.pageSize
         animationDuration = configuration.animationDuration

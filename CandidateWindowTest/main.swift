@@ -39,6 +39,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
     var currentConfig: CandidateWindowConfiguration = {
         var config = CandidateWindowConfiguration()
         config.layoutDirection = .horizontal
+        config.fontSize = 16
         return config
     }()
     var keyWindow: KeyWindow!
@@ -69,8 +70,8 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         NSApp.mainMenu = mainMenu
 
         candidateWindow.candidateDelegate = self
-        candidateWindow.apply(.init())
-        candidateWindow.apply(currentConfig)
+        candidateWindow.configure(.init())
+        candidateWindow.configure(currentConfig)
 
         // Create window
         let screenFrame = NSScreen.main?.visibleFrame ?? .zero
@@ -147,7 +148,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         for size in [14, 16, 18, 24, 36] {
             fontSizePopup.addItem(withTitle: "\(size)")
         }
-        fontSizePopup.selectItem(withTitle: "\(Int(candidateWindow.fontSize))")
+        fontSizePopup.selectItem(withTitle: "\(Int(currentConfig.fontSize!))")
         fontSizePopup.target = self
         fontSizePopup.action = #selector(fontSizeChanged(_:))
         contentView.addSubview(fontSizePopup)
@@ -285,34 +286,34 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
 
     @objc func slowMotionToggled(_ sender: NSButton) {
         currentConfig.animationDuration = sender.state == .on ? 1.0 : CandidateWindowConfiguration().animationDuration
-        candidateWindow.apply(currentConfig)
+        candidateWindow.configure(currentConfig)
     }
 
     @objc func widerColumnsToggled(_ sender: NSButton) {
         currentConfig.widerExpandedColumns = sender.state == .on
-        candidateWindow.apply(currentConfig)
+        candidateWindow.configure(currentConfig)
     }
 
     @objc func moveOnExpandToggled(_ sender: NSButton) {
         currentConfig.moveOnExpand = sender.state == .on
-        candidateWindow.apply(currentConfig)
+        candidateWindow.configure(currentConfig)
     }
 
     @objc func verticalToggled(_ sender: NSButton) {
         currentConfig.layoutDirection = sender.state == .on ? .vertical : .horizontal
         expandableCheckbox.isEnabled = sender.state != .on
-        candidateWindow.apply(currentConfig)
+        candidateWindow.configure(currentConfig)
     }
 
     @objc func expandableToggled(_ sender: NSButton) {
         currentConfig.expandable = sender.state == .on
-        candidateWindow.apply(currentConfig)
+        candidateWindow.configure(currentConfig)
     }
 
     @objc func fontSizeChanged(_ sender: NSPopUpButton) {
         guard let title = sender.selectedItem?.title, let size = Int(title) else { return }
         currentConfig.fontSize = CGFloat(size)
-        candidateWindow.apply(currentConfig)
+        candidateWindow.configure(currentConfig)
     }
 
     func candidateConfirmed(_ candidate: String) {

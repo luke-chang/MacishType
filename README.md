@@ -50,7 +50,7 @@ MacishType/
 │   │   ├── ExampleEngine.swift                    # Reverse-lookup demo engine
 │   │   └── Resources/                             # ExampleEngine assets
 │   │       └── ExampleMenuIcon.tiff               # Menu bar icon for ExampleEngine
-│   ├── CandidateWindow.swift                      # Singleton router, shared types, CandidateWindowImpl base
+│   ├── CandidateWindow.swift                      # Candidate window public API and shared types
 │   ├── SequoiaCandidateWindow/                    # macOS Sequoia style candidate window
 │   │   ├── SequoiaCandidateWindow.swift           # Style controller (panel switching)
 │   │   ├── SequoiaBasePanel.swift                 # NSPanel base (vibrancy, positioning, theming)

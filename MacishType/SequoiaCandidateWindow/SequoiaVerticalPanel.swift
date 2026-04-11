@@ -42,6 +42,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         minVisibleRows = configuration.verticalMinVisibleRows ?? configuration.pageSize
         if isVisible, !candidates.isEmpty {
             buildCandidateLayout()
+            restoreSelection(to: impl?.selectedIndex ?? 0)
         }
     }
 
