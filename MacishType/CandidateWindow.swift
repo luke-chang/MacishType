@@ -89,6 +89,23 @@ class CandidateWindow {
 
     private(set) var lastShowNearRect: NSRect = .zero
 
+    // Composition bounds for left/right candidate window positioning
+    var compositionStartX: CGFloat = 0
+    private var _compositionEndX: CGFloat?
+    private var _compositionEndXProvider: (() -> CGFloat)?
+
+    func setCompositionEndXProvider(_ provider: (() -> CGFloat)?) {
+        _compositionEndXProvider = provider
+        _compositionEndX = nil
+    }
+
+    var compositionEndX: CGFloat {
+        if let cached = _compositionEndX { return cached }
+        let value = _compositionEndXProvider?() ?? compositionStartX
+        _compositionEndX = value
+        return value
+    }
+
     weak var candidateDelegate: CandidateWindowDelegate?
 
     var bundleIdentifier: String? {
@@ -124,6 +141,8 @@ class CandidateWindow {
     }
 
     func hide() {
+        compositionStartX = 0
+        setCompositionEndXProvider(nil)
         activeImpl.hide()
     }
 
@@ -175,6 +194,8 @@ class CandidateWindowImpl {
     var candidateDelegate: CandidateWindowDelegate? { owner?.candidateDelegate }
     var bundleIdentifier: String? { owner?.bundleIdentifier }
     var lastShowNearRect: NSRect { owner?.lastShowNearRect ?? .zero }
+    var compositionStartX: CGFloat { owner?.compositionStartX ?? 0 }
+    var compositionEndX: CGFloat { owner?.compositionEndX ?? compositionStartX }
 
     // MARK: - Candidate State
 

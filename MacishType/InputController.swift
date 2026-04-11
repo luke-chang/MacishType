@@ -241,10 +241,36 @@ class InputController: IMKInputController {
         guard !text.isEmpty else { return }
         let clampedAnchor = min(anchor, text.count - 1)
         let target = text.prefix(clampedAnchor).utf16.count
-        _ = client.attributes(forCharacterIndex: target, lineHeightRectangle: &lineHeightRect)
+        let attrs = client.attributes(forCharacterIndex: target, lineHeightRectangle: &lineHeightRect)
         if lineHeightRect.origin == .zero {
             _ = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &lineHeightRect)
         }
+
+        var startRect = NSRect.zero
+        _ = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &startRect)
+        CandidateWindow.shared.compositionStartX = startRect.origin != .zero
+            ? startRect.minX : lineHeightRect.minX
+
+        let fontKey = NSAttributedString.Key.font.rawValue
+        let font = attrs?[fontKey] as? NSFont
+        let compositionText = text
+        let utf16Count = compositionText.utf16.count
+        let startX = CandidateWindow.shared.compositionStartX
+        CandidateWindow.shared.setCompositionEndXProvider { [weak client] in
+            guard let client, let font else { return startX }
+            guard utf16Count >= 2 else {
+                return startX + compositionText.size(withAttributes: [.font: font]).width
+            }
+            let lastCharStart = compositionText.index(before: compositionText.endIndex)
+            let lastIndex = compositionText.utf16.distance(
+                from: compositionText.startIndex, to: lastCharStart)
+            var lastRect = NSRect.zero
+            _ = client.attributes(forCharacterIndex: lastIndex, lineHeightRectangle: &lastRect)
+            guard lastRect.origin != .zero else { return startX }
+            let lastChar = String(compositionText[lastCharStart...])
+            return lastRect.minX + lastChar.size(withAttributes: [.font: font]).width
+        }
+
         CandidateWindow.shared.show(near: lineHeightRect)
     }
 

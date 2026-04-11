@@ -180,7 +180,23 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
         var point = NSPoint(x: rect.minX, y: rect.minY - margin)
 
         if point.y - windowSize.height < screenRect.minY {
-            point.y = rect.maxY + windowSize.height + margin
+            let aboveY = rect.maxY + windowSize.height + margin
+            if aboveY <= screenRect.maxY {
+                point.y = aboveY
+            } else {
+                // Can't fit below or above — position beside the composition area
+                point.y = rect.maxY
+                if point.y - windowSize.height < screenRect.minY {
+                    point.y = screenRect.minY + windowSize.height
+                }
+
+                let leftX = impl.compositionStartX - windowSize.width - margin
+                if leftX >= screenRect.minX {
+                    point.x = leftX
+                } else {
+                    point.x = impl.compositionEndX + margin
+                }
+            }
         }
 
         if point.x + windowSize.width >= screenRect.maxX {
@@ -189,9 +205,8 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
         if point.x < screenRect.minX {
             point.x = screenRect.minX
         }
-
-        if point.y >= screenRect.maxY {
-            point.y = screenRect.maxY - 1.0
+        if point.y > screenRect.maxY {
+            point.y = screenRect.maxY
         }
 
         return point
