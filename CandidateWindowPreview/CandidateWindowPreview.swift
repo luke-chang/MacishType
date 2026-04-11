@@ -1,6 +1,6 @@
 import Cocoa
 
-// Minimal test app for CandidateWindow
+// Standalone preview app for CandidateWindow
 // Usage: Run, edit candidates in textarea, click outside to unfocus, then use arrow keys
 
 private let digits: [Character] = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
@@ -86,7 +86,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
             backing: .buffered,
             defer: false
         )
-        keyWindow.title = "CandidateWindow Test"
+        keyWindow.title = "CandidateWindow Preview"
         keyWindow.level = .floating
         keyWindow.minSize = NSSize(width: 320, height: 160)
 
@@ -97,7 +97,7 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
         let padding: CGFloat = 16
 
         // Title
-        let titleLabel = NSTextField(labelWithString: "CandidateWindow Test")
+        let titleLabel = NSTextField(labelWithString: "CandidateWindow Preview")
         titleLabel.font = .boldSystemFont(ofSize: 16)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(titleLabel)
@@ -325,9 +325,14 @@ class TestDelegate: NSObject, NSApplicationDelegate, CandidateWindowDelegate, NS
     }
 }
 
-let app = NSApplication.shared
-let delegate = TestDelegate()
-app.delegate = delegate
-app.setActivationPolicy(.regular)
-app.activate(ignoringOtherApps: true)
-app.run()
+@main
+enum CandidateWindowPreview {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = TestDelegate()
+        app.delegate = delegate
+        app.setActivationPolicy(.regular)
+        app.activate(ignoringOtherApps: true)
+        app.run()
+    }
+}

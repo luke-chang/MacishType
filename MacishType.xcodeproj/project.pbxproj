@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
+		866258A92F8A53F6003DEC1C /* CandidateWindowPreview.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CandidateWindowPreview.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		86A0E7F02F77ED4F00722BF2 /* MacishType.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacishType.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -18,13 +19,50 @@
 			);
 			target = 86A0E7EF2F77ED4F00722BF2 /* MacishType */;
 		};
+		866258C42F8A547E003DEC1C /* Exceptions for "MacishType" folder in "CandidateWindowPreview" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				CandidateWindow.swift,
+				Logger.swift,
+				Resources/AppIcon.icns,
+				SequoiaCandidateWindow/SequoiaBasePanel.swift,
+				SequoiaCandidateWindow/SequoiaCandidateItemView.swift,
+				SequoiaCandidateWindow/SequoiaCandidateWindow.swift,
+				SequoiaCandidateWindow/SequoiaChevronView.swift,
+				SequoiaCandidateWindow/SequoiaHighlightView.swift,
+				SequoiaCandidateWindow/SequoiaHorizontalBasePanel.swift,
+				SequoiaCandidateWindow/SequoiaHorizontalExpandablePanel.swift,
+				SequoiaCandidateWindow/SequoiaHorizontalSimplePanel.swift,
+				SequoiaCandidateWindow/SequoiaPageArrowView.swift,
+				SequoiaCandidateWindow/SequoiaSeparatorView.swift,
+				SequoiaCandidateWindow/SequoiaVerticalPanel.swift,
+				ThemeManager.swift,
+			);
+			target = 866258A82F8A53F6003DEC1C /* CandidateWindowPreview */;
+		};
+		86CDCB022F8A9168006727D8 /* Exceptions for "CandidateWindowPreview" folder in "CandidateWindowPreview" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 866258A82F8A53F6003DEC1C /* CandidateWindowPreview */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		866258AA2F8A53F7003DEC1C /* CandidateWindowPreview */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				86CDCB022F8A9168006727D8 /* Exceptions for "CandidateWindowPreview" folder in "CandidateWindowPreview" target */,
+			);
+			path = CandidateWindowPreview;
+			sourceTree = "<group>";
+		};
 		86A0E7F22F77ED4F00722BF2 /* MacishType */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				86174D562F78414200E6BA28 /* Exceptions for "MacishType" folder in "MacishType" target */,
+				866258C42F8A547E003DEC1C /* Exceptions for "MacishType" folder in "CandidateWindowPreview" target */,
 			);
 			path = MacishType;
 			sourceTree = "<group>";
@@ -32,6 +70,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		866258A62F8A53F6003DEC1C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		86A0E7ED2F77ED4F00722BF2 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -46,6 +91,7 @@
 			isa = PBXGroup;
 			children = (
 				86A0E7F22F77ED4F00722BF2 /* MacishType */,
+				866258AA2F8A53F7003DEC1C /* CandidateWindowPreview */,
 				86A0E7F12F77ED4F00722BF2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +100,7 @@
 			isa = PBXGroup;
 			children = (
 				86A0E7F02F77ED4F00722BF2 /* MacishType.app */,
+				866258A92F8A53F6003DEC1C /* CandidateWindowPreview.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -61,6 +108,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		866258A82F8A53F6003DEC1C /* CandidateWindowPreview */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 866258B32F8A53F8003DEC1C /* Build configuration list for PBXNativeTarget "CandidateWindowPreview" */;
+			buildPhases = (
+				866258A52F8A53F6003DEC1C /* Sources */,
+				866258A62F8A53F6003DEC1C /* Frameworks */,
+				866258A72F8A53F6003DEC1C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				866258AA2F8A53F7003DEC1C /* CandidateWindowPreview */,
+			);
+			name = CandidateWindowPreview;
+			packageProductDependencies = (
+			);
+			productName = CandidateWindowPreview;
+			productReference = 866258A92F8A53F6003DEC1C /* CandidateWindowPreview.app */;
+			productType = "com.apple.product-type.application";
+		};
 		86A0E7EF2F77ED4F00722BF2 /* MacishType */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 86A0E7FB2F77ED5000722BF2 /* Build configuration list for PBXNativeTarget "MacishType" */;
@@ -94,6 +163,9 @@
 				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
+					866258A82F8A53F6003DEC1C = {
+						CreatedOnToolsVersion = 26.3;
+					};
 					86A0E7EF2F77ED4F00722BF2 = {
 						CreatedOnToolsVersion = 26.3;
 					};
@@ -115,11 +187,19 @@
 			projectRoot = "";
 			targets = (
 				86A0E7EF2F77ED4F00722BF2 /* MacishType */,
+				866258A82F8A53F6003DEC1C /* CandidateWindowPreview */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		866258A72F8A53F6003DEC1C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		86A0E7EE2F77ED4F00722BF2 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -152,6 +232,13 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		866258A52F8A53F6003DEC1C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		86A0E7EC2F77ED4F00722BF2 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -162,6 +249,72 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		866258B12F8A53F8003DEC1C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CandidateWindowPreview/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = net.lukechang.inputmethod.MacishType.CandidateWindowPreview;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		866258B22F8A53F8003DEC1C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CandidateWindowPreview/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = net.lukechang.inputmethod.MacishType.CandidateWindowPreview;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		86A0E7F92F77ED5000722BF2 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -349,6 +502,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		866258B32F8A53F8003DEC1C /* Build configuration list for PBXNativeTarget "CandidateWindowPreview" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				866258B12F8A53F8003DEC1C /* Debug */,
+				866258B22F8A53F8003DEC1C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		86A0E7EB2F77ED4F00722BF2 /* Build configuration list for PBXProject "MacishType" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
