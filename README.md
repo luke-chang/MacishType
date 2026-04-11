@@ -76,7 +76,7 @@ MacishType/
 │       ├── AppIcon.icns                           # Application icon
 │       └── MenuIcon.tiff                          # Default menu bar icon
 ├── CandidateWindowPreview/                        # Standalone preview app for CandidateWindow
-│   └── CandidateWindowPreview.swift               # Preview app with editable candidate list
+│   └── App.swift                                  # Preview app with editable candidate list
 ├── Scripts/                                       # Helper scripts
 │   └── GenerateIcon.swift                         # Menu bar icon generator (renders text into TIFF)
 ├── Makefile                                       # Build, install, and dev commands

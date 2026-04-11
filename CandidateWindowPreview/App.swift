@@ -1,0 +1,364 @@
+import Combine
+import SwiftUI
+
+@main
+enum CandidateWindowPreview {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = PreviewAppDelegate()
+        app.delegate = delegate
+        app.setActivationPolicy(.regular)
+        app.run()
+    }
+}
+
+class PreviewAppDelegate: NSObject, NSApplicationDelegate {
+    var window: NSWindow!
+    var state: PreviewState!
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    private func setupMenu() {
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        editMenu.addItem(NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z"))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        setupMenu()
+        state = PreviewState()
+
+        let hostingView = NSHostingView(rootView: PreviewContentView(state: state))
+        let contentSize = hostingView.fittingSize
+
+        window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: contentSize),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "CandidateWindow Preview"
+        window.level = .floating
+        window.contentView = hostingView
+        if let screen = NSScreen.main {
+            let visibleFrame = screen.visibleFrame
+            let x = visibleFrame.maxX - contentSize.width - 20
+            let y = visibleFrame.maxY - window.frame.height - 20
+            window.setFrameOrigin(NSPoint(x: x, y: y))
+        }
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(nil)
+
+        state.window = window
+        state.applyCandidates()
+
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+class PreviewState: ObservableObject, CandidateWindowDelegate {
+    let candidateWindow = CandidateWindow.shared
+    weak var window: NSWindow? {
+        didSet { installResignKeyObserver() }
+    }
+
+    @Published var candidateText = ""
+    @Published var slowMotion = false
+    @Published var widerColumns = true
+    @Published var moveOnExpand = false
+    @Published var vertical = false
+    @Published var expandable = true
+    @Published var fontSize: CGFloat = 16
+    @Published var isEditing = false
+
+    private var keyMonitor: Any?
+    private var mouseMonitor: Any?
+    private var resignKeyObserver: (any NSObjectProtocol)?
+
+    init() {
+        candidateWindow.candidateDelegate = self
+        candidateText = randomCandidates().joined(separator: " ")
+        applyConfiguration()
+        installKeyMonitor()
+        installMouseMonitor()
+    }
+
+    deinit {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = mouseMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let observer = resignKeyObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    func applyConfiguration() {
+        var config = CandidateWindowConfiguration()
+        config.layoutDirection = vertical ? .vertical : .horizontal
+        config.fontSize = fontSize
+        config.widerExpandedColumns = widerColumns
+        config.moveOnExpand = moveOnExpand
+        config.expandable = expandable
+        if slowMotion { config.animationDuration = 1.0 }
+        candidateWindow.configure(config)
+        attachCandidatePanel()
+    }
+
+    /// Replace non-space whitespace (tabs, newlines, etc.) with spaces.
+    /// Returns `true` if the text was modified, meaning `candidateText` will
+    /// trigger another `onChange` cycle and the caller can skip further work.
+    func normalizeCandidateText() -> Bool {
+        let normalized = candidateText.replacing(/\s+/, with: " ")
+        guard normalized != candidateText else { return false }
+        candidateText = normalized
+        return true
+    }
+
+    func applyCandidates() {
+        let candidates = candidateText
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+        guard !candidates.isEmpty else {
+            candidateWindow.hide()
+            return
+        }
+        candidateWindow.updateCandidates(candidates)
+        if let window {
+            let rect = window.frame
+            candidateWindow.show(near: NSRect(x: rect.minX, y: rect.minY - 10, width: 0, height: 20))
+        }
+        attachCandidatePanel()
+    }
+
+    func attachCandidatePanel() {
+        guard let window else { return }
+        for w in NSApp.windows where w is SequoiaBasePanel && w.isVisible {
+            if !(window.childWindows?.contains(w) ?? false) {
+                window.addChildWindow(w, ordered: .above)
+            }
+        }
+    }
+
+    func candidateConfirmed(_ candidate: String) {
+        print("Selected: \(candidate)")
+    }
+
+    func candidateSelectionChanged(_ candidate: String) {
+        print("Changed: \(candidate)")
+    }
+
+    private func focusTextEditor() {
+        guard let window = window,
+              let textView = window.contentView?.findSubview(ofType: NSTextView.self) else { return }
+        window.makeFirstResponder(textView)
+        textView.selectAll(nil)
+        isEditing = true
+    }
+
+    private func unfocusTextEditor() {
+        guard let window,
+              let textView = window.firstResponder as? NSTextView else {
+            isEditing = false
+            return
+        }
+        textView.setSelectedRange(NSRange(location: textView.string.count, length: 0))
+        window.makeFirstResponder(nil)
+        isEditing = false
+    }
+
+    private func installKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+
+            // Cmd+L focuses the text editor
+            if event.modifierFlags.contains(.command), event.keyCode == 37 {
+                self.focusTextEditor()
+                return nil
+            }
+
+            // Cmd+R randomizes candidates
+            if event.modifierFlags.contains(.command), event.keyCode == 15 {
+                self.candidateText = randomCandidates().joined(separator: " ")
+                return nil
+            }
+
+            // Tab, Enter, or Esc while editing unfocuses the text editor
+            if self.isEditing, event.keyCode == 48 || event.keyCode == 36 || event.keyCode == 53 {
+                self.unfocusTextEditor()
+                return nil
+            }
+
+            if self.isEditing { return event }
+
+            switch event.keyCode {
+            case 36: // Enter
+                self.candidateWindow.commitSelectedCandidate()
+                return nil
+            case 48: // Tab
+                let dir: NavigationDirection = event.modifierFlags.contains(.shift) ? .itemBackward : .itemForward
+                self.candidateWindow.handleNavigation(direction: dir, wrapping: true)
+                return nil
+            case 49: // Space
+                self.candidateWindow.handleNavigation(direction: .pageForward, wrapping: true); return nil
+            case 125: self.candidateWindow.handleNavigation(direction: .down); return nil
+            case 126: self.candidateWindow.handleNavigation(direction: .up); return nil
+            case 116: self.candidateWindow.handleNavigation(direction: .pageUp); return nil
+            case 121: self.candidateWindow.handleNavigation(direction: .pageDown); return nil
+            case 123: self.candidateWindow.handleNavigation(direction: .left); return nil
+            case 124: self.candidateWindow.handleNavigation(direction: .right); return nil
+            case 115: self.candidateWindow.handleNavigation(direction: .home); return nil
+            case 119: self.candidateWindow.handleNavigation(direction: .end); return nil
+            default:
+                if let chars = event.characters {
+                    if chars == ">" {
+                        self.candidateWindow.handleNavigation(direction: .pageForward); return nil
+                    }
+                    if chars == "<" {
+                        self.candidateWindow.handleNavigation(direction: .pageBackward); return nil
+                    }
+                }
+                return event
+            }
+        }
+    }
+
+    private func installResignKeyObserver() {
+        if let observer = resignKeyObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        resignKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            self?.unfocusTextEditor()
+        }
+    }
+
+    private func installMouseMonitor() {
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard let self, let window = event.window else { return event }
+            let clickedView = window.contentView?.hitTest(event.locationInWindow)
+            if clickedView is NSTextView {
+                DispatchQueue.main.async {
+                    self.isEditing = window.firstResponder is NSTextView
+                }
+            } else if window.firstResponder is NSTextView {
+                self.unfocusTextEditor()
+            }
+            return event
+        }
+    }
+}
+
+struct PreviewContentView: View {
+    @ObservedObject var state: PreviewState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("CandidateWindow Preview")
+                .font(.system(size: 16, weight: .bold))
+
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Slow animations (1s)", isOn: $state.slowMotion)
+                    Toggle("Wider expanded columns", isOn: $state.widerColumns)
+                    Toggle("Move on expand", isOn: $state.moveOnExpand)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Font size:")
+                        Picker("", selection: $state.fontSize) {
+                            ForEach([14, 16, 18, 24, 36], id: \.self) { size in
+                                Text("\(size)").tag(CGFloat(size))
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 60)
+                    }
+                    Toggle("Vertical layout", isOn: $state.vertical)
+                    Toggle("Expandable", isOn: $state.expandable)
+                        .disabled(state.vertical)
+                }
+            }
+            .toggleStyle(.checkbox)
+
+            TextEditor(text: $state.candidateText)
+                .font(.system(size: 14))
+                .frame(height: 80)
+                .scrollContentBackground(.hidden)
+                .background(state.isEditing ? Color(nsColor: .textBackgroundColor) : Color.secondary.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 0)
+                        .stroke(state.isEditing ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.3),
+                                lineWidth: state.isEditing ? 2 : 1)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(state.isEditing
+                     ? "• Click outside or press Tab/Enter/Esc to control the candidate window"
+                     : "• Press ⌘L to edit candidates")
+                    .foregroundStyle(state.isEditing ? Color.accentColor : .secondary)
+                Text("• Press ⌘R to randomize candidates")
+                    .foregroundStyle(.secondary)
+                Text("• Separate candidates with spaces")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.system(size: 11))
+        }
+        .padding()
+        .frame(width: 420)
+        .onChange(of: state.candidateText) {
+            guard !state.normalizeCandidateText() else { return }
+            state.applyCandidates()
+        }
+        .onChange(of: state.slowMotion) { state.applyConfiguration() }
+        .onChange(of: state.widerColumns) { state.applyConfiguration() }
+        .onChange(of: state.moveOnExpand) { state.applyConfiguration() }
+        .onChange(of: state.vertical) { state.applyConfiguration() }
+        .onChange(of: state.expandable) { state.applyConfiguration() }
+        .onChange(of: state.fontSize) { state.applyConfiguration() }
+    }
+}
+
+#Preview {
+    PreviewContentView(state: PreviewState())
+}
+
+private extension NSView {
+    func findSubview<T: NSView>(ofType type: T.Type) -> T? {
+        for subview in subviews {
+            if let match = subview as? T { return match }
+            if let match = subview.findSubview(ofType: type) { return match }
+        }
+        return nil
+    }
+}
+
+private let digits: [Character] = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
+
+private func randomCandidates() -> [String] {
+    (0..<Int.random(in: 8...20)).map { _ in
+        String((0..<Int.random(in: 1...8)).map { _ in digits.randomElement()! })
+    }
+}
