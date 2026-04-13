@@ -216,10 +216,6 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
             rowHighlightView.frame = NSRect(x: 0, y: y, width: windowWidth, height: itemHeight)
         }
 
-        // Row separators
-        let separatorCount = max(rowCount - 1, 0)
-        ensureSeparators(count: separatorCount, width: windowWidth)
-
         let totalContentHeight = needsScrolling ? contentHeight + 0.5 * itemHeight : contentHeight
         candidateContainer.frame.size = NSSize(width: contentWidth, height: totalContentHeight)
         return NSSize(width: windowWidth, height: windowHeight)
@@ -356,6 +352,10 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
                     expandedItemViews.append(item)
                 }
             }
+            let expandedWidth = expandedColumnWidth * CGFloat(expandedPageSize)
+                + NSScroller.scrollerWidth(for: .regular, scrollerStyle: NSScroller.preferredScrollerStyle)
+            let separatorWidth = max(frame.size.width, expandedWidth)
+            ensureSeparators(count: max(expandedGridRows.count - 1, 0), width: separatorWidth)
             expandedRowsBuilt = true
             updateItemHighlights()
         }
