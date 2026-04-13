@@ -114,11 +114,11 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
 
         updateNumbering()
         updateItemHighlights()
-        updateMaskImage()
 
         let windowSize = NSSize(width: windowWidth, height: windowHeight)
         let targetFrame = windowFrame(for: windowSize, reposition: isVisible && lastShowNearRect != .zero)
         setFrame(targetFrame, display: true)
+        updateMaskImage()
 
         if hasOverflow, NSScroller.preferredScrollerStyle != .legacy {
             scrollView.flashScrollers()

@@ -1,21 +1,6 @@
 import Cocoa
 
 extension NSImage {
-    static func asymmetricCornerMask(height: CGFloat, leftRadius: CGFloat, rightRadius: CGFloat) -> NSImage {
-        let rr = min(rightRadius, height / 2)
-        let width = leftRadius + rr + 1
-        // +1 ensures at least 1pt of stretchable center between top/bottom cap insets,
-        // preventing rendering artifacts when the mask is stretched to a taller view.
-        let imageHeight = rr * 2 + 1
-        let image = asymmetricCornerMask(
-            size: NSSize(width: width, height: imageHeight),
-            leftRadius: leftRadius, rightRadius: rightRadius
-        )
-        image.capInsets = NSEdgeInsets(top: rr, left: leftRadius, bottom: rr, right: rr)
-        image.resizingMode = .stretch
-        return image
-    }
-
     static func asymmetricCornerMask(size: NSSize, leftRadius: CGFloat, rightRadius: CGFloat) -> NSImage {
         NSImage(size: size, flipped: false) { rect in
             let path = NSBezierPath()
@@ -46,15 +31,26 @@ extension NSImage {
 class SequoiaHorizontalBasePanel: SequoiaBasePanel {
 
     private var pillMask: NSImage?
-    private var pillMaskHeight: CGFloat = 0
+    private var pillMaskSize: NSSize = .zero
 
-    func pillCornerMask(height: CGFloat) -> NSImage {
-        if height == pillMaskHeight, let pillMask { return pillMask }
+    func applyUniformCorners() {
+        super.updateMaskImage()
+    }
+
+    func applyPillCorners(size: NSSize) {
+        visualEffectView.maskImage = pillCornerMask(size: size)
+    }
+
+    private func pillCornerMask(size: NSSize) -> NSImage {
+        if size == pillMaskSize, let pillMask { return pillMask }
         let lr = Self.defaultCornerRadius
-        let rr = height / 2
-        let mask = NSImage.asymmetricCornerMask(height: height, leftRadius: lr, rightRadius: rr)
-        pillMask = mask
-        pillMaskHeight = height
+        let rr = size.height / 2
+        let mask = NSImage.asymmetricCornerMask(size: size, leftRadius: lr, rightRadius: rr)
+        // Only cache the widest mask; height change (font size) always updates.
+        if size.width >= pillMaskSize.width || size.height != pillMaskSize.height {
+            pillMask = mask
+            pillMaskSize = size
+        }
         return mask
     }
 }

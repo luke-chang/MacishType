@@ -272,9 +272,9 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         guard size.width > 0, size.height > 0 else { return }
         let showChevron = displayMode == .collapsed && displayCount > collapsedVisibleCount
         if showChevron {
-            visualEffectView.maskImage = pillCornerMask(height: size.height)
+            applyPillCorners(size: size)
         } else {
-            visualEffectView.maskImage = Self.uniformMask
+            applyUniformCorners()
         }
     }
 
@@ -307,10 +307,10 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
             ? 2 * progress * progress
             : -1 + (4 - 2 * progress) * progress
         let radius = cornerRadiusFrom + (cornerRadiusTo - cornerRadiusFrom) * t
-        let height = frame.size.height
-        guard height > 0 else { return }
+        let size = frame.size
+        guard size.width > 0, size.height > 0 else { return }
         visualEffectView.maskImage = .asymmetricCornerMask(
-            height: height, leftRadius: Self.defaultCornerRadius, rightRadius: radius
+            size: size, leftRadius: Self.defaultCornerRadius, rightRadius: radius
         )
         if progress >= 1.0 {
             stopCornerAnimation()

@@ -1,17 +1,5 @@
 import Cocoa
 
-private extension NSImage {
-    static func uniformCornerMask(radius: CGFloat) -> NSImage {
-        let image = NSImage(size: NSSize(width: radius * 2, height: radius * 2), flipped: false) { rect in
-            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-            return true
-        }
-        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
-        image.resizingMode = .stretch
-        return image
-    }
-}
-
 class FlippedView: NSView {
     override var isFlipped: Bool { true }
 }
@@ -24,7 +12,6 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
 
     static let separatorHeight: CGFloat = 1
     static let defaultCornerRadius: CGFloat = 6
-    static let uniformMask = NSImage.uniformCornerMask(radius: defaultCornerRadius)
 
     private(set) var highlightColor: NSColor = .selectedContentBackgroundColor
     private(set) var didDrag = false
@@ -348,7 +335,12 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     }
 
     func updateMaskImage() {
-        visualEffectView.maskImage = Self.uniformMask
+        let size = frame.size
+        guard size.width > 0, size.height > 0 else { return }
+        let r = Self.defaultCornerRadius
+        visualEffectView.maskImage = .asymmetricCornerMask(
+            size: size, leftRadius: r, rightRadius: r
+        )
     }
 
     // MARK: - Subclass Override Points

@@ -339,9 +339,9 @@ class SequoiaHorizontalSimplePanel: SequoiaHorizontalBasePanel {
         let size = frame.size
         guard size.width > 0, size.height > 0 else { return }
         if hasMultiplePages {
-            visualEffectView.maskImage = pillCornerMask(height: size.height)
+            applyPillCorners(size: size)
         } else {
-            visualEffectView.maskImage = Self.uniformMask
+            applyUniformCorners()
         }
     }
 }
