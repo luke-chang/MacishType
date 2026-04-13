@@ -382,7 +382,6 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
 
         // --- Animated expand ---
         let (overflow, overflowDups) = computeOverflowSets()
-
         // Save target frames, then set initial animation state
         var targetRow0Frames: [Int: NSRect] = [:]
         for item in row0ItemViews {
@@ -412,8 +411,6 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         // Rows 1+ overflow duplicates: start off-screen left, alpha 0
         for item in expandedItemViews {
             if overflowDups.contains(item.absoluteIndex) {
-                let target = targetExpandedFrames[item.absoluteIndex]!
-                item.frame = NSRect(x: -target.width, y: target.minY, width: target.width, height: target.height)
                 item.alphaValue = 0
             } else {
                 item.alphaValue = 1
@@ -439,7 +436,6 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = self.animationDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-
             // Window resize
             self.animator().setFrame(targetWindowFrame, display: true)
 
@@ -450,20 +446,29 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
                 }
             }
 
-            // Row 0 overflow items: fade out + slide right
+            // Row 0 overflow items: fade out + slide right via layer transform
             for item in self.row0ItemViews where overflow.contains(item.absoluteIndex) {
                 let slideTarget = collapsedWidth - item.frame.origin.x
                 item.animator().alphaValue = 0
-                var f = item.frame
-                f.origin.x += slideTarget
-                item.animator().frame = f
+                let slide = CABasicAnimation(keyPath: "transform.translation.x")
+                slide.fromValue = 0
+                slide.toValue = slideTarget
+                slide.duration = self.animationDuration
+                slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                item.layer?.add(slide, forKey: "slideRight")
             }
 
-            // Rows 1+ overflow duplicates: slide in from left + fade in
+            // Rows 1+ overflow duplicates: slide in from left via transform + fade in
             for item in self.expandedItemViews where overflowDups.contains(item.absoluteIndex) {
                 if let target = targetExpandedFrames[item.absoluteIndex] {
-                    item.animator().frame = target
+                    let offset = -(target.origin.x + target.width)
                     item.animator().alphaValue = 1
+                    let slide = CABasicAnimation(keyPath: "transform.translation.x")
+                    slide.fromValue = offset
+                    slide.toValue = 0
+                    slide.duration = self.animationDuration
+                    slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    item.layer?.add(slide, forKey: "slideIn")
                 }
             }
 
@@ -549,18 +554,12 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
             targetRow0Frames[item.absoluteIndex] = item.frame
         }
 
-        // Row 0 overflow items: start from right side, alpha 0, will slide in + fade in
+        // Row 0 overflow items: place at target, offset visually via transform
         for item in row0ItemViews where overflow.contains(item.absoluteIndex) {
             let target = targetRow0Frames[item.absoluteIndex]!
             item.isHidden = false
             item.alphaValue = 0
-            // Start with left edge at collapsed window right edge
-            item.frame = NSRect(
-                x: contentSize.width,
-                y: target.minY,
-                width: target.width,
-                height: target.height
-            )
+            item.frame = target
         }
 
         // Row 0 staying items: restore to expanded positions (layoutItems set them to collapsed)
@@ -613,20 +612,30 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
                 }
             }
 
-            // Row 0 overflow items: slide in from right + fade in
+            // Row 0 overflow items: slide in from right via transform + fade in
             for item in self.row0ItemViews where overflow.contains(item.absoluteIndex) {
                 if let target = targetRow0Frames[item.absoluteIndex] {
-                    item.animator().frame = target
+                    let offset = contentSize.width - target.origin.x
                     item.animator().alphaValue = 1
+                    let slide = CABasicAnimation(keyPath: "transform.translation.x")
+                    slide.fromValue = offset
+                    slide.toValue = 0
+                    slide.duration = self.animationDuration
+                    slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    item.layer?.add(slide, forKey: "slideIn")
                 }
             }
 
-            // Rows 1+ overflow duplicates: slide out to left + fade out
+            // Rows 1+ overflow duplicates: slide out to left via transform + fade out
             for item in self.expandedItemViews where overflowDups.contains(item.absoluteIndex) {
                 item.animator().alphaValue = 0
-                var f = item.frame
-                f.origin.x = -f.width
-                item.animator().frame = f
+                let slideTarget = -(item.frame.origin.x + item.frame.width)
+                let slide = CABasicAnimation(keyPath: "transform.translation.x")
+                slide.fromValue = 0
+                slide.toValue = slideTarget
+                slide.duration = self.animationDuration
+                slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                item.layer?.add(slide, forKey: "slideLeft")
             }
 
             // Chevron: slide to final position + fade in
