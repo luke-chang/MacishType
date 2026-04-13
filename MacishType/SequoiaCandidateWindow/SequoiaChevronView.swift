@@ -77,6 +77,21 @@ class SequoiaChevronView: NSView {
         NSSize(width: 1 + spacing + imageWidth + padding, height: NSView.noIntrinsicMetric)
     }
 
+    var separatorAlphaValue: CGFloat {
+        get { separator.alphaValue }
+        set { separator.alphaValue = newValue }
+    }
+
+    var imageAlphaValue: CGFloat {
+        get { imageView.alphaValue }
+        set { imageView.alphaValue = newValue }
+    }
+
+    func animateContentAlpha(to alpha: CGFloat) {
+        separator.animator().alphaValue = alpha
+        imageView.animator().alphaValue = alpha
+    }
+
     override func mouseUp(with event: NSEvent) {
         if (window as? CandidateItemClickable)?.didDrag != true {
             onClick?()

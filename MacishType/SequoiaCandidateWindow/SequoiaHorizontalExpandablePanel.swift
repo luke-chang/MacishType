@@ -167,6 +167,8 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         if displayMode == .collapsed, hasOverflow {
             chevronView.isHidden = false
             chevronView.alphaValue = 1
+            chevronView.imageAlphaValue = 1
+            chevronView.separatorAlphaValue = 1
             chevronView.frame = NSRect(x: row0Width, y: row0Y, width: chevronWidth, height: itemHeight)
         } else {
             chevronView.isHidden = true
@@ -467,7 +469,7 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
 
             // Chevron: fade out, track right edge
             if !oldChevronHidden {
-                self.chevronView.animator().alphaValue = 0
+                self.chevronView.animateContentAlpha(to: 0)
                 let chevronTargetX = max(
                     targetRow0Frames.values.map(\.maxX).max() ?? 0,
                     contentSize.width - self.chevronView.frame.width
@@ -582,7 +584,9 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         let expandedContentWidth = expandedColumnWidth * CGFloat(expandedPageSize)
         if hasOverflow {
             chevronView.isHidden = false
-            chevronView.alphaValue = 0
+            chevronView.alphaValue = 1
+            chevronView.imageAlphaValue = 0
+            chevronView.separatorAlphaValue = 0
             let chevronStartX = max(
                 targetRow0Frames.values.map(\.maxX).max() ?? 0,
                 expandedContentWidth - chevronView.intrinsicContentSize.width
@@ -627,7 +631,7 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
 
             // Chevron: slide to final position + fade in
             if hasOverflow {
-                self.chevronView.animator().alphaValue = 1
+                self.chevronView.animateContentAlpha(to: 1)
                 let chevronFinalX = targetRow0Frames.values.map(\.maxX).max() ?? 0
                 var cf = self.chevronView.frame
                 cf.origin.x = chevronFinalX
