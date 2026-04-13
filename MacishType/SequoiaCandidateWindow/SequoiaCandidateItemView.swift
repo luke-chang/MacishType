@@ -115,6 +115,7 @@ class SequoiaCandidateItemView: NSView {
     }
 
     static var itemHeight: CGFloat { candidateFontSize + verticalPadding }
+    static var baseWidth: CGFloat { leadingPadding + indexWidth + indexCandidateGap + candidateFontSize + defaultTrailingPadding }
 
     private static var templateView: SequoiaCandidateItemView?
 

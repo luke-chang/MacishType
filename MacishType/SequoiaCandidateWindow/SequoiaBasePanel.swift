@@ -302,7 +302,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     // MARK: - Helpers
 
     func computeBaseMetrics() {
-        baseColumnWidth = SequoiaCandidateItemView.measureWidth(index: indexBase, candidate: "\u{5B57}")
+        baseColumnWidth = SequoiaCandidateItemView.baseWidth
         itemHeight = SequoiaCandidateItemView.itemHeight
     }
 
