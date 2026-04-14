@@ -296,6 +296,19 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         cornerAnimationTimer = nil
     }
 
+    private func makeAnimation(keyPath: String, from: CGFloat, to: CGFloat, persist: Bool = false) -> CABasicAnimation {
+        let anim = CABasicAnimation(keyPath: keyPath)
+        anim.fromValue = from
+        anim.toValue = to
+        anim.duration = animationDuration
+        anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        if persist {
+            anim.fillMode = .forwards
+            anim.isRemovedOnCompletion = false
+        }
+        return anim
+    }
+
     private func cornerAnimationTick() {
         let elapsed = CACurrentMediaTime() - cornerAnimationStart
         let progress = min(elapsed / animationDuration, 1.0)
@@ -391,7 +404,7 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
             targetExpandedFrames[item.absoluteIndex] = item.frame
         }
 
-        // Row 0 staying items: restore to old frames
+        // Row 0 staying items: restore to old frames (model stays within window)
         for (item, oldFrame) in oldRow0Frames {
             if !overflow.contains(item.absoluteIndex) {
                 item.frame = oldFrame
@@ -438,36 +451,26 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
             // Window resize
             self.animator().setFrame(targetWindowFrame, display: true)
 
-            // Row 0 staying items: animate to target
-            for item in self.row0ItemViews where !overflow.contains(item.absoluteIndex) {
+            // Row 0 staying items: animate from collapsed to expanded via transform
+            for (item, oldFrame) in oldRow0Frames where !overflow.contains(item.absoluteIndex) {
                 if let target = targetRow0Frames[item.absoluteIndex] {
-                    item.animator().frame = target
+                    let dx = target.origin.x - oldFrame.origin.x
+                    item.layer?.add(self.makeAnimation(keyPath: "transform.translation.x", from: 0, to: dx, persist: true), forKey: "slideToExpanded")
+                    item.layer?.add(self.makeAnimation(keyPath: "bounds.size.width", from: oldFrame.size.width, to: target.size.width, persist: true), forKey: "width")
                 }
             }
 
             // Row 0 overflow items: fade out + slide right via layer transform
             for item in self.row0ItemViews where overflow.contains(item.absoluteIndex) {
-                let slideTarget = collapsedWidth - item.frame.origin.x
                 item.animator().alphaValue = 0
-                let slide = CABasicAnimation(keyPath: "transform.translation.x")
-                slide.fromValue = 0
-                slide.toValue = slideTarget
-                slide.duration = self.animationDuration
-                slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                item.layer?.add(slide, forKey: "slideRight")
+                item.layer?.add(self.makeAnimation(keyPath: "transform.translation.x", from: 0, to: collapsedWidth - item.frame.origin.x), forKey: "slideRight")
             }
 
             // Rows 1+ overflow duplicates: slide in from left via transform + fade in
             for item in self.expandedItemViews where overflowDups.contains(item.absoluteIndex) {
                 if let target = targetExpandedFrames[item.absoluteIndex] {
-                    let offset = -(target.origin.x + target.width)
                     item.animator().alphaValue = 1
-                    let slide = CABasicAnimation(keyPath: "transform.translation.x")
-                    slide.fromValue = offset
-                    slide.toValue = 0
-                    slide.duration = self.animationDuration
-                    slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                    item.layer?.add(slide, forKey: "slideIn")
+                    item.layer?.add(self.makeAnimation(keyPath: "transform.translation.x", from: -(target.origin.x + target.width), to: 0), forKey: "slideIn")
                 }
             }
 
@@ -488,6 +491,14 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
 
         }, completionHandler: { [weak self] in
             guard let self else { return }
+            // Snap staying items to expanded frames and clear animations
+            for item in self.row0ItemViews where !overflow.contains(item.absoluteIndex) {
+                if let target = targetRow0Frames[item.absoluteIndex] {
+                    item.layer?.removeAllAnimations()
+                    item.frame = target
+                    item.layer?.transform = CATransform3DIdentity
+                }
+            }
             // Hide overflow items
             for item in self.row0ItemViews where overflow.contains(item.absoluteIndex) {
                 item.isHidden = true
@@ -561,14 +572,7 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
             item.frame = target
         }
 
-        // Row 0 staying items: restore to expanded positions (layoutItems set them to collapsed)
-        let expandedRow0Y = yForRow(0)
-        for item in row0ItemViews {
-            if !overflow.contains(item.absoluteIndex), let gridItem = expandedGridRows[0].items.first(where: { $0.candidateIndex == item.absoluteIndex }) {
-                let w = CGFloat(gridItem.columnSpan) * expandedColumnWidth
-                item.frame = NSRect(x: CGFloat(gridItem.columnStart) * expandedColumnWidth, y: expandedRow0Y, width: w, height: itemHeight)
-            }
-        }
+        // Row 0 staying items: keep at collapsed frames, transform will handle visual offset
 
         // Rows 1+ items: unhide at their current positions, will fade/slide out
         for (item, oldFrame) in oldExpandedFrames {
@@ -604,37 +608,30 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
             // Window resize
             self.animator().setFrame(targetWindowFrame, display: true)
 
-            // Row 0 staying items: animate to collapsed frames
+            // Row 0 staying items: slide from expanded to collapsed via transform.
+            // No fillMode needed — model frame is already at collapsed (the end state).
             for item in self.row0ItemViews where !overflow.contains(item.absoluteIndex) {
-                if let target = targetRow0Frames[item.absoluteIndex] {
-                    item.animator().frame = target
+                if let gridItem = self.expandedGridRows[0].items.first(where: { $0.candidateIndex == item.absoluteIndex }) {
+                    let expandedX = CGFloat(gridItem.columnStart) * self.expandedColumnWidth
+                    let expandedW = CGFloat(gridItem.columnSpan) * self.expandedColumnWidth
+                    let dx = expandedX - item.frame.origin.x
+                    item.layer?.add(self.makeAnimation(keyPath: "transform.translation.x", from: dx, to: 0), forKey: "slideToCollapsed")
+                    item.layer?.add(self.makeAnimation(keyPath: "bounds.size.width", from: expandedW, to: item.frame.size.width), forKey: "width")
                 }
             }
 
             // Row 0 overflow items: slide in from right via transform + fade in
             for item in self.row0ItemViews where overflow.contains(item.absoluteIndex) {
                 if let target = targetRow0Frames[item.absoluteIndex] {
-                    let offset = contentSize.width - target.origin.x
                     item.animator().alphaValue = 1
-                    let slide = CABasicAnimation(keyPath: "transform.translation.x")
-                    slide.fromValue = offset
-                    slide.toValue = 0
-                    slide.duration = self.animationDuration
-                    slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                    item.layer?.add(slide, forKey: "slideIn")
+                    item.layer?.add(self.makeAnimation(keyPath: "transform.translation.x", from: contentSize.width - target.origin.x, to: 0), forKey: "slideIn")
                 }
             }
 
             // Rows 1+ overflow duplicates: slide out to left via transform + fade out
             for item in self.expandedItemViews where overflowDups.contains(item.absoluteIndex) {
                 item.animator().alphaValue = 0
-                let slideTarget = -(item.frame.origin.x + item.frame.width)
-                let slide = CABasicAnimation(keyPath: "transform.translation.x")
-                slide.fromValue = 0
-                slide.toValue = slideTarget
-                slide.duration = self.animationDuration
-                slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                item.layer?.add(slide, forKey: "slideLeft")
+                item.layer?.add(self.makeAnimation(keyPath: "transform.translation.x", from: 0, to: -(item.frame.origin.x + item.frame.width)), forKey: "slideLeft")
             }
 
             // Chevron: slide to final position + fade in
