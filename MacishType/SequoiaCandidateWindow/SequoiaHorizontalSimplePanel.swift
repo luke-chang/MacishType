@@ -54,6 +54,9 @@ class SequoiaHorizontalSimplePanel: SequoiaHorizontalBasePanel {
         if isVisible, !candidates.isEmpty {
             buildCandidateLayout()
             restoreSelection(to: impl?.selectedIndex ?? 0)
+            if lastShowNearRect != .zero {
+                show(near: lastShowNearRect)
+            }
         }
     }
 
@@ -124,10 +127,6 @@ class SequoiaHorizontalSimplePanel: SequoiaHorizontalBasePanel {
         let contentSize = layoutItems()
         setContentSize(contentSize)
         updateMaskImage()
-
-        if isVisible, lastShowNearRect != .zero {
-            show(near: lastShowNearRect)
-        }
     }
 
     @discardableResult

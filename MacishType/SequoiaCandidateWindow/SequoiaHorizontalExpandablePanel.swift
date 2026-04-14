@@ -72,6 +72,9 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         if isVisible, !candidates.isEmpty {
             buildCandidateLayout()
             restoreSelection(to: impl?.selectedIndex ?? 0)
+            if lastShowNearRect != .zero {
+                show(near: lastShowNearRect)
+            }
         }
     }
 
@@ -257,10 +260,6 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         let contentSize = layoutItems()
         setContentSize(contentSize)
         updateHorizontalMaskImage()
-
-        if isVisible, lastShowNearRect != .zero {
-            show(near: lastShowNearRect)
-        }
     }
 
     // MARK: - Corner Radius Animation

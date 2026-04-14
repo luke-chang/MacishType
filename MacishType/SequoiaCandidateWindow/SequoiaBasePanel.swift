@@ -33,8 +33,14 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     var rowHighlightView: SequoiaHighlightView!
     var separatorViews: [SequoiaSeparatorView] = []
 
+    private enum WindowPlacement {
+        case below, above, left, right
+    }
+
     private var accentColorObserver: (any NSObjectProtocol)?
     private var scrollerStyleObserver: (any NSObjectProtocol)?
+    private var previousPlacement: WindowPlacement?
+    private var previousTopLeft: NSPoint = .zero
     private var dragOffset: NSPoint = .zero
     private var dragStartScreen: NSPoint = .zero
 
@@ -128,15 +134,33 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     // MARK: - Positioning
 
     func show(near rect: NSRect) {
-        let topLeftPoint = topLeftPoint(forWindowSize: self.frame.size, near: rect)
-        let newOrigin = NSPoint(x: topLeftPoint.x, y: topLeftPoint.y - self.frame.height)
-        let dx = newOrigin.x - self.frame.origin.x
-        let dy = newOrigin.y - self.frame.origin.y
+        let (topLeft, placement) = topLeftPoint(forWindowSize: frame.size, near: rect)
+        let newOrigin = NSPoint(x: topLeft.x, y: topLeft.y - frame.height)
+        let dx = newOrigin.x - frame.origin.x
+        let dy = newOrigin.y - frame.origin.y
         let distanceSq = dx * dx + dy * dy
 
-        if isVisible, !isAnimating, distanceSq > 400 {
+        let placementChanged = previousPlacement != nil && placement != previousPlacement
+
+        let shouldAnimate: Bool
+        if !isVisible {
+            shouldAnimate = false
+        } else if placementChanged {
+            shouldAnimate = false
+        } else {
+            shouldAnimate = !isAnimating && distanceSq > 400
+        }
+
+        if shouldAnimate {
+            // Snap to previous top-left before animating
+            // (setContentSize keeps the origin, which shifts the top-left)
+            if previousTopLeft != .zero {
+                setFrameTopLeftPoint(previousTopLeft)
+            }
+            previousPlacement = placement
+            previousTopLeft = topLeft
             isAnimating = true
-            let newFrame = NSRect(origin: newOrigin, size: self.frame.size)
+            let newFrame = NSRect(origin: newOrigin, size: frame.size)
             NSAnimationContext.runAnimationGroup({ context in
                 context.duration = self.animationDuration
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -145,9 +169,11 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
                 self?.isAnimating = false
             })
         } else if !isAnimating {
-            self.setFrameTopLeftPoint(topLeftPoint)
+            previousPlacement = placement
+            previousTopLeft = topLeft
+            setFrameTopLeftPoint(topLeft)
         }
-        self.orderFrontRegardless()
+        orderFrontRegardless()
     }
 
     func screen(containing rect: NSRect) -> NSScreen? {
@@ -161,15 +187,17 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
             })
     }
 
-    func topLeftPoint(forWindowSize windowSize: NSSize, near rect: NSRect) -> NSPoint {
+    private func topLeftPoint(forWindowSize windowSize: NSSize, near rect: NSRect) -> (point: NSPoint, placement: WindowPlacement) {
         let screenRect = screen(containing: rect)?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
         let margin: CGFloat = 4.0
         var point = NSPoint(x: rect.minX, y: rect.minY - margin)
+        var placement: WindowPlacement = .below
 
         if point.y - windowSize.height < screenRect.minY {
             let aboveY = rect.maxY + windowSize.height + margin
             if aboveY <= screenRect.maxY {
                 point.y = aboveY
+                placement = .above
             } else {
                 // Can't fit below or above — position beside the composition area
                 point.y = rect.maxY
@@ -180,8 +208,10 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
                 let leftX = impl.compositionStartX - windowSize.width - margin
                 if leftX >= screenRect.minX {
                     point.x = leftX
+                    placement = .left
                 } else {
                     point.x = impl.compositionEndX + margin
+                    placement = .right
                 }
             }
         }
@@ -196,12 +226,12 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
             point.y = screenRect.maxY
         }
 
-        return point
+        return (point, placement)
     }
 
     func windowFrame(for contentSize: NSSize, reposition: Bool) -> NSRect {
         if reposition, lastShowNearRect != .zero {
-            let topLeft = topLeftPoint(forWindowSize: contentSize, near: lastShowNearRect)
+            let (topLeft, _) = topLeftPoint(forWindowSize: contentSize, near: lastShowNearRect)
             return NSRect(
                 x: topLeft.x,
                 y: topLeft.y - contentSize.height,
