@@ -259,9 +259,73 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
         return NSRect(origin: newOrigin, size: contentSize)
     }
 
+    // MARK: - Frame Animation
+
+    private var frameDisplayLink: CADisplayLink?
+    private var frameAnimStart: CFTimeInterval = 0
+    private var frameAnimFrom: NSRect = .zero
+    private var frameAnimTo: NSRect = .zero
+
+    func animateFrame(to targetFrame: NSRect) {
+        guard targetFrame != frame else { return }
+        stopFrameAnimation()
+        frameAnimFrom = frame
+        frameAnimTo = targetFrame
+        frameAnimStart = CACurrentMediaTime()
+        let link = self.displayLink(target: self, selector: #selector(frameAnimTick))
+        link.add(to: .main, forMode: .common)
+        frameDisplayLink = link
+    }
+
+    func stopFrameAnimation() {
+        frameDisplayLink?.invalidate()
+        frameDisplayLink = nil
+    }
+
+    /// Evaluate the ease-in-out cubic bezier (0.42, 0, 0.58, 1) to match
+    /// CAMediaTimingFunction(.easeInEaseOut) used by CABasicAnimation.
+    private static func easeInOut(_ x: CGFloat) -> CGFloat {
+        let x1: CGFloat = 0.42, x2: CGFloat = 0.58
+        var t = x
+        for _ in 0..<8 {
+            let mt = 1 - t
+            let xErr = 3 * mt * mt * t * x1 + 3 * mt * t * t * x2 + t * t * t - x
+            if abs(xErr) < 1e-7 { break }
+            let dx = 3 * mt * mt * x1 + 6 * mt * t * (x2 - x1) + 3 * t * t * (1 - x2)
+            if abs(dx) < 1e-7 { break }
+            t -= xErr / dx
+        }
+        return 3 * t * t - 2 * t * t * t
+    }
+
+    @objc private func frameAnimTick() {
+        let elapsed = CACurrentMediaTime() - frameAnimStart
+        let progress = min(elapsed / animationDuration, 1.0)
+        let t = Self.easeInOut(progress)
+
+        let from = frameAnimFrom, to = frameAnimTo
+        let currentFrame = NSRect(
+            x: from.origin.x + (to.origin.x - from.origin.x) * t,
+            y: from.origin.y + (to.origin.y - from.origin.y) * t,
+            width: from.width + (to.width - from.width) * t,
+            height: from.height + (to.height - from.height) * t
+        )
+        setFrame(currentFrame, display: true)
+        frameAnimationDidTick(t: t)
+
+        if progress >= 1.0 {
+            stopFrameAnimation()
+            frameAnimationDidFinish()
+        }
+    }
+
+    func frameAnimationDidTick(t: CGFloat) {}
+    func frameAnimationDidFinish() {}
+
     // MARK: - Hide
 
     func hide() {
+        stopFrameAnimation()
         orderOut(nil)
     }
 

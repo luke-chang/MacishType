@@ -37,12 +37,8 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
 
     override var allItemViews: [SequoiaCandidateItemView] { row0ItemViews + expandedItemViews }
 
-    private var transitionTimer: Timer?
-    private var transitionStart: CFTimeInterval = 0
     private var transitionCornerFrom: CGFloat = 0
     private var transitionCornerTo: CGFloat = 0
-    private var transitionFrameFrom: NSRect = .zero
-    private var transitionFrameTo: NSRect = .zero
 
     // MARK: - Init
 
@@ -281,23 +277,10 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         updateHorizontalMaskImage()
     }
 
-    private func animateTransition(cornerFrom: CGFloat, cornerTo: CGFloat, frameFrom: NSRect, frameTo: NSRect) {
-        stopTransitionTimer()
+    private func animateTransition(cornerFrom: CGFloat, cornerTo: CGFloat, frameTo: NSRect) {
         transitionCornerFrom = cornerFrom
         transitionCornerTo = cornerTo
-        transitionFrameFrom = frameFrom
-        transitionFrameTo = frameTo
-        transitionStart = CACurrentMediaTime()
-        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] _ in
-            self?.transitionTick()
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        transitionTimer = timer
-    }
-
-    private func stopTransitionTimer() {
-        transitionTimer?.invalidate()
-        transitionTimer = nil
+        animateFrame(to: frameTo)
     }
 
     private func makeAnimation(keyPath: String, from: CGFloat, to: CGFloat, persist: Bool = false) -> CABasicAnimation {
@@ -313,32 +296,17 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         return anim
     }
 
-    private func transitionTick() {
-        let elapsed = CACurrentMediaTime() - transitionStart
-        let progress = min(elapsed / animationDuration, 1.0)
-        // Ease in-out approximation matching CAMediaTimingFunction(.easeInEaseOut)
-        let t = progress < 0.5
-            ? 2 * progress * progress
-            : -1 + (4 - 2 * progress) * progress
-
-        let f = transitionFrameFrom
-        let dt = transitionFrameTo
-        let x = f.origin.x + (dt.origin.x - f.origin.x) * t
-        let y = f.origin.y + (dt.origin.y - f.origin.y) * t
-        let w = f.size.width + (dt.size.width - f.size.width) * t
-        let h = f.size.height + (dt.size.height - f.size.height) * t
-        setFrame(NSRect(x: x, y: y, width: w, height: h), display: true)
-
+    override func frameAnimationDidTick(t: CGFloat) {
         let radius = transitionCornerFrom + (transitionCornerTo - transitionCornerFrom) * t
-        let size = NSSize(width: w, height: h)
+        let size = frame.size
         guard size.width > 0, size.height > 0 else { return }
         visualEffectView.maskImage = .asymmetricCornerMask(
             size: size, leftRadius: Self.defaultCornerRadius, rightRadius: radius
         )
-        if progress >= 1.0 {
-            stopTransitionTimer()
-            updateHorizontalMaskImage()
-        }
+    }
+
+    override func frameAnimationDidFinish() {
+        updateHorizontalMaskImage()
     }
 
     // MARK: - Expand/Collapse
@@ -456,7 +424,7 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
 
         // Animate window frame, corner radius, and mask together
         animateTransition(cornerFrom: frame.size.height / 2, cornerTo: Self.defaultCornerRadius,
-                          frameFrom: frame, frameTo: targetWindowFrame)
+                          frameTo: targetWindowFrame)
 
         isAnimating = true
         NSAnimationContext.runAnimationGroup({ context in
@@ -611,7 +579,7 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         // Animate window frame, corner radius, and mask together
         let targetRightRadius = hasOverflow ? contentSize.height / 2 : Self.defaultCornerRadius
         animateTransition(cornerFrom: Self.defaultCornerRadius, cornerTo: targetRightRadius,
-                          frameFrom: frame, frameTo: targetWindowFrame)
+                          frameTo: targetWindowFrame)
 
         isAnimating = true
         NSAnimationContext.runAnimationGroup({ context in
@@ -941,7 +909,7 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         isAnimating = false
         expandedGridRows = []
         expandedRowsBuilt = false
-        stopTransitionTimer()
+        stopFrameAnimation()
     }
 
     // MARK: - Overflow Helpers

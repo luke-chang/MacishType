@@ -180,13 +180,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
             let targetFrame = windowFrame(for: newSize, reposition: false)
 
             isAnimating = true
-            NSAnimationContext.runAnimationGroup({ context in
-                context.duration = self.animationDuration
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                self.animator().setFrame(targetFrame, display: true)
-            }, completionHandler: { [weak self] in
-                self?.isAnimating = false
-            })
+            animateFrame(to: targetFrame)
         }
 
         updateNumbering()
@@ -363,6 +357,12 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         let candidateIndex = anchorIndex + offset
         guard candidateIndex < displayCount else { return }
         impl.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
+    }
+
+    // MARK: - Frame Animation
+
+    override func frameAnimationDidFinish() {
+        isAnimating = false
     }
 
     // MARK: - Scroller Style
