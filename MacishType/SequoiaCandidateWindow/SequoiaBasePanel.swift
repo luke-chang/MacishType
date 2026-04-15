@@ -27,7 +27,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
 
     // MARK: - View Hierarchy
 
-    var visualEffectView: NSVisualEffectView!
+    private(set) var backdrop: SequoiaBackdrop!
     var scrollView: NSScrollView!
     var candidateContainer: FlippedView!
     var rowHighlightView: SequoiaHighlightView!
@@ -84,13 +84,8 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     }
 
     private func setupUI() {
-        visualEffectView = NSVisualEffectView()
-        visualEffectView.material = .hudWindow
-        visualEffectView.state = .active
-        visualEffectView.blendingMode = .behindWindow
-        visualEffectView.wantsLayer = true
-        visualEffectView.layer?.masksToBounds = true
-        self.contentView = visualEffectView
+        backdrop = .make()
+        self.contentView = backdrop.view
 
         scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -99,12 +94,13 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
-        visualEffectView.addSubview(scrollView)
+        let contentArea = backdrop.contentArea
+        contentArea.addSubview(scrollView)
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: visualEffectView.topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: contentArea.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: contentArea.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: contentArea.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: contentArea.bottomAnchor),
         ])
 
         candidateContainer = FlippedView()
@@ -431,10 +427,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     func updateMaskImage() {
         let size = frame.size
         guard size.width > 0, size.height > 0 else { return }
-        let r = Self.defaultCornerRadius
-        visualEffectView.maskImage = .asymmetricCornerMask(
-            size: size, leftRadius: r, rightRadius: r
-        )
+        backdrop.applyUniformCorners(size: size, radius: Self.defaultCornerRadius)
     }
 
     // MARK: - Subclass Override Points
@@ -456,4 +449,162 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     func commitCandidateForDigit(_ digit: Int) {}
     func ensureSelectionVisible() {}
     func handleScrollerStyleChange() {}
+}
+
+// MARK: - SequoiaBackdrop
+
+/// Type-erased wrapper for the candidate window background view.
+/// Encapsulates the version-branching between NSVisualEffectView (macOS 14+)
+/// and NSGlassEffectView (macOS 26+) so callers never see `if #available`.
+struct SequoiaBackdrop {
+
+    let view: NSView
+    let contentArea: NSView
+
+    fileprivate let uniformCorners: (NSSize, CGFloat) -> Void
+    fileprivate let asymmetricCorners: (NSSize, CGFloat, CGFloat) -> Void
+
+    func applyUniformCorners(size: NSSize, radius: CGFloat) {
+        uniformCorners(size, radius)
+    }
+
+    func applyAsymmetricCorners(size: NSSize, leftRadius: CGFloat, rightRadius: CGFloat) {
+        asymmetricCorners(size, leftRadius, rightRadius)
+    }
+}
+
+extension SequoiaBackdrop {
+
+    static func make() -> SequoiaBackdrop {
+        if #available(macOS 26, *) {
+            return makeGlass()
+        }
+        return makeVibrancy()
+    }
+
+    private static func makeVibrancy() -> SequoiaBackdrop {
+        let v = VibrancyBackgroundView()
+        return SequoiaBackdrop(
+            view: v,
+            contentArea: v,
+            uniformCorners: { v.applyUniformCorners(size: $0, radius: $1) },
+            asymmetricCorners: { v.applyAsymmetricCorners(size: $0, leftRadius: $1, rightRadius: $2) }
+        )
+    }
+
+    @available(macOS 26, *)
+    private static func makeGlass() -> SequoiaBackdrop {
+        let v = GlassBackgroundView()
+        return SequoiaBackdrop(
+            view: v,
+            contentArea: v.container,
+            uniformCorners: { v.applyUniformCorners(size: $0, radius: $1) },
+            asymmetricCorners: { v.applyAsymmetricCorners(size: $0, leftRadius: $1, rightRadius: $2) }
+        )
+    }
+}
+
+// MARK: - Corner Path
+
+private func asymmetricCornerPath(
+    size: NSSize, leftRadius: CGFloat, rightRadius: CGFloat
+) -> CGPath {
+    let rect = CGRect(origin: .zero, size: size)
+    let lr = min(leftRadius, rect.height / 2)
+    let rr = min(rightRadius, rect.height / 2)
+    let path = CGMutablePath()
+    path.move(to: CGPoint(x: lr, y: rect.maxY))
+    path.addLine(to: CGPoint(x: rect.maxX - rr, y: rect.maxY))
+    path.addArc(center: CGPoint(x: rect.maxX - rr, y: rect.maxY - rr),
+                 radius: rr, startAngle: .pi / 2, endAngle: 0, clockwise: true)
+    path.addLine(to: CGPoint(x: rect.maxX, y: rr))
+    path.addArc(center: CGPoint(x: rect.maxX - rr, y: rr),
+                 radius: rr, startAngle: 0, endAngle: -.pi / 2, clockwise: true)
+    path.addLine(to: CGPoint(x: lr, y: 0))
+    path.addArc(center: CGPoint(x: lr, y: lr),
+                 radius: lr, startAngle: -.pi / 2, endAngle: -.pi, clockwise: true)
+    path.addLine(to: CGPoint(x: 0, y: rect.maxY - lr))
+    path.addArc(center: CGPoint(x: lr, y: rect.maxY - lr),
+                 radius: lr, startAngle: .pi, endAngle: .pi / 2, clockwise: true)
+    path.closeSubpath()
+    return path
+}
+
+// MARK: - NSVisualEffectView (macOS 14+)
+
+private class VibrancyBackgroundView: NSVisualEffectView {
+
+    private var cachedSize: NSSize = .zero
+    private var cachedLeft: CGFloat = -1
+    private var cachedRight: CGFloat = -1
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        material = .hudWindow
+        state = .active
+        blendingMode = .behindWindow
+        wantsLayer = true
+        layer?.masksToBounds = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func applyUniformCorners(size: NSSize, radius: CGFloat) {
+        applyAsymmetricCorners(size: size, leftRadius: radius, rightRadius: radius)
+    }
+
+    func applyAsymmetricCorners(size: NSSize, leftRadius: CGFloat, rightRadius: CGFloat) {
+        guard size.width > 0, size.height > 0 else { return }
+        if size == cachedSize, leftRadius == cachedLeft, rightRadius == cachedRight { return }
+        cachedSize = size
+        cachedLeft = leftRadius
+        cachedRight = rightRadius
+        let cgPath = asymmetricCornerPath(size: size, leftRadius: leftRadius, rightRadius: rightRadius)
+        maskImage = NSImage(size: size, flipped: false) { rect in
+            NSBezierPath(cgPath: cgPath).fill()
+            return true
+        }
+    }
+}
+
+// MARK: - NSGlassEffectView (macOS 26+)
+
+@available(macOS 26, *)
+private class GlassBackgroundView: NSGlassEffectView {
+
+    fileprivate let container = NSView()
+    private var maskLayer: CAShapeLayer?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        style = .regular
+        contentView = container
+        // Prevent small-surface light/dark color scheme flipping (private API).
+        if responds(to: Selector(("_adaptiveAppearance"))) {
+            setValue(1, forKey: "_adaptiveAppearance")
+        }
+        wantsLayer = true
+        layer?.masksToBounds = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func applyUniformCorners(size: NSSize, radius: CGFloat) {
+        layer?.mask = nil
+        maskLayer = nil
+        cornerRadius = radius
+    }
+
+    func applyAsymmetricCorners(size: NSSize, leftRadius: CGFloat, rightRadius: CGFloat) {
+        guard size.width > 0, size.height > 0 else { return }
+        cornerRadius = 0
+        let shape = maskLayer ?? {
+            let s = CAShapeLayer()
+            layer?.mask = s
+            maskLayer = s
+            return s
+        }()
+        shape.frame = CGRect(origin: .zero, size: size)
+        shape.path = asymmetricCornerPath(size: size, leftRadius: leftRadius, rightRadius: rightRadius)
+    }
 }

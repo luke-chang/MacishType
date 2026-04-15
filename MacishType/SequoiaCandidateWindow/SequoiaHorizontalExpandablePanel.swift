@@ -300,7 +300,7 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         let radius = transitionCornerFrom + (transitionCornerTo - transitionCornerFrom) * t
         let size = frame.size
         guard size.width > 0, size.height > 0 else { return }
-        visualEffectView.maskImage = .asymmetricCornerMask(
+        backdrop.applyAsymmetricCorners(
             size: size, leftRadius: Self.defaultCornerRadius, rightRadius: radius
         )
     }
