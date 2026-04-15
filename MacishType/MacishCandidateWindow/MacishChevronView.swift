@@ -1,6 +1,6 @@
 import Cocoa
 
-class SequoiaChevronView: NSView {
+class MacishChevronView: NSView {
     var onClick: (() -> Void)?
 
     private let separator = NSBox()

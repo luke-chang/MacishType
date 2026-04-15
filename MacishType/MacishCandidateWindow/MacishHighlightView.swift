@@ -1,6 +1,6 @@
 import Cocoa
 
-class SequoiaHighlightView: NSView {
+class MacishHighlightView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = true

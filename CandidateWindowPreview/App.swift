@@ -153,7 +153,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
 
     func attachCandidatePanel() {
         guard let window else { return }
-        for w in NSApp.windows where w is SequoiaBasePanel && w.isVisible {
+        for w in NSApp.windows where w is MacishBasePanel && w.isVisible {
             if !(window.childWindows?.contains(w) ?? false) {
                 window.addChildWindow(w, ordered: .above)
             }

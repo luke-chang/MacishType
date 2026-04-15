@@ -6,7 +6,7 @@ class FlippedView: NSView {
 
 // MARK: -
 
-class SequoiaBasePanel: NSPanel, CandidateItemClickable {
+class MacishBasePanel: NSPanel, CandidateItemClickable {
 
     var impl: CandidateWindowImpl!
 
@@ -27,11 +27,11 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
 
     // MARK: - View Hierarchy
 
-    private(set) var backdrop: SequoiaBackdrop!
+    private(set) var backdrop: MacishBackdrop!
     var scrollView: NSScrollView!
     var candidateContainer: FlippedView!
-    var rowHighlightView: SequoiaHighlightView!
-    var separatorViews: [SequoiaSeparatorView] = []
+    var rowHighlightView: MacishHighlightView!
+    var separatorViews: [MacishSeparatorView] = []
 
     private enum WindowPlacement {
         case below, above, left, right
@@ -106,7 +106,7 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
         candidateContainer = FlippedView()
         scrollView.documentView = candidateContainer
 
-        rowHighlightView = SequoiaHighlightView()
+        rowHighlightView = MacishHighlightView()
         candidateContainer.addSubview(rowHighlightView)
     }
 
@@ -392,23 +392,23 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     // MARK: - Helpers
 
     func computeBaseMetrics() {
-        baseColumnWidth = SequoiaCandidateItemView.baseWidth
-        itemHeight = SequoiaCandidateItemView.itemHeight
+        baseColumnWidth = MacishCandidateItemView.baseWidth
+        itemHeight = MacishCandidateItemView.itemHeight
     }
 
     func yForRow(_ rowIndex: Int) -> CGFloat {
         CGFloat(rowIndex) * (itemHeight + Self.separatorHeight)
     }
 
-    func createItemView() -> SequoiaCandidateItemView {
-        let item = SequoiaCandidateItemView()
+    func createItemView() -> MacishCandidateItemView {
+        let item = MacishCandidateItemView()
         item.highlightColor = highlightColor
         return item
     }
 
     func ensureSeparators(count: Int, width: CGFloat) {
         while separatorViews.count < count {
-            let sep = SequoiaSeparatorView()
+            let sep = MacishSeparatorView()
             candidateContainer.addSubview(sep, positioned: .above, relativeTo: rowHighlightView)
             separatorViews.append(sep)
         }
@@ -432,9 +432,9 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
 
     // MARK: - Subclass Override Points
 
-    var allItemViews: [SequoiaCandidateItemView] { [] }
+    var allItemViews: [MacishCandidateItemView] { [] }
     func updateFontSize(_ fontSize: CGFloat) {
-        SequoiaCandidateItemView.updateFontSize(fontSize)
+        MacishCandidateItemView.updateFontSize(fontSize)
     }
     func apply(_ configuration: CandidateWindowConfiguration) {
         if let fontSize = configuration.fontSize {
@@ -451,12 +451,12 @@ class SequoiaBasePanel: NSPanel, CandidateItemClickable {
     func handleScrollerStyleChange() {}
 }
 
-// MARK: - SequoiaBackdrop
+// MARK: - MacishBackdrop
 
 /// Type-erased wrapper for the candidate window background view.
 /// Encapsulates the version-branching between NSVisualEffectView (macOS 14+)
 /// and NSGlassEffectView (macOS 26+) so callers never see `if #available`.
-struct SequoiaBackdrop {
+struct MacishBackdrop {
 
     let view: NSView
     let contentArea: NSView
@@ -473,18 +473,18 @@ struct SequoiaBackdrop {
     }
 }
 
-extension SequoiaBackdrop {
+extension MacishBackdrop {
 
-    static func make() -> SequoiaBackdrop {
+    static func make() -> MacishBackdrop {
         if #available(macOS 26, *) {
             return makeGlass()
         }
         return makeVibrancy()
     }
 
-    private static func makeVibrancy() -> SequoiaBackdrop {
+    private static func makeVibrancy() -> MacishBackdrop {
         let v = VibrancyBackgroundView()
-        return SequoiaBackdrop(
+        return MacishBackdrop(
             view: v,
             contentArea: v,
             uniformCorners: { v.applyUniformCorners(size: $0, radius: $1) },
@@ -493,9 +493,9 @@ extension SequoiaBackdrop {
     }
 
     @available(macOS 26, *)
-    private static func makeGlass() -> SequoiaBackdrop {
+    private static func makeGlass() -> MacishBackdrop {
         let v = GlassBackgroundView()
-        return SequoiaBackdrop(
+        return MacishBackdrop(
             view: v,
             contentArea: v.container,
             uniformCorners: { v.applyUniformCorners(size: $0, radius: $1) },

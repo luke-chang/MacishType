@@ -1,10 +1,10 @@
 import Cocoa
 
-class SequoiaVerticalPanel: SequoiaBasePanel {
+class MacishVerticalPanel: MacishBasePanel {
 
     // MARK: - State
 
-    private var itemViews: [SequoiaCandidateItemView] = []
+    private var itemViews: [MacishCandidateItemView] = []
     private var anchorIndex = 0
     private var isFullyRendered = false
     private var initialContentWidth: CGFloat = 0
@@ -13,7 +13,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
     private var minVisibleRows = 0
     private var boundsObserver: (any NSObjectProtocol)?
 
-    override var allItemViews: [SequoiaCandidateItemView] { itemViews }
+    override var allItemViews: [MacishCandidateItemView] { itemViews }
 
     // MARK: - Init
 
@@ -134,7 +134,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
 
         var maxWidth = baseColumnWidth
         for (_, candidate) in sorted {
-            let w = SequoiaCandidateItemView.measureWidth(index: indexBase, candidate: candidate)
+            let w = MacishCandidateItemView.measureWidth(index: indexBase, candidate: candidate)
             maxWidth = max(maxWidth, w)
         }
         return maxWidth
@@ -159,7 +159,7 @@ class SequoiaVerticalPanel: SequoiaBasePanel {
         // Re-measure actual max width across all candidates
         var actualMaxWidth = initialContentWidth
         for i in 0..<displayCount {
-            let w = SequoiaCandidateItemView.measureWidth(index: indexBase, candidate: candidates[i])
+            let w = MacishCandidateItemView.measureWidth(index: indexBase, candidate: candidates[i])
             actualMaxWidth = max(actualMaxWidth, w)
         }
 

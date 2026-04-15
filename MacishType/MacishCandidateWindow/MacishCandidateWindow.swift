@@ -1,33 +1,33 @@
 import Cocoa
 
-class SequoiaCandidateWindow: CandidateWindowImpl {
+class MacishCandidateWindow: CandidateWindowImpl {
 
-    private lazy var horizontalPanel = SequoiaHorizontalExpandablePanel(
+    private lazy var horizontalPanel = MacishHorizontalExpandablePanel(
         contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
         styleMask: [.borderless],
         backing: .buffered,
         defer: false
     )
 
-    private lazy var horizontalSimplePanel = SequoiaHorizontalSimplePanel(
+    private lazy var horizontalSimplePanel = MacishHorizontalSimplePanel(
         contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
         styleMask: [.borderless],
         backing: .buffered,
         defer: false
     )
 
-    private lazy var verticalPanel = SequoiaVerticalPanel(
+    private lazy var verticalPanel = MacishVerticalPanel(
         contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
         styleMask: [.borderless],
         backing: .buffered,
         defer: false
     )
 
-    private var activePanel: SequoiaBasePanel!
+    private var activePanel: MacishBasePanel!
 
     private func panel(for direction: CandidateWindow.LayoutDirection,
-                       expandable: Bool) -> SequoiaBasePanel {
-        let panel: SequoiaBasePanel = switch direction {
+                       expandable: Bool) -> MacishBasePanel {
+        let panel: MacishBasePanel = switch direction {
         case .horizontal:
             expandable ? horizontalPanel : horizontalSimplePanel
         case .vertical:
@@ -39,8 +39,8 @@ class SequoiaCandidateWindow: CandidateWindowImpl {
 
     // MARK: - Panel Switching
 
-    private func transitionPanel(from oldPanel: SequoiaBasePanel,
-                                 to newPanel: SequoiaBasePanel,
+    private func transitionPanel(from oldPanel: MacishBasePanel,
+                                 to newPanel: MacishBasePanel,
                                  configuration: CandidateWindowConfiguration) {
         let wasVisible = oldPanel.isVisible
         oldPanel.hide()

@@ -1,6 +1,6 @@
 import Cocoa
 
-class SequoiaHorizontalSimplePanel: SequoiaHorizontalBasePanel {
+class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
 
     private struct GridItem {
         let candidateIndex: Int
@@ -20,10 +20,10 @@ class SequoiaHorizontalSimplePanel: SequoiaHorizontalBasePanel {
     private var hasMultiplePages: Bool { pages.count > 1 || nextCandidateOffset < displayCount }
     private var hasNextPage: Bool { remainingPagesBuilt ? currentPage < pages.count - 1 : nextCandidateOffset < displayCount }
 
-    private var pageItemViews: [[SequoiaCandidateItemView]] = []
-    private var pageArrowView: SequoiaPageArrowView!
+    private var pageItemViews: [[MacishCandidateItemView]] = []
+    private var pageArrowView: MacishPageArrowView!
 
-    override var allItemViews: [SequoiaCandidateItemView] { pageItemViews.flatMap { $0 } }
+    override var allItemViews: [MacishCandidateItemView] { pageItemViews.flatMap { $0 } }
 
     // MARK: - Init
 
@@ -32,7 +32,7 @@ class SequoiaHorizontalSimplePanel: SequoiaHorizontalBasePanel {
 
         scrollView.hasVerticalScroller = false
 
-        pageArrowView = SequoiaPageArrowView()
+        pageArrowView = MacishPageArrowView()
         pageArrowView.onPageUp = { [weak self] in
             self?.handleNavigation(direction: .pageBackward, wrapping: false)
         }
@@ -69,7 +69,7 @@ class SequoiaHorizontalSimplePanel: SequoiaHorizontalBasePanel {
         var offset = offset
         for _ in 0..<pageSize {
             guard offset < displayCount else { break }
-            let raw = SequoiaCandidateItemView.measureWidth(index: items.count + indexBase, candidate: candidates[offset])
+            let raw = MacishCandidateItemView.measureWidth(index: items.count + indexBase, candidate: candidates[offset])
             let w = max(baseColumnWidth, min(raw, maxWidth))
             if usedWidth + w > maxWidth, !items.isEmpty { break }
             items.append(GridItem(candidateIndex: offset, measuredWidth: w))
@@ -112,7 +112,7 @@ class SequoiaHorizontalSimplePanel: SequoiaHorizontalBasePanel {
         computeBaseMetrics()
         pages = [computeFirstPage()]
 
-        var page0Views: [SequoiaCandidateItemView] = []
+        var page0Views: [MacishCandidateItemView] = []
         for (pos, gridItem) in currentPageItems.enumerated() {
             let item = createItemView()
             item.absoluteIndex = gridItem.candidateIndex
@@ -168,7 +168,7 @@ class SequoiaHorizontalSimplePanel: SequoiaHorizontalBasePanel {
         guard !remainingPagesBuilt else { return }
         computeRemainingPages()
         for pageIdx in 1..<pages.count {
-            var views: [SequoiaCandidateItemView] = []
+            var views: [MacishCandidateItemView] = []
             for (pos, gridItem) in pages[pageIdx].enumerated() {
                 let item = createItemView()
                 item.absoluteIndex = gridItem.candidateIndex

@@ -1,6 +1,6 @@
 import Cocoa
 
-class SequoiaPageArrowView: NSView {
+class MacishPageArrowView: NSView {
     var onPageUp: (() -> Void)?
     var onPageDown: (() -> Void)?
 

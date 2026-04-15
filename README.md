@@ -51,18 +51,18 @@ MacishType/
 │   │   └── Resources/                             # ExampleEngine assets
 │   │       └── ExampleMenuIcon.tiff               # Menu bar icon for ExampleEngine
 │   ├── CandidateWindow.swift                      # Candidate window public API and shared types
-│   ├── SequoiaCandidateWindow/                    # macOS Sequoia style candidate window
-│   │   ├── SequoiaCandidateWindow.swift           # Style controller (panel switching)
-│   │   ├── SequoiaBasePanel.swift                 # NSPanel base (vibrancy, positioning, theming)
-│   │   ├── SequoiaHorizontalBasePanel.swift       # Shared horizontal panel base
-│   │   ├── SequoiaHorizontalExpandablePanel.swift # Expandable layout with grid expand/collapse
-│   │   ├── SequoiaHorizontalSimplePanel.swift     # Non-expandable layout with page navigation
-│   │   ├── SequoiaVerticalPanel.swift             # Vertical scrolling layout
-│   │   ├── SequoiaCandidateItemView.swift         # Single candidate cell with index and label
-│   │   ├── SequoiaChevronView.swift               # Expand/collapse toggle button
-│   │   ├── SequoiaPageArrowView.swift             # Page up/down arrow control
-│   │   ├── SequoiaHighlightView.swift             # Selected row background for expanded mode
-│   │   └── SequoiaSeparatorView.swift             # Horizontal separator between candidate rows
+│   ├── MacishCandidateWindow/                     # Candidate window implementation
+│   │   ├── MacishCandidateWindow.swift            # Style controller (panel switching)
+│   │   ├── MacishBasePanel.swift                  # NSPanel base (vibrancy, positioning, theming)
+│   │   ├── MacishHorizontalBasePanel.swift        # Shared horizontal panel base
+│   │   ├── MacishHorizontalExpandablePanel.swift  # Expandable layout with grid expand/collapse
+│   │   ├── MacishHorizontalSimplePanel.swift      # Non-expandable layout with page navigation
+│   │   ├── MacishVerticalPanel.swift              # Vertical scrolling layout
+│   │   ├── MacishCandidateItemView.swift          # Single candidate cell with index and label
+│   │   ├── MacishChevronView.swift                # Expand/collapse toggle button
+│   │   ├── MacishPageArrowView.swift              # Page up/down arrow control
+│   │   ├── MacishHighlightView.swift              # Selected row background for expanded mode
+│   │   └── MacishSeparatorView.swift              # Horizontal separator between candidate rows
 │   ├── ThemeManager.swift                         # Per-app accent color caching and theme events
 │   ├── WindowManager.swift                        # Singleton manager for non-candidate windows
 │   ├── SettingsView.swift                         # Settings window (SwiftUI)

@@ -1,6 +1,6 @@
 import Cocoa
 
-class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
+class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
 
     private struct GridItem {
         let candidateIndex: Int
@@ -31,11 +31,11 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
     private var expandedPageSize: Int = 0
     private var expandedRowsBuilt = false
 
-    private var row0ItemViews: [SequoiaCandidateItemView] = []
-    private var expandedItemViews: [SequoiaCandidateItemView] = []
-    private var chevronView: SequoiaChevronView!
+    private var row0ItemViews: [MacishCandidateItemView] = []
+    private var expandedItemViews: [MacishCandidateItemView] = []
+    private var chevronView: MacishChevronView!
 
-    override var allItemViews: [SequoiaCandidateItemView] { row0ItemViews + expandedItemViews }
+    override var allItemViews: [MacishCandidateItemView] { row0ItemViews + expandedItemViews }
 
     private var transitionCornerFrom: CGFloat = 0
     private var transitionCornerTo: CGFloat = 0
@@ -45,7 +45,7 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
         super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
 
-        chevronView = SequoiaChevronView()
+        chevronView = MacishChevronView()
         chevronView.onClick = { [weak self] in
             guard let self, !self.isAnimating, self.displayMode == .collapsed else { return }
             let collapsedCount = self.collapsedVisibleCount
@@ -84,7 +84,7 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
         var currentColumn = 0
 
         for i in 0..<displayCount {
-            let w = SequoiaCandidateItemView.measureWidth(index: indexBase, candidate: candidates[i])
+            let w = MacishCandidateItemView.measureWidth(index: indexBase, candidate: candidates[i])
             let span = max(1, min(expandedPageSize, Int(ceil(w / expandedColumnWidth))))
             if currentColumn + span > expandedPageSize, !currentRowItems.isEmpty {
                 rows.append(GridRow(items: currentRowItems))
@@ -109,7 +109,7 @@ class SequoiaHorizontalExpandablePanel: SequoiaHorizontalBasePanel {
 
         for i in 0..<displayCount {
             if packedItems.count >= pageSize { break }
-            let raw = SequoiaCandidateItemView.measureWidth(index: packedItems.count + indexBase, candidate: candidates[i])
+            let raw = MacishCandidateItemView.measureWidth(index: packedItems.count + indexBase, candidate: candidates[i])
             let w = max(baseColumnWidth, min(raw, maxWidth))
             if usedWidth + w > maxWidth, !packedItems.isEmpty { break }
             usedWidth += w

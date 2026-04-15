@@ -53,9 +53,9 @@ class CandidateWindow {
 
     // MARK: - Impl Instances
 
-    private lazy var sequoia = SequoiaCandidateWindow()
+    private lazy var impl = MacishCandidateWindow()
 
-    private var activeImpl: CandidateWindowImpl { sequoia }
+    private var activeImpl: CandidateWindowImpl { impl }
 
     // MARK: - Configuration
 
@@ -164,7 +164,7 @@ class CandidateWindow {
     private var fontSizeObservation: NSKeyValueObservation?
 
     private init() {
-        sequoia.owner = self
+        impl.owner = self
 
         directionObservation = UserDefaults.standard.observe(
             \.CandidateWindowDirection, options: [.new]

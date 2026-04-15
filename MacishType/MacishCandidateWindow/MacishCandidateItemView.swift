@@ -1,6 +1,6 @@
 import Cocoa
 
-class SequoiaCandidateItemView: NSView {
+class MacishCandidateItemView: NSView {
     private static var candidateFontSize: CGFloat = 16
     private static var indexFontSize: CGFloat = 8
     private static var indexWidth: CGFloat = computeIndexWidth(fontSize: 8)
@@ -117,11 +117,11 @@ class SequoiaCandidateItemView: NSView {
     static var itemHeight: CGFloat { candidateFontSize + verticalPadding }
     static var baseWidth: CGFloat { leadingPadding + indexWidth + indexCandidateGap + candidateFontSize + defaultTrailingPadding }
 
-    private static var templateView: SequoiaCandidateItemView?
+    private static var templateView: MacishCandidateItemView?
 
     static func measureWidth(index: Int, candidate: String) -> CGFloat {
         let view = templateView ?? {
-            let v = SequoiaCandidateItemView()
+            let v = MacishCandidateItemView()
             templateView = v
             return v
         }()

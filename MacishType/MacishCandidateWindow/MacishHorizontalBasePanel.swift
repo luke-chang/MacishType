@@ -1,6 +1,6 @@
 import Cocoa
 
-class SequoiaHorizontalBasePanel: SequoiaBasePanel {
+class MacishHorizontalBasePanel: MacishBasePanel {
 
     func applyUniformCorners() {
         super.updateMaskImage()
