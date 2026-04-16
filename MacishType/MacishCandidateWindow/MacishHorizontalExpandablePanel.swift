@@ -297,15 +297,17 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     }
 
     override func frameAnimationDidTick(t: CGFloat) {
-        let radius = transitionCornerFrom + (transitionCornerTo - transitionCornerFrom) * t
+        guard style == .sequoia else { return }
         let size = frame.size
         guard size.width > 0, size.height > 0 else { return }
+        let radius = transitionCornerFrom + (transitionCornerTo - transitionCornerFrom) * t
         backdrop.applyAsymmetricCorners(
             size: size, leftRadius: Self.defaultCornerRadius, rightRadius: radius
         )
     }
 
     override func frameAnimationDidFinish() {
+        guard style == .sequoia else { return }
         updateHorizontalMaskImage()
     }
 

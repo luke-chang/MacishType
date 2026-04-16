@@ -51,9 +51,27 @@ class CandidateWindow {
         case vertical
     }
 
+    enum Style {
+        case sequoia
+        case tahoe
+    }
+
+    private static var autoResolvedStyle: Style {
+        if #available(macOS 26, *) { return .tahoe }
+        return .sequoia
+    }
+
     // MARK: - Impl Instances
 
-    private lazy var impl = MacishCandidateWindow()
+    private var _impl: MacishCandidateWindow?
+
+    private var impl: MacishCandidateWindow {
+        if let existing = _impl { return existing }
+        let instance = MacishCandidateWindow(style: Self.autoResolvedStyle)
+        instance.owner = self
+        _impl = instance
+        return instance
+    }
 
     private var activeImpl: CandidateWindowImpl { impl }
 
@@ -164,8 +182,6 @@ class CandidateWindow {
     private var fontSizeObservation: NSKeyValueObservation?
 
     private init() {
-        impl.owner = self
-
         directionObservation = UserDefaults.standard.observe(
             \.CandidateWindowDirection, options: [.new]
         ) { [weak self] _, _ in

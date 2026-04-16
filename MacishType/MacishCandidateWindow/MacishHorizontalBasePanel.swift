@@ -7,10 +7,15 @@ class MacishHorizontalBasePanel: MacishBasePanel {
     }
 
     func applyPillCorners(size: NSSize) {
-        backdrop.applyAsymmetricCorners(
-            size: size,
-            leftRadius: Self.defaultCornerRadius,
-            rightRadius: size.height / 2
-        )
+        switch style {
+        case .sequoia:
+            backdrop.applyAsymmetricCorners(
+                size: size,
+                leftRadius: Self.defaultCornerRadius,
+                rightRadius: size.height / 2
+            )
+        case .tahoe:
+            backdrop.applyUniformCorners(size: size, radius: itemHeight / 2)
+        }
     }
 }

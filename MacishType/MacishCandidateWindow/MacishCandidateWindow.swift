@@ -2,6 +2,12 @@ import Cocoa
 
 class MacishCandidateWindow: CandidateWindowImpl {
 
+    let style: CandidateWindow.Style
+
+    init(style: CandidateWindow.Style) {
+        self.style = style
+    }
+
     private lazy var horizontalPanel = MacishHorizontalExpandablePanel(
         contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
         styleMask: [.borderless],
@@ -34,6 +40,7 @@ class MacishCandidateWindow: CandidateWindowImpl {
             verticalPanel
         }
         panel.impl = self
+        panel.style = style
         return panel
     }
 

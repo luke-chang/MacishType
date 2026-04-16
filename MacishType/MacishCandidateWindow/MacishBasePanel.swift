@@ -9,6 +9,7 @@ class FlippedView: NSView {
 class MacishBasePanel: NSPanel, CandidateItemClickable {
 
     var impl: CandidateWindowImpl!
+    var style: CandidateWindow.Style = .sequoia
 
     static let separatorHeight: CGFloat = 1
     static let defaultCornerRadius: CGFloat = 6
@@ -427,7 +428,11 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     func updateMaskImage() {
         let size = frame.size
         guard size.width > 0, size.height > 0 else { return }
-        backdrop.applyUniformCorners(size: size, radius: Self.defaultCornerRadius)
+        let radius: CGFloat = switch style {
+        case .sequoia: Self.defaultCornerRadius
+        case .tahoe: itemHeight / 2
+        }
+        backdrop.applyUniformCorners(size: size, radius: radius)
     }
 
     // MARK: - Subclass Override Points
