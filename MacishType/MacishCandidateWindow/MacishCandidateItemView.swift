@@ -30,6 +30,10 @@ class MacishCandidateItemView: NSView {
         templateView = nil
     }
 
+    let style: CandidateWindow.Style
+    private var contentInset: CGFloat { style == .tahoe ? 2 : 0 }
+    private var highlightView: NSView?
+
     let indexLabel = NSTextField(labelWithString: "")
     let candidateLabel = NSTextField(labelWithString: "")
     var absoluteIndex: Int = 0
@@ -64,10 +68,18 @@ class MacishCandidateItemView: NSView {
 
     private var trailingConstraint: NSLayoutConstraint!
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
+    init(style: CandidateWindow.Style = .sequoia) {
+        self.style = style
+        super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = true
         wantsLayer = true
+
+        if style == .tahoe {
+            let v = NSView()
+            v.wantsLayer = true
+            addSubview(v)
+            highlightView = v
+        }
 
         indexLabel.font = .systemFont(ofSize: Self.indexFontSize)
         indexLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -134,15 +146,37 @@ class MacishCandidateItemView: NSView {
         (window as? CandidateItemClickable)?.itemClicked(at: absoluteIndex, doubleClick: event.clickCount >= 2)
     }
 
+    override func layout() {
+        super.layout()
+        if let hv = highlightView, isHighlighted {
+            let insetRect = bounds.insetBy(dx: contentInset, dy: contentInset)
+            hv.frame = insetRect
+            hv.layer?.cornerRadius = insetRect.height / 2
+        }
+    }
+
     private func updateAppearance() {
         if isHighlighted {
-            layer?.backgroundColor = highlightColor.cgColor
             indexLabel.textColor = .white
             candidateLabel.textColor = .white
+            if let hv = highlightView {
+                layer?.backgroundColor = nil
+                let insetRect = bounds.insetBy(dx: contentInset, dy: contentInset)
+                hv.frame = insetRect
+                hv.layer?.cornerRadius = insetRect.height / 2
+                hv.layer?.backgroundColor = highlightColor.cgColor
+                hv.isHidden = false
+            } else {
+                layer?.backgroundColor = highlightColor.cgColor
+            }
         } else {
-            layer?.backgroundColor = nil
             indexLabel.textColor = .secondaryLabelColor
             candidateLabel.textColor = .labelColor
+            if let hv = highlightView {
+                hv.isHidden = true
+            } else {
+                layer?.backgroundColor = nil
+            }
         }
     }
 }

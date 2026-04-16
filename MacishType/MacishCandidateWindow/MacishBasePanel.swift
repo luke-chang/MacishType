@@ -113,11 +113,21 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
 
     // MARK: - Theme / Highlight Color
 
+    private static func adjustedAccentColor(_ color: NSColor) -> NSColor {
+        guard let srgb = color.usingColorSpace(.sRGB) else { return color }
+        return NSColor(
+            srgbRed: max(0, srgb.redComponent * 0.9417 - 0.0594),
+            green: max(0, srgb.greenComponent * 0.9417 - 0.0594),
+            blue: max(0, srgb.blueComponent * 0.9417 - 0.0594),
+            alpha: srgb.alphaComponent
+        )
+    }
+
     func updateHighlightColor() {
         if ThemeManager.shared.isMulticolor,
            let bundleID = impl.bundleIdentifier,
            let color = ThemeManager.shared.bundleAccentColor(bundleIdentifier: bundleID) {
-            highlightColor = color
+            highlightColor = style == .sequoia ? Self.adjustedAccentColor(color) : color
         } else {
             highlightColor = .selectedContentBackgroundColor
         }
@@ -402,7 +412,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     }
 
     func createItemView() -> MacishCandidateItemView {
-        let item = MacishCandidateItemView()
+        let item = MacishCandidateItemView(style: style)
         item.highlightColor = highlightColor
         return item
     }

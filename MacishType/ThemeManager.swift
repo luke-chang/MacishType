@@ -41,19 +41,7 @@ class ThemeManager {
             return nil
         }
         Logger.themeManager.info("Resolved bundle accent color for \(bundleID, privacy: .public)")
-        // Apply the same linear RGB transform macOS uses for selectedContentBackgroundColor
-        let adjusted: NSColor
-        if let srgb = color.usingColorSpace(.sRGB) {
-            adjusted = NSColor(
-                srgbRed: max(0, srgb.redComponent * 0.9417 - 0.0594),
-                green: max(0, srgb.greenComponent * 0.9417 - 0.0594),
-                blue: max(0, srgb.blueComponent * 0.9417 - 0.0594),
-                alpha: srgb.alphaComponent
-            )
-        } else {
-            adjusted = color
-        }
-        bundleAccentColorCache[bundleID] = adjusted
-        return adjusted
+        bundleAccentColorCache[bundleID] = color
+        return color
     }
 }
