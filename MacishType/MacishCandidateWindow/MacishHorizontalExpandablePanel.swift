@@ -68,7 +68,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     override init(style: CandidateWindow.Style) {
         super.init(style: style)
 
-        chevronView = MacishChevronView()
+        chevronView = MacishChevronView(style: style)
         chevronView.onClick = { [weak self] in
             guard let self, !self.isAnimating, self.displayMode == .collapsed else { return }
             let collapsedCount = self.collapsedVisibleCount

@@ -3,23 +3,28 @@ import Cocoa
 class MacishChevronView: NSView {
     var onClick: (() -> Void)?
 
+    private let style: CandidateWindow.Style
     private let separator = NSBox()
     private let imageView: NSImageView
     private var imageLeadingConstraint: NSLayoutConstraint!
     private var imageWidthConstraint: NSLayoutConstraint!
     private var imageTrailingConstraint: NSLayoutConstraint!
+    private var separatorHeightConstraint: NSLayoutConstraint!
     private var currentFontSize: CGFloat = 16
     private var spacing: CGFloat = 4
     private var imageWidth: CGFloat = 16
     private var padding: CGFloat = 6
+    private var separatorInset: CGFloat = 0
 
-    override init(frame: NSRect) {
+    init(style: CandidateWindow.Style = .sequoia) {
+        self.style = style
+        self.separatorInset = style == .tahoe ? 4 : 0
         let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
         let chevronImage = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)!
             .withSymbolConfiguration(config)!
         imageView = NSImageView(image: chevronImage)
 
-        super.init(frame: frame)
+        super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = true
         wantsLayer = true
 
@@ -34,11 +39,12 @@ class MacishChevronView: NSView {
         imageLeadingConstraint = imageView.leadingAnchor.constraint(equalTo: separator.trailingAnchor, constant: spacing)
         imageWidthConstraint = imageView.widthAnchor.constraint(equalToConstant: imageWidth)
         imageTrailingConstraint = imageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -padding)
+        separatorHeightConstraint = separator.heightAnchor.constraint(equalTo: heightAnchor, constant: -2 * separatorInset)
 
         NSLayoutConstraint.activate([
             separator.leadingAnchor.constraint(equalTo: leadingAnchor),
             separator.centerYAnchor.constraint(equalTo: centerYAnchor),
-            separator.heightAnchor.constraint(equalTo: heightAnchor),
+            separatorHeightConstraint,
             imageLeadingConstraint,
             imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
             imageWidthConstraint,
@@ -62,13 +68,17 @@ class MacishChevronView: NSView {
         imageView.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)!
             .withSymbolConfiguration(config)!
 
+        let newSeparatorInset = style == .tahoe ? round(4 * scale) : 0
+
         imageLeadingConstraint.constant = newSpacing
         imageWidthConstraint.constant = newImageWidth
         imageTrailingConstraint.constant = -newPadding
+        separatorHeightConstraint.constant = -2 * newSeparatorInset
 
         spacing = newSpacing
         imageWidth = newImageWidth
         padding = newPadding
+        separatorInset = newSeparatorInset
         invalidateIntrinsicContentSize()
     }
 

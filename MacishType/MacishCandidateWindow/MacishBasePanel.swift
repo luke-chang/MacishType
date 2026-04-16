@@ -16,11 +16,12 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
 
     private(set) var highlightColor: NSColor = .selectedContentBackgroundColor
     private(set) var didDrag = false
-    var animationDuration: TimeInterval = 0.183
+    private(set) var configuration = CandidateWindowConfiguration()
+    var animationDuration: TimeInterval { configuration.animationDuration }
     var candidates: [String] { impl.candidates }
     var selectedIndex: Int { impl.selectedIndex }
-    var indexBase = 1
-    var pageSize = 9
+    var indexBase: Int { configuration.indexBase }
+    var pageSize: Int { configuration.pageSize }
     let maxDisplayCandidates = 200
     var isAnimating = false
     private(set) var itemHeight: CGFloat = 0
@@ -468,9 +469,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         if let fontSize = configuration.fontSize {
             updateFontSize(fontSize)
         }
-        indexBase = configuration.indexBase
-        pageSize = configuration.pageSize
-        animationDuration = configuration.animationDuration
+        self.configuration = configuration
     }
     func buildCandidateLayout() {}
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}

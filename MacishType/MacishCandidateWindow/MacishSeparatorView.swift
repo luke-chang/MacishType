@@ -1,6 +1,10 @@
 import Cocoa
 
 class MacishSeparatorView: NSView {
+    var horizontalInset: CGFloat = 0 {
+        didSet { if horizontalInset != oldValue { needsDisplay = true } }
+    }
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = true
@@ -13,6 +17,6 @@ class MacishSeparatorView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor.separatorColor.setFill()
-        bounds.fill()
+        bounds.insetBy(dx: horizontalInset, dy: 0).fill()
     }
 }

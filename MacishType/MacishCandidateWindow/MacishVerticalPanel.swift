@@ -108,6 +108,10 @@ class MacishVerticalPanel: MacishBasePanel {
         isFullyRendered = initialCount >= displayCount
 
         ensureSeparators(count: max(displayCount - 1, 0), width: windowWidth)
+        if style == .tahoe {
+            let inset = round(8 * (configuration.fontSize ?? 16) / 16)
+            for sep in separatorViews { sep.horizontalInset = inset }
+        }
 
         scrollView.contentView.scroll(to: .zero)
         scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -347,6 +351,17 @@ class MacishVerticalPanel: MacishBasePanel {
     }
 
 
+
+    // MARK: - Selection
+
+    override func updateItemHighlights() {
+        super.updateItemHighlights()
+        guard style == .tahoe else { return }
+        for (i, sep) in separatorViews.enumerated() where !sep.isHidden {
+            // separator[i] sits between item[i] and item[i+1]
+            sep.alphaValue = (i == selectedIndex - 1 || i == selectedIndex) ? 0 : 1
+        }
+    }
 
     // MARK: - Commit
 
