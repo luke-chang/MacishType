@@ -93,6 +93,7 @@ class CandidateWindow {
             show(near: lastShowNearRect)
         }
         activeImpl.bundleIdentifierDidChange()
+        activeImpl.clientAppearanceDidChange()
     }
 
     // MARK: - Configuration
@@ -151,6 +152,13 @@ class CandidateWindow {
         didSet {
             guard bundleIdentifier != oldValue else { return }
             activeImpl.bundleIdentifierDidChange()
+        }
+    }
+
+    var clientAppearance: NSAppearance? {
+        didSet {
+            guard clientAppearance != oldValue else { return }
+            activeImpl.clientAppearanceDidChange()
         }
     }
 
@@ -231,6 +239,7 @@ class CandidateWindowImpl {
     var candidateDelegate: CandidateWindowDelegate? { owner?.candidateDelegate }
     var bundleIdentifier: String? { owner?.bundleIdentifier }
     var clientWindowLevel: CGWindowLevel { owner?.clientWindowLevel ?? CGWindowLevel(CGWindowLevelForKey(.floatingWindow)) }
+    var clientAppearance: NSAppearance? { owner?.clientAppearance }
     var lastShowNearRect: NSRect { owner?.lastShowNearRect ?? .zero }
     var compositionStartX: CGFloat { owner?.compositionStartX ?? 0 }
     var compositionEndX: CGFloat { owner?.compositionEndX ?? compositionStartX }
@@ -250,6 +259,7 @@ class CandidateWindowImpl {
     var isVisible: Bool { false }
 
     func bundleIdentifierDidChange() {}
+    func clientAppearanceDidChange() {}
 
     func apply(_ configuration: CandidateWindowConfiguration) {}
     func updateCandidates(_ candidates: [String]) {}

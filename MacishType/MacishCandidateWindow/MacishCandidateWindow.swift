@@ -34,6 +34,7 @@ class MacishCandidateWindow: CandidateWindowImpl {
         let wasVisible = oldPanel.isVisible
         oldPanel.hide()
         newPanel.apply(configuration)
+        newPanel.clientAppearanceDidChange()
         newPanel.updateHighlightColor()
         if !candidates.isEmpty {
             newPanel.buildCandidateLayout()
@@ -46,6 +47,10 @@ class MacishCandidateWindow: CandidateWindowImpl {
 
     override func bundleIdentifierDidChange() {
         activePanel.bundleIdentifierDidChange()
+    }
+
+    override func clientAppearanceDidChange() {
+        activePanel.clientAppearanceDidChange()
     }
 
     // MARK: - Delegated Interface

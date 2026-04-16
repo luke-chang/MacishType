@@ -143,6 +143,10 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         updateHighlightColor()
     }
 
+    func clientAppearanceDidChange() {
+        self.appearance = impl.clientAppearance
+    }
+
     // MARK: - Positioning
 
     func show(near rect: NSRect) {

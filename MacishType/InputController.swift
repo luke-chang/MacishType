@@ -10,6 +10,7 @@ private extension NSRange {
 class InputController: IMKInputController {
     private var engine: InputEngine!
     private var engineContext: InputEngineContext!
+    private var appearanceStale = true
 
     private lazy var inputMethodMenu: NSMenu = {
         let menu = NSMenu()
@@ -116,6 +117,7 @@ class InputController: IMKInputController {
         Logger.inputController.debug("activateServer ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\(self.engine == nil ? "nil" : "set", privacy: .public) client=\(clientID, privacy: .public) windowLevel=\(clientLevel, privacy: .public)")
         #endif
         super.activateServer(sender)
+        appearanceStale = true
         hideCandidateWindow()
     }
 
@@ -129,6 +131,13 @@ class InputController: IMKInputController {
             hideCandidateWindow()
         }
         super.deactivateServer(sender)
+    }
+
+    private static let windowEffectiveAppearanceSel = NSSelectorFromString("windowEffectiveAppearance")
+
+    private static func clientAppearance(from sender: Any?) -> NSAppearance? {
+        guard let obj = sender as AnyObject?, obj.responds(to: windowEffectiveAppearanceSel) else { return nil }
+        return obj.perform(windowEffectiveAppearanceSel)?.takeUnretainedValue() as? NSAppearance
     }
 
     // Some clients (e.g. Open/Save panels) are XPC services whose bundle ID
@@ -166,6 +175,10 @@ class InputController: IMKInputController {
             CandidateWindow.shared.candidateDelegate = self
             CandidateWindow.shared.bundleIdentifier = Self.resolvedBundleIdentifier(sender)
             CandidateWindow.shared.clientWindowLevel = client.windowLevel()
+        }
+        if appearanceStale {
+            appearanceStale = false
+            CandidateWindow.shared.clientAppearance = Self.clientAppearance(from: sender)
         }
         let result = engine.handleKey(
             context: engineContext,

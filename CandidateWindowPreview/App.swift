@@ -423,9 +423,7 @@ struct PreviewContentView: View {
         .onChange(of: state.appearanceOverride) {
             let appearance = state.appearanceOverride.nsAppearance
             state.window?.appearance = appearance
-            for w in NSApp.windows where w is MacishBasePanel {
-                w.appearance = appearance
-            }
+            CandidateWindow.shared.clientAppearance = appearance
         }
     }
 }
