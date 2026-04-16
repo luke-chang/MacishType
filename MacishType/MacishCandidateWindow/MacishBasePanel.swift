@@ -41,6 +41,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
 
     private var accentColorObserver: (any NSObjectProtocol)?
     private var scrollerStyleObserver: (any NSObjectProtocol)?
+    private var appearanceChangeObserver: (any NSObjectProtocol)?
     private var previousPlacement: WindowPlacement?
     private var previousTopLeft: NSPoint = .zero
     private var dragOffset: NSPoint = .zero
@@ -75,6 +76,13 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         ) { [weak self] _ in
             self?.handleScrollerStyleChange()
         }
+        appearanceChangeObserver = DistributedNotificationCenter.default().addObserver(
+            forName: .init("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateHighlightColor()
+        }
     }
 
     @MainActor deinit {
@@ -83,6 +91,9 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         }
         if let observer = scrollerStyleObserver {
             NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = appearanceChangeObserver {
+            DistributedNotificationCenter.default().removeObserver(observer)
         }
     }
 
@@ -128,13 +139,40 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         )
     }
 
+    @available(macOS 26, *)
+    private func tahoeAdjustedColor(_ color: NSColor) -> NSColor {
+        var resolved: NSColor?
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            guard let srgb = color.usingColorSpace(.sRGB),
+                  let gray = color.usingColorSpace(.genericGamma22Gray) else { return }
+            let L = gray.whiteComponent
+            guard L > 0.599 else { resolved = srgb; return }
+            let ratio = max(0.4726, 1 - 7.2 * pow(L - 0.599, 2.3))
+            resolved = NSColor(
+                srgbRed: srgb.redComponent * ratio,
+                green: srgb.greenComponent * ratio,
+                blue: srgb.blueComponent * ratio,
+                alpha: srgb.alphaComponent
+            )
+        }
+        return resolved ?? color
+    }
+
     func updateHighlightColor() {
         if ThemeManager.shared.isMulticolor,
            let bundleID = impl.bundleIdentifier,
            let color = ThemeManager.shared.bundleAccentColor(bundleIdentifier: bundleID) {
-            highlightColor = style == .sequoia ? Self.adjustedAccentColor(color) : color
+            if #available(macOS 26, *) {
+                highlightColor = tahoeAdjustedColor(color)
+            } else {
+                highlightColor = style == .sequoia ? Self.adjustedAccentColor(color) : color
+            }
         } else {
-            highlightColor = .selectedContentBackgroundColor
+            if #available(macOS 26, *) {
+                highlightColor = tahoeAdjustedColor(.controlAccentColor)
+            } else {
+                highlightColor = .selectedContentBackgroundColor
+            }
         }
         for item in allItemViews { item.highlightColor = highlightColor }
     }
@@ -145,6 +183,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
 
     func clientAppearanceDidChange() {
         self.appearance = impl.clientAppearance
+        updateHighlightColor()
     }
 
     // MARK: - Positioning
