@@ -122,7 +122,7 @@ class MacishVerticalPanel: MacishBasePanel {
         let windowSize = NSSize(width: windowWidth, height: windowHeight)
         let targetFrame = windowFrame(for: windowSize, reposition: isVisible && lastShowNearRect != .zero)
         setFrame(targetFrame, display: true)
-        updateMaskImage()
+        updateCorners()
 
         if hasOverflow, NSScroller.preferredScrollerStyle != .legacy {
             scrollView.flashScrollers()

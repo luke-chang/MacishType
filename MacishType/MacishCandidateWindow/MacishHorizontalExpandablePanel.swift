@@ -280,12 +280,12 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
 
         let contentSize = layoutItems()
         setContentSize(contentSize)
-        updateHorizontalMaskImage()
+        updateCorners()
     }
 
     // MARK: - Corner Radius Animation
 
-    private func updateHorizontalMaskImage() {
+    override func updateCorners() {
         let size = frame.size
         guard size.width > 0, size.height > 0 else { return }
         let showChevron = displayMode == .collapsed && displayCount > collapsedVisibleCount
@@ -296,10 +296,6 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         }
     }
 
-    override func updateMaskImage() {
-        updateHorizontalMaskImage()
-    }
-
     private func animateTransition(cornerFrom: CGFloat, cornerTo: CGFloat, frameTo: NSRect) {
         transitionCornerFrom = cornerFrom
         transitionCornerTo = cornerTo
@@ -307,14 +303,18 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     }
 
     override func frameAnimationDidTick(t: CGFloat) {
-        // Corner radius (Sequoia only)
-        if style == .sequoia {
-            let size = frame.size
-            if size.width > 0, size.height > 0 {
+        let size = frame.size
+        if size.width > 0, size.height > 0 {
+            switch style {
+            case .sequoia:
                 let radius = transitionCornerFrom + (transitionCornerTo - transitionCornerFrom) * t
                 backdrop.applyAsymmetricCorners(
                     size: size, leftRadius: Self.defaultCornerRadius, rightRadius: radius
                 )
+            case .tahoe:
+                if #unavailable(macOS 26) {
+                    backdrop.applyUniformCorners(size: size, radius: itemHeight / 2)
+                }
             }
         }
 
@@ -336,9 +336,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     }
 
     override func frameAnimationDidFinish() {
-        if style == .sequoia {
-            updateHorizontalMaskImage()
-        }
+        updateCorners()
 
         guard let state = transitionState else { return }
         if state.isExpanding {
@@ -424,7 +422,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         if !animated {
             rowHighlightView?.alphaValue = 1
             setContentSize(contentSize)
-            updateHorizontalMaskImage()
+            updateCorners()
             ensureSelectionVisible()
             if lastShowNearRect != .zero { show(near: lastShowNearRect) }
             return
@@ -547,7 +545,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
             rowHighlightView?.alphaValue = 0
             for item in row0ItemViews { item.alphaValue = 1 }
             setContentSize(contentSize)
-            updateHorizontalMaskImage()
+            updateCorners()
             if lastShowNearRect != .zero { show(near: lastShowNearRect) }
             return
         }
@@ -909,7 +907,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         let contentSize = layoutItems()
         let targetFrame = windowFrame(for: contentSize, reposition: false)
         setFrame(targetFrame, display: true)
-        updateHorizontalMaskImage()
+        updateCorners()
     }
 
     // MARK: - Reset

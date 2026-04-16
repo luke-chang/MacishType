@@ -126,7 +126,7 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
         updatePagingArrowStates()
         let contentSize = layoutItems()
         setContentSize(contentSize)
-        updateMaskImage()
+        updateCorners()
     }
 
     @discardableResult
@@ -334,7 +334,7 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
 
     // MARK: - Mask
 
-    override func updateMaskImage() {
+    override func updateCorners() {
         let size = frame.size
         guard size.width > 0, size.height > 0 else { return }
         if hasMultiplePages {

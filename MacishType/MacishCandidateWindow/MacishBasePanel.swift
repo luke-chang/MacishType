@@ -450,7 +450,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         }
     }
 
-    func updateMaskImage() {
+    func updateCorners() {
         let size = frame.size
         guard size.width > 0, size.height > 0 else { return }
         let radius: CGFloat = switch style {

@@ -3,7 +3,7 @@ import Cocoa
 class MacishHorizontalBasePanel: MacishBasePanel {
 
     func applyUniformCorners() {
-        super.updateMaskImage()
+        super.updateCorners()
     }
 
     func applyPillCorners(size: NSSize) {
