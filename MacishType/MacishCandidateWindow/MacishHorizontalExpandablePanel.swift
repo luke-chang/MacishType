@@ -237,7 +237,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
 
         if displayMode == .expanded, let (rowIdx, _) = findGridPosition(of: selectedIndex) {
             let y = yForRow(rowIdx)
-            rowHighlightView.frame = NSRect(x: 0, y: y, width: windowWidth, height: itemHeight)
+            rowHighlightView?.frame = NSRect(x: 0, y: y, width: windowWidth, height: itemHeight)
         }
 
         let totalContentHeight = needsScrolling ? contentHeight + 0.5 * itemHeight : contentHeight
@@ -250,7 +250,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         removeAllItemViews()
         separatorViews.forEach { $0.removeFromSuperview() }
         separatorViews.removeAll()
-        rowHighlightView.alphaValue = 0
+        rowHighlightView?.alphaValue = 0
 
         guard !candidates.isEmpty else {
             setContentSize(NSSize(width: 0, height: 0))
@@ -332,7 +332,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         }
         chevronView.frame = Self.interpolateRect(state.chevronFromFrame, state.chevronToFrame, t)
         chevronView.setContentAlpha(state.chevronContentFromAlpha + (state.chevronContentToAlpha - state.chevronContentFromAlpha) * t)
-        rowHighlightView.alphaValue = state.highlightFromAlpha + (state.highlightToAlpha - state.highlightFromAlpha) * t
+        rowHighlightView?.alphaValue = state.highlightFromAlpha + (state.highlightToAlpha - state.highlightFromAlpha) * t
     }
 
     override func frameAnimationDidFinish() {
@@ -422,7 +422,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         let targetWindowFrame = windowFrame(for: contentSize, reposition: true)
 
         if !animated {
-            rowHighlightView.alphaValue = 1
+            rowHighlightView?.alphaValue = 1
             setContentSize(contentSize)
             updateHorizontalMaskImage()
             ensureSelectionVisible()
@@ -491,7 +491,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
             chevronToFrame = oldChevronFrame
         }
 
-        rowHighlightView.alphaValue = 0
+        rowHighlightView?.alphaValue = 0
         scrollView.hasVerticalScroller = false
 
         transitionState = TransitionState(
@@ -544,7 +544,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         let targetWindowFrame = windowFrame(for: contentSize, reposition: true)
 
         if !animated {
-            rowHighlightView.alphaValue = 0
+            rowHighlightView?.alphaValue = 0
             for item in row0ItemViews { item.alphaValue = 1 }
             setContentSize(contentSize)
             updateHorizontalMaskImage()
@@ -882,7 +882,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     private func layoutHighlight() {
         guard displayMode == .expanded, let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return }
         let y = yForRow(rowIdx)
-        rowHighlightView.frame = NSRect(x: 0, y: y, width: frame.width, height: itemHeight)
+        rowHighlightView?.frame = NSRect(x: 0, y: y, width: frame.width, height: itemHeight)
     }
 
     // MARK: - Commit

@@ -31,7 +31,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     private(set) var backdrop: MacishBackdrop!
     var scrollView: NSScrollView!
     var candidateContainer: FlippedView!
-    var rowHighlightView: MacishHighlightView!
+    var rowHighlightView: MacishHighlightView?
     var separatorViews: [MacishSeparatorView] = []
 
     private enum WindowPlacement {
@@ -108,8 +108,11 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         candidateContainer = FlippedView()
         scrollView.documentView = candidateContainer
 
-        rowHighlightView = MacishHighlightView()
-        candidateContainer.addSubview(rowHighlightView)
+        if style == .sequoia {
+            let hv = MacishHighlightView()
+            candidateContainer.addSubview(hv)
+            rowHighlightView = hv
+        }
     }
 
     // MARK: - Theme / Highlight Color
