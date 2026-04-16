@@ -74,6 +74,22 @@ class PreviewAppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+enum AppearanceOverride: String, CaseIterable, Identifiable {
+    case system = "Auto"
+    case light = "Light"
+    case dark = "Dark"
+
+    var id: String { rawValue }
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
 class PreviewState: ObservableObject, CandidateWindowDelegate {
     let candidateWindow = CandidateWindow.shared
     weak var window: NSWindow? {
@@ -91,6 +107,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     @Published var vertical = false
     @Published var expandable = true
     @Published var fontSize: CGFloat = 16
+    @Published var appearanceOverride: AppearanceOverride = .system
     @Published var isEditing = false
 
     private var keyMonitor: Any?
@@ -308,71 +325,90 @@ struct PreviewContentView: View {
     @ObservedObject var state: PreviewState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("CandidateWindow Preview")
-                .font(.system(size: 16, weight: .bold))
+        HStack(alignment: .top, spacing: 0) {
+            // Left column: text editor and hints
+            VStack(alignment: .leading, spacing: 8) {
+                Text("CandidateWindow Preview")
+                    .font(.system(size: 16, weight: .bold))
 
-            HStack {
-                Text("Style:")
-                Picker("", selection: $state.styleOverride) {
-                    Text("Auto").tag(CandidateWindow.Style?.none)
-                    Text("Sequoia").tag(CandidateWindow.Style?.some(.sequoia))
-                    Text("Tahoe").tag(CandidateWindow.Style?.some(.tahoe))
+                TextEditor(text: $state.candidateText)
+                    .font(.system(size: 14))
+                    .frame(maxHeight: .infinity)
+                    .scrollContentBackground(.hidden)
+                    .background(state.isEditing ? Color(nsColor: .textBackgroundColor) : Color.secondary.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 0)
+                            .stroke(state.isEditing ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.3),
+                                    lineWidth: state.isEditing ? 2 : 1)
+                    )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(state.isEditing
+                         ? "• Press Tab/Enter/Esc to escape"
+                         : "• Press ⌘L to edit candidates")
+                        .foregroundStyle(state.isEditing ? Color.accentColor : .secondary)
+                    Text("• Press ⌘R to randomize candidates")
+                        .foregroundStyle(.secondary)
+                    Text("• Separate candidates with spaces")
+                        .foregroundStyle(.secondary)
                 }
-                .labelsHidden()
-                .fixedSize()
+                .font(.system(size: 11))
             }
+            .frame(width: 260)
 
-            HStack(alignment: .top, spacing: 24) {
+            Divider()
+                .padding(.horizontal, 12)
+
+            // Right column: pickers and toggles
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Style:")
+                    Picker("", selection: $state.styleOverride) {
+                        Text("Auto").tag(CandidateWindow.Style?.none)
+                        Text("Sequoia").tag(CandidateWindow.Style?.some(.sequoia))
+                        Text("Tahoe").tag(CandidateWindow.Style?.some(.tahoe))
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+
+                HStack {
+                    Text("Appearance:")
+                    Picker("", selection: $state.appearanceOverride) {
+                        ForEach(AppearanceOverride.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+
+                HStack {
+                    Text("Font size:")
+                    Picker("", selection: $state.fontSize) {
+                        ForEach([14, 16, 18, 24, 36], id: \.self) { size in
+                            Text("\(size)").tag(CGFloat(size))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 60)
+                }
+
+                Divider()
+
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("Slow animations (1s)", isOn: $state.slowMotion)
                     Toggle("Wider expanded columns", isOn: $state.widerColumns)
                     Toggle("Move on expand", isOn: $state.moveOnExpand)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Font size:")
-                        Picker("", selection: $state.fontSize) {
-                            ForEach([14, 16, 18, 24, 36], id: \.self) { size in
-                                Text("\(size)").tag(CGFloat(size))
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 60)
-                    }
                     Toggle("Vertical layout", isOn: $state.vertical)
                     Toggle("Expandable", isOn: $state.expandable)
                         .disabled(state.vertical)
                 }
+                .toggleStyle(.checkbox)
             }
-            .toggleStyle(.checkbox)
-
-            TextEditor(text: $state.candidateText)
-                .font(.system(size: 14))
-                .frame(height: 80)
-                .scrollContentBackground(.hidden)
-                .background(state.isEditing ? Color(nsColor: .textBackgroundColor) : Color.secondary.opacity(0.05))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 0)
-                        .stroke(state.isEditing ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.3),
-                                lineWidth: state.isEditing ? 2 : 1)
-                )
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(state.isEditing
-                     ? "• Click outside or press Tab/Enter/Esc to control the candidate window"
-                     : "• Press ⌘L to edit candidates")
-                    .foregroundStyle(state.isEditing ? Color.accentColor : .secondary)
-                Text("• Press ⌘R to randomize candidates")
-                    .foregroundStyle(.secondary)
-                Text("• Separate candidates with spaces")
-                    .foregroundStyle(.secondary)
-            }
-            .font(.system(size: 11))
+            .frame(width: 200)
         }
         .padding()
-        .frame(width: 420)
         .onChange(of: state.candidateText) {
             guard !state.normalizeCandidateText() else { return }
             state.applyCandidates()
@@ -384,6 +420,13 @@ struct PreviewContentView: View {
         .onChange(of: state.vertical) { state.applyConfiguration() }
         .onChange(of: state.expandable) { state.applyConfiguration() }
         .onChange(of: state.fontSize) { state.applyConfiguration() }
+        .onChange(of: state.appearanceOverride) {
+            let appearance = state.appearanceOverride.nsAppearance
+            state.window?.appearance = appearance
+            for w in NSApp.windows where w is MacishBasePanel {
+                w.appearance = appearance
+            }
+        }
     }
 }
 
