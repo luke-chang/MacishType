@@ -40,6 +40,29 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     private var transitionCornerFrom: CGFloat = 0
     private var transitionCornerTo: CGFloat = 0
 
+    private struct ItemAnimation {
+        let item: MacishCandidateItemView
+        let fromFrame: NSRect
+        let toFrame: NSRect
+        let fromAlpha: CGFloat
+        let toAlpha: CGFloat
+    }
+
+    private struct TransitionState {
+        let stayingItems: [ItemAnimation]
+        let exitItems: [ItemAnimation]
+        let enterItems: [ItemAnimation]
+        let chevronFromFrame: NSRect
+        let chevronToFrame: NSRect
+        let chevronContentFromAlpha: CGFloat
+        let chevronContentToAlpha: CGFloat
+        let highlightFromAlpha: CGFloat
+        let highlightToAlpha: CGFloat
+        let isExpanding: Bool
+    }
+
+    private var transitionState: TransitionState?
+
     // MARK: - Init
 
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
@@ -283,32 +306,64 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         animateFrame(to: frameTo)
     }
 
-    private func makeAnimation(keyPath: String, from: CGFloat, to: CGFloat, persist: Bool = false) -> CABasicAnimation {
-        let anim = CABasicAnimation(keyPath: keyPath)
-        anim.fromValue = from
-        anim.toValue = to
-        anim.duration = animationDuration
-        anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        if persist {
-            anim.fillMode = .forwards
-            anim.isRemovedOnCompletion = false
-        }
-        return anim
-    }
-
     override func frameAnimationDidTick(t: CGFloat) {
-        guard style == .sequoia else { return }
-        let size = frame.size
-        guard size.width > 0, size.height > 0 else { return }
-        let radius = transitionCornerFrom + (transitionCornerTo - transitionCornerFrom) * t
-        backdrop.applyAsymmetricCorners(
-            size: size, leftRadius: Self.defaultCornerRadius, rightRadius: radius
-        )
+        // Corner radius (Sequoia only)
+        if style == .sequoia {
+            let size = frame.size
+            if size.width > 0, size.height > 0 {
+                let radius = transitionCornerFrom + (transitionCornerTo - transitionCornerFrom) * t
+                backdrop.applyAsymmetricCorners(
+                    size: size, leftRadius: Self.defaultCornerRadius, rightRadius: radius
+                )
+            }
+        }
+
+        guard let state = transitionState else { return }
+        for anim in state.stayingItems {
+            anim.item.frame = Self.interpolateRect(anim.fromFrame, anim.toFrame, t)
+        }
+        for anim in state.exitItems {
+            anim.item.frame = Self.interpolateRect(anim.fromFrame, anim.toFrame, t)
+            anim.item.alphaValue = anim.fromAlpha + (anim.toAlpha - anim.fromAlpha) * t
+        }
+        for anim in state.enterItems {
+            anim.item.frame = Self.interpolateRect(anim.fromFrame, anim.toFrame, t)
+            anim.item.alphaValue = anim.fromAlpha + (anim.toAlpha - anim.fromAlpha) * t
+        }
+        chevronView.frame = Self.interpolateRect(state.chevronFromFrame, state.chevronToFrame, t)
+        chevronView.setContentAlpha(state.chevronContentFromAlpha + (state.chevronContentToAlpha - state.chevronContentFromAlpha) * t)
+        rowHighlightView.alphaValue = state.highlightFromAlpha + (state.highlightToAlpha - state.highlightFromAlpha) * t
     }
 
     override func frameAnimationDidFinish() {
-        guard style == .sequoia else { return }
-        updateHorizontalMaskImage()
+        if style == .sequoia {
+            updateHorizontalMaskImage()
+        }
+
+        guard let state = transitionState else { return }
+        if state.isExpanding {
+            for anim in state.stayingItems {
+                anim.item.frame = anim.toFrame
+            }
+            for anim in state.exitItems {
+                anim.item.isHidden = true
+            }
+            chevronView.isHidden = true
+            let hasOverflow = scrollView.documentView!.frame.height
+                > scrollView.contentView.bounds.height
+            scrollView.hasVerticalScroller = hasOverflow
+            if hasOverflow, NSScroller.preferredScrollerStyle != .legacy {
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+                scrollView.flashScrollers()
+            }
+            ensureSelectionVisible()
+        } else {
+            for item in expandedItemViews {
+                item.isHidden = true
+            }
+        }
+        isAnimating = false
+        transitionState = nil
     }
 
     // MARK: - Expand/Collapse
@@ -377,7 +432,8 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
 
         // --- Animated expand ---
         let (overflow, overflowDups) = computeOverflowSets()
-        // Save target frames, then set initial animation state
+
+        // Save target frames
         var targetRow0Frames: [Int: NSRect] = [:]
         for item in row0ItemViews {
             targetRow0Frames[item.absoluteIndex] = item.frame
@@ -387,115 +443,73 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
             targetExpandedFrames[item.absoluteIndex] = item.frame
         }
 
-        // Row 0 staying items: restore to old frames (model stays within window)
-        for (item, oldFrame) in oldRow0Frames {
-            if !overflow.contains(item.absoluteIndex) {
-                item.frame = oldFrame
-            }
-        }
+        // Build animation state
+        var stayingAnims: [ItemAnimation] = []
+        var exitAnims: [ItemAnimation] = []
+        var enterAnims: [ItemAnimation] = []
 
-        // Row 0 overflow items: unhide at old frame, will fade out + slide right
         for (item, oldFrame) in oldRow0Frames {
             if overflow.contains(item.absoluteIndex) {
+                // Overflow items: fade out + slide right off-screen
                 item.isHidden = false
                 item.alphaValue = 1
                 item.frame = oldFrame
+                var exitFrame = oldFrame
+                exitFrame.origin.x = collapsedWidth
+                exitAnims.append(ItemAnimation(item: item, fromFrame: oldFrame, toFrame: exitFrame, fromAlpha: 1, toAlpha: 0))
+            } else if let target = targetRow0Frames[item.absoluteIndex] {
+                // Staying items: animate from collapsed to expanded position
+                item.frame = oldFrame
+                stayingAnims.append(ItemAnimation(item: item, fromFrame: oldFrame, toFrame: target, fromAlpha: 1, toAlpha: 1))
             }
         }
 
-        // Rows 1+ overflow duplicates: start off-screen left, alpha 0
         for item in expandedItemViews {
-            if overflowDups.contains(item.absoluteIndex) {
+            if overflowDups.contains(item.absoluteIndex), let target = targetExpandedFrames[item.absoluteIndex] {
+                // Overflow duplicates: slide in from left
                 item.alphaValue = 0
+                var enterFrame = target
+                enterFrame.origin.x = -(target.origin.x + target.width)
+                enterAnims.append(ItemAnimation(item: item, fromFrame: enterFrame, toFrame: target, fromAlpha: 0, toAlpha: 1))
             } else {
                 item.alphaValue = 1
             }
         }
 
-        // Chevron: restore to old position
+        // Chevron animation state
+        let chevronToFrame: NSRect
         if !oldChevronHidden {
             chevronView.isHidden = false
             chevronView.alphaValue = 1
             chevronView.frame = oldChevronFrame
+            let chevronTargetX = max(
+                targetRow0Frames.values.map(\.maxX).max() ?? 0,
+                contentSize.width - chevronView.frame.width
+            )
+            chevronToFrame = NSRect(x: chevronTargetX, y: oldChevronFrame.origin.y, width: oldChevronFrame.width, height: oldChevronFrame.height)
+        } else {
+            chevronToFrame = oldChevronFrame
         }
 
-        // Row highlight starts invisible
         rowHighlightView.alphaValue = 0
-
         scrollView.hasVerticalScroller = false
 
-        // Animate window frame, corner radius, and mask together
-        animateTransition(cornerFrom: frame.size.height / 2, cornerTo: Self.defaultCornerRadius,
-                          frameTo: targetWindowFrame)
+        transitionState = TransitionState(
+            stayingItems: stayingAnims,
+            exitItems: exitAnims,
+            enterItems: enterAnims,
+            chevronFromFrame: oldChevronFrame,
+            chevronToFrame: chevronToFrame,
+            chevronContentFromAlpha: oldChevronHidden ? 0 : 1,
+            chevronContentToAlpha: 0,
+            highlightFromAlpha: 0,
+            highlightToAlpha: 1,
+            isExpanding: true
+        )
 
         isAnimating = true
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = self.animationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-
-            // Row 0 staying items: animate from collapsed to expanded via transform
-            for (item, oldFrame) in oldRow0Frames where !overflow.contains(item.absoluteIndex) {
-                if let target = targetRow0Frames[item.absoluteIndex] {
-                    let dx = target.origin.x - oldFrame.origin.x
-                    item.layer?.add(self.makeAnimation(keyPath: "transform.translation.x", from: 0, to: dx, persist: true), forKey: "slideToExpanded")
-                    item.layer?.add(self.makeAnimation(keyPath: "bounds.size.width", from: oldFrame.size.width, to: target.size.width, persist: true), forKey: "width")
-                }
-            }
-
-            // Row 0 overflow items: fade out + slide right via layer transform
-            for item in self.row0ItemViews where overflow.contains(item.absoluteIndex) {
-                item.animator().alphaValue = 0
-                item.layer?.add(self.makeAnimation(keyPath: "transform.translation.x", from: 0, to: collapsedWidth - item.frame.origin.x), forKey: "slideRight")
-            }
-
-            // Rows 1+ overflow duplicates: slide in from left via transform + fade in
-            for item in self.expandedItemViews where overflowDups.contains(item.absoluteIndex) {
-                if let target = targetExpandedFrames[item.absoluteIndex] {
-                    item.animator().alphaValue = 1
-                    item.layer?.add(self.makeAnimation(keyPath: "transform.translation.x", from: -(target.origin.x + target.width), to: 0), forKey: "slideIn")
-                }
-            }
-
-            // Chevron: fade out, track right edge
-            if !oldChevronHidden {
-                self.chevronView.animateContentAlpha(to: 0)
-                let chevronTargetX = max(
-                    targetRow0Frames.values.map(\.maxX).max() ?? 0,
-                    contentSize.width - self.chevronView.frame.width
-                )
-                var cf = self.chevronView.frame
-                cf.origin.x = chevronTargetX
-                self.chevronView.animator().frame = cf
-            }
-
-            // Row highlight fade in
-            self.rowHighlightView.animator().alphaValue = 1
-
-        }, completionHandler: { [weak self] in
-            guard let self else { return }
-            // Snap staying items to expanded frames and clear animations
-            for item in self.row0ItemViews where !overflow.contains(item.absoluteIndex) {
-                if let target = targetRow0Frames[item.absoluteIndex] {
-                    item.layer?.removeAllAnimations()
-                    item.frame = target
-                    item.layer?.transform = CATransform3DIdentity
-                }
-            }
-            // Hide overflow items
-            for item in self.row0ItemViews where overflow.contains(item.absoluteIndex) {
-                item.isHidden = true
-            }
-            self.chevronView.isHidden = true
-            self.isAnimating = false
-            let hasOverflow = self.scrollView.documentView!.frame.height
-                > self.scrollView.contentView.bounds.height
-            self.scrollView.hasVerticalScroller = hasOverflow
-            if hasOverflow, NSScroller.preferredScrollerStyle != .legacy {
-                self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
-                self.scrollView.flashScrollers()
-            }
-            self.ensureSelectionVisible()
-        })
+        animateTransition(cornerFrom: frame.size.height / 2, cornerTo: Self.defaultCornerRadius,
+                          frameTo: targetWindowFrame)
     }
 
     private func collapseWindow(animated: Bool) {
@@ -546,93 +560,87 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
             targetRow0Frames[item.absoluteIndex] = item.frame
         }
 
-        // Row 0 overflow items: place at target, offset visually via transform
+        // Build animation state
+        var stayingAnims: [ItemAnimation] = []
+        var exitAnims: [ItemAnimation] = []
+        var enterAnims: [ItemAnimation] = []
+
+        // Row 0 staying items: animate from expanded to collapsed
+        for item in row0ItemViews where !overflow.contains(item.absoluteIndex) {
+            if let gridItem = expandedGridRows[0].items.first(where: { $0.candidateIndex == item.absoluteIndex }) {
+                let expandedX = CGFloat(gridItem.columnStart) * expandedColumnWidth
+                let expandedW = CGFloat(gridItem.columnSpan) * expandedColumnWidth
+                let expandedFrame = NSRect(x: expandedX, y: item.frame.origin.y, width: expandedW, height: itemHeight)
+                let collapsedFrame = item.frame
+                item.frame = expandedFrame
+                stayingAnims.append(ItemAnimation(item: item, fromFrame: expandedFrame, toFrame: collapsedFrame, fromAlpha: 1, toAlpha: 1))
+            }
+        }
+
+        // Row 0 overflow items: slide in from right + fade in
         for item in row0ItemViews where overflow.contains(item.absoluteIndex) {
             let target = targetRow0Frames[item.absoluteIndex]!
             item.isHidden = false
             item.alphaValue = 0
-            item.frame = target
+            var enterFrame = target
+            enterFrame.origin.x = contentSize.width
+            item.frame = enterFrame
+            enterAnims.append(ItemAnimation(item: item, fromFrame: enterFrame, toFrame: target, fromAlpha: 0, toAlpha: 1))
         }
 
-        // Row 0 staying items: keep at collapsed frames, transform will handle visual offset
-
-        // Rows 1+ items: unhide at their current positions, will fade/slide out
+        // Rows 1+ overflow duplicates: slide out to left + fade out
         for (item, oldFrame) in oldExpandedFrames {
             item.isHidden = false
             item.frame = oldFrame
             item.alphaValue = 1
+            if overflowDups.contains(item.absoluteIndex) {
+                var exitFrame = oldFrame
+                exitFrame.origin.x = -(oldFrame.origin.x + oldFrame.width)
+                exitAnims.append(ItemAnimation(item: item, fromFrame: oldFrame, toFrame: exitFrame, fromAlpha: 1, toAlpha: 0))
+            }
         }
 
-        // Chevron: start at expanded right edge, will slide to final position + fade in
+        // Chevron animation state
         let hasOverflow = displayCount > collapsedVisibleCount
         let expandedContentWidth = expandedColumnWidth * CGFloat(expandedPageSize)
+        let chevronFromFrame: NSRect
+        let chevronToFrame: NSRect
         if hasOverflow {
             chevronView.isHidden = false
             chevronView.alphaValue = 1
-            chevronView.imageAlphaValue = 0
-            chevronView.separatorAlphaValue = 0
+            chevronView.setContentAlpha(0)
             let chevronStartX = max(
                 targetRow0Frames.values.map(\.maxX).max() ?? 0,
                 expandedContentWidth - chevronView.intrinsicContentSize.width
             )
-            chevronView.frame = NSRect(x: chevronStartX, y: yForRow(0), width: chevronView.intrinsicContentSize.width, height: itemHeight)
+            let chevronSize = NSSize(width: chevronView.intrinsicContentSize.width, height: itemHeight)
+            chevronFromFrame = NSRect(origin: NSPoint(x: chevronStartX, y: yForRow(0)), size: chevronSize)
+            chevronView.frame = chevronFromFrame
+            let chevronFinalX = targetRow0Frames.values.map(\.maxX).max() ?? 0
+            chevronToFrame = NSRect(origin: NSPoint(x: chevronFinalX, y: yForRow(0)), size: chevronSize)
+        } else {
+            chevronFromFrame = chevronView.frame
+            chevronToFrame = chevronView.frame
         }
 
-        // Animate window frame, corner radius, and mask together
         let targetRightRadius = hasOverflow ? contentSize.height / 2 : Self.defaultCornerRadius
-        animateTransition(cornerFrom: Self.defaultCornerRadius, cornerTo: targetRightRadius,
-                          frameTo: targetWindowFrame)
+
+        transitionState = TransitionState(
+            stayingItems: stayingAnims,
+            exitItems: exitAnims,
+            enterItems: enterAnims,
+            chevronFromFrame: chevronFromFrame,
+            chevronToFrame: chevronToFrame,
+            chevronContentFromAlpha: 0,
+            chevronContentToAlpha: hasOverflow ? 1 : 0,
+            highlightFromAlpha: 1,
+            highlightToAlpha: 0,
+            isExpanding: false
+        )
 
         isAnimating = true
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = self.animationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-
-            // Row 0 staying items: slide from expanded to collapsed via transform.
-            // No fillMode needed — model frame is already at collapsed (the end state).
-            for item in self.row0ItemViews where !overflow.contains(item.absoluteIndex) {
-                if let gridItem = self.expandedGridRows[0].items.first(where: { $0.candidateIndex == item.absoluteIndex }) {
-                    let expandedX = CGFloat(gridItem.columnStart) * self.expandedColumnWidth
-                    let expandedW = CGFloat(gridItem.columnSpan) * self.expandedColumnWidth
-                    let dx = expandedX - item.frame.origin.x
-                    item.layer?.add(self.makeAnimation(keyPath: "transform.translation.x", from: dx, to: 0), forKey: "slideToCollapsed")
-                    item.layer?.add(self.makeAnimation(keyPath: "bounds.size.width", from: expandedW, to: item.frame.size.width), forKey: "width")
-                }
-            }
-
-            // Row 0 overflow items: slide in from right via transform + fade in
-            for item in self.row0ItemViews where overflow.contains(item.absoluteIndex) {
-                if let target = targetRow0Frames[item.absoluteIndex] {
-                    item.animator().alphaValue = 1
-                    item.layer?.add(self.makeAnimation(keyPath: "transform.translation.x", from: contentSize.width - target.origin.x, to: 0), forKey: "slideIn")
-                }
-            }
-
-            // Rows 1+ overflow duplicates: slide out to left via transform + fade out
-            for item in self.expandedItemViews where overflowDups.contains(item.absoluteIndex) {
-                item.animator().alphaValue = 0
-                item.layer?.add(self.makeAnimation(keyPath: "transform.translation.x", from: 0, to: -(item.frame.origin.x + item.frame.width)), forKey: "slideLeft")
-            }
-
-            // Chevron: slide to final position + fade in
-            if hasOverflow {
-                self.chevronView.animateContentAlpha(to: 1)
-                let chevronFinalX = targetRow0Frames.values.map(\.maxX).max() ?? 0
-                var cf = self.chevronView.frame
-                cf.origin.x = chevronFinalX
-                self.chevronView.animator().frame = cf
-            }
-
-            // Row highlight fade out
-            self.rowHighlightView.animator().alphaValue = 0
-
-        }, completionHandler: { [weak self] in
-            guard let self else { return }
-            for item in self.expandedItemViews {
-                item.isHidden = true
-            }
-            self.isAnimating = false
-        })
+        animateTransition(cornerFrom: Self.defaultCornerRadius, cornerTo: targetRightRadius,
+                          frameTo: targetWindowFrame)
     }
 
     // MARK: - Navigation
@@ -909,6 +917,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     private func resetState() {
         displayMode = .collapsed
         isAnimating = false
+        transitionState = nil
         expandedGridRows = []
         expandedRowsBuilt = false
         stopFrameAnimation()

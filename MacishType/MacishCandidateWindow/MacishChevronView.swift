@@ -87,9 +87,9 @@ class MacishChevronView: NSView {
         set { imageView.alphaValue = newValue }
     }
 
-    func animateContentAlpha(to alpha: CGFloat) {
-        separator.animator().alphaValue = alpha
-        imageView.animator().alphaValue = alpha
+    func setContentAlpha(_ alpha: CGFloat) {
+        separator.alphaValue = alpha
+        imageView.alphaValue = alpha
     }
 
     override func mouseUp(with event: NSEvent) {

@@ -329,6 +329,15 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     func frameAnimationDidTick(t: CGFloat) {}
     func frameAnimationDidFinish() {}
 
+    static func interpolateRect(_ from: NSRect, _ to: NSRect, _ t: CGFloat) -> NSRect {
+        NSRect(
+            x: from.origin.x + (to.origin.x - from.origin.x) * t,
+            y: from.origin.y + (to.origin.y - from.origin.y) * t,
+            width: from.width + (to.width - from.width) * t,
+            height: from.height + (to.height - from.height) * t
+        )
+    }
+
     // MARK: - Hide
 
     func hide() {
