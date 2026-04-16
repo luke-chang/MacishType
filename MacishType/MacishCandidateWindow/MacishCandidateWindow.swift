@@ -8,26 +8,9 @@ class MacishCandidateWindow: CandidateWindowImpl {
         self.style = style
     }
 
-    private lazy var horizontalPanel = MacishHorizontalExpandablePanel(
-        contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
-        styleMask: [.borderless],
-        backing: .buffered,
-        defer: false
-    )
-
-    private lazy var horizontalSimplePanel = MacishHorizontalSimplePanel(
-        contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
-        styleMask: [.borderless],
-        backing: .buffered,
-        defer: false
-    )
-
-    private lazy var verticalPanel = MacishVerticalPanel(
-        contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
-        styleMask: [.borderless],
-        backing: .buffered,
-        defer: false
-    )
+    private lazy var horizontalPanel = MacishHorizontalExpandablePanel(style: style)
+    private lazy var horizontalSimplePanel = MacishHorizontalSimplePanel(style: style)
+    private lazy var verticalPanel = MacishVerticalPanel(style: style)
 
     private var activePanel: MacishBasePanel!
 
@@ -40,7 +23,6 @@ class MacishCandidateWindow: CandidateWindowImpl {
             verticalPanel
         }
         panel.impl = self
-        panel.style = style
         return panel
     }
 

@@ -9,7 +9,7 @@ class FlippedView: NSView {
 class MacishBasePanel: NSPanel, CandidateItemClickable {
 
     var impl: CandidateWindowImpl!
-    var style: CandidateWindow.Style = .sequoia
+    let style: CandidateWindow.Style
 
     static let separatorHeight: CGFloat = 1
     static let defaultCornerRadius: CGFloat = 6
@@ -52,8 +52,9 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
 
     // MARK: - Init
 
-    override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
-        super.init(contentRect: contentRect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    init(style: CandidateWindow.Style) {
+        self.style = style
+        super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         self.level = .floating
         self.isOpaque = false
         self.backgroundColor = .clear
