@@ -77,7 +77,10 @@ class PreviewAppDelegate: NSObject, NSApplicationDelegate {
 class PreviewState: ObservableObject, CandidateWindowDelegate {
     let candidateWindow = CandidateWindow.shared
     weak var window: NSWindow? {
-        didSet { installResignKeyObserver() }
+        didSet {
+            installResignKeyObserver()
+            installDidMoveObserver()
+        }
     }
 
     @Published var candidateText = ""
@@ -93,6 +96,8 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
     private var resignKeyObserver: (any NSObjectProtocol)?
+    private var didMoveObserver: (any NSObjectProtocol)?
+    private var positionStale = false
 
     init() {
         candidateWindow.candidateDelegate = self
@@ -110,6 +115,9 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
             NSEvent.removeMonitor(monitor)
         }
         if let observer = resignKeyObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = didMoveObserver {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -217,6 +225,8 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
 
             if self.isEditing { return event }
 
+            self.syncPositionIfNeeded()
+
             switch event.keyCode {
             case 36: // Enter
                 self.candidateWindow.commitSelectedCandidate()
@@ -246,6 +256,24 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
                 }
                 return event
             }
+        }
+    }
+
+    private func syncPositionIfNeeded() {
+        guard positionStale, let window, candidateWindow.isVisible else { return }
+        positionStale = false
+        let rect = window.frame
+        candidateWindow.show(near: NSRect(x: rect.minX, y: rect.minY - 10, width: 0, height: 20))
+    }
+
+    private func installDidMoveObserver() {
+        if let observer = didMoveObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        didMoveObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            self?.positionStale = true
         }
     }
 
@@ -284,10 +312,15 @@ struct PreviewContentView: View {
             Text("CandidateWindow Preview")
                 .font(.system(size: 16, weight: .bold))
 
-            Picker("Style:", selection: $state.styleOverride) {
-                Text("Auto").tag(CandidateWindow.Style?.none)
-                Text("Sequoia").tag(CandidateWindow.Style?.some(.sequoia))
-                Text("Tahoe").tag(CandidateWindow.Style?.some(.tahoe))
+            HStack {
+                Text("Style:")
+                Picker("", selection: $state.styleOverride) {
+                    Text("Auto").tag(CandidateWindow.Style?.none)
+                    Text("Sequoia").tag(CandidateWindow.Style?.some(.sequoia))
+                    Text("Tahoe").tag(CandidateWindow.Style?.some(.tahoe))
+                }
+                .labelsHidden()
+                .fixedSize()
             }
 
             HStack(alignment: .top, spacing: 24) {
