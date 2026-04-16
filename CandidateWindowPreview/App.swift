@@ -81,6 +81,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     }
 
     @Published var candidateText = ""
+    @Published var styleOverride: CandidateWindow.Style? = nil
     @Published var slowMotion = false
     @Published var widerColumns = true
     @Published var moveOnExpand = false
@@ -111,6 +112,11 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
         if let observer = resignKeyObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+    }
+
+    func applyStyle() {
+        candidateWindow.setStyle(styleOverride)
+        attachCandidatePanel()
     }
 
     func applyConfiguration() {
@@ -278,6 +284,12 @@ struct PreviewContentView: View {
             Text("CandidateWindow Preview")
                 .font(.system(size: 16, weight: .bold))
 
+            Picker("Style:", selection: $state.styleOverride) {
+                Text("Auto").tag(CandidateWindow.Style?.none)
+                Text("Sequoia").tag(CandidateWindow.Style?.some(.sequoia))
+                Text("Tahoe").tag(CandidateWindow.Style?.some(.tahoe))
+            }
+
             HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("Slow animations (1s)", isOn: $state.slowMotion)
@@ -332,6 +344,7 @@ struct PreviewContentView: View {
             guard !state.normalizeCandidateText() else { return }
             state.applyCandidates()
         }
+        .onChange(of: state.styleOverride) { state.applyStyle() }
         .onChange(of: state.slowMotion) { state.applyConfiguration() }
         .onChange(of: state.widerColumns) { state.applyConfiguration() }
         .onChange(of: state.moveOnExpand) { state.applyConfiguration() }

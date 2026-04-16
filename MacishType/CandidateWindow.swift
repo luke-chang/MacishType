@@ -63,17 +63,37 @@ class CandidateWindow {
 
     // MARK: - Impl Instances
 
+    private var styleOverride: Style?
+
     private var _impl: MacishCandidateWindow?
 
     private var impl: MacishCandidateWindow {
         if let existing = _impl { return existing }
-        let instance = MacishCandidateWindow(style: Self.autoResolvedStyle)
+        let instance = MacishCandidateWindow(style: styleOverride ?? Self.autoResolvedStyle)
         instance.owner = self
         _impl = instance
         return instance
     }
 
     private var activeImpl: CandidateWindowImpl { impl }
+
+    func setStyle(_ override: Style?) {
+        guard override != styleOverride else { return }
+        styleOverride = override
+        guard let old = _impl else { return }
+        let wasVisible = old.isVisible
+        let savedCandidates = old.candidates
+        old.hide()
+        _impl = nil
+        apply()
+        if !savedCandidates.isEmpty {
+            updateCandidates(savedCandidates)
+        }
+        if wasVisible {
+            show(near: lastShowNearRect)
+        }
+        activeImpl.bundleIdentifierDidChange()
+    }
 
     // MARK: - Configuration
 
