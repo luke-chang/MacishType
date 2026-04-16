@@ -146,6 +146,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     // MARK: - Positioning
 
     func show(near rect: NSRect) {
+        self.level = NSWindow.Level(rawValue: Int(impl.clientWindowLevel) + 1)
         let (topLeft, placement) = topLeftPoint(forWindowSize: frame.size, near: rect)
         let newOrigin = NSPoint(x: topLeft.x, y: topLeft.y - frame.height)
         let dx = newOrigin.x - frame.origin.x

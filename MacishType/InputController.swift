@@ -112,7 +112,8 @@ class InputController: IMKInputController {
     override func activateServer(_ sender: Any!) {
         #if DEBUG
         let clientID = (sender as? IMKTextInput)?.bundleIdentifier() ?? "unknown"
-        Logger.inputController.debug("activateServer ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\(self.engine == nil ? "nil" : "set", privacy: .public) client=\(clientID, privacy: .public)")
+        let clientLevel = (sender as? IMKTextInput)?.windowLevel() ?? 0
+        Logger.inputController.debug("activateServer ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\(self.engine == nil ? "nil" : "set", privacy: .public) client=\(clientID, privacy: .public) windowLevel=\(clientLevel, privacy: .public)")
         #endif
         super.activateServer(sender)
         hideCandidateWindow()
@@ -164,6 +165,7 @@ class InputController: IMKInputController {
         if CandidateWindow.shared.candidateDelegate !== self {
             CandidateWindow.shared.candidateDelegate = self
             CandidateWindow.shared.bundleIdentifier = Self.resolvedBundleIdentifier(sender)
+            CandidateWindow.shared.clientWindowLevel = client.windowLevel()
         }
         let result = engine.handleKey(
             context: engineContext,

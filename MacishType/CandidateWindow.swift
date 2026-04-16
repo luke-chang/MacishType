@@ -145,6 +145,7 @@ class CandidateWindow {
     }
 
     weak var candidateDelegate: CandidateWindowDelegate?
+    var clientWindowLevel: CGWindowLevel = CGWindowLevel(CGWindowLevelForKey(.floatingWindow))
 
     var bundleIdentifier: String? {
         didSet {
@@ -229,6 +230,7 @@ class CandidateWindowImpl {
 
     var candidateDelegate: CandidateWindowDelegate? { owner?.candidateDelegate }
     var bundleIdentifier: String? { owner?.bundleIdentifier }
+    var clientWindowLevel: CGWindowLevel { owner?.clientWindowLevel ?? CGWindowLevel(CGWindowLevelForKey(.floatingWindow)) }
     var lastShowNearRect: NSRect { owner?.lastShowNearRect ?? .zero }
     var compositionStartX: CGFloat { owner?.compositionStartX ?? 0 }
     var compositionEndX: CGFloat { owner?.compositionEndX ?? compositionStartX }
