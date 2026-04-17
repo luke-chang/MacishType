@@ -90,12 +90,43 @@ enum AppearanceOverride: String, CaseIterable, Identifiable {
     }
 }
 
+private class TextViewDelegateProxy: NSObject, NSTextViewDelegate {
+    weak var original: (any NSTextViewDelegate)?
+    var onUnfocus: (() -> Void)?
+
+    private static let unfocusSelectors: Set<Selector> = [
+        #selector(NSResponder.cancelOperation(_:)),
+        #selector(NSResponder.insertTab(_:)),
+        #selector(NSResponder.insertBacktab(_:)),
+        #selector(NSResponder.insertNewline(_:)),
+    ]
+
+    func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        if Self.unfocusSelectors.contains(selector) {
+            onUnfocus?()
+            return true
+        }
+        return original?.textView?(textView, doCommandBy: selector) ?? false
+    }
+
+    override func responds(to aSelector: Selector!) -> Bool {
+        super.responds(to: aSelector) || (original?.responds(to: aSelector) ?? false)
+    }
+
+    override func forwardingTarget(for aSelector: Selector!) -> Any? {
+        original
+    }
+}
+
 class PreviewState: ObservableObject, CandidateWindowDelegate {
     let candidateWindow = CandidateWindow.shared
     weak var window: NSWindow? {
         didSet {
             installResignKeyObserver()
             installDidMoveObserver()
+            DispatchQueue.main.async { [weak self] in
+                self?.installDelegateProxy()
+            }
         }
     }
 
@@ -114,6 +145,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     private var mouseMonitor: Any?
     private var resignKeyObserver: (any NSObjectProtocol)?
     private var didMoveObserver: (any NSObjectProtocol)?
+    private var delegateProxy: TextViewDelegateProxy?
     private var positionStale = false
 
     init() {
@@ -207,6 +239,15 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
         isEditing = true
     }
 
+    private func installDelegateProxy() {
+        guard let textView = window?.contentView?.findSubview(ofType: NSTextView.self) else { return }
+        let proxy = TextViewDelegateProxy()
+        proxy.original = textView.delegate
+        proxy.onUnfocus = { [weak self] in self?.unfocusTextEditor() }
+        textView.delegate = proxy
+        delegateProxy = proxy
+    }
+
     private func unfocusTextEditor() {
         guard let window,
               let textView = window.firstResponder as? NSTextView else {
@@ -231,12 +272,6 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
             // Cmd+R randomizes candidates
             if event.modifierFlags.contains(.command), event.keyCode == 15 {
                 self.candidateText = randomCandidates().joined(separator: " ")
-                return nil
-            }
-
-            // Tab, Enter, or Esc while editing unfocuses the text editor
-            if self.isEditing, event.keyCode == 48 || event.keyCode == 36 || event.keyCode == 53 {
-                self.unfocusTextEditor()
                 return nil
             }
 
