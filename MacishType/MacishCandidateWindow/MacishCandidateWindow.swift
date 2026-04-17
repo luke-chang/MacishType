@@ -6,6 +6,7 @@ class MacishCandidateWindow: CandidateWindowImpl {
 
     init(style: CandidateWindow.Style) {
         self.style = style
+        _ = ThemeManager.shared
     }
 
     private lazy var horizontalPanel = MacishHorizontalExpandablePanel(style: style)
@@ -34,8 +35,7 @@ class MacishCandidateWindow: CandidateWindowImpl {
         let wasVisible = oldPanel.isVisible
         oldPanel.hide()
         newPanel.apply(configuration)
-        newPanel.clientAppearanceDidChange()
-        newPanel.updateHighlightColor()
+        newPanel.syncTheme()
         if !candidates.isEmpty {
             newPanel.buildCandidateLayout()
             newPanel.restoreSelection(to: selectedIndex)
@@ -45,12 +45,8 @@ class MacishCandidateWindow: CandidateWindowImpl {
         }
     }
 
-    override func bundleIdentifierDidChange() {
-        activePanel.bundleIdentifierDidChange()
-    }
-
-    override func clientAppearanceDidChange() {
-        activePanel.clientAppearanceDidChange()
+    override func syncTheme() {
+        activePanel.syncTheme()
     }
 
     // MARK: - Delegated Interface

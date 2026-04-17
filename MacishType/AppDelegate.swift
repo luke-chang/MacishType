@@ -39,8 +39,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Logger.app.info("Started (v\(version, privacy: .public):\(build, privacy: .public):\(hash, privacy: .public))")
         #endif
 
-        // Initialize shared resources
-        _ = ThemeManager.shared
         InputEngine.observeEnabledEngines()
 
         setupMainMenu()

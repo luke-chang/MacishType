@@ -39,9 +39,8 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         case below, above, left, right
     }
 
-    private var accentColorObserver: (any NSObjectProtocol)?
+    private var themeObserver: (any NSObjectProtocol)?
     private var scrollerStyleObserver: (any NSObjectProtocol)?
-    private var appearanceChangeObserver: (any NSObjectProtocol)?
     private var previousPlacement: WindowPlacement?
     private var previousTopLeft: NSPoint = .zero
     private var dragOffset: NSPoint = .zero
@@ -62,12 +61,12 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         self.backgroundColor = .clear
         self.hasShadow = true
         setupUI()
-        accentColorObserver = NotificationCenter.default.addObserver(
-            forName: ThemeManager.accentColorDidChange,
+        themeObserver = NotificationCenter.default.addObserver(
+            forName: ThemeManager.systemAppearanceDidChange,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.updateHighlightColor()
+            self?.syncTheme()
         }
         scrollerStyleObserver = NotificationCenter.default.addObserver(
             forName: NSScroller.preferredScrollerStyleDidChangeNotification,
@@ -76,24 +75,14 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         ) { [weak self] _ in
             self?.handleScrollerStyleChange()
         }
-        appearanceChangeObserver = DistributedNotificationCenter.default().addObserver(
-            forName: .init("AppleInterfaceThemeChangedNotification"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.updateHighlightColor()
-        }
     }
 
     @MainActor deinit {
-        if let observer = accentColorObserver {
+        if let observer = themeObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = scrollerStyleObserver {
             NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = appearanceChangeObserver {
-            DistributedNotificationCenter.default().removeObserver(observer)
         }
     }
 
@@ -158,7 +147,9 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         return resolved ?? color
     }
 
-    func updateHighlightColor() {
+    func syncTheme() {
+        self.appearance = impl.clientAppearance
+
         if ThemeManager.shared.isMulticolor,
            let bundleID = impl.bundleIdentifier,
            let color = ThemeManager.shared.bundleAccentColor(bundleIdentifier: bundleID) {
@@ -175,15 +166,6 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
             }
         }
         for item in allItemViews { item.highlightColor = highlightColor }
-    }
-
-    func bundleIdentifierDidChange() {
-        updateHighlightColor()
-    }
-
-    func clientAppearanceDidChange() {
-        self.appearance = impl.clientAppearance
-        updateHighlightColor()
     }
 
     // MARK: - Positioning

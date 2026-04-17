@@ -459,6 +459,7 @@ struct PreviewContentView: View {
             let appearance = state.appearanceOverride.nsAppearance
             state.window?.appearance = appearance
             CandidateWindow.shared.clientAppearance = appearance
+            CandidateWindow.shared.syncTheme()
         }
     }
 }

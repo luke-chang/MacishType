@@ -92,8 +92,7 @@ class CandidateWindow {
         if wasVisible {
             show(near: lastShowNearRect)
         }
-        activeImpl.bundleIdentifierDidChange()
-        activeImpl.clientAppearanceDidChange()
+        activeImpl.syncTheme()
     }
 
     // MARK: - Configuration
@@ -148,18 +147,12 @@ class CandidateWindow {
     weak var candidateDelegate: CandidateWindowDelegate?
     var clientWindowLevel: CGWindowLevel = CGWindowLevel(CGWindowLevelForKey(.floatingWindow))
 
-    var bundleIdentifier: String? {
-        didSet {
-            guard bundleIdentifier != oldValue else { return }
-            activeImpl.bundleIdentifierDidChange()
-        }
-    }
+    var bundleIdentifier: String?
 
-    var clientAppearance: NSAppearance? {
-        didSet {
-            guard clientAppearance != oldValue else { return }
-            activeImpl.clientAppearanceDidChange()
-        }
+    var clientAppearance: NSAppearance?
+
+    func syncTheme() {
+        activeImpl.syncTheme()
     }
 
     // MARK: - Delegated Interface
@@ -258,8 +251,7 @@ class CandidateWindowImpl {
 
     var isVisible: Bool { false }
 
-    func bundleIdentifierDidChange() {}
-    func clientAppearanceDidChange() {}
+    func syncTheme() {}
 
     func apply(_ configuration: CandidateWindowConfiguration) {}
     func updateCandidates(_ candidates: [String]) {}

@@ -171,14 +171,27 @@ class InputController: IMKInputController {
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let client = sender as? IMKTextInput else { return false }
+        var themeStale = false
         if CandidateWindow.shared.candidateDelegate !== self {
             CandidateWindow.shared.candidateDelegate = self
             CandidateWindow.shared.bundleIdentifier = Self.resolvedBundleIdentifier(sender)
             CandidateWindow.shared.clientWindowLevel = client.windowLevel()
+            themeStale = true
         }
+        // Queried once per activation cycle (flag set in activateServer).
+        // Separate from the delegate check above because the same controller
+        // can be reused across activations within the same app, where the
+        // delegate hasn't changed but the client's appearance may have.
         if appearanceStale {
             appearanceStale = false
-            CandidateWindow.shared.clientAppearance = Self.clientAppearance(from: sender)
+            let appearance = Self.clientAppearance(from: sender)
+            if CandidateWindow.shared.clientAppearance !== appearance {
+                CandidateWindow.shared.clientAppearance = appearance
+                themeStale = true
+            }
+        }
+        if themeStale {
+            CandidateWindow.shared.syncTheme()
         }
         let result = engine.handleKey(
             context: engineContext,
