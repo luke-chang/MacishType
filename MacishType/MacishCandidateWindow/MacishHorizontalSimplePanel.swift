@@ -32,7 +32,7 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
 
         scrollView.hasVerticalScroller = false
 
-        pageArrowView = MacishPageArrowView()
+        pageArrowView = MacishPageArrowView(style: style)
         pageArrowView.onPageUp = { [weak self] in
             self?.handleNavigation(direction: .pageBackward, wrapping: false)
         }

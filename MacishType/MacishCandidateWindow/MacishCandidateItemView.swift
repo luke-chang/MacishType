@@ -4,9 +4,9 @@ class MacishCandidateItemView: NSView {
     private static var candidateFontSize: CGFloat = 16
     private static var indexFontSize: CGFloat = 8
     private static var indexWidth: CGFloat = computeIndexWidth(fontSize: 8)
-    private static var leadingPadding: CGFloat = 5
+    private static var leadingPadding: CGFloat = 4
     private static var indexCandidateGap: CGFloat = 6
-    private static var defaultTrailingPadding: CGFloat = 7
+    private static var defaultTrailingPadding: CGFloat = 9
     private static var verticalPadding: CGFloat = 12
 
     private static func computeIndexWidth(fontSize: CGFloat) -> CGFloat {
@@ -23,9 +23,9 @@ class MacishCandidateItemView: NSView {
         candidateFontSize = size
         indexFontSize = round(size / 2)
         indexWidth = computeIndexWidth(fontSize: indexFontSize)
-        leadingPadding = round(5 * scale)
+        leadingPadding = round(4 * scale)
         indexCandidateGap = round(6 * scale)
-        defaultTrailingPadding = round(7 * scale)
+        defaultTrailingPadding = round(9 * scale)
         verticalPadding = round(12 * scale)
         templateView = nil
     }

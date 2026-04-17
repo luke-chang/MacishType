@@ -20,12 +20,15 @@ class MacishPageArrowView: NSView {
     private var trailingConstraint: NSLayoutConstraint!
     private var upCenterYConstraint: NSLayoutConstraint!
     private var downCenterYConstraint: NSLayoutConstraint!
+    private let style: CandidateWindow.Style
+    private var separatorHeightConstraint: NSLayoutConstraint!
     private var currentFontSize: CGFloat = 16
     private var spacing: CGFloat = 4
     private var imageWidth: CGFloat = 16
-    private var padding: CGFloat = 6
+    private var padding: CGFloat = 7
 
-    override init(frame: NSRect) {
+    init(style: CandidateWindow.Style = .sequoia) {
+        self.style = style
         let config = NSImage.SymbolConfiguration(pointSize: 8, weight: .medium)
         upImageView = NSImageView(image:
             NSImage(systemSymbolName: "chevron.up", accessibilityDescription: nil)!
@@ -34,7 +37,7 @@ class MacishPageArrowView: NSView {
             NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)!
                 .withSymbolConfiguration(config)!)
 
-        super.init(frame: frame)
+        super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = true
         wantsLayer = true
 
@@ -53,13 +56,14 @@ class MacishPageArrowView: NSView {
         leadingConstraint = upImageView.leadingAnchor.constraint(equalTo: separator.trailingAnchor, constant: spacing)
         widthConstraint = upImageView.widthAnchor.constraint(equalToConstant: imageWidth)
         trailingConstraint = upImageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -padding)
-        upCenterYConstraint = upImageView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -4)
+        upCenterYConstraint = upImageView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -3)
         downCenterYConstraint = downImageView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 4)
+        separatorHeightConstraint = separator.heightAnchor.constraint(equalTo: heightAnchor, constant: style == .tahoe ? -8 : 0)
 
         NSLayoutConstraint.activate([
             separator.leadingAnchor.constraint(equalTo: leadingAnchor),
             separator.centerYAnchor.constraint(equalTo: centerYAnchor),
-            separator.heightAnchor.constraint(equalTo: heightAnchor),
+            separatorHeightConstraint,
             leadingConstraint,
             widthConstraint,
             trailingConstraint,
@@ -79,8 +83,9 @@ class MacishPageArrowView: NSView {
         let scale = candidateFontSize / 16
         let newImageWidth = round(16 * scale)
         let newSpacing = round(4 * scale)
-        let newPadding = round(6 * scale)
-        let newOffset = round(4 * scale)
+        let newPadding = round(7 * scale)
+        let newUpOffset = round(3 * scale)
+        let newDownOffset = round(4 * scale)
 
         let config = NSImage.SymbolConfiguration(pointSize: round(8 * scale), weight: .medium)
         upImageView.image = NSImage(systemSymbolName: "chevron.up", accessibilityDescription: nil)!
@@ -91,8 +96,8 @@ class MacishPageArrowView: NSView {
         leadingConstraint.constant = newSpacing
         widthConstraint.constant = newImageWidth
         trailingConstraint.constant = -newPadding
-        upCenterYConstraint.constant = -newOffset
-        downCenterYConstraint.constant = newOffset
+        upCenterYConstraint.constant = -newUpOffset
+        downCenterYConstraint.constant = newDownOffset
 
         spacing = newSpacing
         imageWidth = newImageWidth
