@@ -357,9 +357,11 @@ class MacishVerticalPanel: MacishBasePanel {
     override func updateItemHighlights() {
         super.updateItemHighlights()
         guard style == .tahoe else { return }
+        let suspended = impl.suspendHighlight
         for (i, sep) in separatorViews.enumerated() where !sep.isHidden {
             // separator[i] sits between item[i] and item[i+1]
-            sep.alphaValue = (i == selectedIndex - 1 || i == selectedIndex) ? 0 : 1
+            let adjacentToSelection = i == selectedIndex - 1 || i == selectedIndex
+            sep.alphaValue = (!suspended && adjacentToSelection) ? 0 : 1
         }
     }
 

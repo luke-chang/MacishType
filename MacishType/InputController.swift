@@ -155,16 +155,17 @@ class InputController: IMKInputController {
     // Called by the system when composition must end (e.g. Cmd+A select
     // all, mouse click outside). Do NOT call super — it triggers an
     // immediate deactivateServer, which crashes or switches away from
-    // the input method.
+    // the input method. Engine decides whether to discard or commit the
+    // current marked text.
     override func commitComposition(_ sender: Any!) {
         #if DEBUG
         Logger.inputController.debug("commitComposition ctrl=\("\(ObjectIdentifier(self))", privacy: .public) isComposing=\(self.engineContext?.isComposing ?? false, privacy: .public)")
         #endif
-        if let engineContext, engineContext.isComposing, let client = sender as? IMKTextInput {
-            engineContext.reset()
-            setMarkedText("", client: client)
-            hideCandidateWindow()
-        }
+        guard let engineContext, engineContext.isComposing,
+              let client = sender as? IMKTextInput else { return }
+        let actions = engine.commitComposition(context: engineContext)
+        executeActions(actions, client: client)
+        hideCandidateWindow()
     }
 
     // MARK: - Event Handling
@@ -217,8 +218,9 @@ class InputController: IMKInputController {
                 client.insertText(text, replacementRange: .notFound)
             case .updateMarkedText(let text, let cursor, let emphasis):
                 setMarkedText(text, cursor: cursor, emphasis: emphasis, client: client)
-            case .updateCandidates(let candidates, let anchor):
-                updateCandidates(candidates, anchor: anchor, client: client)
+            case .updateCandidates(let candidates, let offset, let suspendHighlight):
+                updateCandidates(candidates, offset: offset,
+                                 suspendHighlight: suspendHighlight, client: client)
             case .commitSelectedCandidate:
                 CandidateWindow.shared.commitSelectedCandidate()
             case .commitCandidateByDigit(let digit):
@@ -263,15 +265,31 @@ class InputController: IMKInputController {
 
     // MARK: - Candidate Window
 
-    private func showCandidateWindow(anchor: Int, client: IMKTextInput) {
-        var lineHeightRect = NSRect.zero
+    private func showCandidateWindow(offset: Int, client: IMKTextInput) {
         let text = engineContext.composingText
         guard !text.isEmpty else { return }
-        let clampedAnchor = min(anchor, text.count - 1)
-        let target = text.prefix(clampedAnchor).utf16.count
-        let attrs = client.attributes(forCharacterIndex: target, lineHeightRectangle: &lineHeightRect)
-        if lineHeightRect.origin == .zero {
-            _ = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &lineHeightRect)
+        let length = text.count
+        let fontKey = NSAttributedString.Key.font.rawValue
+
+        var lineHeightRect = NSRect.zero
+        var attrs: [AnyHashable: Any]?
+        if offset < length {
+            // Offset maps to the start of a real character; query directly.
+            let utf16Idx = text.prefix(offset).utf16.count
+            attrs = client.attributes(forCharacterIndex: utf16Idx, lineHeightRectangle: &lineHeightRect)
+            if lineHeightRect.origin == .zero {
+                attrs = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &lineHeightRect)
+            }
+        } else {
+            // offset == length (past end): simulate by querying the last
+            // character's rect and shifting x by its width. Avoids the cache
+            // poisoning caused by querying utf16 index == length directly.
+            let lastUtf16 = text.prefix(length - 1).utf16.count
+            attrs = client.attributes(forCharacterIndex: lastUtf16, lineHeightRectangle: &lineHeightRect)
+            let font = (attrs?[fontKey] as? NSFont)
+                ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            let lastChar = String(text.suffix(1))
+            lineHeightRect.origin.x += lastChar.size(withAttributes: [.font: font]).width
         }
 
         var startRect = NSRect.zero
@@ -279,24 +297,32 @@ class InputController: IMKInputController {
         CandidateWindow.shared.compositionStartX = startRect.origin != .zero
             ? startRect.minX : lineHeightRect.minX
 
-        let fontKey = NSAttributedString.Key.font.rawValue
         let font = attrs?[fontKey] as? NSFont
         let compositionText = text
         let utf16Count = compositionText.utf16.count
         let startX = CandidateWindow.shared.compositionStartX
-        CandidateWindow.shared.setCompositionEndXProvider { [weak client] in
-            guard let client, let font else { return startX }
-            guard utf16Count >= 2 else {
-                return startX + compositionText.size(withAttributes: [.font: font]).width
+
+        if offset < length {
+            // Existing provider: lazily compute the marked-text end x.
+            CandidateWindow.shared.setCompositionEndXProvider { [weak client] in
+                guard let client, let font else { return startX }
+                guard utf16Count >= 2 else {
+                    return startX + compositionText.size(withAttributes: [.font: font]).width
+                }
+                let lastCharStart = compositionText.index(before: compositionText.endIndex)
+                let lastIndex = compositionText.utf16.distance(
+                    from: compositionText.startIndex, to: lastCharStart)
+                var lastRect = NSRect.zero
+                _ = client.attributes(forCharacterIndex: lastIndex, lineHeightRectangle: &lastRect)
+                guard lastRect.origin != .zero else { return startX }
+                let lastChar = String(compositionText[lastCharStart...])
+                return lastRect.minX + lastChar.size(withAttributes: [.font: font]).width
             }
-            let lastCharStart = compositionText.index(before: compositionText.endIndex)
-            let lastIndex = compositionText.utf16.distance(
-                from: compositionText.startIndex, to: lastCharStart)
-            var lastRect = NSRect.zero
-            _ = client.attributes(forCharacterIndex: lastIndex, lineHeightRectangle: &lastRect)
-            guard lastRect.origin != .zero else { return startX }
-            let lastChar = String(compositionText[lastCharStart...])
-            return lastRect.minX + lastChar.size(withAttributes: [.font: font]).width
+        } else {
+            // offset == length: lineHeightRect.origin.x is already the end x,
+            // so the provider just returns the precomputed value.
+            let endX = lineHeightRect.origin.x
+            CandidateWindow.shared.setCompositionEndXProvider { endX }
         }
 
         CandidateWindow.shared.show(near: lineHeightRect)
@@ -306,13 +332,15 @@ class InputController: IMKInputController {
         CandidateWindow.shared.hide()
     }
 
-    private func updateCandidates(_ candidates: [String], anchor: Int, client: IMKTextInput) {
+    private func updateCandidates(
+        _ candidates: [String], offset: Int, suspendHighlight: Bool, client: IMKTextInput
+    ) {
         guard !candidates.isEmpty else {
             hideCandidateWindow()
             return
         }
-        CandidateWindow.shared.updateCandidates(candidates)
-        showCandidateWindow(anchor: anchor, client: client)
+        CandidateWindow.shared.updateCandidates(candidates, suspendHighlight: suspendHighlight)
+        showCandidateWindow(offset: offset, client: client)
     }
 }
 

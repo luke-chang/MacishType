@@ -19,7 +19,7 @@ class InputEngineContext {
 enum EngineAction {
     case insert(String)
     case updateMarkedText(String, cursor: Int? = nil, emphasis: Range<Int>? = nil)
-    case updateCandidates([String], anchor: Int = 0)
+    case updateCandidates([String], offset: Int = 0, suspendHighlight: Bool = false)
     case commitSelectedCandidate
     case commitCandidateByDigit(Int)
     case navigateCandidates(NavigationDirection, wrapping: Bool = false)
@@ -148,6 +148,16 @@ class InputEngine {
     }
 
     func deactivate(context: InputEngineContext, clientIdentifier: String?) -> [EngineAction] {
+        guard context.isComposing else { return [] }
+        context.reset()
+        return [.updateMarkedText(""), .updateCandidates([])]
+    }
+
+    // Called when the system forces composition to end mid-session
+    // (Cmd+A, click outside marked range, etc.). Default drops marked text;
+    // engines that hold semantically committed state in marked text (e.g.
+    // Boshiamy associated mode) should override to commit instead.
+    func commitComposition(context: InputEngineContext) -> [EngineAction] {
         guard context.isComposing else { return [] }
         context.reset()
         return [.updateMarkedText(""), .updateCandidates([])]

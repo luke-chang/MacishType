@@ -31,6 +31,10 @@ struct CandidateWindowConfiguration {
 }
 
 protocol CandidateWindowDelegate: AnyObject {
+    /// Called when a candidate is committed. `candidate` is the chosen
+    /// string, or `""` when the window was in suspendHighlight state and
+    /// commitSelectedCandidate was invoked (i.e. no item is actively
+    /// selected). Callers decide how to interpret the empty case.
     func candidateConfirmed(_ candidate: String)
     func candidateSelectionChanged(_ candidate: String)
 }
@@ -172,7 +176,11 @@ class CandidateWindow {
     }
 
     func updateCandidates(_ candidates: [String]) {
-        activeImpl.updateCandidates(candidates)
+        updateCandidates(candidates, suspendHighlight: false)
+    }
+
+    func updateCandidates(_ candidates: [String], suspendHighlight: Bool) {
+        activeImpl.updateCandidates(candidates, suspendHighlight: suspendHighlight)
     }
 
     func show(near rect: NSRect) {
@@ -242,7 +250,14 @@ class CandidateWindowImpl {
     var candidates: [String] = []
     var selectedIndex: Int = 0
 
+    // Visual-only suspension: selectedIndex remains a valid Int but no item is
+    // highlighted and selection-change notifications are skipped. Used for
+    // associated-phrase candidates, where highlight only appears after the
+    // first explicit navigation / click.
+    var suspendHighlight: Bool = false
+
     func notifySelectionChanged() {
+        if suspendHighlight { return }
         guard !candidates.isEmpty else { return }
         candidateDelegate?.candidateSelectionChanged(candidates[selectedIndex])
     }
@@ -255,6 +270,7 @@ class CandidateWindowImpl {
 
     func apply(_ configuration: CandidateWindowConfiguration) {}
     func updateCandidates(_ candidates: [String]) {}
+    func updateCandidates(_ candidates: [String], suspendHighlight: Bool) {}
     func show(near rect: NSRect) {}
     func hide() {}
 

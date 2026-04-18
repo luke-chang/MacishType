@@ -67,6 +67,13 @@ class MacishCandidateWindow: CandidateWindowImpl {
     }
 
     override func updateCandidates(_ candidates: [String]) {
+        updateCandidates(candidates, suspendHighlight: false)
+    }
+
+    override func updateCandidates(_ candidates: [String], suspendHighlight: Bool) {
+        // Set the flag BEFORE the panel rebuilds layout so that any
+        // highlight/notify inside buildCandidateLayout respects it.
+        self.suspendHighlight = suspendHighlight
         activePanel.updateCandidates(candidates)
     }
 
@@ -79,10 +86,33 @@ class MacishCandidateWindow: CandidateWindowImpl {
     }
 
     override func handleNavigation(direction: NavigationDirection, wrapping: Bool) {
+        if suspendHighlight {
+            switch direction {
+            case .up, .down, .left, .right, .itemForward, .itemBackward:
+                // Pure directional keys: reveal the existing selection
+                // (index 0) without advancing.
+                activePanel.moveSelection(to: selectedIndex)
+                return
+            case .home, .end, .pageUp, .pageDown, .pageForward, .pageBackward:
+                // Pagination / jump keys: treat index 0 as the starting
+                // point and let the panel run its normal logic. moveSelection
+                // inside the panel will clear the flag and highlight the
+                // destination.
+                break
+            }
+        }
         activePanel.handleNavigation(direction: direction, wrapping: wrapping)
     }
 
     override func commitSelectedCandidate() {
+        // When no item is actively highlighted, report an empty selection
+        // to the delegate. Callers can interpret "" however they want (for
+        // example, fall back to committing only the surrounding marked
+        // text, or treat it as a no-op).
+        if suspendHighlight {
+            candidateDelegate?.candidateConfirmed("")
+            return
+        }
         activePanel.commitSelectedCandidate()
     }
 

@@ -424,19 +424,31 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     // MARK: - Selection
 
     func moveSelection(to newIndex: Int) {
+        // Any explicit selection move (keyboard navigation, single click)
+        // clears the suspended-highlight state.
+        impl.suspendHighlight = false
         impl.selectedIndex = newIndex
         updateItemHighlights()
         impl.notifySelectionChanged()
     }
 
     func updateItemHighlights() {
+        if impl.suspendHighlight {
+            for item in allItemViews {
+                item.isHighlighted = false
+            }
+            return
+        }
         for item in allItemViews {
             item.isHighlighted = item.absoluteIndex == selectedIndex
         }
     }
 
     func restoreSelection(to index: Int) {
-        moveSelection(to: min(index, max(displayCount - 1, 0)))
+        // Preserve impl.suspendHighlight across panel transitions: bypass
+        // moveSelection (which would clear the flag) and just redraw.
+        impl.selectedIndex = min(index, max(displayCount - 1, 0))
+        updateItemHighlights()
         ensureSelectionVisible()
     }
 

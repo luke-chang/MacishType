@@ -140,6 +140,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     @Published var fontSize: CGFloat = 16
     @Published var appearanceOverride: AppearanceOverride = .system
     @Published var isEditing = false
+    @Published var suspendHighlight = false
 
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
@@ -206,7 +207,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
             candidateWindow.hide()
             return
         }
-        candidateWindow.updateCandidates(candidates)
+        candidateWindow.updateCandidates(candidates, suspendHighlight: suspendHighlight)
         if let window {
             let rect = window.frame
             candidateWindow.show(near: NSRect(x: rect.minX, y: rect.minY - 10, width: 0, height: 20))
@@ -229,6 +230,12 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
 
     func candidateSelectionChanged(_ candidate: String) {
         print("Changed: \(candidate)")
+        // Selection callbacks only fire after the window has cleared its
+        // internal suspendHighlight flag (the flag guards notification while
+        // it is true). Sync the toggle to reflect the reset.
+        if suspendHighlight {
+            suspendHighlight = false
+        }
     }
 
     private func focusTextEditor() {
@@ -438,6 +445,7 @@ struct PreviewContentView: View {
                     Toggle("Vertical layout", isOn: $state.vertical)
                     Toggle("Expandable", isOn: $state.expandable)
                         .disabled(state.vertical)
+                    Toggle("Suspend highlight", isOn: $state.suspendHighlight)
                 }
                 .toggleStyle(.checkbox)
             }
@@ -455,6 +463,7 @@ struct PreviewContentView: View {
         .onChange(of: state.vertical) { state.applyConfiguration() }
         .onChange(of: state.expandable) { state.applyConfiguration() }
         .onChange(of: state.fontSize) { state.applyConfiguration() }
+        .onChange(of: state.suspendHighlight) { state.applyCandidates() }
         .onChange(of: state.appearanceOverride) {
             let appearance = state.appearanceOverride.nsAppearance
             state.window?.appearance = appearance
