@@ -4,6 +4,8 @@ class MacishVerticalPanel: MacishBasePanel {
 
     // MARK: - State
 
+    private static let overlayVisualGap: CGFloat = 2
+
     private var itemViews: [MacishCandidateItemView] = []
     private var anchorIndex = 0
     private var isFullyRendered = false
@@ -71,11 +73,9 @@ class MacishVerticalPanel: MacishBasePanel {
         maxContentWidth = baseColumnWidth * CGFloat(pageSize)
 
         let hasOverflow = displayCount > pageSize
-        let scrollerReserve = hasOverflow
-            ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
-            : 0
-        let itemWidth = min(contentWidth, maxContentWidth)
-        let windowWidth = itemWidth + scrollerReserve
+        let cappedWidth = min(contentWidth, maxContentWidth)
+        let (windowWidth, itemWidth, itemTrailing) = scrollerGeometry(
+            contentWidth: cappedWidth, hasOverflow: hasOverflow)
 
         // Fixed window height
         let visibleRows = max(min(displayCount, pageSize), minVisibleRows)
@@ -91,23 +91,20 @@ class MacishVerticalPanel: MacishBasePanel {
             + bottomPeek
         naturalContentHeight = contentHeight
 
-        candidateContainer.frame.size = NSSize(width: windowWidth, height: contentHeight)
+        candidateContainer.frame.size = NSSize(width: itemWidth, height: contentHeight)
 
-        // Item views span full windowWidth (highlight extends to edge).
-        // reservesScrollerSpace adds internal trailing padding so text
-        // stays clear of the overlay scrollbar area.
         let initialCount = min(pageSize + 2, displayCount)
         for i in 0..<initialCount {
             let item = createItemView()
             item.absoluteIndex = i
-            item.reservesScrollerSpace = hasOverflow
-            item.frame = NSRect(x: 0, y: yForRow(i), width: windowWidth, height: itemHeight)
+            item.trailingInset = itemTrailing
+            item.frame = NSRect(x: 0, y: yForRow(i), width: itemWidth, height: itemHeight)
             candidateContainer.addSubview(item)
             itemViews.append(item)
         }
         isFullyRendered = initialCount >= displayCount
 
-        ensureSeparators(count: max(displayCount - 1, 0), width: windowWidth)
+        ensureSeparators(count: max(displayCount - 1, 0), width: itemWidth)
         if style == .tahoe {
             let inset = round(8 * (configuration.fontSize ?? 16) / 16)
             for sep in separatorViews { sep.horizontalInset = inset }
@@ -144,6 +141,27 @@ class MacishVerticalPanel: MacishBasePanel {
         return maxWidth
     }
 
+    // Computes geometry honoring the current scroller style.
+    // - Legacy: item stays inside clipView so rounded corners aren't cut off;
+    //   scrollbar sits in the [itemWidth, windowWidth] gap outside.
+    // - Overlay: item fills windowWidth (clipView = windowWidth), trailing
+    //   inset keeps text clear of the scrollbar with a small visual gap.
+    private func scrollerGeometry(contentWidth: CGFloat, hasOverflow: Bool)
+        -> (windowWidth: CGFloat, itemWidth: CGFloat, itemTrailing: CGFloat) {
+        let naturalPadding = MacishCandidateItemView.defaultTrailingPadding
+        guard hasOverflow else { return (contentWidth, contentWidth, naturalPadding) }
+        let style = NSScroller.preferredScrollerStyle
+        if style == .legacy {
+            let legacyWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+            return (contentWidth + legacyWidth, contentWidth, naturalPadding)
+        } else {
+            let overlayWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .overlay)
+            let trailing = max(naturalPadding, overlayWidth + Self.overlayVisualGap)
+            let width = contentWidth - naturalPadding + trailing
+            return (width, width, trailing)
+        }
+    }
+
     // MARK: - Full Render
 
     private func performFullRender() {
@@ -151,10 +169,12 @@ class MacishVerticalPanel: MacishBasePanel {
         isFullyRendered = true
 
         let containerWidth = candidateContainer.frame.width
+        let (_, _, initialTrailing) = scrollerGeometry(
+            contentWidth: min(initialContentWidth, maxContentWidth), hasOverflow: true)
         for i in itemViews.count..<displayCount {
             let item = createItemView()
             item.absoluteIndex = i
-            item.reservesScrollerSpace = true
+            item.trailingInset = initialTrailing
             item.frame = NSRect(x: 0, y: yForRow(i), width: containerWidth, height: itemHeight)
             candidateContainer.addSubview(item)
             itemViews.append(item)
@@ -169,15 +189,16 @@ class MacishVerticalPanel: MacishBasePanel {
 
         let cappedWidth = min(actualMaxWidth, maxContentWidth)
         if cappedWidth > initialContentWidth {
-            let scrollerReserve = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
-            let newWindowWidth = cappedWidth + scrollerReserve
+            let (newWindowWidth, newItemWidth, newTrailing) = scrollerGeometry(
+                contentWidth: cappedWidth, hasOverflow: true)
 
-            candidateContainer.frame.size.width = newWindowWidth
+            candidateContainer.frame.size.width = newItemWidth
             for item in itemViews {
-                item.frame.size.width = newWindowWidth
+                item.trailingInset = newTrailing
+                item.frame.size.width = newItemWidth
             }
             for sep in separatorViews where !sep.isHidden {
-                sep.frame.size.width = newWindowWidth
+                sep.frame.size.width = newItemWidth
             }
 
             let newSize = NSSize(width: newWindowWidth, height: frame.height)

@@ -6,7 +6,7 @@ class MacishCandidateItemView: NSView {
     private static var indexWidth: CGFloat = computeIndexWidth(fontSize: 8)
     private static var leadingPadding: CGFloat = 4
     private static var indexCandidateGap: CGFloat = 6
-    private static var defaultTrailingPadding: CGFloat = 9
+    static private(set) var defaultTrailingPadding: CGFloat = 9
     private static var verticalPadding: CGFloat = 12
 
     private static func computeIndexWidth(fontSize: CGFloat) -> CGFloat {
@@ -56,13 +56,10 @@ class MacishCandidateItemView: NSView {
         }
     }
 
-    var reservesScrollerSpace: Bool = false {
+    var trailingInset: CGFloat = defaultTrailingPadding {
         didSet {
-            guard reservesScrollerSpace != oldValue else { return }
-            let padding: CGFloat = reservesScrollerSpace
-                ? max(NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy), Self.defaultTrailingPadding)
-                : Self.defaultTrailingPadding
-            trailingConstraint.constant = -padding
+            guard trailingInset != oldValue else { return }
+            trailingConstraint.constant = -trailingInset
         }
     }
 
