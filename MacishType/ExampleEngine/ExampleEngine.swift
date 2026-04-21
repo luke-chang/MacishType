@@ -56,17 +56,15 @@ class ExampleEngine: InputEngine {
         case 49: // Space
             guard context.isComposing else { return .notHandled }
             if let first = ctx.firstCandidate {
-                context.reset()
-                return .handled([.insert(first), .updateCandidates([])])
+                return .handled([.flushStaged(first)])
             }
-            context.reset()
-            return .handled([.updateMarkedText(""), .updateCandidates([])])
+            return .handled([.resetContext])
 
         case 51: // Backspace
             guard context.isComposing else { return .notHandled }
             _ = context.composingBuffer.popLast()
             if !context.isComposing {
-                return .handled([.updateMarkedText(""), .updateCandidates([])])
+                return .handled([.resetContext])
             }
             let marked = context.composingText
             let candidates = lookupCandidates(context: context, marked)

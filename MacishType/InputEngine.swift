@@ -9,8 +9,16 @@ class InputEngineContext {
     var composingText: String { composingBuffer.joined() }
     var isComposing: Bool { !composingBuffer.isEmpty }
 
+    // Prefix of marked text that the engine has declared as "confirmed, pending
+    // commit" via .updateMarkedText(staged:). Flushed on deactivate / .flushStaged.
+    var stagedText: String = ""
+
+    // True between paired engine.activate/deactivate hooks (not derivable).
+    var isActivated: Bool = false
+
     func reset() {
         composingBuffer.removeAll()
+        stagedText = ""
     }
 }
 
@@ -18,11 +26,18 @@ class InputEngineContext {
 
 enum EngineAction {
     case insert(String)
-    case updateMarkedText(String, cursor: Int? = nil, emphasis: Range<Int>? = nil)
+    // staged: leading chars confirmed for commit on session end (negative = whole text).
+    case updateMarkedText(String, cursor: Int? = nil, emphasis: Range<Int>? = nil, staged: Int = 0)
     case updateCandidates([String], offset: Int = 0, suspendHighlight: Bool = false)
     case commitSelectedCandidate
     case commitCandidateByDigit(Int)
     case navigateCandidates(NavigationDirection, wrapping: Bool = false)
+    // Discard-all intent: clear marked text, hide candidate window, reset context.
+    case resetContext
+    // Keep-confirmed intent: commit stagedText concatenated with the given
+    // append string (both may be empty) via a single insertText call, then
+    // hide window and reset context.
+    case flushStaged(String = "")
     case noop
 }
 
@@ -134,7 +149,8 @@ class InputEngine {
     func load() {}
     func unload() {}
 
-    func activate(context: InputEngineContext, clientIdentifier: String?) -> [EngineAction] {
+    // Override for per-session setup. Loads engine on first call.
+    func activate(context: InputEngineContext, clientIdentifier: String?) {
         if !isLoaded {
             #if DEBUG
             Logger.inputEngine.debug("Loading engine: \("\(type(of: self))", privacy: .public)")
@@ -142,25 +158,11 @@ class InputEngine {
             load()
             isLoaded = true
         }
-        guard context.isComposing else { return [] }
-        let candidates = lookupCandidates(context: context, context.composingText)
-        return [.updateMarkedText(context.composingText), .updateCandidates(candidates)]
     }
 
-    func deactivate(context: InputEngineContext, clientIdentifier: String?) -> [EngineAction] {
-        guard context.isComposing else { return [] }
-        context.reset()
-        return [.updateMarkedText(""), .updateCandidates([])]
-    }
-
-    // Called when the system forces composition to end mid-session
-    // (Cmd+A, click outside marked range, etc.). Default drops marked text;
-    // engines that hold semantically committed state in marked text (e.g.
-    // Boshiamy associated mode) should override to commit instead.
-    func commitComposition(context: InputEngineContext) -> [EngineAction] {
-        guard context.isComposing else { return [] }
-        context.reset()
-        return [.updateMarkedText(""), .updateCandidates([])]
+    // Override for per-session cleanup (persist learning model, flush caches).
+    // Must NOT touch marked text or candidate window — controller handles those.
+    func deactivate(context: InputEngineContext, clientIdentifier: String?) {
     }
 
     // MARK: Event Handling
@@ -192,8 +194,7 @@ class InputEngine {
         // 3. Escape
         if keyCode == 53 {
             guard context.isComposing else { return .notHandled }
-            context.reset()
-            return .handled([.updateMarkedText(""), .updateCandidates([])])
+            return .handled([.flushStaged()])
         }
 
         // 4. Navigation (arrow keys, Tab, Home/End)
@@ -237,8 +238,7 @@ class InputEngine {
     func candidateConfirmed(
         context: InputEngineContext, _ candidate: String
     ) -> [EngineAction] {
-        context.reset()
-        return [.insert(candidate), .updateCandidates([])]
+        return [.flushStaged(candidate)]
     }
 
     func candidateSelectionChanged(

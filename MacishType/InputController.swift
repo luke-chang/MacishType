@@ -61,6 +61,7 @@ class InputController: IMKInputController {
             Logger.inputController.fault("switchEngine no match for \(inputModeID, privacy: .public)")
             return
         }
+        // Same engine: preserve composition. activateEngine is isActivated-guarded.
         if engine === newEngine {
             activateEngine()
             return
@@ -69,43 +70,55 @@ class InputController: IMKInputController {
         Logger.inputController.debug("switchEngine ctrl=\("\(ObjectIdentifier(self))", privacy: .public) \(inputModeID, privacy: .public)")
         #endif
         deactivateEngine()
-        if let client = client() {
-            setMarkedText("", client: client)
-        }
-        if CandidateWindow.shared.candidateDelegate === self {
-            hideCandidateWindow()
-        }
         engine = newEngine
         engineContext = newEngine.createContext()
         activateEngine()
     }
 
     private func activateEngine() {
-        guard let engine else { return }
+        guard let engine, let engineContext else { return }
         #if DEBUG
-        Logger.inputController.debug("activateEngine ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\("\(type(of: engine))", privacy: .public)")
+        Logger.inputController.debug("activateEngine ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\("\(type(of: engine))", privacy: .public) activated=\(engineContext.isActivated, privacy: .public)")
         #endif
+        // Always reconfigure — candidate window is a shared singleton and may
+        // have been reconfigured by another controller since we were last active.
         CandidateWindow.shared.configure(engine.candidateWindowConfiguration)
-        if let client = client() {
-            let actions = engine.activate(
-                context: engineContext,
-                clientIdentifier: client.bundleIdentifier())
-            executeActions(actions, client: client)
+        if !engineContext.isActivated {
+            engineContext.isActivated = true
+            engine.activate(context: engineContext,
+                            clientIdentifier: client()?.bundleIdentifier())
         }
     }
 
     private func deactivateEngine() {
         guard let engine, let engineContext else { return }
         #if DEBUG
-        Logger.inputController.debug("deactivateEngine ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\("\(type(of: engine))", privacy: .public)")
+        Logger.inputController.debug("deactivateEngine ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\("\(type(of: engine))", privacy: .public) activated=\(engineContext.isActivated, privacy: .public) staged=\(engineContext.stagedText, privacy: .public)")
         #endif
-        let client = client()
-        let actions = engine.deactivate(
-            context: engineContext,
-            clientIdentifier: client?.bundleIdentifier())
-        if let client {
-            executeActions(actions, client: client)
+        let currentClient = client()
+        endComposition(client: currentClient, insert: engineContext.stagedText)
+        if engineContext.isActivated {
+            engineContext.isActivated = false
+            engine.deactivate(context: engineContext, clientIdentifier: currentClient?.bundleIdentifier())
         }
+    }
+
+    // Inserts `insertion` as committed text (which implicitly replaces any
+    // marked text), or clears marked text when nil/empty. Then hides candidate
+    // window if we own it, and resets context.
+    private func endComposition(client: IMKTextInput?, insert insertion: String? = nil) {
+        guard let engineContext else { return }
+        if let client {
+            if let insertion, !insertion.isEmpty {
+                client.insertText(insertion, replacementRange: .notFound)
+            } else {
+                setMarkedText("", client: client)
+            }
+        }
+        if CandidateWindow.shared.candidateDelegate === self {
+            hideCandidateWindow()
+        }
+        engineContext.reset()
     }
 
     // MARK: - IMK Lifecycle
@@ -127,9 +140,6 @@ class InputController: IMKInputController {
         Logger.inputController.debug("deactivateServer ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\(self.engine == nil ? "nil" : "set", privacy: .public) client=\(clientID, privacy: .public)")
         #endif
         deactivateEngine()
-        if CandidateWindow.shared.candidateDelegate === self {
-            hideCandidateWindow()
-        }
         super.deactivateServer(sender)
     }
 
@@ -155,17 +165,13 @@ class InputController: IMKInputController {
     // Called by the system when composition must end (e.g. Cmd+A select
     // all, mouse click outside). Do NOT call super — it triggers an
     // immediate deactivateServer, which crashes or switches away from
-    // the input method. Engine decides whether to discard or commit the
-    // current marked text.
+    // the input method. stagedText (if any) is committed; rest is dropped.
     override func commitComposition(_ sender: Any!) {
         #if DEBUG
-        Logger.inputController.debug("commitComposition ctrl=\("\(ObjectIdentifier(self))", privacy: .public) isComposing=\(self.engineContext?.isComposing ?? false, privacy: .public)")
+        let clientID = (sender as? IMKTextInput)?.bundleIdentifier() ?? "unknown"
+        Logger.inputController.debug("commitComposition ctrl=\("\(ObjectIdentifier(self))", privacy: .public) client=\(clientID, privacy: .public) staged=\(self.engineContext?.stagedText ?? "", privacy: .public)")
         #endif
-        guard let engineContext, engineContext.isComposing,
-              let client = sender as? IMKTextInput else { return }
-        let actions = engine.commitComposition(context: engineContext)
-        executeActions(actions, client: client)
-        hideCandidateWindow()
+        endComposition(client: sender as? IMKTextInput, insert: engineContext?.stagedText)
     }
 
     // MARK: - Event Handling
@@ -216,8 +222,10 @@ class InputController: IMKInputController {
             switch action {
             case .insert(let text):
                 client.insertText(text, replacementRange: .notFound)
-            case .updateMarkedText(let text, let cursor, let emphasis):
+            case .updateMarkedText(let text, let cursor, let emphasis, let staged):
                 setMarkedText(text, cursor: cursor, emphasis: emphasis, client: client)
+                let effective = staged < 0 ? text.count : min(max(staged, 0), text.count)
+                engineContext.stagedText = String(text.prefix(effective))
             case .updateCandidates(let candidates, let offset, let suspendHighlight):
                 updateCandidates(candidates, offset: offset,
                                  suspendHighlight: suspendHighlight, client: client)
@@ -227,6 +235,10 @@ class InputController: IMKInputController {
                 CandidateWindow.shared.commitCandidateForDigit(digit)
             case .navigateCandidates(let direction, let wrapping):
                 CandidateWindow.shared.handleNavigation(direction: direction, wrapping: wrapping)
+            case .resetContext:
+                endComposition(client: client)
+            case .flushStaged(let append):
+                endComposition(client: client, insert: engineContext.stagedText + append)
             case .noop:
                 break
             }
