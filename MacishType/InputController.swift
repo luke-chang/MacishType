@@ -200,6 +200,18 @@ class InputController: IMKInputController {
         if themeStale {
             CandidateWindow.shared.syncTheme()
         }
+        if engineContext.isAssociating {
+            // Tier 1: candidate window / dismiss keys
+            if let action = engine.candidateWindowAction(
+                keyCode: event.keyCode, characters: event.characters,
+                modifiers: event.modifierFlags
+            ) {
+                executeActions([action], client: client)
+                return true
+            }
+            // Tier 2: flush held, fall through to engine.handleKey
+            executeActions([.flushStaged()], client: client)
+        }
         let result = engine.handleKey(
             context: engineContext,
             keyCode: event.keyCode,
@@ -239,6 +251,16 @@ class InputController: IMKInputController {
                 endComposition(client: client)
             case .flushStaged(let append):
                 endComposition(client: client, insert: engineContext.stagedText + append)
+            case .enterAssociatedMode(let heldChar, let candidates):
+                // Clear any leftover composing state from the emitting engine
+                // (e.g. composingBuffer that produced this committed char).
+                engineContext.reset()
+                // reset() clears isAssociating, so set it after.
+                engineContext.isAssociating = true
+                executeActions([
+                    .updateMarkedText(heldChar, staged: -1),
+                    .updateCandidates(candidates, offset: 1, suspendHighlight: true)
+                ], client: client)
             case .noop:
                 break
             }

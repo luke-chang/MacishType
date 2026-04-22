@@ -16,9 +16,16 @@ class InputEngineContext {
     // True between paired engine.activate/deactivate hooks (not derivable).
     var isActivated: Bool = false
 
+    // Controller-driven associated-phrase mode. Engines opt-in by emitting
+    // .enterAssociatedMode; Controller manages the key flow while this is true.
+    // Engines wanting full customization should NOT set this and implement
+    // their own state machine.
+    var isAssociating: Bool = false
+
     func reset() {
         composingBuffer.removeAll()
         stagedText = ""
+        isAssociating = false
     }
 }
 
@@ -38,6 +45,10 @@ enum EngineAction {
     // append string (both may be empty) via a single insertText call, then
     // hide window and reset context.
     case flushStaged(String = "")
+    // Enter associated-phrase mode: held char becomes staged marked text,
+    // candidates are displayed with offset=1 suspendHighlight=true. Payload
+    // carries pre-looked-up candidates so Controller doesn't re-query.
+    case enterAssociatedMode(String, [String])
     case noop
 }
 
@@ -197,8 +208,8 @@ class InputEngine {
             return .handled([.flushStaged()])
         }
 
-        // 4. Navigation (arrow keys, Tab, Home/End)
-        if let action = Self.navigationAction(keyCode: keyCode, modifiers: modifiers) {
+        // 4. Navigation (arrow keys, Tab, Home/End, engine-specific extensions)
+        if let action = navigationAction(keyCode: keyCode, characters: characters, modifiers: modifiers) {
             guard context.isComposing else { return .notHandled }
             return .handled([action])
         }
@@ -238,6 +249,15 @@ class InputEngine {
     func candidateConfirmed(
         context: InputEngineContext, _ candidate: String
     ) -> [EngineAction] {
+        if context.isAssociating {
+            return [.flushStaged(candidate)]
+        }
+        if candidate.count == 1, let first = candidate.first {
+            let related = lookupAssociatedCandidates(for: first)
+            if !related.isEmpty {
+                return [.enterAssociatedMode(candidate, related)]
+            }
+        }
         return [.flushStaged(candidate)]
     }
 
@@ -255,6 +275,57 @@ class InputEngine {
     func isValidCompositionCharacter(_ char: Character) -> Bool { false }
     func transformInput(_ text: String) -> String { text }
 
+    // Associated-phrase lookup. Default returns empty (no associated mode).
+    // Engines opt in by overriding with a dictionary query.
+    func lookupAssociatedCandidates(for char: Character) -> [String] { [] }
+
+    // Maps a key event to a candidate-window navigation action, or nil if the
+    // key isn't a nav key. Default covers standard keyboard nav (Tab, arrows,
+    // Page Up/Down, Home, End); subclasses may add engine-specific keys.
+    func navigationAction(
+        keyCode: UInt16, characters: String?, modifiers: NSEvent.ModifierFlags
+    ) -> EngineAction? {
+        switch keyCode {
+        case 48: // Tab
+            let dir: NavigationDirection = modifiers.contains(.shift) ? .itemBackward : .itemForward
+            return .navigateCandidates(dir, wrapping: true)
+        case 123: return .navigateCandidates(.left)
+        case 124: return .navigateCandidates(.right)
+        case 125: return .navigateCandidates(.down)
+        case 126: return .navigateCandidates(.up)
+        case 116: return .navigateCandidates(.pageUp)
+        case 121: return .navigateCandidates(.pageDown)
+        case 115: return .navigateCandidates(.home)
+        case 119: return .navigateCandidates(.end)
+        default: return nil
+        }
+    }
+
+    // Composite helper (not for override): maps a key to the action that would
+    // apply it to the candidate window. Used by Controller's associated-mode
+    // intercept to reuse engine's composing-mode window key semantics.
+    // Returns nil when Command/Control are held (system shortcuts must pass).
+    final func candidateWindowAction(
+        keyCode: UInt16, characters: String?, modifiers: NSEvent.ModifierFlags
+    ) -> EngineAction? {
+        let pureModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
+        if !pureModifiers.intersection([.command, .control]).isEmpty { return nil }
+
+        if let nav = navigationAction(keyCode: keyCode, characters: characters, modifiers: modifiers) {
+            return nav
+        }
+        if keyCode == 36 { return .commitSelectedCandidate }
+        if keyCode == 53 { return .flushStaged() }
+        if pureModifiers.isDisjoint(with: [.shift, .option]),
+           let text = characters, text.count == 1,
+           let char = text.first, let digit = char.wholeNumberValue,
+           digit >= candidateWindowConfiguration.indexBase,
+           digit <= min(9, candidateWindowConfiguration.indexBase + candidateWindowConfiguration.pageSize - 1) {
+            return .commitCandidateByDigit(digit)
+        }
+        return nil
+    }
+
     // MARK: Utilities
 
     static func toFullwidth(_ char: Character) -> Character? {
@@ -263,31 +334,4 @@ class InputEngine {
         return Character(UnicodeScalar(UInt32(ascii) + 0xFEE0)!)
     }
 
-    private static func navigationAction(
-        keyCode: UInt16, modifiers: NSEvent.ModifierFlags
-    ) -> EngineAction? {
-        switch keyCode {
-        case 48: // Tab
-            let dir: NavigationDirection = modifiers.contains(.shift) ? .itemBackward : .itemForward
-            return .navigateCandidates(dir, wrapping: true)
-        case 123: // Left
-            return .navigateCandidates(.left)
-        case 124: // Right
-            return .navigateCandidates(.right)
-        case 125: // Down
-            return .navigateCandidates(.down)
-        case 126: // Up
-            return .navigateCandidates(.up)
-        case 116: // Page Up
-            return .navigateCandidates(.pageUp)
-        case 121: // Page Down
-            return .navigateCandidates(.pageDown)
-        case 115: // Home
-            return .navigateCandidates(.home)
-        case 119: // End
-            return .navigateCandidates(.end)
-        default:
-            return nil
-        }
-    }
 }
