@@ -271,10 +271,6 @@ class InputEngine {
 
     var candidateWindowConfiguration: CandidateWindowConfiguration { .init() }
 
-    func lookupCandidates(context: InputEngineContext, _ key: String) -> [String] { [] }
-    func isValidCompositionCharacter(_ char: Character) -> Bool { false }
-    func transformInput(_ text: String) -> String { text }
-
     // Associated-phrase lookup. Default returns empty (no associated mode).
     // Engines opt in by overriding with a dictionary query.
     func lookupAssociatedCandidates(for char: Character) -> [String] { [] }

@@ -17,15 +17,7 @@ class ExampleEngine: InputEngine {
 
     override func createContext() -> InputEngineContext { ExampleEngineContext() }
 
-    override func isValidCompositionCharacter(_ char: Character) -> Bool {
-        validCompositionCharacters.contains(char)
-    }
-
-    override func transformInput(_ text: String) -> String {
-        text.uppercased()
-    }
-
-    override func lookupCandidates(context: InputEngineContext, _ key: String) -> [String] {
+    private func lookupCandidates(_ key: String) -> [String] {
         key.compactMap { Self.toFullwidth($0).map(String.init) }
     }
 
@@ -67,15 +59,15 @@ class ExampleEngine: InputEngine {
                 return .handled([.resetContext])
             }
             let marked = context.composingText
-            let candidates = lookupCandidates(context: context, marked)
+            let candidates = lookupCandidates(marked)
             ctx.firstCandidate = candidates.first
             return .handled([.updateMarkedText(marked), .updateCandidates(candidates)])
 
         default:
-            if isValidCompositionCharacter(char) {
-                context.composingBuffer.append(transformInput(text))
+            if validCompositionCharacters.contains(char) {
+                context.composingBuffer.append(text.uppercased())
                 let marked = context.composingText
-                let candidates = lookupCandidates(context: context, marked)
+                let candidates = lookupCandidates(marked)
                 ctx.firstCandidate = candidates.first
                 return .handled([.updateMarkedText(marked), .updateCandidates(candidates)])
             }
