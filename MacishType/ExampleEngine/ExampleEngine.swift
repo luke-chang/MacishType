@@ -74,4 +74,13 @@ class ExampleEngine: InputEngine {
             return context.isComposing ? .handled([.noop]) : .notHandled
         }
     }
+
+    override func lookupAssociatedCandidates(for char: Character) -> [String] {
+        let s = String(char)
+        return [
+            String(repeating: s, count: 4),
+            String(repeating: s, count: 3),
+            String(repeating: s, count: 2),
+        ] + Array(repeating: s, count: 20)
+    }
 }
