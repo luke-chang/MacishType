@@ -1,6 +1,7 @@
 import Carbon
 import Cocoa
 import OSLog
+import SwiftUI
 
 // MARK: - Per-Client State
 
@@ -77,18 +78,38 @@ let usKeyboardLayout: [UInt16: (Character, Character)] = [
 
 class InputEngine {
 
-    // MARK: Engine Registry
+    // MARK: Engine Registry (static)
 
     private static let engines: [String: () -> InputEngine] = [
         "Example": { ExampleEngine.shared },
     ]
 
     static func engine(for inputModeID: String) -> InputEngine? {
-        guard let prefix = Bundle.main.bundleIdentifier else { return nil }
-        guard inputModeID.hasPrefix(prefix + ".") else { return nil }
+        guard let prefix = Bundle.main.bundleIdentifier,
+              inputModeID.hasPrefix(prefix + ".") else { return nil }
         let suffix = String(inputModeID.dropFirst(prefix.count + 1))
         return engines[suffix]?()
     }
+
+    static func engine(forSuffix suffix: String) -> InputEngine? {
+        engines[suffix]?()
+    }
+
+    /// UserDefaults key: `{engineID}_{subKey}`.
+    static func composedKey(engineID: String, subKey: String) -> String {
+        "\(engineID)_\(subKey)"
+    }
+
+    static let directionSubKey = "candidateWindowDirection"
+    static let fontSizeSubKey = "candidateWindowFontSize"
+    static let showAssociatedWordsSubKey = "showAssociatedWords"
+
+    /// Subclass override required; `InputEngine` is abstract.
+    class var engineID: String { fatalError("Subclasses must override") }
+
+    class var defaultDirection: CandidateWindow.LayoutDirection { .horizontal }
+    class var defaultFontSize: Int { 16 }
+    class var defaultShowAssociatedWords: Bool { false }
 
     // MARK: Input Source Monitoring
 
@@ -149,6 +170,38 @@ class InputEngine {
         }
     }
 
+    // MARK: Engine Instance
+
+    // Stored property initializers can't use `Self`, so they reference the
+    // base class default. `init()` then calls `reloadConfig()` which picks
+    // up `Self.defaultX` overrides and any persisted UserDefaults value.
+    var candidateWindowDirection: CandidateWindow.LayoutDirection = InputEngine.defaultDirection
+    var candidateWindowFontSize: Int = InputEngine.defaultFontSize
+    var showAssociatedWords: Bool = InputEngine.defaultShowAssociatedWords
+
+    init() {
+        reloadConfig()
+    }
+
+    /// Subclasses override to also reload their own keys; call `super` first.
+    func reloadConfig() {
+        candidateWindowDirection = defaultsValue(Self.directionSubKey, fallback: Self.defaultDirection)
+        candidateWindowFontSize = defaultsValue(Self.fontSizeSubKey, fallback: Self.defaultFontSize)
+        showAssociatedWords = defaultsValue(Self.showAssociatedWordsSubKey, fallback: Self.defaultShowAssociatedWords)
+    }
+
+    private func defaultsValue<T>(_ subKey: String, fallback: T) -> T {
+        let key = Self.composedKey(engineID: Self.engineID, subKey: subKey)
+        return (UserDefaults.standard.object(forKey: key) as? T) ?? fallback
+    }
+
+    private func defaultsValue<T: RawRepresentable>(_ subKey: String, fallback: T) -> T
+        where T.RawValue == String
+    {
+        let key = Self.composedKey(engineID: Self.engineID, subKey: subKey)
+        return UserDefaults.standard.string(forKey: key).flatMap(T.init(rawValue:)) ?? fallback
+    }
+
     // MARK: Factory
 
     func createContext() -> InputEngineContext { InputEngineContext() }
@@ -162,6 +215,7 @@ class InputEngine {
 
     // Override for per-session setup. Loads engine on first call.
     func activate(context: InputEngineContext, clientIdentifier: String?) {
+        reloadConfig()
         if !isLoaded {
             #if DEBUG
             Logger.inputEngine.debug("Loading engine: \("\(type(of: self))", privacy: .public)")
@@ -252,7 +306,8 @@ class InputEngine {
         if context.isAssociating {
             return [.flushStaged(candidate)]
         }
-        if candidate.count == 1, let first = candidate.first {
+        if showAssociatedWords,
+           candidate.count == 1, let first = candidate.first {
             let related = lookupAssociatedCandidates(for: first)
             if !related.isEmpty {
                 return [.enterAssociatedMode(candidate, related)]
@@ -269,7 +324,21 @@ class InputEngine {
 
     // MARK: Subclass Override Points
 
-    var candidateWindowConfiguration: CandidateWindowConfiguration { .init() }
+    /// Settings UI; subclasses override to add their own sections.
+    var settingsView: AnyView {
+        AnyView(
+            InputEngine.settingsForm {
+                InputEngine.CandidateWindowSection(engineType: Self.self)
+            }
+        )
+    }
+
+    var candidateWindowConfiguration: CandidateWindowConfiguration {
+        .init(
+            layoutDirection: candidateWindowDirection,
+            fontSize: CGFloat(candidateWindowFontSize)
+        )
+    }
 
     // Associated-phrase lookup. Default returns empty (no associated mode).
     // Engines opt in by overriding with a dictionary query.
@@ -330,4 +399,83 @@ class InputEngine {
         return Character(UnicodeScalar(UInt32(ascii) + 0xFEE0)!)
     }
 
+}
+
+// MARK: - SwiftUI Settings Helpers
+
+extension InputEngine {
+    /// Wraps content in the project's standard settings Form chrome:
+    /// `.formStyle(.grouped)` + `.padding(.top, -20)` to cancel the 20pt
+    /// top padding baked into grouped Form (see memory:
+    /// swiftui-form-grouped-top-padding).
+    static func settingsForm<Content: View>(
+        @ViewBuilder _ content: () -> Content
+    ) -> some View {
+        Form { content() }
+            .formStyle(.grouped)
+            .padding(.top, -20)
+    }
+
+    /// Engines pass `engineType: Self.self` so the `@AppStorage` fallback
+    /// dispatches through `defaultDirection` / `defaultFontSize` overrides,
+    /// staying in lockstep with `reloadConfig`.
+    struct CandidateWindowSection: View {
+        let title: LocalizedStringKey
+        let includeDirection: Bool
+        let includeFontSize: Bool
+
+        @AppStorage private var direction: CandidateWindow.LayoutDirection
+        @AppStorage private var fontSize: Int
+
+        init(
+            engineType: InputEngine.Type,
+            title: LocalizedStringKey = "Candidate window",
+            includeDirection: Bool = true,
+            includeFontSize: Bool = true
+        ) {
+            self.title = title
+            self.includeDirection = includeDirection
+            self.includeFontSize = includeFontSize
+            self._direction = AppStorage(
+                wrappedValue: engineType.defaultDirection,
+                InputEngine.composedKey(engineID: engineType.engineID, subKey: InputEngine.directionSubKey))
+            self._fontSize = AppStorage(
+                wrappedValue: engineType.defaultFontSize,
+                InputEngine.composedKey(engineID: engineType.engineID, subKey: InputEngine.fontSizeSubKey))
+        }
+
+        var body: some View {
+            Section(title) {
+                if includeDirection {
+                    Picker("Orientation:", selection: $direction) {
+                        Text("Horizontal").tag(CandidateWindow.LayoutDirection.horizontal)
+                        Text("Vertical").tag(CandidateWindow.LayoutDirection.vertical)
+                    }
+                }
+                if includeFontSize {
+                    Picker("Font size:", selection: $fontSize) {
+                        ForEach([14, 16, 18, 24, 36], id: \.self) {
+                            Text(verbatim: "\($0)").tag($0)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Toggle for the associated-phrase mode opt-in. Engines opting in to the
+    /// feature include this in their `settingsView`.
+    struct ShowAssociatedWordsToggle: View {
+        @AppStorage private var value: Bool
+
+        init(engineType: InputEngine.Type) {
+            self._value = AppStorage(
+                wrappedValue: engineType.defaultShowAssociatedWords,
+                InputEngine.composedKey(engineID: engineType.engineID, subKey: InputEngine.showAssociatedWordsSubKey))
+        }
+
+        var body: some View {
+            Toggle("Show predictive completions", isOn: $value)
+        }
+    }
 }

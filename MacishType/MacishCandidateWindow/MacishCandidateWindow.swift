@@ -55,7 +55,7 @@ class MacishCandidateWindow: CandidateWindowImpl {
 
     override func apply(_ configuration: CandidateWindowConfiguration) {
         let oldPanel = activePanel
-        let newPanel = panel(for: configuration.layoutDirection!,
+        let newPanel = panel(for: configuration.layoutDirection,
                              expandable: configuration.expandable)
         activePanel = newPanel
 

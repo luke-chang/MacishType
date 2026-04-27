@@ -504,9 +504,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         MacishCandidateItemView.updateFontSize(fontSize)
     }
     func apply(_ configuration: CandidateWindowConfiguration) {
-        if let fontSize = configuration.fontSize {
-            updateFontSize(fontSize)
-        }
+        updateFontSize(configuration.fontSize)
         self.configuration = configuration
     }
     func buildCandidateLayout() {}

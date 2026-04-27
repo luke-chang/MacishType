@@ -1,4 +1,5 @@
 import Cocoa
+import SwiftUI
 
 private let validCompositionCharacters = Set("abcdefghijklmnopqrstuvwxyz")
 
@@ -13,7 +14,23 @@ class ExampleEngineContext: InputEngineContext {
 
 class ExampleEngine: InputEngine {
     static let shared = ExampleEngine()
-    private override init() { super.init() }
+
+    override class var engineID: String { "Example" }
+
+    // Default to on so a fresh install shows the associated-phrase demo
+    // without requiring the user to open Settings first.
+    override class var defaultShowAssociatedWords: Bool { true }
+
+    override var settingsView: AnyView {
+        AnyView(
+            InputEngine.settingsForm {
+                InputEngine.CandidateWindowSection(engineType: Self.self)
+                Section("Typing") {
+                    InputEngine.ShowAssociatedWordsToggle(engineType: Self.self)
+                }
+            }
+        )
+    }
 
     override func createContext() -> InputEngineContext { ExampleEngineContext() }
 

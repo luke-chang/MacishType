@@ -16,13 +16,11 @@ class WindowManager {
 
     private init() {}
 
-    func showWindow<Content: View>(
-        _ id: Identifier,
-        title: String,
-        asPanel: Bool = false,
-        transparentTitlebar: Bool = false,
-        content: @escaping () -> Content
-    ) {
+    /// Generic window-lifecycle path. Caller supplies a factory that builds
+    /// the NSWindow however it likes; we handle activation, de-duplication
+    /// (bring existing to front instead of opening a duplicate), close
+    /// observers, and bookkeeping.
+    func showWindow(_ id: Identifier, factory: () -> NSWindow) {
         // Activate before showing the window. For LSUIElement input methods,
         // the host app reclaims focus after the IMKit menu dismisses. Calling
         // activate early wins the race so the window receives focus reliably.
@@ -36,25 +34,8 @@ class WindowManager {
             return
         }
 
-        let controller = NSHostingController(rootView: content())
-        let window: NSWindow = asPanel
-            ? NSPanel(contentViewController: controller)
-            : NSWindow(contentViewController: controller)
-        window.title = title
-        if transparentTitlebar {
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
-            window.styleMask = [.titled, .closable, .fullSizeContentView]
-            window.isMovableByWindowBackground = true
-        } else {
-            window.styleMask = [.titled, .closable]
-        }
+        let window = factory()
         window.isReleasedWhenClosed = false
-        if let panel = window as? NSPanel {
-            panel.hidesOnDeactivate = false
-        }
-
-        window.setContentSize(controller.view.fittingSize)
         centerOnMouseScreen(window)
 
         if let observer = closeObservers[id] { NotificationCenter.default.removeObserver(observer) }
@@ -76,6 +57,38 @@ class WindowManager {
         windows[id] = window
         window.makeKeyAndOrderFront(nil)
         Logger.windowManager.info("Opened \(id.rawValue, privacy: .public) window")
+    }
+
+    /// Convenience for the simple "host a SwiftUI view in an NSWindow/NSPanel"
+    /// case. Builds the window with sensible defaults and forwards to the
+    /// generic factory-based `showWindow`.
+    func showWindow<Content: View>(
+        _ id: Identifier,
+        title: String,
+        asPanel: Bool = false,
+        transparentTitlebar: Bool = false,
+        content: @escaping () -> Content
+    ) {
+        showWindow(id) {
+            let controller = NSHostingController(rootView: content())
+            let window: NSWindow = asPanel
+                ? NSPanel(contentViewController: controller)
+                : NSWindow(contentViewController: controller)
+            window.title = title
+            if transparentTitlebar {
+                window.titlebarAppearsTransparent = true
+                window.titleVisibility = .hidden
+                window.styleMask = [.titled, .closable, .fullSizeContentView]
+                window.isMovableByWindowBackground = true
+            } else {
+                window.styleMask = [.titled, .closable]
+            }
+            if let panel = window as? NSPanel {
+                panel.hidesOnDeactivate = false
+            }
+            window.setContentSize(controller.view.fittingSize)
+            return window
+        }
     }
 
     func close(_ id: Identifier) {
@@ -101,9 +114,10 @@ extension WindowManager {
         }
     }
 
-    func openSettings() {
-        showWindow(.settings, title: String(localized: "MacishType Settings")) {
-            SettingsView()
+    func openSettings(initialEngineID: String? = nil) {
+        if let existing = windows[.settings] as? SettingsWindow, existing.isVisible {
+            existing.selectEngine(id: initialEngineID)
         }
+        showWindow(.settings) { SettingsWindow(initialEngineID: initialEngineID) }
     }
 }

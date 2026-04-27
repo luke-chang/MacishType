@@ -36,7 +36,8 @@ class InputController: IMKInputController {
     override func menu() -> NSMenu! { inputMethodMenu }
 
     @MainActor override func showPreferences(_ sender: Any!) {
-        WindowManager.shared.openSettings()
+        let initialID = engine.map { type(of: $0).engineID }
+        WindowManager.shared.openSettings(initialEngineID: initialID)
     }
 
     @MainActor @objc private func showAboutWindow(_ sender: Any?) {
@@ -80,14 +81,16 @@ class InputController: IMKInputController {
         #if DEBUG
         Logger.inputController.debug("activateEngine ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\("\(type(of: engine))", privacy: .public) activated=\(engineContext.isActivated, privacy: .public)")
         #endif
-        // Always reconfigure — candidate window is a shared singleton and may
-        // have been reconfigured by another controller since we were last active.
-        CandidateWindow.shared.configure(engine.candidateWindowConfiguration)
         if !engineContext.isActivated {
             engineContext.isActivated = true
             engine.activate(context: engineContext,
                             clientIdentifier: client()?.bundleIdentifier())
         }
+        // Always reconfigure — candidate window is a shared singleton and may
+        // have been reconfigured by another controller since we were last active.
+        // Must run after engine.activate() so candidateWindowConfiguration reads
+        // ivars freshly synced by reloadConfig() in activate().
+        CandidateWindow.shared.configure(engine.candidateWindowConfiguration)
     }
 
     private func deactivateEngine() {

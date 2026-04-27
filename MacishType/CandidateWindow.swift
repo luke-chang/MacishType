@@ -1,14 +1,5 @@
 import Cocoa
 
-private extension UserDefaults {
-    @objc dynamic var CandidateWindowDirection: String? {
-        string(forKey: CandidateWindow.directionKey)
-    }
-    @objc dynamic var FontSize: Int {
-        integer(forKey: CandidateWindow.fontSizeKey)
-    }
-}
-
 // MARK: - Shared Types
 
 enum NavigationDirection: Hashable {
@@ -26,8 +17,8 @@ struct CandidateWindowConfiguration {
     var horizontalMaxVisibleRows = 5
     var verticalMinVisibleRows: Int? = nil
     var expandable = true
-    var layoutDirection: CandidateWindow.LayoutDirection? = nil
-    var fontSize: CGFloat? = nil
+    var layoutDirection: CandidateWindow.LayoutDirection = .horizontal
+    var fontSize: CGFloat = 16
 }
 
 protocol CandidateWindowDelegate: AnyObject {
@@ -50,7 +41,7 @@ class CandidateWindow {
 
     static let shared = CandidateWindow()
 
-    enum LayoutDirection {
+    enum LayoutDirection: String {
         case horizontal
         case vertical
     }
@@ -101,31 +92,7 @@ class CandidateWindow {
 
     // MARK: - Configuration
 
-    fileprivate static let directionKey = "CandidateWindowDirection"
-    fileprivate static let fontSizeKey = "FontSize"
-
     private var engineConfiguration = CandidateWindowConfiguration()
-
-    private var userDefaultsDirection: LayoutDirection {
-        guard let value = UserDefaults.standard.string(forKey: Self.directionKey) else { return .horizontal }
-        return switch value {
-        case "vertical": .vertical
-        default: .horizontal
-        }
-    }
-
-    private var resolvedDirection: LayoutDirection {
-        engineConfiguration.layoutDirection ?? userDefaultsDirection
-    }
-
-    private var userDefaultsFontSize: CGFloat {
-        let raw = UserDefaults.standard.integer(forKey: Self.fontSizeKey)
-        return raw >= 8 ? CGFloat(raw) : 16
-    }
-
-    private var resolvedFontSize: CGFloat {
-        engineConfiguration.fontSize ?? userDefaultsFontSize
-    }
 
     // MARK: - State
 
@@ -169,10 +136,7 @@ class CandidateWindow {
     }
 
     private func apply() {
-        var resolved = engineConfiguration
-        resolved.layoutDirection = resolvedDirection
-        resolved.fontSize = resolvedFontSize
-        activeImpl.apply(resolved)
+        activeImpl.apply(engineConfiguration)
     }
 
     func updateCandidates(_ candidates: [String]) {
@@ -208,23 +172,7 @@ class CandidateWindow {
 
     // MARK: - Init
 
-    private var directionObservation: NSKeyValueObservation?
-    private var fontSizeObservation: NSKeyValueObservation?
-
     private init() {
-        directionObservation = UserDefaults.standard.observe(
-            \.CandidateWindowDirection, options: [.new]
-        ) { [weak self] _, _ in
-            guard let self, case .none = self.engineConfiguration.layoutDirection else { return }
-            self.apply()
-        }
-        fontSizeObservation = UserDefaults.standard.observe(
-            \.FontSize, options: [.new]
-        ) { [weak self] _, _ in
-            guard let self, self.engineConfiguration.fontSize == nil else { return }
-            self.apply()
-        }
-
         apply()
     }
 }

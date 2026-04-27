@@ -106,7 +106,7 @@ class MacishVerticalPanel: MacishBasePanel {
 
         ensureSeparators(count: max(displayCount - 1, 0), width: itemWidth)
         if style == .tahoe {
-            let inset = round(8 * (configuration.fontSize ?? 16) / 16)
+            let inset = round(8 * configuration.fontSize / 16)
             for sep in separatorViews { sep.horizontalInset = inset }
         }
 
