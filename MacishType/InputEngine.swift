@@ -30,15 +30,27 @@ class InputEngineContext {
     }
 }
 
+// MARK: - Candidate Window State (read-only snapshot)
+
+/// Read-only snapshot passed into `handleKey` so engines decide without
+/// mutating the window.
+struct CandidateWindowState {
+    let isVisible: Bool
+    let configuration: CandidateWindowConfiguration
+}
+
 // MARK: - Engine Action
 
 enum EngineAction {
     case insert(String)
     // staged: leading chars confirmed for commit on session end (negative = whole text).
     case updateMarkedText(String, cursor: Int? = nil, emphasis: Range<Int>? = nil, staged: Int = 0)
-    case updateCandidates([String], offset: Int = 0, suspendHighlight: Bool = false)
+    // `configure` overrides engine default per-update (associated mode,
+    // mode-specific labels, etc.). Nil sticks with engine default.
+    case updateCandidates([String], offset: Int = 0, suspendHighlight: Bool = false,
+                          configure: ((inout CandidateWindowConfiguration) -> Void)? = nil)
     case commitSelectedCandidate
-    case commitCandidateByDigit(Int)
+    case commitCandidateAtIndex(Int)
     case navigateCandidates(NavigationDirection, wrapping: Bool = false)
     // Discard-all intent: clear marked text, hide candidate window, reset context.
     case resetContext
@@ -237,7 +249,7 @@ class InputEngine {
         keyCode: UInt16,
         characters: String?,
         modifiers: NSEvent.ModifierFlags,
-        candidateWindowVisible: Bool
+        candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
         let pureModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
 
@@ -246,7 +258,16 @@ class InputEngine {
             return context.isComposing ? .handled([.noop]) : .notHandled
         }
 
-        // 2. Uppercase letter (skip when Option is held; falls through to fullwidth)
+        // 2. Quick-commit by indexLabels — placed before uppercase letter
+        //    so letter labels work; option reserved for fullwidth (section 7).
+        if context.isComposing,
+           !pureModifiers.contains(.option),
+           let text = characters, text.count == 1, let char = text.first,
+           let index = candidateWindow.configuration.candidateIndex(for: char) {
+            return .handled([.commitCandidateAtIndex(index)])
+        }
+
+        // 3. Uppercase letter (skip when Option is held; falls through to fullwidth)
         if !pureModifiers.contains(.option),
            let text = characters, text.count == 1,
            let char = text.first, char.isUppercase, char.isLetter {
@@ -256,32 +277,22 @@ class InputEngine {
             return .handled([.insert(text)])
         }
 
-        // 3. Escape
+        // 4. Escape
         if keyCode == 53 {
             guard context.isComposing else { return .notHandled }
             return .handled([.flushStaged()])
         }
 
-        // 4. Navigation (arrow keys, Tab, Home/End, engine-specific extensions)
+        // 5. Navigation (arrow keys, Tab, Home/End, engine-specific extensions)
         if let action = navigationAction(keyCode: keyCode, characters: characters, modifiers: modifiers) {
             guard context.isComposing else { return .notHandled }
             return .handled([action])
         }
 
-        // 5. Enter
+        // 6. Enter
         if keyCode == 36 {
             guard context.isComposing else { return .notHandled }
             return .handled([.commitSelectedCandidate])
-        }
-
-        // 6. Digit 1-9
-        if let text = characters, text.count == 1,
-           let char = text.first,
-           let digit = char.wholeNumberValue,
-           digit >= candidateWindowConfiguration.indexBase,
-           digit <= min(9, candidateWindowConfiguration.indexBase + candidateWindowConfiguration.pageSize - 1),
-           context.isComposing {
-            return .handled([.commitCandidateByDigit(digit)])
         }
 
         // 7. Option+key -> fullwidth
@@ -371,7 +382,8 @@ class InputEngine {
     // intercept to reuse engine's composing-mode window key semantics.
     // Returns nil when Command/Control are held (system shortcuts must pass).
     final func candidateWindowAction(
-        keyCode: UInt16, characters: String?, modifiers: NSEvent.ModifierFlags
+        keyCode: UInt16, characters: String?, modifiers: NSEvent.ModifierFlags,
+        candidateWindow: CandidateWindowState
     ) -> EngineAction? {
         let pureModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
         if !pureModifiers.intersection([.command, .control]).isEmpty { return nil }
@@ -381,12 +393,14 @@ class InputEngine {
         }
         if keyCode == 36 { return .commitSelectedCandidate }
         if keyCode == 53 { return .flushStaged() }
-        if pureModifiers.isDisjoint(with: [.shift, .option]),
-           let text = characters, text.count == 1,
-           let char = text.first, let digit = char.wholeNumberValue,
-           digit >= candidateWindowConfiguration.indexBase,
-           digit <= min(9, candidateWindowConfiguration.indexBase + candidateWindowConfiguration.pageSize - 1) {
-            return .commitCandidateByDigit(digit)
+
+        // Live config (not engine default) honors per-update closure
+        // overrides — controller intercept in associated mode must use
+        // the labels actually displayed.
+        if !pureModifiers.contains(.option),
+           let text = characters, text.count == 1, let char = text.first,
+           let index = candidateWindow.configuration.candidateIndex(for: char) {
+            return .commitCandidateAtIndex(index)
         }
         return nil
     }

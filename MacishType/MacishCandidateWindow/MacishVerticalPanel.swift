@@ -39,10 +39,10 @@ class MacishVerticalPanel: MacishBasePanel {
 
     // MARK: - Configuration
 
-    override func apply(_ configuration: CandidateWindowConfiguration) {
-        super.apply(configuration)
+    override func apply(_ configuration: CandidateWindowConfiguration, deferRender: Bool = false) {
+        super.apply(configuration, deferRender: deferRender)
         minVisibleRows = configuration.verticalMinVisibleRows ?? configuration.pageSize
-        if isVisible, !candidates.isEmpty {
+        if !deferRender, isVisible, !candidates.isEmpty {
             buildCandidateLayout()
             restoreSelection(to: impl?.selectedIndex ?? 0)
         }
@@ -135,7 +135,7 @@ class MacishVerticalPanel: MacishBasePanel {
 
         var maxWidth = baseColumnWidth
         for (_, candidate) in sorted {
-            let w = MacishCandidateItemView.measureWidth(index: indexBase, candidate: candidate)
+            let w = MacishCandidateItemView.measureWidth(candidate: candidate)
             maxWidth = max(maxWidth, w)
         }
         return maxWidth
@@ -183,7 +183,7 @@ class MacishVerticalPanel: MacishBasePanel {
         // Re-measure actual max width across all candidates
         var actualMaxWidth = initialContentWidth
         for i in 0..<displayCount {
-            let w = MacishCandidateItemView.measureWidth(index: indexBase, candidate: candidates[i])
+            let w = MacishCandidateItemView.measureWidth(candidate: candidates[i])
             actualMaxWidth = max(actualMaxWidth, w)
         }
 
@@ -248,9 +248,12 @@ class MacishVerticalPanel: MacishBasePanel {
             let i = item.absoluteIndex
             if i >= numberedStart, i < numberedEnd {
                 item.showIndex = true
-                item.configure(index: (i - anchorIndex) + indexBase, candidate: candidates[i])
+                // pos >= indexLabels.count yields "" but keeps showIndex=true
+                // (slot still reserved). Don't conflate with the scroll-out
+                // case below where showIndex=false visually hides the slot.
+                item.configure(label: label(for: i - anchorIndex), candidate: candidates[i])
             } else {
-                item.configure(index: 0, candidate: candidates[i])
+                item.configure(label: "", candidate: candidates[i])
                 item.showIndex = false
             }
         }
@@ -388,11 +391,10 @@ class MacishVerticalPanel: MacishBasePanel {
 
     // MARK: - Commit
 
-    override func commitCandidateForDigit(_ digit: Int) {
+    override func commitCandidate(at index: Int) {
         guard isVisible else { return }
-        let offset = digit - indexBase
-        guard offset >= 0, offset < pageSize else { return }
-        let candidateIndex = anchorIndex + offset
+        guard index >= 0, index < pageSize else { return }
+        let candidateIndex = anchorIndex + index
         guard candidateIndex < displayCount else { return }
         impl.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
     }

@@ -20,8 +20,15 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     var animationDuration: TimeInterval { configuration.animationDuration }
     var candidates: [String] { impl.candidates }
     var selectedIndex: Int { impl.selectedIndex }
-    var indexBase: Int { configuration.indexBase }
+    var indexLabels: String { configuration.indexLabels }
     var pageSize: Int { configuration.pageSize }
+
+    /// Display label for a 0-based page position, or `""` when the position
+    /// is beyond `indexLabels.count` (candidate still shows but no label).
+    func label(for position: Int) -> String {
+        guard position < indexLabels.count else { return "" }
+        return String(indexLabels[indexLabels.index(indexLabels.startIndex, offsetBy: position)])
+    }
     let maxDisplayCandidates = 200
     var isAnimating = false
     private(set) var itemHeight: CGFloat = 0
@@ -503,13 +510,22 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     func updateFontSize(_ fontSize: CGFloat) {
         MacishCandidateItemView.updateFontSize(fontSize)
     }
-    func apply(_ configuration: CandidateWindowConfiguration) {
+    /// `deferRender = true` skips the "rebuild on visible" branches in
+    /// subclass overrides — used by combined `updateCandidates` to merge
+    /// chrome change + candidate render into a single rebuild.
+    func apply(_ configuration: CandidateWindowConfiguration, deferRender: Bool = false) {
         updateFontSize(configuration.fontSize)
+        MacishCandidateItemView.updateIndexLabels(configuration.indexLabels)
+        if deferRender {
+            // deferRender skips buildCandidateLayout which would otherwise
+            // recompute these — pre-set so the upcoming render sees fresh metrics.
+            computeBaseMetrics()
+        }
         self.configuration = configuration
     }
     func buildCandidateLayout() {}
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}
-    func commitCandidateForDigit(_ digit: Int) {}
+    func commitCandidate(at index: Int) {}
     func ensureSelectionVisible() {}
     func handleScrollerStyleChange() {}
 }

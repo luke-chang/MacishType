@@ -43,11 +43,11 @@ class ExampleEngine: InputEngine {
         keyCode: UInt16,
         characters: String?,
         modifiers: NSEvent.ModifierFlags,
-        candidateWindowVisible: Bool
+        candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
         let base = super.handleKey(
             context: context, keyCode: keyCode, characters: characters,
-            modifiers: modifiers, candidateWindowVisible: candidateWindowVisible)
+            modifiers: modifiers, candidateWindow: candidateWindow)
         if case .handled = base { return base }
 
         if !modifiers.intersection(.deviceIndependentFlagsMask).isEmpty {

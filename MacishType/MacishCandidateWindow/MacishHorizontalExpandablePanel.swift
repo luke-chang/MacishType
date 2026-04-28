@@ -85,12 +85,12 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         chevronView.updateFontSize(fontSize)
     }
 
-    override func apply(_ configuration: CandidateWindowConfiguration) {
-        super.apply(configuration)
+    override func apply(_ configuration: CandidateWindowConfiguration, deferRender: Bool = false) {
+        super.apply(configuration, deferRender: deferRender)
         maxVisibleRows = configuration.horizontalMaxVisibleRows
         widerExpandedColumns = configuration.widerExpandedColumns
         moveOnExpand = configuration.moveOnExpand
-        if isVisible, !candidates.isEmpty {
+        if !deferRender, isVisible, !candidates.isEmpty {
             buildCandidateLayout()
             restoreSelection(to: impl?.selectedIndex ?? 0)
             if lastShowNearRect != .zero {
@@ -107,7 +107,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         var currentColumn = 0
 
         for i in 0..<displayCount {
-            let w = MacishCandidateItemView.measureWidth(index: indexBase, candidate: candidates[i])
+            let w = MacishCandidateItemView.measureWidth(candidate: candidates[i])
             let span = max(1, min(expandedPageSize, Int(ceil(w / expandedColumnWidth))))
             if currentColumn + span > expandedPageSize, !currentRowItems.isEmpty {
                 rows.append(GridRow(items: currentRowItems))
@@ -132,7 +132,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
 
         for i in 0..<displayCount {
             if packedItems.count >= pageSize { break }
-            let raw = MacishCandidateItemView.measureWidth(index: packedItems.count + indexBase, candidate: candidates[i])
+            let raw = MacishCandidateItemView.measureWidth(candidate: candidates[i])
             let w = max(baseColumnWidth, min(raw, maxWidth))
             if usedWidth + w > maxWidth, !packedItems.isEmpty { break }
             usedWidth += w
@@ -271,7 +271,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         for (pos, gridItem) in gridRows[0].items.enumerated() {
             let item = createItemView()
             item.absoluteIndex = gridItem.candidateIndex
-            item.configure(index: pos + indexBase, candidate: candidates[gridItem.candidateIndex])
+            item.configure(label: label(for: pos), candidate: candidates[gridItem.candidateIndex])
             candidateContainer.addSubview(item, positioned: .above, relativeTo: rowHighlightView)
             row0ItemViews.append(item)
         }
@@ -384,7 +384,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         let expandedRow0 = gridRows[0]
         for (pos, gridItem) in expandedRow0.items.enumerated() {
             if let item = row0ItemViews.first(where: { $0.absoluteIndex == gridItem.candidateIndex }) {
-                item.configure(index: pos + indexBase, candidate: candidates[gridItem.candidateIndex])
+                item.configure(label: label(for: pos), candidate: candidates[gridItem.candidateIndex])
             }
         }
 
@@ -395,7 +395,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
                 for (pos, gridItem) in gridRow.items.enumerated() {
                     let item = createItemView()
                     item.absoluteIndex = gridItem.candidateIndex
-                    item.configure(index: pos + indexBase, candidate: candidates[gridItem.candidateIndex])
+                    item.configure(label: label(for: pos), candidate: candidates[gridItem.candidateIndex])
                     candidateContainer.addSubview(item, positioned: .above, relativeTo: rowHighlightView)
                     expandedItemViews.append(item)
                 }
@@ -521,7 +521,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         // Reconfigure row 0 items with collapsed indices
         for (pos, gridItem) in gridRows[0].items.enumerated() {
             if let item = row0ItemViews.first(where: { $0.absoluteIndex == gridItem.candidateIndex }) {
-                item.configure(index: pos + indexBase, candidate: candidates[gridItem.candidateIndex])
+                item.configure(label: label(for: pos), candidate: candidates[gridItem.candidateIndex])
             }
         }
 
@@ -885,16 +885,15 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
 
     // MARK: - Commit
 
-    override func commitCandidateForDigit(_ digit: Int) {
+    override func commitCandidate(at index: Int) {
         guard isVisible else { return }
-        let itemOffset = digit - indexBase
-        guard itemOffset >= 0 else { return }
+        guard index >= 0 else { return }
 
         guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return }
         let row = gridRows[rowIdx]
-        guard itemOffset < row.items.count else { return }
+        guard index < row.items.count else { return }
 
-        let candidateIndex = row.items[itemOffset].candidateIndex
+        let candidateIndex = row.items[index].candidateIndex
         guard candidateIndex < candidates.count else { return }
         impl.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
     }

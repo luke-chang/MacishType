@@ -66,16 +66,42 @@ class MacishCandidateWindow: CandidateWindowImpl {
         }
     }
 
-    override func updateCandidates(_ candidates: [String]) {
-        updateCandidates(candidates, suspendHighlight: false)
-    }
+    override func updateCandidates(_ candidates: [String], suspendHighlight: Bool,
+                                   configuration: CandidateWindowConfiguration?) {
+        var pendingTransition: (oldPanel: MacishBasePanel, nearRect: NSRect)?
 
-    override func updateCandidates(_ candidates: [String], suspendHighlight: Bool) {
-        // Set the flag BEFORE the panel rebuilds layout so that any
-        // highlight/notify inside buildCandidateLayout respects it.
+        if let cfg = configuration {
+            let oldPanel = activePanel
+            let newPanel = panel(for: cfg.layoutDirection, expandable: cfg.expandable)
+            activePanel = newPanel
+
+            if let oldPanel, oldPanel !== newPanel {
+                // Cross-panel: keep oldPanel visible until newPanel has
+                // data, then swap below — avoids empty-window flash.
+                newPanel.apply(cfg, deferRender: true)
+                newPanel.syncTheme()
+                pendingTransition = oldPanel.isVisible
+                    ? (oldPanel, oldPanel.lastShowNearRect)
+                    : nil
+            } else {
+                newPanel.apply(cfg, deferRender: true)
+            }
+        }
+
+        // suspendHighlight must be set BEFORE rebuild so notifications
+        // inside buildCandidateLayout respect it.
         self.suspendHighlight = suspendHighlight
         activePanel.updateCandidates(candidates)
+
+        if let pending = pendingTransition {
+            activePanel.show(near: pending.nearRect)
+            pending.oldPanel.hide()
+        }
     }
+
+    // Cross-panel transition briefly shares static indexWidth between
+    // old/new panels — harmless in practice (synchronous execution,
+    // no oldPanel invalidation, hides before layout pass).
 
     override func show(near rect: NSRect) {
         activePanel.show(near: rect)
@@ -116,7 +142,7 @@ class MacishCandidateWindow: CandidateWindowImpl {
         activePanel.commitSelectedCandidate()
     }
 
-    override func commitCandidateForDigit(_ digit: Int) {
-        activePanel.commitCandidateForDigit(digit)
+    override func commitCandidate(at index: Int) {
+        activePanel.commitCandidate(at: index)
     }
 }

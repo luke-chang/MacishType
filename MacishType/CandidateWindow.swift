@@ -8,9 +8,24 @@ enum NavigationDirection: Hashable {
     case pageForward, pageBackward
 }
 
-struct CandidateWindowConfiguration {
-    var indexBase = 1
-    var pageSize = 9
+struct CandidateWindowConfiguration: Equatable {
+    // Duplicate chars are allowed; the lookup in `candidateIndex(for:)`
+    // returns the first occurrence (matches `firstIndex`/`enumerated().first`
+    // semantics), so later duplicates are unreachable but not an error.
+    var indexLabels: String = "1234567890" {
+        didSet {
+            precondition(
+                indexLabels.allSatisfy(\.isValidIndexLabel),
+                "indexLabels must be ASCII printable (0x20-0x7E), got: \(indexLabels)"
+            )
+        }
+    }
+    var pageSize: Int = 9 {
+        didSet {
+            precondition(pageSize >= 1 && pageSize <= 10,
+                         "pageSize must be between 1 and 10, got: \(pageSize)")
+        }
+    }
     var widerExpandedColumns = true
     var moveOnExpand = false
     var animationDuration: TimeInterval = 0.183
@@ -19,6 +34,26 @@ struct CandidateWindowConfiguration {
     var expandable = true
     var layoutDirection: CandidateWindow.LayoutDirection = .horizontal
     var fontSize: CGFloat = 16
+
+    /// Page-relative 0-based index for `char` if it maps to a labelled
+    /// position within `pageSize`. Whitespace returns nil — engines
+    /// decide what space (and other whitespace) keys do.
+    func candidateIndex(for char: Character) -> Int? {
+        guard !char.isWhitespace else { return nil }
+        for (index, c) in indexLabels.prefix(pageSize).enumerated() where c == char {
+            return index
+        }
+        return nil
+    }
+}
+
+extension Character {
+    /// Whether this character is a valid `indexLabels` entry: a single
+    /// ASCII printable scalar in the range 0x20-0x7E (includes space).
+    var isValidIndexLabel: Bool {
+        guard unicodeScalars.count == 1, let s = unicodeScalars.first else { return false }
+        return s.value >= 0x20 && s.value <= 0x7E
+    }
 }
 
 protocol CandidateWindowDelegate: AnyObject {
@@ -82,7 +117,7 @@ class CandidateWindow {
         _impl = nil
         apply()
         if !savedCandidates.isEmpty {
-            updateCandidates(savedCandidates)
+            updateCandidates(savedCandidates, suspendHighlight: false)
         }
         if wasVisible {
             show(near: lastShowNearRect)
@@ -93,6 +128,11 @@ class CandidateWindow {
     // MARK: - Configuration
 
     private var engineConfiguration = CandidateWindowConfiguration()
+
+    /// Live configuration currently applied — used by `InputController` to
+    /// build `CandidateWindowState` for `handleKey` so engines see the
+    /// effective indexLabels / pageSize (including per-update overrides).
+    var currentConfiguration: CandidateWindowConfiguration { engineConfiguration }
 
     // MARK: - State
 
@@ -130,8 +170,13 @@ class CandidateWindow {
 
     var isVisible: Bool { activeImpl.isVisible }
 
+    /// Standalone path (engine activation, preview app). Updates
+    /// `fallbackLabels` so empty per-update labels fall back to this
+    /// engine's width. Short-circuits when unchanged.
     func configure(_ configuration: CandidateWindowConfiguration) {
+        guard engineConfiguration != configuration else { return }
         engineConfiguration = configuration
+        MacishCandidateItemView.setFallbackLabels(configuration.indexLabels)
         apply()
     }
 
@@ -139,12 +184,20 @@ class CandidateWindow {
         activeImpl.apply(engineConfiguration)
     }
 
-    func updateCandidates(_ candidates: [String]) {
-        updateCandidates(candidates, suspendHighlight: false)
-    }
-
-    func updateCandidates(_ candidates: [String], suspendHighlight: Bool) {
-        activeImpl.updateCandidates(candidates, suspendHighlight: suspendHighlight)
+    /// Combined update — applies `configuration` (when changed) in the
+    /// same rebuild as candidates to avoid configure-then-render flicker.
+    /// Does not touch `fallbackLabels`: per-update overrides are temporary.
+    func updateCandidates(_ candidates: [String], suspendHighlight: Bool,
+                         configuration: CandidateWindowConfiguration? = nil) {
+        let cfgToApply: CandidateWindowConfiguration?
+        if let cfg = configuration, engineConfiguration != cfg {
+            engineConfiguration = cfg
+            cfgToApply = cfg
+        } else {
+            cfgToApply = nil
+        }
+        activeImpl.updateCandidates(candidates, suspendHighlight: suspendHighlight,
+                                    configuration: cfgToApply)
     }
 
     func show(near rect: NSRect) {
@@ -166,8 +219,8 @@ class CandidateWindow {
         activeImpl.commitSelectedCandidate()
     }
 
-    func commitCandidateForDigit(_ digit: Int) {
-        activeImpl.commitCandidateForDigit(digit)
+    func commitCandidate(at index: Int) {
+        activeImpl.commitCandidate(at: index)
     }
 
     // MARK: - Init
@@ -217,12 +270,12 @@ class CandidateWindowImpl {
     func syncTheme() {}
 
     func apply(_ configuration: CandidateWindowConfiguration) {}
-    func updateCandidates(_ candidates: [String]) {}
-    func updateCandidates(_ candidates: [String], suspendHighlight: Bool) {}
+    func updateCandidates(_ candidates: [String], suspendHighlight: Bool,
+                          configuration: CandidateWindowConfiguration?) {}
     func show(near rect: NSRect) {}
     func hide() {}
 
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}
     func commitSelectedCandidate() {}
-    func commitCandidateForDigit(_ digit: Int) {}
+    func commitCandidate(at index: Int) {}
 }

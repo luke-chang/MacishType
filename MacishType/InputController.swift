@@ -203,11 +203,15 @@ class InputController: IMKInputController {
         if themeStale {
             CandidateWindow.shared.syncTheme()
         }
+        let candidateWindowState = CandidateWindowState(
+            isVisible: CandidateWindow.shared.isVisible,
+            configuration: CandidateWindow.shared.currentConfiguration)
         if engineContext.isAssociating {
             // Tier 1: candidate window / dismiss keys
             if let action = engine.candidateWindowAction(
                 keyCode: event.keyCode, characters: event.characters,
-                modifiers: event.modifierFlags
+                modifiers: event.modifierFlags,
+                candidateWindow: candidateWindowState
             ) {
                 executeActions([action], client: client)
                 return true
@@ -220,7 +224,7 @@ class InputController: IMKInputController {
             keyCode: event.keyCode,
             characters: event.characters,
             modifiers: event.modifierFlags,
-            candidateWindowVisible: CandidateWindow.shared.isVisible)
+            candidateWindow: candidateWindowState)
         switch result {
         case .notHandled:
             return false
@@ -241,13 +245,16 @@ class InputController: IMKInputController {
                 setMarkedText(text, cursor: cursor, emphasis: emphasis, client: client)
                 let effective = staged < 0 ? text.count : min(max(staged, 0), text.count)
                 engineContext.stagedText = String(text.prefix(effective))
-            case .updateCandidates(let candidates, let offset, let suspendHighlight):
+            case .updateCandidates(let candidates, let offset, let suspendHighlight, let configure):
+                var cfg = engine.candidateWindowConfiguration
+                configure?(&cfg)
                 updateCandidates(candidates, offset: offset,
-                                 suspendHighlight: suspendHighlight, client: client)
+                                 suspendHighlight: suspendHighlight,
+                                 configuration: cfg, client: client)
             case .commitSelectedCandidate:
                 CandidateWindow.shared.commitSelectedCandidate()
-            case .commitCandidateByDigit(let digit):
-                CandidateWindow.shared.commitCandidateForDigit(digit)
+            case .commitCandidateAtIndex(let index):
+                CandidateWindow.shared.commitCandidate(at: index)
             case .navigateCandidates(let direction, let wrapping):
                 CandidateWindow.shared.handleNavigation(direction: direction, wrapping: wrapping)
             case .resetContext:
@@ -370,13 +377,16 @@ class InputController: IMKInputController {
     }
 
     private func updateCandidates(
-        _ candidates: [String], offset: Int, suspendHighlight: Bool, client: IMKTextInput
+        _ candidates: [String], offset: Int, suspendHighlight: Bool,
+        configuration: CandidateWindowConfiguration?, client: IMKTextInput
     ) {
         guard !candidates.isEmpty else {
             hideCandidateWindow()
             return
         }
-        CandidateWindow.shared.updateCandidates(candidates, suspendHighlight: suspendHighlight)
+        CandidateWindow.shared.updateCandidates(candidates,
+                                                suspendHighlight: suspendHighlight,
+                                                configuration: configuration)
         showCandidateWindow(offset: offset, client: client)
     }
 }

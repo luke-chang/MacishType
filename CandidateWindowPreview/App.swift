@@ -138,9 +138,14 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     @Published var vertical = false
     @Published var expandable = true
     @Published var fontSize: CGFloat = 16
+    @Published var indexLabels: String = "1234567890"
+    @Published var pageSize: Int = 9
     @Published var appearanceOverride: AppearanceOverride = .system
     @Published var isEditing = false
+    @Published var isEditingIndexLabels = false
     @Published var suspendHighlight = false
+
+    var isEditingAnyText: Bool { isEditing || isEditingIndexLabels }
 
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
@@ -177,10 +182,22 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
         attachCandidatePanel()
     }
 
+    /// Drives the TextField red-border state and the applyConfiguration
+    /// fallback. Mirrors the only validity check in
+    /// `CandidateWindowConfiguration.indexLabels.didSet`: ASCII printable.
+    var isIndexLabelsValid: Bool {
+        indexLabels.allSatisfy(\.isValidIndexLabel)
+    }
+
     func applyConfiguration() {
         var config = CandidateWindowConfiguration()
         config.layoutDirection = vertical ? .vertical : .horizontal
         config.fontSize = fontSize
+        // Invalid intermediate input (Chinese chars / duplicates) — apply
+        // empty labels so the candidate window stays consistent with the
+        // red-bordered TextField rather than crashing the precondition.
+        config.indexLabels = isIndexLabelsValid ? indexLabels : ""
+        config.pageSize = pageSize
         config.widerExpandedColumns = widerColumns
         config.moveOnExpand = moveOnExpand
         config.expandable = expandable
@@ -282,7 +299,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
                 return nil
             }
 
-            if self.isEditing { return event }
+            if self.isEditingAnyText { return event }
 
             self.syncPositionIfNeeded()
 
@@ -351,20 +368,41 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self, let window = event.window else { return event }
             let clickedView = window.contentView?.hitTest(event.locationInWindow)
-            if clickedView is NSTextView {
+            // Candidate TextEditor: NSTextView with no enclosing NSTextField.
+            // TextField field-editor: NSTextView wrapped inside an NSTextField
+            // (SwiftUI @FocusState owns its focus).
+            let hitCandidateEditor = (clickedView is NSTextView) && (clickedView?.enclosingTextField == nil)
+            let hitTextField = (clickedView?.enclosingTextField != nil)
+
+            if hitCandidateEditor {
                 DispatchQueue.main.async {
                     self.isEditing = window.firstResponder is NSTextView
                 }
-            } else if window.firstResponder is NSTextView {
-                self.unfocusTextEditor()
+            } else if let tv = window.firstResponder as? NSTextView {
+                if tv.enclosingTextField == nil {
+                    // Candidate editor was focused — unfocus on any non-editor click.
+                    self.unfocusTextEditor()
+                } else if !hitTextField {
+                    // A TextField was focused, click landed outside any
+                    // text input — release focus so @FocusState resets.
+                    // (TextField → another TextField is left to AppKit.)
+                    window.makeFirstResponder(nil)
+                }
             }
             return event
         }
     }
 }
 
+private extension NSView {
+    var enclosingTextField: NSTextField? {
+        sequence(first: self, next: \.superview).first(where: { $0 is NSTextField }) as? NSTextField
+    }
+}
+
 struct PreviewContentView: View {
     @ObservedObject var state: PreviewState
+    @FocusState private var indexLabelsFocused: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -403,37 +441,97 @@ struct PreviewContentView: View {
 
             // Right column: pickers and toggles
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Style:")
-                    Picker("", selection: $state.styleOverride) {
-                        Text("Auto").tag(CandidateWindow.Style?.none)
-                        Text("Sequoia").tag(CandidateWindow.Style?.some(.sequoia))
-                        Text("Tahoe").tag(CandidateWindow.Style?.some(.tahoe))
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                }
-
-                HStack {
-                    Text("Appearance:")
-                    Picker("", selection: $state.appearanceOverride) {
-                        ForEach(AppearanceOverride.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
+                Grid(alignment: .centerFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 8) {
+                    GridRow {
+                        Text("Style:")
+                            .gridColumnAlignment(.leading)
+                        Picker("", selection: $state.styleOverride) {
+                            Text("Auto").tag(CandidateWindow.Style?.none)
+                            Text("Sequoia").tag(CandidateWindow.Style?.some(.sequoia))
+                            Text("Tahoe").tag(CandidateWindow.Style?.some(.tahoe))
                         }
+                        .labelsHidden()
+                        .gridColumnAlignment(.leading)
                     }
-                    .labelsHidden()
-                    .fixedSize()
-                }
 
-                HStack {
-                    Text("Font size:")
-                    Picker("", selection: $state.fontSize) {
-                        ForEach([14, 16, 18, 24, 36], id: \.self) { size in
-                            Text("\(size)").tag(CGFloat(size))
+                    GridRow {
+                        Text("Appearance:")
+                        Picker("", selection: $state.appearanceOverride) {
+                            ForEach(AppearanceOverride.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
                         }
+                        .labelsHidden()
                     }
-                    .labelsHidden()
-                    .frame(width: 60)
+
+                    GridRow {
+                        Text("Font size:")
+                        Picker("", selection: $state.fontSize) {
+                            ForEach([14, 16, 18, 24, 36], id: \.self) { size in
+                                Text("\(size)").tag(CGFloat(size))
+                            }
+                        }
+                        .labelsHidden()
+                    }
+
+                    GridRow {
+                        Text("Page size:")
+                        Picker("", selection: $state.pageSize) {
+                            ForEach(1...10, id: \.self) { size in
+                                Text("\(size)").tag(size)
+                            }
+                        }
+                        .labelsHidden()
+                    }
+
+                    GridRow {
+                        Text("Index labels:")
+                        TextField("", text: $state.indexLabels)
+                            .textFieldStyle(.plain)
+                            .focused($indexLabelsFocused)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .fill(state.isIndexLabelsValid
+                                          ? Color(nsColor: .textBackgroundColor)
+                                          : Color.red.opacity(0.5))
+                            )
+                            .overlay(
+                                // Manual focus ring (`.plain` style drops the
+                                // system bezel + ring). Invalid state takes
+                                // priority so the red border is visible even
+                                // when the field is not focused.
+                                RoundedRectangle(cornerRadius: 5)
+                                    .strokeBorder(
+                                        !state.isIndexLabelsValid
+                                            ? Color.red
+                                            : indexLabelsFocused
+                                                ? Color.accentColor
+                                                : Color(nsColor: .separatorColor),
+                                        lineWidth: (!state.isIndexLabelsValid || indexLabelsFocused) ? 2 : 1)
+                            )
+                            .frame(width: 120)
+                            // Mirror focus to state so the keyMonitor knows
+                            // to pass keystrokes through (typing edits the
+                            // field instead of driving the candidate window).
+                            .onChange(of: indexLabelsFocused) {
+                                state.isEditingIndexLabels = indexLabelsFocused
+                            }
+                            // Tab / Enter / Esc escape — same UX as the
+                            // candidate text editor.
+                            .onKeyPress(.tab) {
+                                indexLabelsFocused = false
+                                return .handled
+                            }
+                            .onKeyPress(.escape) {
+                                indexLabelsFocused = false
+                                return .handled
+                            }
+                            .onSubmit {
+                                indexLabelsFocused = false
+                            }
+                    }
                 }
 
                 Divider()
@@ -449,7 +547,7 @@ struct PreviewContentView: View {
                 }
                 .toggleStyle(.checkbox)
             }
-            .frame(width: 200)
+            .frame(width: 240)
         }
         .padding()
         .onChange(of: state.candidateText) {
@@ -463,6 +561,8 @@ struct PreviewContentView: View {
         .onChange(of: state.vertical) { state.applyConfiguration() }
         .onChange(of: state.expandable) { state.applyConfiguration() }
         .onChange(of: state.fontSize) { state.applyConfiguration() }
+        .onChange(of: state.indexLabels) { state.applyConfiguration() }
+        .onChange(of: state.pageSize) { state.applyConfiguration() }
         .onChange(of: state.suspendHighlight) { state.applyCandidates() }
         .onChange(of: state.appearanceOverride) {
             let appearance = state.appearanceOverride.nsAppearance

@@ -49,9 +49,9 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
         pageArrowView.updateFontSize(fontSize)
     }
 
-    override func apply(_ configuration: CandidateWindowConfiguration) {
-        super.apply(configuration)
-        if isVisible, !candidates.isEmpty {
+    override func apply(_ configuration: CandidateWindowConfiguration, deferRender: Bool = false) {
+        super.apply(configuration, deferRender: deferRender)
+        if !deferRender, isVisible, !candidates.isEmpty {
             buildCandidateLayout()
             restoreSelection(to: impl?.selectedIndex ?? 0)
             if lastShowNearRect != .zero {
@@ -69,7 +69,7 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
         var offset = offset
         for _ in 0..<pageSize {
             guard offset < displayCount else { break }
-            let raw = MacishCandidateItemView.measureWidth(index: items.count + indexBase, candidate: candidates[offset])
+            let raw = MacishCandidateItemView.measureWidth(candidate: candidates[offset])
             let w = max(baseColumnWidth, min(raw, maxWidth))
             if usedWidth + w > maxWidth, !items.isEmpty { break }
             items.append(GridItem(candidateIndex: offset, measuredWidth: w))
@@ -116,7 +116,7 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
         for (pos, gridItem) in currentPageItems.enumerated() {
             let item = createItemView()
             item.absoluteIndex = gridItem.candidateIndex
-            item.configure(index: pos + indexBase, candidate: candidates[gridItem.candidateIndex])
+            item.configure(label: label(for: pos), candidate: candidates[gridItem.candidateIndex])
             candidateContainer.addSubview(item, positioned: .above, relativeTo: rowHighlightView)
             page0Views.append(item)
         }
@@ -172,7 +172,7 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
             for (pos, gridItem) in pages[pageIdx].enumerated() {
                 let item = createItemView()
                 item.absoluteIndex = gridItem.candidateIndex
-                item.configure(index: pos + indexBase, candidate: candidates[gridItem.candidateIndex])
+                item.configure(label: label(for: pos), candidate: candidates[gridItem.candidateIndex])
                 item.isHidden = true
                 candidateContainer.addSubview(item, positioned: .above, relativeTo: rowHighlightView)
                 views.append(item)
@@ -323,11 +323,10 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
 
     // MARK: - Commit
 
-    override func commitCandidateForDigit(_ digit: Int) {
+    override func commitCandidate(at index: Int) {
         guard isVisible else { return }
-        let itemOffset = digit - indexBase
-        guard itemOffset >= 0, itemOffset < currentPageItems.count else { return }
-        let candidateIndex = currentPageItems[itemOffset].candidateIndex
+        guard index >= 0, index < currentPageItems.count else { return }
+        let candidateIndex = currentPageItems[index].candidateIndex
         guard candidateIndex < candidates.count else { return }
         impl.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
     }
