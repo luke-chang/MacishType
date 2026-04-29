@@ -7,11 +7,14 @@ import Cocoa
 /// symbols or abbreviated text.
 struct Candidate {
     let text: String
+    /// Empty string normalized to nil at init — `nil` and `""` carry the
+    /// same "no annotation" semantic; collapsing here keeps render path
+    /// and panel-level measurement from drifting on the empty case.
     let annotation: String?
 
     init(_ text: String, annotation: String? = nil) {
         self.text = text
-        self.annotation = annotation
+        self.annotation = annotation?.isEmpty == true ? nil : annotation
     }
 }
 

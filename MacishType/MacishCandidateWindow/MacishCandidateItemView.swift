@@ -1,13 +1,13 @@
 import Cocoa
 
 class MacishCandidateItemView: NSView {
-    private static var candidateFontSize: CGFloat = 16
+    static private(set) var candidateFontSize: CGFloat = 16
     private static var indexFontSize: CGFloat = 8
     private static var annotationFontSize: CGFloat = 12
-    private static var indexWidth: CGFloat = computeIndexWidth(labels: "1234567890", fontSize: 8)
-    private static var leadingPadding: CGFloat = 4
+    static private(set) var indexWidth: CGFloat = computeIndexWidth(labels: "1234567890", fontSize: 8)
+    static private(set) var leadingPadding: CGFloat = 4
     private static var indexCandidateGap: CGFloat = 6
-    private static var candidateAnnotationGap: CGFloat = 11
+    static private(set) var candidateAnnotationGap: CGFloat = 11
     static private(set) var defaultTrailingPadding: CGFloat = 9
     private static var verticalPadding: CGFloat = 12
 
@@ -126,6 +126,10 @@ class MacishCandidateItemView: NSView {
     private var indexLabelWidthConstraint: NSLayoutConstraint!
     private var indexCandidateGapConstraint: NSLayoutConstraint!
     private var candidateAnnotationGapConstraint: NSLayoutConstraint!
+    /// candidate label minimum width. constant = max(candidateFontSize, columnWidth).
+    /// columnWidth = 0 falls back to candidateFontSize (pre-annotation behavior).
+    /// columnWidth > 0 enforces vertical mode column alignment across rows.
+    private var candidateMinWidthConstraint: NSLayoutConstraint!
     /// Active when annotation is empty — forces annotation slot to zero
     /// width so any baseline padding NSTextField reserves doesn't leak
     /// into the row layout (would shift trailing edge a few pt right).
@@ -178,6 +182,8 @@ class MacishCandidateItemView: NSView {
         annotationZeroWidthConstraint = annotationLabel.widthAnchor.constraint(equalToConstant: 0)
         annotationZeroWidthConstraint.priority = .defaultHigh
         annotationZeroWidthConstraint.isActive = true
+        candidateMinWidthConstraint = candidateLabel.widthAnchor.constraint(
+            greaterThanOrEqualToConstant: Self.candidateFontSize)
 
         NSLayoutConstraint.activate([
             indexLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.leadingPadding),
@@ -188,9 +194,21 @@ class MacishCandidateItemView: NSView {
             candidateAnnotationGapConstraint,
             annotationLabel.centerYAnchor.constraint(equalTo: candidateLabel.centerYAnchor),
             trailingConstraint,
-            candidateLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: Self.candidateFontSize),
+            candidateMinWidthConstraint,
             heightAnchor.constraint(greaterThanOrEqualToConstant: Self.candidateFontSize + Self.verticalPadding),
         ])
+    }
+
+    /// Vertical panel calls this to align all rows' candidate labels to the
+    /// same column width (= max candidate intrinsic width across visible
+    /// candidates). Width = 0 falls back to the candidateFontSize floor,
+    /// matching pre-annotation behavior. State-change guard avoids unnecessary
+    /// constraint mutation when called repeatedly with the same value.
+    func setCandidateColumnWidth(_ width: CGFloat) {
+        let newConstant = max(Self.candidateFontSize, width)
+        guard candidateMinWidthConstraint.constant != newConstant else { return }
+        candidateMinWidthConstraint.constant = newConstant
+        invalidateIntrinsicContentSize()
     }
 
     @available(*, unavailable)
@@ -198,8 +216,8 @@ class MacishCandidateItemView: NSView {
 
     override var intrinsicContentSize: NSSize {
         let candidateWidth = max(
-            Self.candidateFontSize,
-            ceil(candidateLabel.intrinsicContentSize.width)
+            ceil(candidateLabel.intrinsicContentSize.width),
+            candidateMinWidthConstraint.constant
         )
         let annotationGap = hasAnnotation ? Self.candidateAnnotationGap : 0
         let annotationWidth = hasAnnotation ? ceil(annotationLabel.intrinsicContentSize.width) : 0
@@ -218,9 +236,9 @@ class MacishCandidateItemView: NSView {
         indexLabel.stringValue = label
         candidateLabel.stringValue = candidate.text
 
-        let resolvedAnnotation = candidate.annotation?.isEmpty == false ? candidate.annotation : nil
-        let willHaveAnnotation = resolvedAnnotation != nil
-        annotationLabel.stringValue = resolvedAnnotation ?? ""
+        // annotation already normalized by Candidate.init: "" → nil
+        let willHaveAnnotation = candidate.annotation != nil
+        annotationLabel.stringValue = candidate.annotation ?? ""
         candidateAnnotationGapConstraint.constant = willHaveAnnotation ? Self.candidateAnnotationGap : 0
         if willHaveAnnotation != hasAnnotation {
             annotationZeroWidthConstraint.isActive = !willHaveAnnotation
@@ -235,16 +253,35 @@ class MacishCandidateItemView: NSView {
 
     private static var templateView: MacishCandidateItemView?
 
+    private static var sharedTemplateView: MacishCandidateItemView {
+        if let view = templateView { return view }
+        let view = MacishCandidateItemView()
+        templateView = view
+        return view
+    }
+
     /// Label is irrelevant to width: `Self.indexWidth` is a hard-equality
     /// constraint that fixes the index slot regardless of label content.
     static func measureWidth(_ candidate: Candidate) -> CGFloat {
-        let view = templateView ?? {
-            let v = MacishCandidateItemView()
-            templateView = v
-            return v
-        }()
+        let view = sharedTemplateView
         view.configure(label: "", candidate: candidate)
         return ceil(view.fittingSize.width)
+    }
+
+    /// Single-label width measurement via NSTextField intrinsic. Same source
+    /// as Auto Layout reads at runtime, ensuring panel-level measurements
+    /// align with what the constraint solver will produce. Used by vertical
+    /// panel for column alignment instead of full row fittingSize.
+    static func measureCandidateLabelWidth(_ text: String) -> CGFloat {
+        let view = sharedTemplateView
+        view.candidateLabel.stringValue = text
+        return ceil(view.candidateLabel.intrinsicContentSize.width)
+    }
+
+    static func measureAnnotationLabelWidth(_ text: String) -> CGFloat {
+        let view = sharedTemplateView
+        view.annotationLabel.stringValue = text
+        return ceil(view.annotationLabel.intrinsicContentSize.width)
     }
 
     override func mouseUp(with event: NSEvent) {

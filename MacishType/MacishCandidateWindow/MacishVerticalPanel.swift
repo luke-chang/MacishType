@@ -15,6 +15,14 @@ class MacishVerticalPanel: MacishBasePanel {
     private var minVisibleRows = 0
     private var boundsObserver: (any NSObjectProtocol)?
 
+    // Column alignment state (vertical mode only).
+    // candidateColumnWidth: width to which all rows' candidate labels are
+    //   padded so annotations align in a column. 0 = no alignment.
+    // showAnnotations: when false, annotations are stripped at configure
+    //   time (used when annotations don't have room or no candidate has them).
+    private var candidateColumnWidth: CGFloat = 0
+    private var showAnnotations: Bool = false
+
     override var allItemViews: [MacishCandidateItemView] { itemViews }
 
     // MARK: - Init
@@ -67,13 +75,14 @@ class MacishVerticalPanel: MacishBasePanel {
 
         computeBaseMetrics()
 
-        // Width: measure top-3 by character count
-        let contentWidth = measureContentWidth(candidates: candidates)
-        initialContentWidth = contentWidth
+        let metrics = computeContentMetrics(candidates: candidates, fullScan: false)
+        initialContentWidth = metrics.totalWidth
+        candidateColumnWidth = metrics.columnWidth
+        showAnnotations = metrics.showAnnotations
         maxContentWidth = baseColumnWidth * CGFloat(pageSize)
 
         let hasOverflow = displayCount > pageSize
-        let cappedWidth = min(contentWidth, maxContentWidth)
+        let cappedWidth = min(metrics.totalWidth, maxContentWidth)
         let (windowWidth, itemWidth, itemTrailing) = scrollerGeometry(
             contentWidth: cappedWidth, hasOverflow: hasOverflow)
 
@@ -98,6 +107,7 @@ class MacishVerticalPanel: MacishBasePanel {
             let item = createItemView()
             item.absoluteIndex = i
             item.trailingInset = itemTrailing
+            item.setCandidateColumnWidth(candidateColumnWidth)
             item.frame = NSRect(x: 0, y: yForRow(i), width: itemWidth, height: itemHeight)
             candidateContainer.addSubview(item)
             itemViews.append(item)
@@ -126,22 +136,74 @@ class MacishVerticalPanel: MacishBasePanel {
         }
     }
 
-    private func measureContentWidth(candidates: [Candidate]) -> CGFloat {
-        // Find top-3 candidates by combined text+annotation length, measure their actual pixel width
-        func combinedLength(_ candidate: Candidate) -> Int {
-            candidate.text.count + (candidate.annotation?.count ?? 0)
-        }
-        let sorted = candidates.prefix(displayCount)
-            .enumerated()
-            .sorted { combinedLength($0.element) > combinedLength($1.element) }
-            .prefix(3)
+    /// Linear pipeline:
+    /// 1. Place index + candidate (column width = max candidate intrinsic, padded across rows)
+    /// 2. Compute remaining = W - candidateBlock
+    /// 3. Decide annotation visibility:
+    ///    - no annotation -> hide, no column alignment
+    ///    - has annotation but remaining < threshold -> hide (per "candidate truncated => no annotation" policy)
+    ///    - has annotation and fits -> show, annotation truncates per row via `.byTruncatingTail`
+    ///
+    /// `fullScan = false` uses top-3 heuristic (called from buildCandidateLayout for fast initial paint).
+    /// `fullScan = true` iterates all candidates (called from performFullRender to correct heuristic miss).
+    private func computeContentMetrics(candidates: [Candidate], fullScan: Bool)
+        -> (totalWidth: CGFloat, columnWidth: CGFloat, showAnnotations: Bool) {
 
-        var maxWidth = baseColumnWidth
-        for (_, candidate) in sorted {
-            let measuredWidth = MacishCandidateItemView.measureWidth(candidate)
-            maxWidth = max(maxWidth, measuredWidth)
+        guard !candidates.isEmpty else {
+            return (baseColumnWidth, 0, false)
         }
-        return maxWidth
+        let visible = Array(candidates.prefix(displayCount))
+
+        let candidateTexts = topTexts(visible.map(\.text), fullScan: fullScan)
+        let measuredMax = candidateTexts
+            .map { MacishCandidateItemView.measureCandidateLabelWidth($0) }
+            .max() ?? 0
+        let maxCandidateWidth = max(measuredMax, MacishCandidateItemView.candidateFontSize)
+
+        // Candidate.init normalized empty annotation to nil, so compactMap
+        // is sufficient — no need to re-filter empty strings here.
+        let annotated = visible.compactMap(\.annotation)
+        let hasAnnotation = !annotated.isEmpty
+        let maxAnnotationWidth: CGFloat = hasAnnotation
+            ? topTexts(annotated, fullScan: fullScan)
+                .map { MacishCandidateItemView.measureAnnotationLabelWidth($0) }
+                .max() ?? 0
+            : 0
+
+        let constants = MacishCandidateItemView.leadingPadding
+            + MacishCandidateItemView.indexWidth
+            + MacishCandidateItemView.effectiveGap
+            + MacishCandidateItemView.defaultTrailingPadding
+        let candidateBlock = constants + maxCandidateWidth
+        let remaining = baseColumnWidth * CGFloat(pageSize) - candidateBlock
+        let threshold = MacishCandidateItemView.candidateAnnotationGap
+            + MacishCandidateItemView.candidateFontSize
+        let showAnnotations = hasAnnotation && remaining >= threshold
+
+        let columnWidth = showAnnotations ? maxCandidateWidth : 0
+        let naturalTotal = candidateBlock + (showAnnotations
+            ? MacishCandidateItemView.candidateAnnotationGap + maxAnnotationWidth
+            : 0)
+        return (max(baseColumnWidth, naturalTotal), columnWidth, showAnnotations)
+    }
+
+    /// fullScan = true: all texts.
+    /// fullScan = false: first page in full + any remaining items whose char
+    /// count exceeds the first-page max (top-3 of those by length). The
+    /// first-page-in-full part guarantees no truncation on what the user sees
+    /// initially; the remainder feeds an early estimate for panel width but
+    /// is not load-bearing — `performFullRender` rescans on scroll, where any
+    /// missed wider candidate triggers a column / panel expand.
+    private func topTexts(_ texts: [String], fullScan: Bool) -> [String] {
+        guard !fullScan else { return texts }
+        if texts.count <= pageSize { return texts }
+        let firstPage = Array(texts.prefix(pageSize))
+        let firstPageMaxLen = firstPage.map(\.count).max() ?? 0
+        let restTop = texts[pageSize...]
+            .filter { $0.count > firstPageMaxLen }
+            .sorted { $0.count > $1.count }
+            .prefix(3)
+        return firstPage + restTop
     }
 
     // Computes geometry honoring the current scroller style.
@@ -178,19 +240,36 @@ class MacishVerticalPanel: MacishBasePanel {
             let item = createItemView()
             item.absoluteIndex = i
             item.trailingInset = initialTrailing
+            item.setCandidateColumnWidth(candidateColumnWidth)
             item.frame = NSRect(x: 0, y: yForRow(i), width: containerWidth, height: itemHeight)
             candidateContainer.addSubview(item)
             itemViews.append(item)
         }
 
-        // Re-measure actual max width across all candidates
-        var actualMaxWidth = initialContentWidth
-        for i in 0..<displayCount {
-            let measuredWidth = MacishCandidateItemView.measureWidth(candidates[i])
-            actualMaxWidth = max(actualMaxWidth, measuredWidth)
+        // Re-run metrics over the full candidate set. Heuristic top-3 may have
+        // missed the actual widest (when char count doesn't track pixel
+        // width — mixed-script lists). Both columnWidth and showAnnotations
+        // can shift in either direction (e.g., maxAnnotation grows can push
+        // remaining below threshold and flip showAnnotations to false).
+        let metrics = computeContentMetrics(candidates: candidates, fullScan: true)
+        let columnChanged = metrics.columnWidth != candidateColumnWidth
+        let showChanged = metrics.showAnnotations != showAnnotations
+
+        if columnChanged {
+            candidateColumnWidth = metrics.columnWidth
+            for item in itemViews {
+                item.setCandidateColumnWidth(metrics.columnWidth)
+            }
+        }
+        if showChanged {
+            showAnnotations = metrics.showAnnotations
+            // updateNumbering has an early-return guard on anchorIndex — force
+            // it to actually rerun so existing items get reconfigured with
+            // the new annotation-strip policy.
+            anchorIndex = -1
         }
 
-        let cappedWidth = min(actualMaxWidth, maxContentWidth)
+        let cappedWidth = min(metrics.totalWidth, maxContentWidth)
         if cappedWidth > initialContentWidth {
             let (newWindowWidth, newItemWidth, newTrailing) = scrollerGeometry(
                 contentWidth: cappedWidth, hasOverflow: true)
@@ -249,7 +328,12 @@ class MacishVerticalPanel: MacishBasePanel {
 
         for item in itemViews {
             let i = item.absoluteIndex
-            let candidate = candidates[i]
+            // Strip annotation when overflow guard disabled it (candidate
+            // alone barely fits panel cap). Keeps row layout consistent
+            // with no-annotation mode in those scenarios.
+            let candidate = showAnnotations
+                ? candidates[i]
+                : Candidate(candidates[i].text, annotation: nil)
             if i >= numberedStart, i < numberedEnd {
                 item.showIndex = true
                 // pos >= indexLabels.count yields "" but keeps showIndex=true
