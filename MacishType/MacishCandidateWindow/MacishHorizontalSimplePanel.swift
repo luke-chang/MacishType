@@ -69,7 +69,7 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
         var offset = offset
         for _ in 0..<pageSize {
             guard offset < displayCount else { break }
-            let raw = MacishCandidateItemView.measureWidth(candidate: candidates[offset])
+            let raw = MacishCandidateItemView.measureWidth(candidates[offset])
             let w = max(baseColumnWidth, min(raw, maxWidth))
             if usedWidth + w > maxWidth, !items.isEmpty { break }
             items.append(GridItem(candidateIndex: offset, measuredWidth: w))
@@ -328,7 +328,8 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
         guard index >= 0, index < currentPageItems.count else { return }
         let candidateIndex = currentPageItems[index].candidateIndex
         guard candidateIndex < candidates.count else { return }
-        impl.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
+        let chosen = candidates[candidateIndex]
+        impl.candidateDelegate?.candidateConfirmed(chosen.text, raw: chosen)
     }
 
     // MARK: - Mask

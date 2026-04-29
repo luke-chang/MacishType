@@ -47,7 +47,7 @@ enum EngineAction {
     case updateMarkedText(String, cursor: Int? = nil, emphasis: Range<Int>? = nil, staged: Int = 0)
     // `configure` overrides engine default per-update (associated mode,
     // mode-specific labels, etc.). Nil sticks with engine default.
-    case updateCandidates([String], offset: Int = 0, suspendHighlight: Bool = false,
+    case updateCandidates([Candidate], offset: Int = 0, suspendHighlight: Bool = false,
                           configure: ((inout CandidateWindowConfiguration) -> Void)? = nil)
     case commitSelectedCandidate
     case commitCandidateAtIndex(Int)
@@ -68,6 +68,31 @@ enum EngineAction {
 enum EngineHandleResult {
     case handled([EngineAction])
     case notHandled
+}
+
+extension EngineAction {
+    /// Convenience for engines that emit candidates as bare strings — wraps
+    /// each into `Candidate(_:)` with no annotation. Existing call sites
+    /// dispatch here via parameter type inference; sites that want
+    /// annotations construct `[Candidate]` directly and hit the case above.
+    static func updateCandidates(
+        _ texts: [String],
+        offset: Int = 0,
+        suspendHighlight: Bool = false,
+        configure: ((inout CandidateWindowConfiguration) -> Void)? = nil
+    ) -> EngineAction {
+        .updateCandidates(
+            texts.map { Candidate($0) },
+            offset: offset,
+            suspendHighlight: suspendHighlight,
+            configure: configure
+        )
+    }
+
+    /// Empty candidates payload — controller hides the candidate window
+    /// when this is processed. Use when an engine wants to clear pending
+    /// candidates while keeping marked text active.
+    static let clearCandidates: EngineAction = .updateCandidates([] as [Candidate])
 }
 
 // MARK: - Base Engine

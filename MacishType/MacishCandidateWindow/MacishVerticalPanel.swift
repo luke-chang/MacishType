@@ -126,17 +126,20 @@ class MacishVerticalPanel: MacishBasePanel {
         }
     }
 
-    private func measureContentWidth(candidates: [String]) -> CGFloat {
-        // Find top-3 candidates by character count, measure their actual pixel width
+    private func measureContentWidth(candidates: [Candidate]) -> CGFloat {
+        // Find top-3 candidates by combined text+annotation length, measure their actual pixel width
+        func combinedLength(_ candidate: Candidate) -> Int {
+            candidate.text.count + (candidate.annotation?.count ?? 0)
+        }
         let sorted = candidates.prefix(displayCount)
             .enumerated()
-            .sorted { $0.element.count > $1.element.count }
+            .sorted { combinedLength($0.element) > combinedLength($1.element) }
             .prefix(3)
 
         var maxWidth = baseColumnWidth
         for (_, candidate) in sorted {
-            let w = MacishCandidateItemView.measureWidth(candidate: candidate)
-            maxWidth = max(maxWidth, w)
+            let measuredWidth = MacishCandidateItemView.measureWidth(candidate)
+            maxWidth = max(maxWidth, measuredWidth)
         }
         return maxWidth
     }
@@ -183,8 +186,8 @@ class MacishVerticalPanel: MacishBasePanel {
         // Re-measure actual max width across all candidates
         var actualMaxWidth = initialContentWidth
         for i in 0..<displayCount {
-            let w = MacishCandidateItemView.measureWidth(candidate: candidates[i])
-            actualMaxWidth = max(actualMaxWidth, w)
+            let measuredWidth = MacishCandidateItemView.measureWidth(candidates[i])
+            actualMaxWidth = max(actualMaxWidth, measuredWidth)
         }
 
         let cappedWidth = min(actualMaxWidth, maxContentWidth)
@@ -246,14 +249,15 @@ class MacishVerticalPanel: MacishBasePanel {
 
         for item in itemViews {
             let i = item.absoluteIndex
+            let candidate = candidates[i]
             if i >= numberedStart, i < numberedEnd {
                 item.showIndex = true
                 // pos >= indexLabels.count yields "" but keeps showIndex=true
                 // (slot still reserved). Don't conflate with the scroll-out
                 // case below where showIndex=false visually hides the slot.
-                item.configure(label: label(for: i - anchorIndex), candidate: candidates[i])
+                item.configure(label: label(for: i - anchorIndex), candidate: candidate)
             } else {
-                item.configure(label: "", candidate: candidates[i])
+                item.configure(label: "", candidate: candidate)
                 item.showIndex = false
             }
         }
@@ -396,7 +400,8 @@ class MacishVerticalPanel: MacishBasePanel {
         guard index >= 0, index < pageSize else { return }
         let candidateIndex = anchorIndex + index
         guard candidateIndex < displayCount else { return }
-        impl.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
+        let chosen = candidates[candidateIndex]
+        impl.candidateDelegate?.candidateConfirmed(chosen.text, raw: chosen)
     }
 
     // MARK: - Frame Animation

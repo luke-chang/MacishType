@@ -18,7 +18,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     private(set) var didDrag = false
     private(set) var configuration = CandidateWindowConfiguration()
     var animationDuration: TimeInterval { configuration.animationDuration }
-    var candidates: [String] { impl.candidates }
+    var candidates: [Candidate] { impl.candidates }
     var selectedIndex: Int { impl.selectedIndex }
     var indexLabels: String { configuration.indexLabels }
     var pageSize: Int { configuration.pageSize }
@@ -410,7 +410,8 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     func itemClicked(at index: Int, doubleClick: Bool) {
         guard !isAnimating else { return }
         if doubleClick {
-            impl.candidateDelegate?.candidateConfirmed(candidates[index])
+            let chosen = candidates[index]
+            impl.candidateDelegate?.candidateConfirmed(chosen.text, raw: chosen)
         } else {
             moveSelection(to: index)
         }
@@ -418,10 +419,11 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
 
     func commitSelectedCandidate() {
         guard isVisible, selectedIndex >= 0, selectedIndex < displayCount else { return }
-        impl.candidateDelegate?.candidateConfirmed(candidates[selectedIndex])
+        let chosen = candidates[selectedIndex]
+        impl.candidateDelegate?.candidateConfirmed(chosen.text, raw: chosen)
     }
 
-    func updateCandidates(_ candidates: [String]) {
+    func updateCandidates(_ candidates: [Candidate]) {
         impl.candidates = candidates
         impl.selectedIndex = 0
         buildCandidateLayout()

@@ -23,6 +23,12 @@ class PreviewAppDelegate: NSObject, NSApplicationDelegate {
 
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
+        appMenu.addItem(NSMenuItem(title: "Hide", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
+        let hideOthers = NSMenuItem(title: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(hideOthers)
+        appMenu.addItem(NSMenuItem(title: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: ""))
+        appMenu.addItem(.separator())
         appMenu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
@@ -217,9 +223,19 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     }
 
     func applyCandidates() {
-        let candidates = candidateText
+        // Token format: `text|annotation` (annotation optional). First `|`
+        // splits text from annotation; later `|` chars are kept inside
+        // annotation. Empty text (leading `|`) skips the token; empty
+        // annotation (trailing `|`) treats annotation as nil.
+        let candidates: [Candidate] = candidateText
             .split(whereSeparator: \.isWhitespace)
-            .map(String.init)
+            .compactMap { token in
+                let parts = token.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+                let text = String(parts[0])
+                guard !text.isEmpty else { return nil }
+                let annotation = parts.count > 1 ? String(parts[1]) : ""
+                return Candidate(text, annotation: annotation.isEmpty ? nil : annotation)
+            }
         guard !candidates.isEmpty else {
             candidateWindow.hide()
             return
@@ -241,12 +257,16 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
         }
     }
 
-    func candidateConfirmed(_ candidate: String) {
-        print("Selected: \(candidate)")
+    func candidateConfirmed(_ candidate: String, raw: Candidate?) {
+        if let raw {
+            print("Selected: \(candidate) (annotation: \(raw.annotation ?? "nil"))")
+        } else {
+            print("Selected: <none>")
+        }
     }
 
-    func candidateSelectionChanged(_ candidate: String) {
-        print("Changed: \(candidate)")
+    func candidateSelectionChanged(_ candidate: String, raw: Candidate) {
+        print("Changed: \(candidate) (annotation: \(raw.annotation ?? "nil"))")
         // Selection callbacks only fire after the window has cleared its
         // internal suspendHighlight flag (the flag guards notification while
         // it is true). Sync the toggle to reflect the reset.
@@ -430,6 +450,8 @@ struct PreviewContentView: View {
                     Text("• Press ⌘R to randomize candidates")
                         .foregroundStyle(.secondary)
                     Text("• Separate candidates with spaces")
+                        .foregroundStyle(.secondary)
+                    Text("• Format: text|annotation (annotation optional)")
                         .foregroundStyle(.secondary)
                 }
                 .font(.system(size: 11))

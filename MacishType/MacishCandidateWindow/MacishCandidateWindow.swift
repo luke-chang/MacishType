@@ -66,7 +66,7 @@ class MacishCandidateWindow: CandidateWindowImpl {
         }
     }
 
-    override func updateCandidates(_ candidates: [String], suspendHighlight: Bool,
+    override func updateCandidates(_ candidates: [Candidate], suspendHighlight: Bool,
                                    configuration: CandidateWindowConfiguration?) {
         var pendingTransition: (oldPanel: MacishBasePanel, nearRect: NSRect)?
 
@@ -136,7 +136,7 @@ class MacishCandidateWindow: CandidateWindowImpl {
         // example, fall back to committing only the surrounding marked
         // text, or treat it as a no-op).
         if suspendHighlight {
-            candidateDelegate?.candidateConfirmed("")
+            candidateDelegate?.candidateConfirmed("", raw: nil)
             return
         }
         activePanel.commitSelectedCandidate()

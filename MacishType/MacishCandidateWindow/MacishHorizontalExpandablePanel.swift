@@ -107,15 +107,15 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         var currentColumn = 0
 
         for i in 0..<displayCount {
-            let w = MacishCandidateItemView.measureWidth(candidate: candidates[i])
-            let span = max(1, min(expandedPageSize, Int(ceil(w / expandedColumnWidth))))
+            let measuredWidth = MacishCandidateItemView.measureWidth(candidates[i])
+            let span = max(1, min(expandedPageSize, Int(ceil(measuredWidth / expandedColumnWidth))))
             if currentColumn + span > expandedPageSize, !currentRowItems.isEmpty {
                 rows.append(GridRow(items: currentRowItems))
                 currentRowItems = []
                 currentColumn = 0
             }
             currentRowItems.append(GridItem(
-                candidateIndex: i, columnStart: currentColumn, columnSpan: span, measuredWidth: w
+                candidateIndex: i, columnStart: currentColumn, columnSpan: span, measuredWidth: measuredWidth
             ))
             currentColumn += span
         }
@@ -132,7 +132,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
 
         for i in 0..<displayCount {
             if packedItems.count >= pageSize { break }
-            let raw = MacishCandidateItemView.measureWidth(candidate: candidates[i])
+            let raw = MacishCandidateItemView.measureWidth(candidates[i])
             let w = max(baseColumnWidth, min(raw, maxWidth))
             if usedWidth + w > maxWidth, !packedItems.isEmpty { break }
             usedWidth += w
@@ -895,7 +895,8 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
 
         let candidateIndex = row.items[index].candidateIndex
         guard candidateIndex < candidates.count else { return }
-        impl.candidateDelegate?.candidateConfirmed(candidates[candidateIndex])
+        let chosen = candidates[candidateIndex]
+        impl.candidateDelegate?.candidateConfirmed(chosen.text, raw: chosen)
     }
 
     // MARK: - Scroller Style

@@ -3,9 +3,11 @@ import Cocoa
 class MacishCandidateItemView: NSView {
     private static var candidateFontSize: CGFloat = 16
     private static var indexFontSize: CGFloat = 8
+    private static var annotationFontSize: CGFloat = 12
     private static var indexWidth: CGFloat = computeIndexWidth(labels: "1234567890", fontSize: 8)
     private static var leadingPadding: CGFloat = 4
     private static var indexCandidateGap: CGFloat = 6
+    private static var candidateAnnotationGap: CGFloat = 11
     static private(set) var defaultTrailingPadding: CGFloat = 9
     private static var verticalPadding: CGFloat = 12
 
@@ -64,8 +66,10 @@ class MacishCandidateItemView: NSView {
         let scale = size / 16
         candidateFontSize = size
         indexFontSize = round(size / 2)
+        annotationFontSize = round(size * 0.75)
         leadingPadding = round(4 * scale)
         indexCandidateGap = round(6 * scale)
+        candidateAnnotationGap = round(11 * scale)
         defaultTrailingPadding = round(9 * scale)
         verticalPadding = round(12 * scale)
         templateView = nil
@@ -90,6 +94,7 @@ class MacishCandidateItemView: NSView {
 
     let indexLabel = NSTextField(labelWithString: "")
     let candidateLabel = NSTextField(labelWithString: "")
+    let annotationLabel = NSTextField(labelWithString: "")
     var absoluteIndex: Int = 0
 
     var isHighlighted: Bool = false {
@@ -120,6 +125,12 @@ class MacishCandidateItemView: NSView {
     private var trailingConstraint: NSLayoutConstraint!
     private var indexLabelWidthConstraint: NSLayoutConstraint!
     private var indexCandidateGapConstraint: NSLayoutConstraint!
+    private var candidateAnnotationGapConstraint: NSLayoutConstraint!
+    /// Active when annotation is empty — forces annotation slot to zero
+    /// width so any baseline padding NSTextField reserves doesn't leak
+    /// into the row layout (would shift trailing edge a few pt right).
+    private var annotationZeroWidthConstraint: NSLayoutConstraint!
+    private var hasAnnotation: Bool = false
 
     /// indexWidth=0 collapses the gap so left/right padding match
     /// (symmetric inset within highlight).
@@ -147,15 +158,26 @@ class MacishCandidateItemView: NSView {
         candidateLabel.font = .systemFont(ofSize: Self.candidateFontSize)
         candidateLabel.lineBreakMode = .byTruncatingTail
         candidateLabel.translatesAutoresizingMaskIntoConstraints = false
+        candidateLabel.setContentHuggingPriority(.required, for: .horizontal)
+
+        annotationLabel.font = .systemFont(ofSize: Self.annotationFontSize)
+        annotationLabel.lineBreakMode = .byTruncatingTail
+        annotationLabel.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(indexLabel)
         addSubview(candidateLabel)
+        addSubview(annotationLabel)
 
-        trailingConstraint = candidateLabel.trailingAnchor.constraint(
+        trailingConstraint = annotationLabel.trailingAnchor.constraint(
             lessThanOrEqualTo: trailingAnchor, constant: -Self.defaultTrailingPadding)
         indexLabelWidthConstraint = indexLabel.widthAnchor.constraint(equalToConstant: Self.indexWidth)
         indexCandidateGapConstraint = candidateLabel.leadingAnchor.constraint(
             equalTo: indexLabel.trailingAnchor, constant: Self.effectiveGap)
+        candidateAnnotationGapConstraint = annotationLabel.leadingAnchor.constraint(
+            equalTo: candidateLabel.trailingAnchor, constant: 0)
+        annotationZeroWidthConstraint = annotationLabel.widthAnchor.constraint(equalToConstant: 0)
+        annotationZeroWidthConstraint.priority = .defaultHigh
+        annotationZeroWidthConstraint.isActive = true
 
         NSLayoutConstraint.activate([
             indexLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.leadingPadding),
@@ -163,6 +185,8 @@ class MacishCandidateItemView: NSView {
             indexLabelWidthConstraint,
             indexCandidateGapConstraint,
             candidateLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            candidateAnnotationGapConstraint,
+            annotationLabel.centerYAnchor.constraint(equalTo: candidateLabel.centerYAnchor),
             trailingConstraint,
             candidateLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: Self.candidateFontSize),
             heightAnchor.constraint(greaterThanOrEqualToConstant: Self.candidateFontSize + Self.verticalPadding),
@@ -177,19 +201,32 @@ class MacishCandidateItemView: NSView {
             Self.candidateFontSize,
             ceil(candidateLabel.intrinsicContentSize.width)
         )
-        let w = Self.leadingPadding + Self.indexWidth + Self.effectiveGap + candidateWidth + Self.defaultTrailingPadding
+        let annotationGap = hasAnnotation ? Self.candidateAnnotationGap : 0
+        let annotationWidth = hasAnnotation ? ceil(annotationLabel.intrinsicContentSize.width) : 0
+        let w = Self.leadingPadding + Self.indexWidth + Self.effectiveGap + candidateWidth
+            + annotationGap + annotationWidth + Self.defaultTrailingPadding
         let h = Self.itemHeight
         return NSSize(width: ceil(w), height: h)
     }
 
-    func configure(label: String, candidate: String) {
-        // Sync constraints to current static metrics on every reconfigure
-        // — protects against item recycling (constants stay fresh even
-        // when updateIndexLabels has run since item init).
+    func configure(label: String, candidate: Candidate) {
+        // Sync index-side constraints to current static metrics on every
+        // reconfigure — protects against item recycling (constants stay
+        // fresh even when updateIndexLabels has run since item init).
         indexLabelWidthConstraint.constant = Self.indexWidth
         indexCandidateGapConstraint.constant = Self.effectiveGap
         indexLabel.stringValue = label
-        candidateLabel.stringValue = candidate
+        candidateLabel.stringValue = candidate.text
+
+        let resolvedAnnotation = candidate.annotation?.isEmpty == false ? candidate.annotation : nil
+        let willHaveAnnotation = resolvedAnnotation != nil
+        annotationLabel.stringValue = resolvedAnnotation ?? ""
+        candidateAnnotationGapConstraint.constant = willHaveAnnotation ? Self.candidateAnnotationGap : 0
+        if willHaveAnnotation != hasAnnotation {
+            annotationZeroWidthConstraint.isActive = !willHaveAnnotation
+            hasAnnotation = willHaveAnnotation
+        }
+
         invalidateIntrinsicContentSize()
     }
 
@@ -200,7 +237,7 @@ class MacishCandidateItemView: NSView {
 
     /// Label is irrelevant to width: `Self.indexWidth` is a hard-equality
     /// constraint that fixes the index slot regardless of label content.
-    static func measureWidth(candidate: String) -> CGFloat {
+    static func measureWidth(_ candidate: Candidate) -> CGFloat {
         let view = templateView ?? {
             let v = MacishCandidateItemView()
             templateView = v
@@ -228,6 +265,7 @@ class MacishCandidateItemView: NSView {
         if isHighlighted {
             indexLabel.textColor = .white
             candidateLabel.textColor = .white
+            annotationLabel.textColor = .white
             if let hv = highlightView {
                 layer?.backgroundColor = nil
                 let insetRect = bounds.insetBy(dx: contentInset, dy: contentInset)
@@ -241,6 +279,7 @@ class MacishCandidateItemView: NSView {
         } else {
             indexLabel.textColor = .secondaryLabelColor
             candidateLabel.textColor = .labelColor
+            annotationLabel.textColor = .secondaryLabelColor
             if let hv = highlightView {
                 hv.isHidden = true
             } else {

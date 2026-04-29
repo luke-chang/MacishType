@@ -377,7 +377,7 @@ class InputController: IMKInputController {
     }
 
     private func updateCandidates(
-        _ candidates: [String], offset: Int, suspendHighlight: Bool,
+        _ candidates: [Candidate], offset: Int, suspendHighlight: Bool,
         configuration: CandidateWindowConfiguration?, client: IMKTextInput
     ) {
         guard !candidates.isEmpty else {
@@ -394,13 +394,13 @@ class InputController: IMKInputController {
 // MARK: - CandidateWindowDelegate
 
 extension InputController: CandidateWindowDelegate {
-    func candidateConfirmed(_ candidate: String) {
+    func candidateConfirmed(_ candidate: String, raw: Candidate?) {
         guard let client = client() else { return }
         let actions = engine.candidateConfirmed(context: engineContext, candidate)
         executeActions(actions, client: client)
     }
 
-    func candidateSelectionChanged(_ candidate: String) {
+    func candidateSelectionChanged(_ candidate: String, raw: Candidate) {
         guard let client = client() else { return }
         let actions = engine.candidateSelectionChanged(context: engineContext, candidate)
         executeActions(actions, client: client)

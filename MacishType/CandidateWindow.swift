@@ -2,6 +2,19 @@ import Cocoa
 
 // MARK: - Shared Types
 
+/// A single candidate displayed in the candidate window. `annotation` is an
+/// optional descriptive string shown after the candidate text to disambiguate
+/// symbols or abbreviated text.
+struct Candidate {
+    let text: String
+    let annotation: String?
+
+    init(_ text: String, annotation: String? = nil) {
+        self.text = text
+        self.annotation = annotation
+    }
+}
+
 enum NavigationDirection: Hashable {
     case up, down, left, right, home, end, pageUp, pageDown
     case itemForward, itemBackward
@@ -60,9 +73,9 @@ protocol CandidateWindowDelegate: AnyObject {
     /// Called when a candidate is committed. `candidate` is the chosen
     /// string, or `""` when the window was in suspendHighlight state and
     /// commitSelectedCandidate was invoked (i.e. no item is actively
-    /// selected). Callers decide how to interpret the empty case.
-    func candidateConfirmed(_ candidate: String)
-    func candidateSelectionChanged(_ candidate: String)
+    /// selected); `raw` is `nil` in that case. Callers may use either form.
+    func candidateConfirmed(_ candidate: String, raw: Candidate?)
+    func candidateSelectionChanged(_ candidate: String, raw: Candidate)
 }
 
 protocol CandidateItemClickable: AnyObject {
@@ -187,7 +200,7 @@ class CandidateWindow {
     /// Combined update — applies `configuration` (when changed) in the
     /// same rebuild as candidates to avoid configure-then-render flicker.
     /// Does not touch `fallbackLabels`: per-update overrides are temporary.
-    func updateCandidates(_ candidates: [String], suspendHighlight: Bool,
+    func updateCandidates(_ candidates: [Candidate], suspendHighlight: Bool,
                          configuration: CandidateWindowConfiguration? = nil) {
         let cfgToApply: CandidateWindowConfiguration?
         if let cfg = configuration, engineConfiguration != cfg {
@@ -248,7 +261,7 @@ class CandidateWindowImpl {
 
     // MARK: - Candidate State
 
-    var candidates: [String] = []
+    var candidates: [Candidate] = []
     var selectedIndex: Int = 0
 
     // Visual-only suspension: selectedIndex remains a valid Int but no item is
@@ -260,7 +273,8 @@ class CandidateWindowImpl {
     func notifySelectionChanged() {
         if suspendHighlight { return }
         guard !candidates.isEmpty else { return }
-        candidateDelegate?.candidateSelectionChanged(candidates[selectedIndex])
+        let selected = candidates[selectedIndex]
+        candidateDelegate?.candidateSelectionChanged(selected.text, raw: selected)
     }
 
     // MARK: - Subclass Override Points
@@ -270,7 +284,7 @@ class CandidateWindowImpl {
     func syncTheme() {}
 
     func apply(_ configuration: CandidateWindowConfiguration) {}
-    func updateCandidates(_ candidates: [String], suspendHighlight: Bool,
+    func updateCandidates(_ candidates: [Candidate], suspendHighlight: Bool,
                           configuration: CandidateWindowConfiguration?) {}
     func show(near rect: NSRect) {}
     func hide() {}
