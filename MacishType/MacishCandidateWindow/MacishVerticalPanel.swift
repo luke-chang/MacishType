@@ -9,6 +9,12 @@ class MacishVerticalPanel: MacishBasePanel {
     private var itemViews: [MacishCandidateItemView] = []
     private var anchorIndex = 0
     private var isFullyRendered = false
+    // Suppresses scrollObserver-driven updateNumbering during build. Prevents
+    // a stray bounds-change callback (triggered by container resize or
+    // scroll(to: .zero)) from running while itemViews is in a transient state
+    // and stamping anchorIndex to a value that makes the explicit final
+    // updateNumbering early-out, leaving items unconfigured.
+    private var isBuildingLayout = false
     private var initialContentWidth: CGFloat = 0
     private var maxContentWidth: CGFloat = 0
     private var naturalContentHeight: CGFloat = 0
@@ -62,6 +68,8 @@ class MacishVerticalPanel: MacishBasePanel {
 
     // Always repositions to avoid animated position correction that covers the composing text.
     override func buildCandidateLayout() {
+        isBuildingLayout = true
+        defer { isBuildingLayout = false }
         isFullyRendered = false
         anchorIndex = -1
         removeAllItemViews()
@@ -297,6 +305,7 @@ class MacishVerticalPanel: MacishBasePanel {
     // MARK: - Scroll Handling
 
     private func scrollViewDidScroll() {
+        guard !isBuildingLayout else { return }
         let scrollOffset = scrollView.contentView.bounds.origin.y
 
         // Trigger full render when pageSize+1 item's bottom half enters viewport
