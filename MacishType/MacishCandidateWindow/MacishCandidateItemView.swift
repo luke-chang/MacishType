@@ -1,47 +1,55 @@
 import Cocoa
 
 class MacishCandidateItemView: NSView {
-    static private(set) var candidateFontSize: CGFloat = 16
-    private static var indexFontSize: CGFloat = 8
-    private static var annotationFontSize: CGFloat = 12
-    // Dual role: layout slot width when >0, sentinel for engine-no-index when 0.
-    // Toggled by configureIndexColumn; updateFontSize rescales when >0.
-    static private(set) var indexWidth: CGFloat = 10
+    /// Reference values at candidateFontSize=16; runtime metrics scale linearly.
+    private struct Base16Metrics {
+        static let candidateFontSize: CGFloat = 16
+        static let indexFontSize: CGFloat = 8
+        static let annotationFontSize: CGFloat = 12
+        static let leadingPadding: CGFloat = 4
+        static let indexCandidateGap: CGFloat = 2
+        static let candidateAnnotationGap: CGFloat = 11
+        static let defaultTrailingPadding: CGFloat = 9
+        static let verticalPadding: CGFloat = 12
+    }
+
+    static private(set) var candidateFontSize: CGFloat = Base16Metrics.candidateFontSize
+    private static var indexFontSize: CGFloat = Base16Metrics.indexFontSize
+    private static var annotationFontSize: CGFloat = Base16Metrics.annotationFontSize
+    private static var indexColumnEnabled: Bool = true
+    static var indexWidth: CGFloat {
+        indexColumnEnabled ? indexFontSize + 2 : 0
+    }
     // Tied to the indexWidth-slot center math — raising this without
     // re-checking digit positions across fontSizes will shift the column.
-    static private(set) var leadingPadding: CGFloat = 4
-    private static var indexCandidateGap: CGFloat = 2
-    static private(set) var candidateAnnotationGap: CGFloat = 11
-    static private(set) var defaultTrailingPadding: CGFloat = 9
-    private static var verticalPadding: CGFloat = 12
+    static private(set) var leadingPadding: CGFloat = Base16Metrics.leadingPadding
+    private static var indexCandidateGap: CGFloat = Base16Metrics.indexCandidateGap
+    static private(set) var candidateAnnotationGap: CGFloat = Base16Metrics.candidateAnnotationGap
+    static private(set) var defaultTrailingPadding: CGFloat = Base16Metrics.defaultTrailingPadding
+    private static var verticalPadding: CGFloat = Base16Metrics.verticalPadding
 
     static func updateFontSize(_ newSize: CGFloat) {
         let size = max(newSize, 8)
         guard size != candidateFontSize else { return }
-        let scale = size / 16
+        let scale = size / Base16Metrics.candidateFontSize
         candidateFontSize = size
-        indexFontSize = round(size / 2)
-        annotationFontSize = round(size * 0.75)
-        leadingPadding = round(4 * scale)
-        indexCandidateGap = round(2 * scale)
-        candidateAnnotationGap = round(11 * scale)
-        defaultTrailingPadding = round(9 * scale)
-        verticalPadding = round(12 * scale)
-        // Must run after indexFontSize is updated above.
-        if indexWidth > 0 {
-            indexWidth = indexFontSize + 2
-        }
+        indexFontSize = round(Base16Metrics.indexFontSize * scale)
+        annotationFontSize = round(Base16Metrics.annotationFontSize * scale)
+        leadingPadding = round(Base16Metrics.leadingPadding * scale)
+        indexCandidateGap = round(Base16Metrics.indexCandidateGap * scale)
+        candidateAnnotationGap = round(Base16Metrics.candidateAnnotationGap * scale)
+        defaultTrailingPadding = round(Base16Metrics.defaultTrailingPadding * scale)
+        verticalPadding = round(Base16Metrics.verticalPadding * scale)
         templateView = nil
     }
 
-    /// Engine activation hook. Whitespace-only `defaultLabels` toggles the
-    /// index column off (indexWidth=0); any non-empty value enables it.
+    /// Engine activation hook. Whitespace-only `defaultLabels` disables the
+    /// index column; any non-empty value enables it.
     /// Per-update empty labels do NOT route through here — slot stays reserved.
     static func configureIndexColumn(defaultLabels: String) {
-        let shouldShow = !defaultLabels.allSatisfy(\.isWhitespace)
-        let newIndexWidth: CGFloat = shouldShow ? indexFontSize + 2 : 0
-        guard indexWidth != newIndexWidth else { return }
-        indexWidth = newIndexWidth
+        let enabled = !defaultLabels.allSatisfy(\.isWhitespace)
+        guard enabled != indexColumnEnabled else { return }
+        indexColumnEnabled = enabled
         templateView = nil
     }
 
@@ -91,12 +99,11 @@ class MacishCandidateItemView: NSView {
     /// width so any baseline padding NSTextField reserves doesn't leak
     /// into the row layout (would shift trailing edge a few pt right).
     private var annotationZeroWidthConstraint: NSLayoutConstraint!
-    private var hasAnnotation: Bool = false
 
-    /// indexWidth=0 collapses the gap so left/right padding match
-    /// (symmetric inset within highlight).
+    /// When the index column is disabled, gap collapses to keep left/right
+    /// padding symmetric within the highlight.
     static var effectiveGap: CGFloat {
-        indexWidth > 0 ? indexCandidateGap : max(0, defaultTrailingPadding - leadingPadding)
+        indexColumnEnabled ? indexCandidateGap : max(0, defaultTrailingPadding - leadingPadding)
     }
 
     init(style: CandidateWindow.Style = .sequoia) {
@@ -176,6 +183,7 @@ class MacishCandidateItemView: NSView {
             ceil(candidateLabel.intrinsicContentSize.width),
             candidateMinWidthConstraint.constant
         )
+        let hasAnnotation = !annotationLabel.stringValue.isEmpty
         let annotationGap = hasAnnotation ? Self.candidateAnnotationGap : 0
         let annotationWidth = hasAnnotation ? ceil(annotationLabel.intrinsicContentSize.width) : 0
         let w = Self.leadingPadding + Self.indexWidth + Self.effectiveGap + candidateWidth
@@ -201,9 +209,9 @@ class MacishCandidateItemView: NSView {
         let willHaveAnnotation = candidate.annotation != nil
         annotationLabel.stringValue = candidate.annotation ?? ""
         candidateAnnotationGapConstraint.constant = willHaveAnnotation ? Self.candidateAnnotationGap : 0
-        if willHaveAnnotation != hasAnnotation {
-            annotationZeroWidthConstraint.isActive = !willHaveAnnotation
-            hasAnnotation = willHaveAnnotation
+        let shouldZeroAnnotation = !willHaveAnnotation
+        if annotationZeroWidthConstraint.isActive != shouldZeroAnnotation {
+            annotationZeroWidthConstraint.isActive = shouldZeroAnnotation
         }
 
         invalidateIntrinsicContentSize()
