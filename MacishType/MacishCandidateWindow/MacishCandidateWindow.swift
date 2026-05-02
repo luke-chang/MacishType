@@ -99,10 +99,6 @@ class MacishCandidateWindow: CandidateWindowImpl {
         }
     }
 
-    // Cross-panel transition briefly shares static indexWidth between
-    // old/new panels — harmless in practice (synchronous execution,
-    // no oldPanel invalidation, hides before layout pass).
-
     override func show(near rect: NSRect) {
         activePanel.show(near: rect)
     }

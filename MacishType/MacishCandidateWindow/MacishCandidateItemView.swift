@@ -4,62 +4,17 @@ class MacishCandidateItemView: NSView {
     static private(set) var candidateFontSize: CGFloat = 16
     private static var indexFontSize: CGFloat = 8
     private static var annotationFontSize: CGFloat = 12
-    static private(set) var indexWidth: CGFloat = computeIndexWidth(labels: "1234567890", fontSize: 8)
+    // Dual role: layout slot width when >0, sentinel for engine-no-index when 0.
+    // Toggled by configureIndexColumn; updateFontSize rescales when >0.
+    static private(set) var indexWidth: CGFloat = 10
+    // Tied to the indexWidth-slot center math — raising this without
+    // re-checking digit positions across fontSizes will shift the column.
     static private(set) var leadingPadding: CGFloat = 4
-    private static var indexCandidateGap: CGFloat = 6
+    private static var indexCandidateGap: CGFloat = 2
     static private(set) var candidateAnnotationGap: CGFloat = 11
     static private(set) var defaultTrailingPadding: CGFloat = 9
     private static var verticalPadding: CGFloat = 12
 
-    // labelMax cache keyed by labels; wipes on fontSize change. Capped
-    // to protect against preview-app TextField input growing it.
-    private static let indexWidthCacheCap = 32
-    private static var indexWidthCache: [String: CGFloat] = [:]
-    private static var cachedFontSize: CGFloat = 0
-
-    // Engine default; doubles as the floor for per-update overrides.
-    // Empty string allowed (engine wants no index column).
-    private static var fallbackLabels: String = "1234567890"
-
-    // Cached floor (max(width("0"), fallbackLabels max)); -1 = unset.
-    private static var cachedFloor: CGFloat = -1
-
-    private static func computeIndexWidth(labels: String, fontSize: CGFloat) -> CGFloat {
-        let effective = labels.allSatisfy(\.isWhitespace) ? fallbackLabels : labels
-
-        if cachedFontSize != fontSize {
-            indexWidthCache.removeAll()
-            cachedFontSize = fontSize
-            cachedFloor = -1
-        }
-
-        guard !effective.isEmpty else { return 0 }
-
-        let font = NSFont.systemFont(ofSize: fontSize)
-        func charWidth(_ s: String) -> CGFloat {
-            ceil((s as NSString).size(withAttributes: [.font: font]).width)
-        }
-
-        // width("0") = NSTextField render-threshold safety for narrow chars;
-        // engine default = per-update override visual stability.
-        if cachedFloor < 0 {
-            let engineDefaultMax = fallbackLabels.map { charWidth(String($0)) }.max() ?? 0
-            cachedFloor = max(charWidth("0"), engineDefaultMax)
-        }
-
-        let labelMax: CGFloat
-        if let cached = indexWidthCache[effective] {
-            labelMax = cached
-        } else {
-            labelMax = effective.map { charWidth(String($0)) }.max() ?? 0
-            if indexWidthCache.count >= indexWidthCacheCap { indexWidthCache.removeAll() }
-            indexWidthCache[effective] = labelMax
-        }
-        return max(cachedFloor, labelMax)
-    }
-
-    /// Does NOT touch indexWidth — caller must pair with `updateIndexLabels`
-    /// so width reflects the current labels at the new size.
     static func updateFontSize(_ newSize: CGFloat) {
         let size = max(newSize, 8)
         guard size != candidateFontSize else { return }
@@ -68,23 +23,25 @@ class MacishCandidateItemView: NSView {
         indexFontSize = round(size / 2)
         annotationFontSize = round(size * 0.75)
         leadingPadding = round(4 * scale)
-        indexCandidateGap = round(6 * scale)
+        indexCandidateGap = round(2 * scale)
         candidateAnnotationGap = round(11 * scale)
         defaultTrailingPadding = round(9 * scale)
         verticalPadding = round(12 * scale)
+        // Must run after indexFontSize is updated above.
+        if indexWidth > 0 {
+            indexWidth = indexFontSize + 2
+        }
         templateView = nil
     }
 
-    static func setFallbackLabels(_ labels: String) {
-        guard fallbackLabels != labels else { return }
-        fallbackLabels = labels
-        cachedFloor = -1
-    }
-
-    static func updateIndexLabels(_ labels: String) {
-        let newWidth = computeIndexWidth(labels: labels, fontSize: indexFontSize)
-        guard newWidth != indexWidth else { return }
-        indexWidth = newWidth
+    /// Engine activation hook. Whitespace-only `defaultLabels` toggles the
+    /// index column off (indexWidth=0); any non-empty value enables it.
+    /// Per-update empty labels do NOT route through here — slot stays reserved.
+    static func configureIndexColumn(defaultLabels: String) {
+        let shouldShow = !defaultLabels.allSatisfy(\.isWhitespace)
+        let newIndexWidth: CGFloat = shouldShow ? indexFontSize + 2 : 0
+        guard indexWidth != newIndexWidth else { return }
+        indexWidth = newIndexWidth
         templateView = nil
     }
 
@@ -229,10 +186,14 @@ class MacishCandidateItemView: NSView {
 
     func configure(label: String, candidate: Candidate) {
         // Sync index-side constraints to current static metrics on every
-        // reconfigure — protects against item recycling (constants stay
-        // fresh even when updateIndexLabels has run since item init).
-        indexLabelWidthConstraint.constant = Self.indexWidth
-        indexCandidateGapConstraint.constant = Self.effectiveGap
+        // reconfigure — protects against item recycling. Guarded so a
+        // recycled item with already-current values doesn't dirty Auto Layout.
+        if indexLabelWidthConstraint.constant != Self.indexWidth {
+            indexLabelWidthConstraint.constant = Self.indexWidth
+        }
+        if indexCandidateGapConstraint.constant != Self.effectiveGap {
+            indexCandidateGapConstraint.constant = Self.effectiveGap
+        }
         indexLabel.stringValue = label
         candidateLabel.stringValue = candidate.text
 

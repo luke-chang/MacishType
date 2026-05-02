@@ -186,13 +186,13 @@ class CandidateWindow {
 
     var isVisible: Bool { activeImpl.isVisible }
 
-    /// Standalone path (engine activation, preview app). Updates
-    /// `fallbackLabels` so empty per-update labels fall back to this
-    /// engine's width. Short-circuits when unchanged.
+    /// Standalone path (engine activation, preview app). Decides whether
+    /// the engine wants an index column based on its default labels.
+    /// Short-circuits when unchanged.
     func configure(_ configuration: CandidateWindowConfiguration) {
         guard engineConfiguration != configuration else { return }
         engineConfiguration = configuration
-        MacishCandidateItemView.setFallbackLabels(configuration.indexLabels)
+        MacishCandidateItemView.configureIndexColumn(defaultLabels: configuration.indexLabels)
         apply()
     }
 
@@ -202,7 +202,8 @@ class CandidateWindow {
 
     /// Combined update — applies `configuration` (when changed) in the
     /// same rebuild as candidates to avoid configure-then-render flicker.
-    /// Does not touch `fallbackLabels`: per-update overrides are temporary.
+    /// Per-update changes do NOT toggle the engine-level index column state;
+    /// only `configure()` does that.
     func updateCandidates(_ candidates: [Candidate], suspendHighlight: Bool,
                          configuration: CandidateWindowConfiguration? = nil) {
         let cfgToApply: CandidateWindowConfiguration?

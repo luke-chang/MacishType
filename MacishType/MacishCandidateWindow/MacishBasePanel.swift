@@ -517,7 +517,6 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     /// chrome change + candidate render into a single rebuild.
     func apply(_ configuration: CandidateWindowConfiguration, deferRender: Bool = false) {
         updateFontSize(configuration.fontSize)
-        MacishCandidateItemView.updateIndexLabels(configuration.indexLabels)
         if deferRender {
             // deferRender skips buildCandidateLayout which would otherwise
             // recompute these — pre-set so the upcoming render sees fresh metrics.
