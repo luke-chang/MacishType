@@ -6,9 +6,12 @@ import SwiftUI
 // MARK: - Per-Client State
 
 class InputEngineContext {
-    var composingBuffer: [String] = []
-    var composingText: String { composingBuffer.joined() }
-    var isComposing: Bool { !composingBuffer.isEmpty }
+    // Controller mirrors emitted .updateMarkedText into this field, so engines
+    // that don't keep their own composing buffer can read marked text here.
+    // Engines must mutate this only via the action stream.
+    var markedText: String = ""
+
+    var isComposing: Bool { !markedText.isEmpty }
 
     // Prefix of marked text that the engine has declared as "confirmed, pending
     // commit" via .updateMarkedText(staged:). Flushed on deactivate / .flushStaged.
@@ -24,7 +27,7 @@ class InputEngineContext {
     var isAssociating: Bool = false
 
     func reset() {
-        composingBuffer.removeAll()
+        markedText = ""
         stagedText = ""
         isAssociating = false
     }

@@ -3,15 +3,6 @@ import SwiftUI
 
 private let validCompositionCharacters = Set("abcdefghijklmnopqrstuvwxyz")
 
-class ExampleEngineContext: InputEngineContext {
-    var firstCandidate: String?
-
-    override func reset() {
-        super.reset()
-        firstCandidate = nil
-    }
-}
-
 class ExampleEngine: InputEngine {
     static let shared = ExampleEngine()
 
@@ -31,8 +22,6 @@ class ExampleEngine: InputEngine {
             }
         )
     }
-
-    override func createContext() -> InputEngineContext { ExampleEngineContext() }
 
     private func lookupCandidates(_ key: String) -> [String] {
         key.compactMap { Self.toFullwidth($0).map(String.init) }
@@ -59,34 +48,32 @@ class ExampleEngine: InputEngine {
             return context.isComposing ? .handled([.noop]) : .notHandled
         }
 
-        let ctx = context as! ExampleEngineContext
-
         switch keyCode {
         case 49: // Space
             guard context.isComposing else { return .notHandled }
-            if let first = ctx.firstCandidate {
+            if let first = lookupCandidates(context.markedText).first {
                 return .handled([.commit(first)])
             }
             return .handled([.resetContext])
 
         case 51: // Backspace
             guard context.isComposing else { return .notHandled }
-            _ = context.composingBuffer.popLast()
-            if !context.isComposing {
+            let newMarked = String(context.markedText.dropLast())
+            if newMarked.isEmpty {
                 return .handled([.resetContext])
             }
-            let marked = context.composingText
-            let candidates = lookupCandidates(marked)
-            ctx.firstCandidate = candidates.first
-            return .handled([.updateMarkedText(marked), .updateCandidates(candidates)])
+            return .handled([
+                .updateMarkedText(newMarked),
+                .updateCandidates(lookupCandidates(newMarked)),
+            ])
 
         default:
             if validCompositionCharacters.contains(char) {
-                context.composingBuffer.append(text.uppercased())
-                let marked = context.composingText
-                let candidates = lookupCandidates(marked)
-                ctx.firstCandidate = candidates.first
-                return .handled([.updateMarkedText(marked), .updateCandidates(candidates)])
+                let newMarked = context.markedText + text.uppercased()
+                return .handled([
+                    .updateMarkedText(newMarked),
+                    .updateCandidates(lookupCandidates(newMarked)),
+                ])
             }
             return context.isComposing ? .handled([.noop]) : .notHandled
         }

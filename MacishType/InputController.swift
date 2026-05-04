@@ -282,6 +282,7 @@ class InputController: IMKInputController {
     private func setMarkedText(
         _ text: String, cursor: Int? = nil, emphasis: Range<Int>? = nil, client: IMKTextInput
     ) {
+        engineContext.markedText = text
         let charIndex = cursor ?? text.count
         let cursorPosition = text.prefix(charIndex).utf16.count
         let attr = NSMutableAttributedString(
@@ -310,7 +311,7 @@ class InputController: IMKInputController {
     // MARK: - Candidate Window
 
     private func showCandidateWindow(offset: Int, client: IMKTextInput) {
-        let text = engineContext.composingText
+        let text = engineContext.markedText
         guard !text.isEmpty else { return }
         let length = text.count
         let fontKey = NSAttributedString.Key.font.rawValue
