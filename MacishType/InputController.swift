@@ -239,8 +239,6 @@ class InputController: IMKInputController {
     private func executeActions(_ actions: [EngineAction], client: IMKTextInput) {
         for action in actions {
             switch action {
-            case .insert(let text):
-                client.insertText(text, replacementRange: .notFound)
             case .updateMarkedText(let text, let cursor, let emphasis, let staged):
                 setMarkedText(text, cursor: cursor, emphasis: emphasis, client: client)
                 let effective = staged < 0 ? text.count : min(max(staged, 0), text.count)
@@ -251,6 +249,8 @@ class InputController: IMKInputController {
                 updateCandidates(candidates, offset: offset,
                                  suspendHighlight: suspendHighlight,
                                  configuration: cfg, client: client)
+            case .commit(let candidate):
+                candidateConfirmed(candidate.text, raw: candidate)
             case .commitSelectedCandidate:
                 CandidateWindow.shared.commitSelectedCandidate()
             case .commitCandidateAtIndex(let index):

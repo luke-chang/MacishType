@@ -42,13 +42,14 @@ struct CandidateWindowState {
 // MARK: - Engine Action
 
 enum EngineAction {
-    case insert(String)
     // staged: leading chars confirmed for commit on session end (negative = whole text).
     case updateMarkedText(String, cursor: Int? = nil, emphasis: Range<Int>? = nil, staged: Int = 0)
     // `configure` overrides engine default per-update (associated mode,
     // mode-specific labels, etc.). Nil sticks with engine default.
     case updateCandidates([Candidate], offset: Int = 0, suspendHighlight: Bool = false,
                           configure: ((inout CandidateWindowConfiguration) -> Void)? = nil)
+    // Engine-confirmed candidate: routes through engine.candidateConfirmed.
+    case commit(Candidate)
     case commitSelectedCandidate
     case commitCandidateAtIndex(Int)
     case navigateCandidates(NavigationDirection, wrapping: Bool = false)
@@ -93,6 +94,10 @@ extension EngineAction {
     /// when this is processed. Use when an engine wants to clear pending
     /// candidates while keeping marked text active.
     static let clearCandidates: EngineAction = .updateCandidates([] as [Candidate])
+
+    static func commit(_ text: String) -> EngineAction {
+        .commit(Candidate(text))
+    }
 }
 
 // MARK: - Base Engine
@@ -299,7 +304,7 @@ class InputEngine {
             if context.isComposing {
                 return .handled([.noop])
             }
-            return .handled([.insert(text)])
+            return .handled([.flushStaged(text)])
         }
 
         // 4. Escape
@@ -328,7 +333,7 @@ class InputEngine {
                 if context.isComposing {
                     return .handled([.noop])
                 }
-                return .handled([.insert(String(fullwidth))])
+                return .handled([.flushStaged(String(fullwidth))])
             }
         }
 

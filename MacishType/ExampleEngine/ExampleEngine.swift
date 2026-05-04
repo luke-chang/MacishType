@@ -65,7 +65,7 @@ class ExampleEngine: InputEngine {
         case 49: // Space
             guard context.isComposing else { return .notHandled }
             if let first = ctx.firstCandidate {
-                return .handled([.flushStaged(first)])
+                return .handled([.commit(first)])
             }
             return .handled([.resetContext])
 
