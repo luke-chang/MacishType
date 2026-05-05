@@ -11,10 +11,15 @@ struct Candidate {
     /// same "no annotation" semantic; collapsing here keeps render path
     /// and panel-level measurement from drifting on the empty case.
     let annotation: String?
+    /// Engine-defined opaque carry-through. Lets engines round-trip identifiers
+    /// (absolute index, primary key, etc.) to confirm/select callbacks without
+    /// value-lookup ambiguity.
+    let payload: Any?
 
-    init(_ text: String, annotation: String? = nil) {
+    init(_ text: String, annotation: String? = nil, payload: Any? = nil) {
         self.text = text
         self.annotation = annotation?.isEmpty == true ? nil : annotation
+        self.payload = payload
     }
 }
 

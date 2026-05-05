@@ -397,13 +397,13 @@ class InputController: IMKInputController {
 extension InputController: CandidateWindowDelegate {
     func candidateConfirmed(_ candidate: String, raw: Candidate?) {
         guard let client = client() else { return }
-        let actions = engine.candidateConfirmed(context: engineContext, candidate)
+        let actions = engine.candidateConfirmed(context: engineContext, candidate, raw: raw)
         executeActions(actions, client: client)
     }
 
     func candidateSelectionChanged(_ candidate: String, raw: Candidate) {
         guard let client = client() else { return }
-        let actions = engine.candidateSelectionChanged(context: engineContext, candidate)
+        let actions = engine.candidateSelectionChanged(context: engineContext, candidate, raw: raw)
         executeActions(actions, client: client)
     }
 }

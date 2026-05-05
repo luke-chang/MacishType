@@ -345,7 +345,7 @@ class InputEngine {
     }
 
     func candidateConfirmed(
-        context: InputEngineContext, _ candidate: String
+        context: InputEngineContext, _ candidate: String, raw: Candidate?
     ) -> [EngineAction] {
         if context.isAssociating {
             return [.flushStaged(candidate)]
@@ -361,7 +361,7 @@ class InputEngine {
     }
 
     func candidateSelectionChanged(
-        context: InputEngineContext, _ candidate: String
+        context: InputEngineContext, _ candidate: String, raw: Candidate
     ) -> [EngineAction] {
         []
     }
