@@ -46,16 +46,12 @@
 				<array>
 					<string>Hant</string>
 				</array>
-				<key>tsInputModeDefaultStateKey</key>
-				<true/>
 				<key>tsInputModeIsVisibleKey</key>
 				<true/>
 				<key>tsInputModeMenuIconFileKey</key>
 				<string>Example/ExampleMenuIcon.tiff</string>
 				<key>tsInputModePaletteIconFileKey</key>
 				<string>Example/ExampleMenuIcon.tiff</string>
-				<key>tsInputModePrimaryInScriptKey</key>
-				<true/>
 				<key>TISIconLabels</key>
 				<dict>
 					<key>Primary</key>

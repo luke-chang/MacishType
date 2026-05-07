@@ -8,8 +8,8 @@ class ExampleEngine: InputEngine {
 
     override class var engineID: String { "Example" }
 
-    // Default to on so a fresh install shows the associated-phrase demo
-    // without requiring the user to open Settings first.
+    // Default to on so demo users see the associated-phrase feature
+    // immediately after enabling Example, without having to open Settings.
     override class var defaultShowAssociatedWords: Bool { true }
 
     override var settingsView: AnyView {
