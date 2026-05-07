@@ -15,6 +15,7 @@
 		86174D562F78414200E6BA28 /* Exceptions for "MacishType" folder in "MacishType" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				ExampleEngine/Resources,
 				Info.plist,
 			);
 			target = 86A0E7EF2F77ED4F00722BF2 /* MacishType */;
@@ -63,6 +64,9 @@
 			exceptions = (
 				86174D562F78414200E6BA28 /* Exceptions for "MacishType" folder in "MacishType" target */,
 				866258C42F8A547E003DEC1C /* Exceptions for "MacishType" folder in "CandidateWindowPreview" target */,
+			);
+			explicitFolders = (
+				ExampleEngine/Resources,
 			);
 			path = MacishType;
 			sourceTree = "<group>";
@@ -137,6 +141,7 @@
 				86A0E7EC2F77ED4F00722BF2 /* Sources */,
 				86A0E7ED2F77ED4F00722BF2 /* Frameworks */,
 				86A0E7EE2F77ED4F00722BF2 /* Resources */,
+				8648E1062FACEBD100465485 /* Stage Engine Resources */,
 				86DDFF572F784E7800118E4C /* Set Build Info */,
 			);
 			buildRules = (
@@ -210,6 +215,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		8648E1062FACEBD100465485 /* Stage Engine Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Stage Engine Resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Stage <EngineID>Engine/Resources/ → bundle/Resources/<EngineID>/\n#\n# Naming convention: source folder name MUST end in exactly one \"Engine\"\n# suffix; bundle subdir = folder name with that suffix stripped.\n# (e.g. ExampleEngine → Example, JavaScriptEngine → JavaScript).\n#\n# Ownership: rsync only owns each engine's subdir (Resources/<EngineID>/);\n# it never touches root-level files like MenuIcon.tiff or AppIcon.icns.\n# If a sync exception is missing for some engine's Resources/, the default\n# Copy Resources phase will leave a stale flat-root copy that rsync\n# won't clean up — sync exceptions and rsync are coupled and must agree.\n\nset -eu\nDEST_ROOT=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n\nfind \"${SRCROOT}/MacishType\" -type d -name \"Resources\" -path \"*Engine/Resources\" -print0 | \\\n    while IFS= read -r -d '' resources_dir; do\n        engine_dir=$(dirname \"$resources_dir\")\n        engine_name=$(basename \"$engine_dir\")\n        bundle_subdir=\"${engine_name%Engine}\"\n        mkdir -p \"$DEST_ROOT/$bundle_subdir\"\n        rsync -a --delete \"$resources_dir/\" \"$DEST_ROOT/$bundle_subdir/\"\n    done\n";
+		};
 		86DDFF572F784E7800118E4C /* Set Build Info */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;

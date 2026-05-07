@@ -129,9 +129,8 @@ extension SettingsSidebarItem {
                 value: suffix,
                 table: "InfoPlist"
             )
-            let iconName = (entry["tsInputModePaletteIconFileKey"] as? String)
-                .map { ($0 as NSString).deletingPathExtension }
-            let icon = iconName.flatMap(namedTemplateImage(_:))
+            let iconPath = entry["tsInputModePaletteIconFileKey"] as? String
+            let icon = iconPath.flatMap(bundleTemplateImage(_:))
                 ?? symbolImage("character.cursor.ibeam")
             items.append(.init(id: suffix, title: title, icon: icon))
         }
@@ -142,9 +141,12 @@ extension SettingsSidebarItem {
         NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
     }
 
-    private static func namedTemplateImage(_ name: String) -> NSImage? {
-        guard let image = NSImage(named: name) else { return nil }
-        // IMK-style template tiffs: tag as template so sidebar tint applies.
+    // Resolves Info.plist icon paths (which may include subdirs) relative
+    // to the bundle's Resources/. NSImage(named:) only looks at the flat root.
+    private static func bundleTemplateImage(_ relativePath: String) -> NSImage? {
+        guard let resources = Bundle.main.resourceURL else { return nil }
+        let url = resources.appendingPathComponent(relativePath)
+        guard let image = NSImage(contentsOf: url) else { return nil }
         image.isTemplate = true
         return image
     }

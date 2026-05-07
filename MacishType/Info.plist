@@ -51,9 +51,9 @@
 				<key>tsInputModeIsVisibleKey</key>
 				<true/>
 				<key>tsInputModeMenuIconFileKey</key>
-				<string>ExampleMenuIcon.tiff</string>
+				<string>Example/ExampleMenuIcon.tiff</string>
 				<key>tsInputModePaletteIconFileKey</key>
-				<string>ExampleMenuIcon.tiff</string>
+				<string>Example/ExampleMenuIcon.tiff</string>
 				<key>tsInputModePrimaryInScriptKey</key>
 				<true/>
 				<key>TISIconLabels</key>
