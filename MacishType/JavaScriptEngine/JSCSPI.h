@@ -1,0 +1,33 @@
+// Re-declare WebKit's private JavaScriptCore module API.
+// These exist in the framework binary but are not in the public macOS SDK.
+// Source: https://github.com/WebKit/WebKit/blob/main/Source/JavaScriptCore/API/JSScript.h
+#import <JavaScriptCore/JavaScriptCore.h>
+
+typedef NS_ENUM(int32_t, JSScriptType) {
+    kJSScriptTypeProgram = 0,
+    kJSScriptTypeModule = 1,
+};
+
+@interface JSScript : NSObject
++ (nullable instancetype)scriptOfType:(JSScriptType)type
+                           withSource:(NSString *)source
+                         andSourceURL:(NSURL *)sourceURL
+                     andBytecodeCache:(nullable NSURL *)cachePath
+                     inVirtualMachine:(JSVirtualMachine *)vm
+                                error:(out NSError **)error;
+@end
+
+@protocol JSModuleLoaderDelegate <NSObject>
+- (void)context:(JSContext *)context
+       fetchModuleForIdentifier:(JSValue *)identifier
+       withResolveHandler:(JSValue *)resolve
+       andRejectHandler:(JSValue *)reject;
+@optional
+- (void)willEvaluateModule:(NSURL *)key;
+- (void)didEvaluateModule:(NSURL *)key;
+@end
+
+@interface JSContext (Private)
+- (JSValue *)evaluateJSScript:(JSScript *)script;
+@property (nonatomic, weak, nullable) id<JSModuleLoaderDelegate> moduleLoaderDelegate;
+@end

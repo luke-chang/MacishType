@@ -8,4 +8,5 @@ extension Logger {
     static let themeManager = Logger(subsystem: subsystem, category: "ThemeManager")
     static let inputController = Logger(subsystem: subsystem, category: "InputController")
     static let inputEngine = Logger(subsystem: subsystem, category: "InputEngine")
+    static let javaScriptEngine = Logger(subsystem: subsystem, category: "JavaScriptEngine")
 }

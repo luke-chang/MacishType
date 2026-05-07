@@ -17,6 +17,8 @@
 			membershipExceptions = (
 				ExampleEngine/Resources,
 				Info.plist,
+				JavaScriptEngine/JSExternalEngine/Resources,
+				JavaScriptEngine/Resources,
 			);
 			target = 86A0E7EF2F77ED4F00722BF2 /* MacishType */;
 		};
@@ -67,6 +69,8 @@
 			);
 			explicitFolders = (
 				ExampleEngine/Resources,
+				JavaScriptEngine/JSExternalEngine/Resources,
+				JavaScriptEngine/Resources,
 			);
 			path = MacishType;
 			sourceTree = "<group>";
@@ -401,6 +405,7 @@
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OBJC_BRIDGING_HEADER = MacishType/JavaScriptEngine/JSCSPI.h;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -460,6 +465,7 @@
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OBJC_BRIDGING_HEADER = MacishType/JavaScriptEngine/JSCSPI.h;
 			};
 			name = Release;
 		};

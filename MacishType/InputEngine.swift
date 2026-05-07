@@ -127,6 +127,7 @@ class InputEngine {
 
     private static let engines: [String: () -> InputEngine] = [
         "Example": { ExampleEngine.shared },
+        "JSExternal": { JSExternalEngine.shared },
     ]
 
     static func engine(for inputModeID: String) -> InputEngine? {
