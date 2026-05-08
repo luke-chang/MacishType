@@ -19,6 +19,13 @@ class JavaScriptEngine: InputEngine {
 
     class var entryScriptURL: URL? { nil }
 
+    /// File-system root for `import "file://..."` resolution. ES module
+    /// imports outside this directory are rejected by the module loader.
+    /// Defaults to the entry script's parent directory; subclasses with a
+    /// broader root (e.g. user-picked folder where the entry lives in a
+    /// subdir) override.
+    class var importRoot: URL? { entryScriptURL?.deletingLastPathComponent() }
+
     // MARK: JSContext state (set up in load())
 
     fileprivate var virtualMachine: JSVirtualMachine!
@@ -95,6 +102,10 @@ class JavaScriptEngine: InputEngine {
         self.virtualMachine = vm
         self.jsContext = context
 
+        // Roll back partial state on failure so retries see a clean slate.
+        var success = false
+        defer { if !success { teardownContext() } }
+
         guard let entry = Self.loadJSSource(
             Self.entryScriptURL,
             label: "entry script for '\(Self.engineID)'"
@@ -144,19 +155,35 @@ class JavaScriptEngine: InputEngine {
         }
         promise.invokeMethod("then", withArguments: [captureBlock, rejectBlock])
 
-        if engineClass == nil {
+        // Module reject (top-level throw, missing default export, etc.) leaves
+        // engineClass nil; must return so defer rolls back.
+        guard engineClass != nil else {
             Logger.javaScriptEngine.fault(
                 "engine class not captured after module evaluation for '\(Self.engineID, privacy: .public)'"
             )
+            return
         }
+
+        success = true
+        super.load()
     }
 
+    /// Subclasses inspect this after `super.load()` to detect success vs
+    /// faulted state.
+    var isModuleLoaded: Bool { engineClass != nil }
+
     override func unload() {
+        teardownContext()
+        super.unload()
+    }
+
+    private func teardownContext() {
         jsContext = nil
         virtualMachine = nil
         engineClass = nil
         jsInstances.removeAllObjects()
         moduleSourceByIdentifier.removeAll()
+        moduleLoader.invalidateRootCache()
     }
 
     override func activate(context: InputEngineContext, clientIdentifier: String?) {
@@ -251,6 +278,11 @@ class JavaScriptEngine: InputEngine {
         }
         do {
             let source = try String(contentsOf: url, encoding: .utf8)
+            #if DEBUG
+            Logger.javaScriptEngine.debug(
+                "loaded \(label, privacy: .public): \(url.path, privacy: .public)"
+            )
+            #endif
             return (source, url)
         } catch {
             Logger.javaScriptEngine.fault(
@@ -535,9 +567,34 @@ class JavaScriptEngine: InputEngine {
 /// `InputEngine` (the base class) isn't NSObject-derived.
 private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
     private weak var owner: JavaScriptEngine?
+    /// Cached canonical root path. `resolvingSymlinksInPath` is a `realpath`
+    /// syscall; the root doesn't change across imports in one load, so resolve
+    /// once and reuse. Invalidated by `invalidateRootCache()` on teardown.
+    private var cachedRootPath: String?
 
     init(owner: JavaScriptEngine) {
         self.owner = owner
+    }
+
+    func invalidateRootCache() {
+        cachedRootPath = nil
+    }
+
+    private func normalizedRootPath() -> String? {
+        if let cached = cachedRootPath { return cached }
+        guard let owner, let root = type(of: owner).importRoot else { return nil }
+        let resolved = root.resolvingSymlinksInPath().standardizedFileURL.path
+        cachedRootPath = resolved
+        return resolved
+    }
+
+    /// Verifies `target`'s canonical path is at or below the cached root,
+    /// matching with a trailing `/` so `/foo` doesn't match `/foobar`.
+    private func isContained(url target: URL, rootPath: String) -> Bool {
+        let normalizedTarget = target.resolvingSymlinksInPath().standardizedFileURL.path
+        if normalizedTarget == rootPath { return true }
+        let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        return normalizedTarget.hasPrefix(prefix)
     }
 
     func context(
@@ -577,8 +634,30 @@ private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
 
         // Engine-local relative imports (file:// outside our cache).
         if id.hasPrefix("file://"), let url = URL(string: id) {
+            // Defense-in-depth on top of the sandbox: containment check rejects
+            // `../foo`-style escapes and symlinks that point out of the engine
+            // folder before the read syscall runs.
+            guard let rootPath = normalizedRootPath() else {
+                Logger.javaScriptEngine.error(
+                    "file import disabled: no importRoot for '\(type(of: owner).engineID, privacy: .public)'"
+                )
+                reject.call(withArguments: ["file imports disabled"])
+                return
+            }
+            guard isContained(url: url, rootPath: rootPath) else {
+                Logger.javaScriptEngine.error(
+                    "import \(id, privacy: .public) outside engine folder \(rootPath, privacy: .public)"
+                )
+                reject.call(withArguments: ["import outside engine folder: \(id)"])
+                return
+            }
             do {
                 let source = try String(contentsOf: url, encoding: .utf8)
+                #if DEBUG
+                Logger.javaScriptEngine.debug(
+                    "loaded module: \(url.path, privacy: .public)"
+                )
+                #endif
                 let script = try JSScript(
                     of: .module,
                     withSource: source,

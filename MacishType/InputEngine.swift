@@ -211,7 +211,6 @@ class InputEngine {
                 Logger.inputEngine.debug("Unloading engine: \("\(type(of: engine))", privacy: .public)")
                 #endif
                 engine.unload()
-                engine.isLoaded = false
             }
         }
     }
@@ -256,8 +255,15 @@ class InputEngine {
 
     private(set) var isLoaded = false
 
-    func load() {}
-    func unload() {}
+    /// Subclass setup. Override to perform initialization, then call
+    /// `super.load()` to mark the engine loaded. Skipping `super.load()`
+    /// (e.g. on failure) keeps `isLoaded == false`, so the next `activate()`
+    /// retries.
+    func load() { isLoaded = true }
+
+    /// Subclass cleanup. Override to release resources, then call
+    /// `super.unload()` to clear `isLoaded`.
+    func unload() { isLoaded = false }
 
     // Override for per-session setup. Loads engine on first call.
     func activate(context: InputEngineContext, clientIdentifier: String?) {
@@ -267,7 +273,6 @@ class InputEngine {
             Logger.inputEngine.debug("Loading engine: \("\(type(of: self))", privacy: .public)")
             #endif
             load()
-            isLoaded = true
         }
     }
 
