@@ -42,43 +42,29 @@ make preview             # Build and run CandidateWindow preview app
 
 ```
 MacishType/
-├── MacishType/                                    # Main input method app
-│   ├── AppDelegate.swift                          # App lifecycle and IMKServer setup
-│   ├── InputController.swift                      # IMKInputController subclass, key event routing
-│   ├── InputEngine.swift                          # Base input engine with shared key handling logic
-│   ├── ExampleEngine/                             # Example input engine implementation
-│   │   ├── ExampleEngine.swift                    # Reverse-lookup demo engine
-│   │   └── Resources/                             # ExampleEngine assets
-│   │       └── ExampleMenuIcon.tiff               # Menu bar icon for ExampleEngine
-│   ├── CandidateWindow.swift                      # Candidate window public API and shared types
-│   ├── MacishCandidateWindow/                     # Candidate window implementation
-│   │   ├── MacishCandidateWindow.swift            # Style controller (panel switching)
-│   │   ├── MacishBasePanel.swift                  # NSPanel base (vibrancy, positioning, theming)
-│   │   ├── MacishHorizontalBasePanel.swift        # Shared horizontal panel base
-│   │   ├── MacishHorizontalExpandablePanel.swift  # Expandable layout with grid expand/collapse
-│   │   ├── MacishHorizontalSimplePanel.swift      # Non-expandable layout with page navigation
-│   │   ├── MacishVerticalPanel.swift              # Vertical scrolling layout
-│   │   ├── MacishCandidateItemView.swift          # Single candidate cell with index and label
-│   │   ├── MacishChevronView.swift                # Expand/collapse toggle button
-│   │   ├── MacishPageArrowView.swift              # Page up/down arrow control
-│   │   ├── MacishHighlightView.swift              # Selected row background for expanded mode
-│   │   └── MacishSeparatorView.swift              # Horizontal separator between candidate rows
-│   ├── ThemeManager.swift                         # Per-app accent color caching and theme events
-│   ├── WindowManager.swift                        # Singleton manager for non-candidate windows
-│   ├── SettingsView.swift                         # Settings window (SwiftUI)
-│   ├── AboutView.swift                            # About window (SwiftUI)
-│   ├── Logger.swift                               # OSLog logger extensions
-│   ├── Info.plist                                 # App configuration and input mode declarations
-│   ├── InfoPlist.xcstrings                        # Info.plist localization (en, zh-Hant)
-│   ├── Localizable.xcstrings                      # UI string localization (en, zh-Hant)
-│   ├── App.entitlements                           # Sandbox and entitlements
-│   └── Resources/                                 # App-level assets
-│       ├── AppIcon.icns                           # Application icon
-│       └── MenuIcon.tiff                          # Default menu bar icon
-├── CandidateWindowPreview/                        # Standalone preview app for CandidateWindow
-│   └── App.swift                                  # Preview app with editable candidate list
-├── Scripts/                                       # Helper scripts
-│   └── GenerateIcon.swift                         # Menu bar icon generator (renders text into TIFF)
-├── Makefile                                       # Build, install, and dev commands
+├── MacishType/                       # Input method app
+│   ├── AppDelegate.swift             # App lifecycle and IMKServer setup
+│   ├── InputController.swift         # IMKInputController subclass, key event routing
+│   ├── InputEngine.swift             # Base input engine with shared key handling logic
+│   ├── ExampleEngine/                # Reverse-lookup demo engine
+│   ├── JavaScriptEngine/             # ES module bridge for JS-implemented engines
+│   ├── CandidateWindow.swift         # Candidate window public API and shared types
+│   ├── MacishCandidateWindow/        # Candidate window panels (horizontal / vertical / expandable)
+│   ├── ThemeManager.swift            # Per-app accent color caching and theme events
+│   ├── WindowManager.swift           # Singleton manager for non-candidate windows
+│   ├── SettingsWindow.swift          # Settings window (AppKit shell + SwiftUI panes)
+│   ├── AboutView.swift               # About window (SwiftUI)
+│   ├── SecurityScopedBookmark.swift  # Sandbox-friendly persisted folder/file picker
+│   ├── Logger.swift                  # OSLog logger extensions
+│   ├── Info.plist                    # App configuration and input mode declarations
+│   ├── InfoPlist.xcstrings           # Info.plist localization (en, zh-Hant)
+│   ├── Localizable.xcstrings         # UI string localization (en, zh-Hant)
+│   ├── App.entitlements              # Sandbox and entitlements
+│   └── Resources/                    # App-level assets (app icon, default menu icon)
+├── Engines/                          # Reference JS engine sources (loadable via JSExternal picker)
+├── CandidateWindowPreview/           # Standalone preview app for the candidate window
+├── Scripts/                          # Helper scripts (icon generator, etc.)
+├── MacishType.xcodeproj/             # Xcode project file
+├── Makefile                          # Build, install, and dev commands
 └── README.md
 ```
