@@ -63,15 +63,14 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
     // MARK: - Grid Computation
 
     private func packPage(startingAt offset: Int) -> (items: [GridItem], nextOffset: Int) {
-        let maxWidth = baseColumnWidth * CGFloat(pageSize)
         var items: [GridItem] = []
         var usedWidth: CGFloat = 0
         var offset = offset
         for _ in 0..<pageSize {
             guard offset < displayCount else { break }
             let raw = MacishCandidateItemView.measureWidth(candidates[offset])
-            let w = max(baseColumnWidth, min(raw, maxWidth))
-            if usedWidth + w > maxWidth, !items.isEmpty { break }
+            let w = max(baseColumnWidth, min(raw, maxPageSlotWidth))
+            if usedWidth + w > maxPageSlotWidth, !items.isEmpty { break }
             items.append(GridItem(candidateIndex: offset, measuredWidth: w))
             usedWidth += w
             offset += 1
@@ -149,7 +148,7 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
         let chevronWidth = pageArrowView.intrinsicContentSize.width
         if hasMultiplePages {
             pageArrowView.isHidden = false
-            let contentWidth = max(currentPageWidth, baseColumnWidth * CGFloat(pageSize))
+            let contentWidth = max(currentPageWidth, maxPageSlotWidth)
             pageArrowView.frame = NSRect(x: contentWidth, y: row0Y,
                                          width: chevronWidth, height: itemHeight)
             let windowWidth = contentWidth + chevronWidth

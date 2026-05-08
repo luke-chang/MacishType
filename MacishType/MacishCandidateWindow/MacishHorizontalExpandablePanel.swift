@@ -126,15 +126,14 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     }
 
     private func computeCollapsedGrid() -> [GridRow] {
-        let maxWidth = baseColumnWidth * CGFloat(pageSize)
         var packedItems: [(candidateIndex: Int, width: CGFloat)] = []
         var usedWidth: CGFloat = 0
 
         for i in 0..<displayCount {
             if packedItems.count >= pageSize { break }
             let raw = MacishCandidateItemView.measureWidth(candidates[i])
-            let w = max(baseColumnWidth, min(raw, maxWidth))
-            if usedWidth + w > maxWidth, !packedItems.isEmpty { break }
+            let w = max(baseColumnWidth, min(raw, maxPageSlotWidth))
+            if usedWidth + w > maxPageSlotWidth, !packedItems.isEmpty { break }
             usedWidth += w
             packedItems.append((i, w))
         }
@@ -260,11 +259,10 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         computeBaseMetrics()
         if widerExpandedColumns {
             expandedPageSize = pageSize - pageSize / 3
-            expandedColumnWidth = baseColumnWidth * CGFloat(pageSize) / CGFloat(expandedPageSize)
         } else {
             expandedPageSize = pageSize
-            expandedColumnWidth = baseColumnWidth
         }
+        expandedColumnWidth = maxPageSlotWidth / CGFloat(expandedPageSize)
         gridRows = computeCollapsedGrid()
 
         // Create row 0 items

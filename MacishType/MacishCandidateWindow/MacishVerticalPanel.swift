@@ -6,6 +6,9 @@ class MacishVerticalPanel: MacishBasePanel {
 
     private static let overlayVisualGap: CGFloat = 2
 
+    /// Content width cap; independent of `pageSize`.
+    private static let maxContentColumns = 6
+
     private var itemViews: [MacishCandidateItemView] = []
     private var anchorIndex = 0
     private var isFullyRendered = false
@@ -87,7 +90,7 @@ class MacishVerticalPanel: MacishBasePanel {
         initialContentWidth = metrics.totalWidth
         candidateColumnWidth = metrics.columnWidth
         showAnnotations = metrics.showAnnotations
-        maxContentWidth = baseColumnWidth * CGFloat(pageSize)
+        maxContentWidth = baseColumnWidth * CGFloat(Self.maxContentColumns)
 
         let hasOverflow = displayCount > pageSize
         let cappedWidth = min(metrics.totalWidth, maxContentWidth)
@@ -183,7 +186,7 @@ class MacishVerticalPanel: MacishBasePanel {
             + MacishCandidateItemView.effectiveGap
             + MacishCandidateItemView.defaultTrailingPadding
         let candidateBlock = constants + maxCandidateWidth
-        let remaining = baseColumnWidth * CGFloat(pageSize) - candidateBlock
+        let remaining = baseColumnWidth * CGFloat(Self.maxContentColumns) - candidateBlock
         let threshold = MacishCandidateItemView.candidateAnnotationGap
             + MacishCandidateItemView.candidateFontSize
         let showAnnotations = hasAnnotation && remaining >= threshold

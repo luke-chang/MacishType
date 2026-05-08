@@ -499,7 +499,7 @@ struct PreviewContentView: View {
                     GridRow {
                         Text("Page size:")
                         Picker("", selection: $state.pageSize) {
-                            ForEach(1...10, id: \.self) { size in
+                            ForEach(1...11, id: \.self) { size in
                                 Text("\(size)").tag(size)
                             }
                         }

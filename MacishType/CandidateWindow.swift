@@ -43,8 +43,8 @@ struct CandidateWindowConfiguration: Equatable {
     }
     var pageSize: Int = 9 {
         didSet {
-            precondition(pageSize >= 1 && pageSize <= 10,
-                         "pageSize must be between 1 and 10, got: \(pageSize)")
+            precondition(pageSize >= 1 && pageSize <= 11,
+                         "pageSize must be between 1 and 11, got: \(pageSize)")
         }
     }
     var widerExpandedColumns = true
