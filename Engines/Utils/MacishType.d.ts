@@ -175,11 +175,6 @@ export interface EventMutators {
    */
   flushStaged(append?: string): void;
   /**
-   * Mark the key as handled but emit no state changes. Useful for swallowing
-   * keys while composing without affecting marked text or candidates.
-   */
-  noop(): void;
-  /**
    * Enter associated-phrase mode: `heldChar` becomes staged marked text
    * and `candidates` appear as suggested follow-ups. Picking a candidate
    * commits `heldChar` followed by the chosen candidate; typing anything

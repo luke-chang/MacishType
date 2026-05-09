@@ -148,7 +148,7 @@ class JSExternalEngine: JavaScriptEngine {
         let pure = modifiers.intersection(.deviceIndependentFlagsMask)
 
         if !pure.intersection([.command, .control]).isEmpty {
-            return context.isComposing ? .handled([.noop]) : .notHandled
+            return context.isComposing ? .handled() : .notHandled
         }
         // Esc / Backspace clear the displayed status.
         if keyCode == 53 || keyCode == 51 {

@@ -72,7 +72,7 @@ export default class JSExternalEngine {
   handleKey(event) {
     // Base rule 1: Cmd/Ctrl bypass — let modifier shortcuts pass through.
     if (event.modifiers.command || event.modifiers.ctrl) {
-      if (event.isComposing) { event.noop(); return true; }
+      if (event.isComposing) return true;
       return false;
     }
 
@@ -92,7 +92,7 @@ export default class JSExternalEngine {
         && event.characters.length === 1
         && event.characters.toUpperCase() === event.characters
         && event.characters.toLowerCase() !== event.characters) {
-      if (event.isComposing) { event.noop(); return true; }
+      if (event.isComposing) return true;
       event.flushStaged(event.characters);
       return true;
     }
@@ -129,7 +129,7 @@ export default class JSExternalEngine {
         const ch = event.modifiers.shift ? layout[1] : layout[0];
         const fw = toFullwidth(ch);
         if (fw) {
-          if (event.isComposing) { event.noop(); return true; }
+          if (event.isComposing) return true;
           event.flushStaged(fw);
           return true;
         }
@@ -140,7 +140,7 @@ export default class JSExternalEngine {
     const m = event.modifiers;
     if (m.command || m.ctrl || m.option || m.shift) return false;
     if (!event.characters || event.characters.length !== 1) {
-      if (event.isComposing) { event.noop(); return true; }
+      if (event.isComposing) return true;
       return false;
     }
     const char = event.characters;
@@ -174,7 +174,7 @@ export default class JSExternalEngine {
           event.updateCandidates(lookupCandidates(newMarked));
           return true;
         }
-        if (event.isComposing) { event.noop(); return true; }
+        if (event.isComposing) return true;
         return false;
       }
     }

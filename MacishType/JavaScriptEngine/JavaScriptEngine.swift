@@ -518,9 +518,6 @@ class JavaScriptEngine: InputEngine {
             let text = Self.resolved(append)?.toString() ?? ""
             sink.actions.append(.flushStaged(text))
         }
-        let noop: @convention(block) () -> Void = {
-            sink.actions.append(.noop)
-        }
         let enterAssociatedMode: @convention(block) (String, [String]) -> Void = { heldChar, candidates in
             sink.actions.append(.enterAssociatedMode(heldChar, candidates))
         }
@@ -533,7 +530,6 @@ class JavaScriptEngine: InputEngine {
         event.setObject(commitCandidateAtIndex, forKeyedSubscript: "commitCandidateAtIndex" as NSString)
         event.setObject(navigateCandidates, forKeyedSubscript: "navigateCandidates" as NSString)
         event.setObject(flushStaged, forKeyedSubscript: "flushStaged" as NSString)
-        event.setObject(noop, forKeyedSubscript: "noop" as NSString)
         event.setObject(enterAssociatedMode, forKeyedSubscript: "enterAssociatedMode" as NSString)
     }
 

@@ -271,8 +271,6 @@ class InputController: IMKInputController {
                     .updateMarkedText(heldChar, staged: -1),
                     .updateCandidates(candidates, offset: 1, suspendHighlight: true)
                 ], client: client)
-            case .noop:
-                break
             }
         }
     }

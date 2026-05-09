@@ -45,7 +45,7 @@ class ExampleEngine: InputEngine {
 
         guard let text = characters, text.count == 1,
               let char = text.first else {
-            return context.isComposing ? .handled([.noop]) : .notHandled
+            return context.isComposing ? .handled() : .notHandled
         }
 
         switch keyCode {
@@ -75,7 +75,7 @@ class ExampleEngine: InputEngine {
                     .updateCandidates(lookupCandidates(newMarked)),
                 ])
             }
-            return context.isComposing ? .handled([.noop]) : .notHandled
+            return context.isComposing ? .handled() : .notHandled
         }
     }
 

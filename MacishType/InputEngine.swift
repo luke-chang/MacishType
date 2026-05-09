@@ -66,11 +66,10 @@ enum EngineAction {
     // candidates are displayed with offset=1 suspendHighlight=true. Payload
     // carries pre-looked-up candidates so Controller doesn't re-query.
     case enterAssociatedMode(String, [String])
-    case noop
 }
 
 enum EngineHandleResult {
-    case handled([EngineAction])
+    case handled([EngineAction] = [])
     case notHandled
 }
 
@@ -294,7 +293,7 @@ class InputEngine {
 
         // 1. Command/Control
         if !pureModifiers.intersection([.command, .control]).isEmpty {
-            return context.isComposing ? .handled([.noop]) : .notHandled
+            return context.isComposing ? .handled() : .notHandled
         }
 
         // 2. Quick-commit by indexLabels — placed before uppercase letter
@@ -311,7 +310,7 @@ class InputEngine {
            let text = characters, text.count == 1,
            let char = text.first, char.isUppercase, char.isLetter {
             if context.isComposing {
-                return .handled([.noop])
+                return .handled()
             }
             return .handled([.flushStaged(text)])
         }
@@ -340,7 +339,7 @@ class InputEngine {
             let char = pureModifiers.contains(.shift) ? shifted : base
             if let fullwidth = Self.toFullwidth(char) {
                 if context.isComposing {
-                    return .handled([.noop])
+                    return .handled()
                 }
                 return .handled([.flushStaged(String(fullwidth))])
             }
