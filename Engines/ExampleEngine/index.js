@@ -60,7 +60,15 @@ const SHOW_ASSOCIATED_WORDS = true;
 // Bridge contract is duck-typed: engines export a default class with any
 // of `activate / deactivate / handleKey / candidateConfirmed /
 // candidateSelectionChanged`. Methods absent from the class are skipped.
+// See ../Utils/MacishType.d.ts for the full type surface.
+
+/** @typedef {import("../Utils/MacishType").InputEngine} InputEngine */
+/** @typedef {import("../Utils/MacishType").KeyEvent} KeyEvent */
+/** @typedef {import("../Utils/MacishType").ConfirmEvent} ConfirmEvent */
+
+/** @implements {InputEngine} */
 export default class JSExternalEngine {
+  /** @param {KeyEvent} event */
   handleKey(event) {
     // Base rule 1: Cmd/Ctrl bypass — let modifier shortcuts pass through.
     if (event.modifiers.command || event.modifiers.ctrl) {
@@ -172,6 +180,7 @@ export default class JSExternalEngine {
     }
   }
 
+  /** @param {ConfirmEvent} event */
   candidateConfirmed(event) {
     const { candidate } = event;
     if (event.isAssociating) {
