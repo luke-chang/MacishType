@@ -17,14 +17,14 @@ import OSLog
 /// `JSCSPI.h` bridging header) to load engine code as ES modules.
 class JavaScriptEngine: InputEngine {
 
-    class var entryScriptURL: URL? { nil }
+    var entryScriptURL: URL? { nil }
 
     /// File-system root for `import "file://..."` resolution. ES module
     /// imports outside this directory are rejected by the module loader.
     /// Defaults to the entry script's parent directory; subclasses with a
     /// broader root (e.g. user-picked folder where the entry lives in a
     /// subdir) override.
-    class var importRoot: URL? { entryScriptURL?.deletingLastPathComponent() }
+    var importRoot: URL? { entryScriptURL?.deletingLastPathComponent() }
 
     // MARK: JSContext state (set up in load())
 
@@ -53,7 +53,7 @@ class JavaScriptEngine: InputEngine {
     override func load() {
         guard jsContext == nil else { return }
 
-        Logger.javaScriptEngine.info("load() invoked for engine '\(Self.engineID, privacy: .public)'")
+        Logger.javaScriptEngine.info("load() invoked for engine '\(self.engineID, privacy: .public)'")
 
         let vm = JSVirtualMachine()!
         let context = JSContext(virtualMachine: vm)!
@@ -107,8 +107,8 @@ class JavaScriptEngine: InputEngine {
         defer { if !success { teardownContext() } }
 
         guard let entry = Self.loadJSSource(
-            Self.entryScriptURL,
-            label: "entry script for '\(Self.engineID)'"
+            self.entryScriptURL,
+            label: "entry script for '\(self.engineID)'"
         ) else { return }
         let entryURL = entry.url
         let entrySource = entry.source
@@ -130,7 +130,7 @@ class JavaScriptEngine: InputEngine {
             )
         } catch {
             Logger.javaScriptEngine.fault(
-                "failed to build entry JSScript for '\(Self.engineID, privacy: .public)': \(String(describing: error), privacy: .public)"
+                "failed to build entry JSScript for '\(self.engineID, privacy: .public)': \(String(describing: error), privacy: .public)"
             )
             return
         }
@@ -159,7 +159,7 @@ class JavaScriptEngine: InputEngine {
         // engineClass nil; must return so defer rolls back.
         guard engineClass != nil else {
             Logger.javaScriptEngine.fault(
-                "engine class not captured after module evaluation for '\(Self.engineID, privacy: .public)'"
+                "engine class not captured after module evaluation for '\(self.engineID, privacy: .public)'"
             )
             return
         }
@@ -306,7 +306,7 @@ class JavaScriptEngine: InputEngine {
         guard let engineClass else { return nil }
         guard let instance = engineClass.construct(withArguments: []) else {
             Logger.javaScriptEngine.fault(
-                "engineClass.construct returned nil for '\(Self.engineID, privacy: .public)'"
+                "engineClass.construct returned nil for '\(self.engineID, privacy: .public)'"
             )
             return nil
         }
@@ -578,7 +578,7 @@ private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
 
     private func normalizedRootPath() -> String? {
         if let cached = cachedRootPath { return cached }
-        guard let owner, let root = type(of: owner).importRoot else { return nil }
+        guard let owner, let root = owner.importRoot else { return nil }
         let resolved = root.resolvingSymlinksInPath().standardizedFileURL.path
         cachedRootPath = resolved
         return resolved
@@ -635,7 +635,7 @@ private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
             // folder before the read syscall runs.
             guard let rootPath = normalizedRootPath() else {
                 Logger.javaScriptEngine.error(
-                    "file import disabled: no importRoot for '\(type(of: owner).engineID, privacy: .public)'"
+                    "file import disabled: no importRoot for '\(owner.engineID, privacy: .public)'"
                 )
                 reject.call(withArguments: ["file imports disabled"])
                 return

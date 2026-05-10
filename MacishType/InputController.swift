@@ -36,7 +36,7 @@ class InputController: IMKInputController {
     override func menu() -> NSMenu! { inputMethodMenu }
 
     @MainActor override func showPreferences(_ sender: Any!) {
-        let initialID = engine.map { type(of: $0).engineID }
+        let initialID = engine?.engineID
         WindowManager.shared.openSettings(initialEngineID: initialID)
     }
 

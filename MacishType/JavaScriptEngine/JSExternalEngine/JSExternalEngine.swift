@@ -9,27 +9,24 @@ class JSExternalEngine: JavaScriptEngine {
 
     enum LoadStatus { case notConfigured, failed, loaded, stale }
 
-    override class var engineID: String { "JSExternal" }
+    override var engineID: String { "JSExternal" }
 
     let folderBookmark = SecurityScopedBookmark(identifier: "JSExternal_engineFolder")
     private(set) var loadStatus: LoadStatus = .notConfigured
 
     private static let manifestFileName = "manifest.json"
 
-    // Static is OK because JSExternalEngine is process-wide singleton
-    // (`static let shared`); if we ever support multiple JS engines with
-    // different entries, these need to be per-instance + entryScriptURL /
-    // importRoot promoted from class var to instance.
+    // Type-stored pending manifest refactor; will move to per-instance state.
     private static var resolvedEntry: URL?
     private static var resolvedFolder: URL?
 
     private var folderObserver: AnyCancellable?
     private var watchStream: FSEventStreamRef?
 
-    override class var entryScriptURL: URL? { resolvedEntry }
+    override var entryScriptURL: URL? { Self.resolvedEntry }
     // Picked folder, not entry parent — manifest may put entry in a subdir
     // (e.g. "src/index.js") but the user granted scope on the whole folder.
-    override class var importRoot: URL? { resolvedFolder }
+    override var importRoot: URL? { Self.resolvedFolder }
 
     override init() {
         super.init()
@@ -170,7 +167,7 @@ class JSExternalEngine: JavaScriptEngine {
                     panel.canChooseDirectories = true
                     panel.canChooseFiles = false
                 }
-                InputEngine.CandidateWindowSection(engineType: Self.self)
+                InputEngine.CandidateWindowSection(engine: self)
             }
         )
     }

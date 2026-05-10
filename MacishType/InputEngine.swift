@@ -149,9 +149,13 @@ class InputEngine {
     static let fontSizeSubKey = "candidateWindowFontSize"
     static let showAssociatedWordsSubKey = "showAssociatedWords"
 
-    /// Subclass override required; `InputEngine` is abstract.
-    class var engineID: String { fatalError("Subclasses must override") }
+    /// Per-instance: same class may have multiple instances with distinct
+    /// IDs (e.g. multi-slot subclasses). Subclass override required;
+    /// `InputEngine` is abstract.
+    var engineID: String { fatalError("Subclasses must override") }
 
+    // Defaults below are per-class — same value across all instances of a
+    // given subclass, hence `class var`.
     class var defaultDirection: CandidateWindow.LayoutDirection { .horizontal }
     class var defaultFontSize: Int { 16 }
     class var defaultShowAssociatedWords: Bool { false }
@@ -235,14 +239,14 @@ class InputEngine {
     }
 
     private func defaultsValue<T>(_ subKey: String, fallback: T) -> T {
-        let key = Self.composedKey(engineID: Self.engineID, subKey: subKey)
+        let key = Self.composedKey(engineID: self.engineID, subKey: subKey)
         return (UserDefaults.standard.object(forKey: key) as? T) ?? fallback
     }
 
     private func defaultsValue<T: RawRepresentable>(_ subKey: String, fallback: T) -> T
         where T.RawValue == String
     {
-        let key = Self.composedKey(engineID: Self.engineID, subKey: subKey)
+        let key = Self.composedKey(engineID: self.engineID, subKey: subKey)
         return UserDefaults.standard.string(forKey: key).flatMap(T.init(rawValue:)) ?? fallback
     }
 
@@ -377,7 +381,7 @@ class InputEngine {
     var settingsView: AnyView {
         AnyView(
             InputEngine.settingsForm {
-                InputEngine.CandidateWindowSection(engineType: Self.self)
+                InputEngine.CandidateWindowSection(engine: self)
             }
         )
     }
@@ -468,9 +472,9 @@ extension InputEngine {
             .padding(.top, -20)
     }
 
-    /// Engines pass `engineType: Self.self` so the `@AppStorage` fallback
-    /// dispatches through `defaultDirection` / `defaultFontSize` overrides,
-    /// staying in lockstep with `reloadConfig`.
+    /// Engines pass `engine: self` so the `@AppStorage` fallback dispatches
+    /// through `defaultDirection` / `defaultFontSize` overrides (via
+    /// metatype), staying in lockstep with `reloadConfig`.
     struct CandidateWindowSection: View {
         let title: LocalizedStringKey
         let includeDirection: Bool
@@ -480,7 +484,7 @@ extension InputEngine {
         @AppStorage private var fontSize: Int
 
         init(
-            engineType: InputEngine.Type,
+            engine: InputEngine,
             title: LocalizedStringKey = "Candidate window",
             includeDirection: Bool = true,
             includeFontSize: Bool = true
@@ -489,11 +493,11 @@ extension InputEngine {
             self.includeDirection = includeDirection
             self.includeFontSize = includeFontSize
             self._direction = AppStorage(
-                wrappedValue: engineType.defaultDirection,
-                InputEngine.composedKey(engineID: engineType.engineID, subKey: InputEngine.directionSubKey))
+                wrappedValue: type(of: engine).defaultDirection,
+                InputEngine.composedKey(engineID: engine.engineID, subKey: InputEngine.directionSubKey))
             self._fontSize = AppStorage(
-                wrappedValue: engineType.defaultFontSize,
-                InputEngine.composedKey(engineID: engineType.engineID, subKey: InputEngine.fontSizeSubKey))
+                wrappedValue: type(of: engine).defaultFontSize,
+                InputEngine.composedKey(engineID: engine.engineID, subKey: InputEngine.fontSizeSubKey))
         }
 
         var body: some View {
@@ -520,10 +524,10 @@ extension InputEngine {
     struct ShowAssociatedWordsToggle: View {
         @AppStorage private var value: Bool
 
-        init(engineType: InputEngine.Type) {
+        init(engine: InputEngine) {
             self._value = AppStorage(
-                wrappedValue: engineType.defaultShowAssociatedWords,
-                InputEngine.composedKey(engineID: engineType.engineID, subKey: InputEngine.showAssociatedWordsSubKey))
+                wrappedValue: type(of: engine).defaultShowAssociatedWords,
+                InputEngine.composedKey(engineID: engine.engineID, subKey: InputEngine.showAssociatedWordsSubKey))
         }
 
         var body: some View {

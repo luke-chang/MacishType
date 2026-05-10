@@ -6,7 +6,7 @@ private let validCompositionCharacters = Set("abcdefghijklmnopqrstuvwxyz")
 class ExampleEngine: InputEngine {
     static let shared = ExampleEngine()
 
-    override class var engineID: String { "Example" }
+    override var engineID: String { "Example" }
 
     // Default to on so demo users see the associated-phrase feature
     // immediately after enabling Example, without having to open Settings.
@@ -15,9 +15,9 @@ class ExampleEngine: InputEngine {
     override var settingsView: AnyView {
         AnyView(
             InputEngine.settingsForm {
-                InputEngine.CandidateWindowSection(engineType: Self.self)
+                InputEngine.CandidateWindowSection(engine: self)
                 Section("Typing") {
-                    InputEngine.ShowAssociatedWordsToggle(engineType: Self.self)
+                    InputEngine.ShowAssociatedWordsToggle(engine: self)
                 }
             }
         )
