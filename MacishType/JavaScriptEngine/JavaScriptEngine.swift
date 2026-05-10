@@ -5,10 +5,15 @@ import OSLog
 /// Abstract base class for `InputEngine`s implemented in JavaScript.
 ///
 /// Subclasses must override `engineID` (system-level identity) and
-/// `entryScriptURL` (URL of the JS entry module — bundle resource or
-/// external file). Each per-text-field `InputEngineContext` gets its own
-/// JS class instance constructed lazily from the entry module's default
-/// export.
+/// `engineFolderURL` (URL of the engine's folder — bundle resource or
+/// external location). The folder must contain a `manifest.json` at its
+/// root with an `entry` field naming the JS entry module relative to the
+/// folder. Each per-text-field `InputEngineContext` gets its own JS class
+/// instance constructed lazily from the entry module's default export.
+///
+/// The default `importRoot` is the entire engine folder; subclasses
+/// override `importRoot` only to narrow the import scope (e.g. limit to
+/// `src/`).
 ///
 /// Do not instantiate `JavaScriptEngine` directly — it has no `engineID`
 /// of its own and will fatalError on first config read.
@@ -17,14 +22,45 @@ import OSLog
 /// `JSCSPI.h` bridging header) to load engine code as ES modules.
 class JavaScriptEngine: InputEngine {
 
-    var entryScriptURL: URL? { nil }
+    var engineFolderURL: URL? { nil }
 
-    /// File-system root for `import "file://..."` resolution. ES module
-    /// imports outside this directory are rejected by the module loader.
-    /// Defaults to the entry script's parent directory; subclasses with a
-    /// broader root (e.g. user-picked folder where the entry lives in a
-    /// subdir) override.
-    var importRoot: URL? { entryScriptURL?.deletingLastPathComponent() }
+    /// File-system root for `import "file://..."`; module imports outside
+    /// it are rejected. Defaults to the whole engine folder so subdir
+    /// entries (e.g. `src/index.js`) can import siblings; subclasses
+    /// override only to narrow.
+    var importRoot: URL? { engineFolderURL }
+
+    nonisolated private static let manifestFileName = "manifest.json"
+
+    /// nil on missing / malformed manifest (already logged).
+    private static func resolveEntryFromManifest(in folder: URL) -> URL? {
+        let manifestURL = folder.appending(path: manifestFileName)
+        guard let data = try? Data(contentsOf: manifestURL) else {
+            Logger.javaScriptEngine.error(
+                "manifest.json missing at \(manifestURL.path, privacy: .public)"
+            )
+            return nil
+        }
+        #if DEBUG
+        Logger.javaScriptEngine.debug(
+            "loaded manifest: \(manifestURL.path, privacy: .public)"
+        )
+        #endif
+        struct Manifest: Decodable { let entry: String }
+        guard let manifest = try? JSONDecoder().decode(Manifest.self, from: data) else {
+            Logger.javaScriptEngine.error(
+                "manifest.json malformed at \(manifestURL.path, privacy: .public)"
+            )
+            return nil
+        }
+        return folder.appending(path: manifest.entry)
+    }
+
+    /// Pure file-existence check for picker-flow validators. Localized
+    /// error text lives in the picker-owning subclass.
+    nonisolated static func hasValidManifest(in folder: URL) -> Bool {
+        FileManager.default.fileExists(atPath: folder.appending(path: manifestFileName).path)
+    }
 
     // MARK: JSContext state (set up in load())
 
@@ -106,11 +142,18 @@ class JavaScriptEngine: InputEngine {
         var success = false
         defer { if !success { teardownContext() } }
 
+        guard let folder = self.engineFolderURL else {
+            Logger.javaScriptEngine.fault(
+                "no engineFolderURL for '\(self.engineID, privacy: .public)'"
+            )
+            return
+        }
+        guard let entryURL = Self.resolveEntryFromManifest(in: folder) else {
+            return
+        }
         guard let entry = Self.loadJSSource(
-            self.entryScriptURL,
-            label: "entry script for '\(self.engineID)'"
+            entryURL, label: "entry script for '\(self.engineID)'"
         ) else { return }
-        let entryURL = entry.url
         let entrySource = entry.source
 
         // Register entry source so module loader can re-resolve its sourceURL.

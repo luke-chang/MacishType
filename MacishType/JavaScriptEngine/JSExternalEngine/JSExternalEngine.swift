@@ -14,19 +14,10 @@ class JSExternalEngine: JavaScriptEngine {
     let folderBookmark = SecurityScopedBookmark(identifier: "JSExternal_engineFolder")
     private(set) var loadStatus: LoadStatus = .notConfigured
 
-    private static let manifestFileName = "manifest.json"
-
-    // Type-stored pending manifest refactor; will move to per-instance state.
-    private static var resolvedEntry: URL?
-    private static var resolvedFolder: URL?
-
     private var folderObserver: AnyCancellable?
     private var watchStream: FSEventStreamRef?
 
-    override var entryScriptURL: URL? { Self.resolvedEntry }
-    // Picked folder, not entry parent — manifest may put entry in a subdir
-    // (e.g. "src/index.js") but the user granted scope on the whole folder.
-    override var importRoot: URL? { Self.resolvedFolder }
+    override var engineFolderURL: URL? { folderBookmark.url }
 
     override init() {
         super.init()
@@ -64,13 +55,6 @@ class JSExternalEngine: JavaScriptEngine {
             loadStatus = .notConfigured
             return
         }
-        guard let entry = Self.resolveEntryFromManifest(folder: folder) else {
-            folderBookmark.release()
-            loadStatus = .failed
-            return
-        }
-        Self.resolvedEntry = entry
-        Self.resolvedFolder = folder
         super.load()
         if isModuleLoaded {
             loadStatus = .loaded
@@ -85,40 +69,14 @@ class JSExternalEngine: JavaScriptEngine {
         stopWatching()
         super.unload()
         folderBookmark.release()
-        Self.resolvedEntry = nil
-        Self.resolvedFolder = nil
         loadStatus = .notConfigured
-    }
-
-    private static func resolveEntryFromManifest(folder: URL) -> URL? {
-        let manifestURL = folder.appending(path: manifestFileName)
-        guard let data = try? Data(contentsOf: manifestURL) else {
-            Logger.javaScriptEngine.error(
-                "manifest.json missing in \(folder.path, privacy: .public)"
-            )
-            return nil
-        }
-        #if DEBUG
-        Logger.javaScriptEngine.debug(
-            "loaded manifest: \(manifestURL.path, privacy: .public)"
-        )
-        #endif
-        struct Manifest: Decodable { let entry: String }
-        guard let manifest = try? JSONDecoder().decode(Manifest.self, from: data) else {
-            Logger.javaScriptEngine.error(
-                "manifest.json malformed in \(folder.path, privacy: .public)"
-            )
-            return nil
-        }
-        return folder.appending(path: manifest.entry)
     }
 
     /// Manifest content errors (malformed JSON, invalid entry) are
     /// intentionally NOT checked here — they surface as `.failed` after
     /// load, where the status string explains the failure in context.
-    private static func manifestValidationError(_ folder: URL) -> (title: String, message: String)? {
-        let manifestURL = folder.appending(path: manifestFileName)
-        if FileManager.default.fileExists(atPath: manifestURL.path) { return nil }
+    nonisolated private static func manifestValidationError(_ folder: URL) -> (title: String, message: String)? {
+        if Self.hasValidManifest(in: folder) { return nil }
         return (
             title: String(localized: "Invalid engine folder"),
             message: String(localized: "Selected folder must contain manifest.json")
@@ -193,12 +151,16 @@ class JSExternalEngine: JavaScriptEngine {
         )
         // UseCFTypes: eventPaths arrives as CFArray<CFString> instead of a
         // C-string vector — far easier to bridge into Swift.
+        // Stream is queued to .main below, so the callback runs on main —
+        // `assumeIsolated` is safe.
         let callback: FSEventStreamCallback = { _, info, count, eventPaths, _, _ in
             guard let info, count > 0 else { return }
             let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] ?? []
-            guard let firstRelevant = paths.first(where: JSExternalEngine.isRelevantPath) else { return }
             let engine = Unmanaged<JSExternalEngine>.fromOpaque(info).takeUnretainedValue()
-            engine.markStale(reason: "file changed: \(firstRelevant)")
+            MainActor.assumeIsolated {
+                guard let firstRelevant = paths.first(where: JSExternalEngine.isRelevantPath) else { return }
+                engine.markStale(reason: "file changed: \(firstRelevant)")
+            }
         }
         // TODO(when fs API ships): exclude self-write subpaths so the engine's
         // own user-dict writes don't trigger markStale → reload → wipe
@@ -236,7 +198,7 @@ class JSExternalEngine: JavaScriptEngine {
 
     /// Filters FSEvents noise: macOS metadata, dotfiles, editor backups.
     /// Anything else is treated as engine-relevant and triggers markStale.
-    private static func isRelevantPath(_ path: String) -> Bool {
+    nonisolated private static func isRelevantPath(_ path: String) -> Bool {
         let name = (path as NSString).lastPathComponent
         if name == ".DS_Store" { return false }
         if name.hasPrefix(".") { return false }   // hidden / editor temp (.swp, .tmp)
