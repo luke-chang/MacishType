@@ -30,21 +30,32 @@ enum NavigationDirection: Hashable {
 }
 
 struct CandidateWindowConfiguration: Equatable {
+    static let validPageSizeRange: ClosedRange<Int> = 1...11
+
+    static func isValidIndexLabels(_ s: String) -> Bool {
+        s.allSatisfy(\.isValidIndexLabel)
+    }
+
+    static func isValidPageSize(_ v: Int) -> Bool {
+        validPageSizeRange.contains(v)
+    }
+
     // Duplicate chars are allowed; the lookup in `candidateIndex(for:)`
     // returns the first occurrence (matches `firstIndex`/`enumerated().first`
     // semantics), so later duplicates are unreachable but not an error.
     var indexLabels: String = "1234567890" {
         didSet {
             precondition(
-                indexLabels.allSatisfy(\.isValidIndexLabel),
+                Self.isValidIndexLabels(indexLabels),
                 "indexLabels must be ASCII printable (0x20-0x7E), got: \(indexLabels)"
             )
         }
     }
     var pageSize: Int = 9 {
         didSet {
-            precondition(pageSize >= 1 && pageSize <= 11,
-                         "pageSize must be between 1 and 11, got: \(pageSize)")
+            precondition(
+                Self.isValidPageSize(pageSize),
+                "pageSize must be in \(Self.validPageSizeRange), got: \(pageSize)")
         }
     }
     var widerExpandedColumns = true
@@ -97,7 +108,7 @@ class CandidateWindow {
 
     static let shared = CandidateWindow()
 
-    enum LayoutDirection: String {
+    enum LayoutDirection: String, Decodable {
         case horizontal
         case vertical
     }

@@ -23,7 +23,31 @@ class JSExternalEngine: JavaScriptEngine {
         super.init()
         folderObserver = folderBookmark.$url
             .dropFirst()
-            .sink { [weak self] _ in self?.markStale(reason: "folder picker changed") }
+            // @Published emits in willSet, so a plain sink runs while
+            // `bookmark.url` storage is still the OLD value. Defer to next
+            // runloop tick so reloadManifest sees the new value via
+            // engineFolderURL.
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.clearStoredCandidateWindowConfig()
+                if self.isLoaded {
+                    // load() does its own reloadManifest — don't duplicate.
+                    self.unload()
+                    self.load()
+                } else {
+                    // Inactive: just refresh preview for settings UI.
+                    self.reloadManifest()
+                }
+            }
+    }
+
+    private func clearStoredCandidateWindowConfig() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: InputEngine.composedKey(
+            engineID: engineID, subKey: InputEngine.directionSubKey))
+        defaults.removeObject(forKey: InputEngine.composedKey(
+            engineID: engineID, subKey: InputEngine.fontSizeSubKey))
     }
 
     /// User picked a different folder, or a watched file changed. Don't
@@ -63,6 +87,17 @@ class JSExternalEngine: JavaScriptEngine {
             loadStatus = .failed
             folderBookmark.release()
         }
+    }
+
+    /// Scope-per-call: pair acquire/release so settings-only invocations
+    /// don't leak scope when user never enables the IME. acquire() failure
+    /// (stale / revoked bookmark) short-circuits to nil so base
+    /// reloadManifest sets manifest = nil without a misleading
+    /// "manifest.json missing" log.
+    override func readManifestFromDisk() -> Manifest? {
+        guard folderBookmark.acquire() != nil else { return nil }
+        defer { folderBookmark.release() }
+        return super.readManifestFromDisk()
     }
 
     override func unload() {
@@ -113,21 +148,63 @@ class JSExternalEngine: JavaScriptEngine {
     }
 
     override var settingsView: AnyView {
-        AnyView(
+        AnyView(JSExternalSettingsView(engine: self))
+    }
+
+    private struct JSExternalSettingsView: View {
+        let engine: JSExternalEngine
+        @State private var manifestSnapshot: Manifest?
+
+        init(engine: JSExternalEngine) {
+            self.engine = engine
+            // Pre-fill backing store so sidebar-cycle (SettingsDetailContent
+            // uses `.id(selection)` → tear down + new instance) doesn't
+            // render a transient picker-only frame before .onAppear syncs.
+            _manifestSnapshot = State(initialValue: engine.manifest)
+        }
+
+        var body: some View {
             InputEngine.settingsForm {
                 BookmarkPickerSection(
                     title: "Engine folder",
                     placeholder: "Not selected",
                     buttonTitle: "Choose Folder…",
-                    bookmark: folderBookmark,
-                    validatePick: Self.manifestValidationError
+                    bookmark: engine.folderBookmark,
+                    validatePick: JSExternalEngine.manifestValidationError
                 ) { panel in
                     panel.canChooseDirectories = true
                     panel.canChooseFiles = false
                 }
-                InputEngine.CandidateWindowSection(engine: self)
+                if let overrides = manifestSnapshot?.candidateWindow {
+                    let showDirection = overrides.layoutDirection == nil
+                    let showFontSize = overrides.fontSize == nil
+                    if showDirection || showFontSize {
+                        InputEngine.CandidateWindowSection(
+                            engine: engine,
+                            includeDirection: showDirection,
+                            includeFontSize: showFontSize
+                        )
+                    }
+                } else if manifestSnapshot != nil {
+                    InputEngine.CandidateWindowSection(engine: engine)
+                }
             }
-        )
+            .onAppear {
+                // Inactive engine: re-read disk on every tab entry (FSEvents
+                // only watches once .loaded, so no markStale path applies
+                // here). Stale engine: force swap so it catches up.
+                if !engine.isLoaded {
+                    engine.reloadManifest()
+                } else if engine.loadStatus == .stale {
+                    engine.unload()
+                    engine.load()
+                }
+                manifestSnapshot = engine.manifest
+            }
+            .onReceive(engine.manifestDidUpdate) {
+                manifestSnapshot = engine.manifest
+            }
+        }
     }
 
     private var statusMessage: String {

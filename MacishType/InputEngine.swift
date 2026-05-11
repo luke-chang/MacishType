@@ -501,17 +501,20 @@ extension InputEngine {
         }
 
         var body: some View {
-            Section(title) {
-                if includeDirection {
-                    Picker("Orientation:", selection: $direction) {
-                        Text("Horizontal").tag(CandidateWindow.LayoutDirection.horizontal)
-                        Text("Vertical").tag(CandidateWindow.LayoutDirection.vertical)
+            // Avoid an empty Section header when caller didn't gate.
+            if includeDirection || includeFontSize {
+                Section(title) {
+                    if includeDirection {
+                        Picker("Orientation:", selection: $direction) {
+                            Text("Horizontal").tag(CandidateWindow.LayoutDirection.horizontal)
+                            Text("Vertical").tag(CandidateWindow.LayoutDirection.vertical)
+                        }
                     }
-                }
-                if includeFontSize {
-                    Picker("Font size:", selection: $fontSize) {
-                        ForEach([14, 16, 18, 24, 36], id: \.self) {
-                            Text(verbatim: "\($0)").tag($0)
+                    if includeFontSize {
+                        Picker("Font size:", selection: $fontSize) {
+                            ForEach([14, 16, 18, 24, 36], id: \.self) {
+                                Text(verbatim: "\($0)").tag($0)
+                            }
                         }
                     }
                 }

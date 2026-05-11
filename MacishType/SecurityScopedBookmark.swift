@@ -17,6 +17,7 @@ final class SecurityScopedBookmark: ObservableObject {
 
     @Published private(set) var url: URL?
     private var activeScopedURL: URL?
+    private var refCount: Int = 0
 
     init(identifier: String) {
         self.identifier = identifier
@@ -61,6 +62,7 @@ final class SecurityScopedBookmark: ObservableObject {
         // Skip republish if user re-picked the same folder — @Published fires
         // on every assign, which would spuriously trigger downstream observers.
         if url != picked {
+            forceResetScope()  // drop old folder's scope before url change
             url = picked
         }
         return true
@@ -85,14 +87,17 @@ final class SecurityScopedBookmark: ObservableObject {
     @MainActor
     func clear() {
         UserDefaults.standard.removeObject(forKey: bookmarkKey)
-        release()
+        forceResetScope()
         url = nil
     }
 
-    /// Sets the active security scope to `url`. Idempotent when called with
-    /// the same target multiple times (does NOT double-increment the system
-    /// ref count). When `url` differs from `activeScopedURL`, releases the
-    /// old scope first. Returns nil when no bookmark stored OR when
+    /// Acquires the security scope for `url` and increments an internal
+    /// ref count. Only the first acquire starts the system scope; subsequent
+    /// calls on the same target are bookkeeping-only. Caller must pair with
+    /// `release()`. URL change (via pick / clear) forcibly resets count;
+    /// pending releases from old-URL owners become silent no-ops.
+    ///
+    /// Returns nil when no bookmark stored OR when
     /// `startAccessingSecurityScopedResource()` returns false (dead bookmark).
     ///
     /// Caller is responsible for serializing access. In practice all
@@ -100,20 +105,32 @@ final class SecurityScopedBookmark: ObservableObject {
     /// main thread, FSEvents callback is set to the main DispatchQueue.
     func acquire() -> URL? {
         guard let target = url else { return nil }
-        if activeScopedURL != target {
-            activeScopedURL?.stopAccessingSecurityScopedResource()
+        if activeScopedURL == nil {
             guard target.startAccessingSecurityScopedResource() else {
-                activeScopedURL = nil
                 return nil
             }
             activeScopedURL = target
         }
+        refCount += 1
         return activeScopedURL
     }
 
     func release() {
+        // Silent no-op when count is already 0 — expected after
+        // `forceResetScope()` invalidated outstanding owners (e.g. user
+        // picked a different folder while old engine still held a count).
+        guard refCount > 0 else { return }
+        refCount -= 1
+        if refCount == 0 {
+            activeScopedURL?.stopAccessingSecurityScopedResource()
+            activeScopedURL = nil
+        }
+    }
+
+    private func forceResetScope() {
         activeScopedURL?.stopAccessingSecurityScopedResource()
         activeScopedURL = nil
+        refCount = 0
     }
 
     private func resolveBookmark() -> URL? {

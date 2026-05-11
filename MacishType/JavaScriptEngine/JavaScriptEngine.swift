@@ -1,4 +1,5 @@
 import Cocoa
+import Combine
 import JavaScriptCore
 import OSLog
 
@@ -32,8 +33,116 @@ class JavaScriptEngine: InputEngine {
 
     nonisolated private static let manifestFileName = "manifest.json"
 
+    // MARK: Manifest
+
+    struct Manifest: Decodable {
+        let entry: String
+        let candidateWindow: CandidateWindowOverrides?
+
+        private enum CodingKeys: String, CodingKey { case entry, candidateWindow }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            // entry is required: missing / type-mismatch fails the manifest.
+            entry = try c.decode(String.self, forKey: .entry)
+            // candidateWindow wrapper type-mismatch (e.g. user wrote a
+            // string) drops the sub-tree but lets entry still load.
+            do {
+                candidateWindow = try c.decodeIfPresent(
+                    CandidateWindowOverrides.self, forKey: .candidateWindow)
+            } catch {
+                Logger.javaScriptEngine.error(
+                    "manifest candidateWindow ignored: \(String(describing: error), privacy: .public)"
+                )
+                candidateWindow = nil
+            }
+        }
+
+        /// Per-field defensive decode: type mismatches AND value-level
+        /// violations (range, charset) are dropped + logged ONCE at decode
+        /// time. Keeps the hot-path `candidateWindowConfiguration` getter
+        /// free of validation work and per-keystroke log spam.
+        struct CandidateWindowOverrides: Decodable {
+            let layoutDirection: CandidateWindow.LayoutDirection?
+            let fontSize: Int?
+            let indexLabels: String?
+            let pageSize: Int?
+            let widerExpandedColumns: Bool?
+            let moveOnExpand: Bool?
+            let horizontalMaxVisibleRows: Int?
+            let verticalMinVisibleRows: Int?
+            let expandable: Bool?
+
+            private enum CodingKeys: String, CodingKey {
+                case layoutDirection, fontSize, indexLabels, pageSize
+                case widerExpandedColumns, moveOnExpand
+                case horizontalMaxVisibleRows, verticalMinVisibleRows, expandable
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                layoutDirection = Self.tolerant(c, .layoutDirection, as: CandidateWindow.LayoutDirection.self)
+                fontSize = Self.tolerant(c, .fontSize, as: Int.self)
+                widerExpandedColumns = Self.tolerant(c, .widerExpandedColumns, as: Bool.self)
+                moveOnExpand = Self.tolerant(c, .moveOnExpand, as: Bool.self)
+                horizontalMaxVisibleRows = Self.tolerant(c, .horizontalMaxVisibleRows, as: Int.self)
+                verticalMinVisibleRows = Self.tolerant(c, .verticalMinVisibleRows, as: Int.self)
+                expandable = Self.tolerant(c, .expandable, as: Bool.self)
+
+                // CandidateWindowConfiguration has didSet preconditions on
+                // these two (always-on, not stripped in release). Validate
+                // here so out-of-range manifest values don't crash later.
+                indexLabels = Self.validateIndexLabels(
+                    Self.tolerant(c, .indexLabels, as: String.self))
+                pageSize = Self.validatePageSize(
+                    Self.tolerant(c, .pageSize, as: Int.self))
+            }
+
+            private static func tolerant<T: Decodable>(
+                _ container: KeyedDecodingContainer<CodingKeys>,
+                _ key: CodingKeys, as type: T.Type
+            ) -> T? {
+                do {
+                    return try container.decodeIfPresent(T.self, forKey: key)
+                } catch {
+                    Logger.javaScriptEngine.error(
+                        "manifest candidateWindow.\(key.stringValue, privacy: .public) ignored: \(String(describing: error), privacy: .public)"
+                    )
+                    return nil
+                }
+            }
+
+            private static func validateIndexLabels(_ raw: String?) -> String? {
+                guard let v = raw else { return nil }
+                if CandidateWindowConfiguration.isValidIndexLabels(v) { return v }
+                Logger.javaScriptEngine.error(
+                    "manifest indexLabels rejected (non-ASCII-printable): \(v, privacy: .public)"
+                )
+                return nil
+            }
+
+            private static func validatePageSize(_ raw: Int?) -> Int? {
+                guard let v = raw else { return nil }
+                if CandidateWindowConfiguration.isValidPageSize(v) { return v }
+                Logger.javaScriptEngine.error(
+                    "manifest pageSize out of range \(CandidateWindowConfiguration.validPageSizeRange, privacy: .public): \(v, privacy: .public)"
+                )
+                return nil
+            }
+        }
+    }
+
+    /// Last manifest parsed by `reloadManifest()`. Survives load failures
+    /// (teardown leaves it in place) so settings UI can distinguish
+    /// "manifest parsed OK, entry broken" from "manifest itself broken".
+    private(set) var manifest: Manifest?
+
+    /// Emits after `manifest` is reassigned. Narrow-scope reactive bridge
+    /// for settings UI without making the whole engine `@Observable`.
+    let manifestDidUpdate = PassthroughSubject<Void, Never>()
+
     /// nil on missing / malformed manifest (already logged).
-    private static func resolveEntryFromManifest(in folder: URL) -> URL? {
+    nonisolated private static func parseManifest(in folder: URL) -> Manifest? {
         let manifestURL = folder.appending(path: manifestFileName)
         guard let data = try? Data(contentsOf: manifestURL) else {
             Logger.javaScriptEngine.error(
@@ -46,14 +155,26 @@ class JavaScriptEngine: InputEngine {
             "loaded manifest: \(manifestURL.path, privacy: .public)"
         )
         #endif
-        struct Manifest: Decodable { let entry: String }
         guard let manifest = try? JSONDecoder().decode(Manifest.self, from: data) else {
             Logger.javaScriptEngine.error(
                 "manifest.json malformed at \(manifestURL.path, privacy: .public)"
             )
             return nil
         }
-        return folder.appending(path: manifest.entry)
+        return manifest
+    }
+
+    /// Subclass override point for pre-read setup (e.g. sandbox scope
+    /// acquire). nil return → `reloadManifest` sets `self.manifest = nil`.
+    func readManifestFromDisk() -> Manifest? {
+        guard let folder = engineFolderURL else { return nil }
+        return Self.parseManifest(in: folder)
+    }
+
+    /// Pure data IO; does not touch JSContext.
+    final func reloadManifest() {
+        manifest = readManifestFromDisk()
+        manifestDidUpdate.send()
     }
 
     /// Pure file-existence check for picker-flow validators. Localized
@@ -148,9 +269,11 @@ class JavaScriptEngine: InputEngine {
             )
             return
         }
-        guard let entryURL = Self.resolveEntryFromManifest(in: folder) else {
-            return
-        }
+        // Unconditional re-read so manifest and entry script come from
+        // the same disk snapshot (avoid stale-cache vs new-disk mismatch).
+        reloadManifest()
+        guard let manifest = self.manifest else { return }
+        let entryURL = folder.appending(path: manifest.entry)
         guard let entry = Self.loadJSSource(
             entryURL, label: "entry script for '\(self.engineID)'"
         ) else { return }
@@ -215,6 +338,14 @@ class JavaScriptEngine: InputEngine {
     /// faulted state.
     var isModuleLoaded: Bool { engineClass != nil }
 
+    override var candidateWindowConfiguration: CandidateWindowConfiguration {
+        var config = super.candidateWindowConfiguration
+        if let overrides = manifest?.candidateWindow {
+            config.apply(overrides)
+        }
+        return config
+    }
+
     override func unload() {
         teardownContext()
         super.unload()
@@ -227,6 +358,7 @@ class JavaScriptEngine: InputEngine {
         jsInstances.removeAllObjects()
         moduleSourceByIdentifier.removeAll()
         moduleLoader.invalidateRootCache()
+        // self.manifest intentionally NOT cleared — see its doc comment.
     }
 
     override func activate(context: InputEngineContext, clientIdentifier: String?) {
@@ -718,6 +850,26 @@ private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
             "module loader: unknown module \(id, privacy: .public)"
         )
         reject.call(withArguments: ["unknown module: \(id)"])
+    }
+}
+
+// MARK: - Manifest overrides apply
+
+extension CandidateWindowConfiguration {
+    /// Apply non-nil fields from `overrides` onto self. All fields were
+    /// already type- and value-validated at decode time (see
+    /// `Manifest.CandidateWindowOverrides.init`); this is pure assignment
+    /// on the hot path (called per `.updateCandidates`).
+    mutating func apply(_ overrides: JavaScriptEngine.Manifest.CandidateWindowOverrides) {
+        if let v = overrides.layoutDirection { layoutDirection = v }
+        if let v = overrides.fontSize { fontSize = CGFloat(v) }
+        if let v = overrides.indexLabels { indexLabels = v }
+        if let v = overrides.pageSize { pageSize = v }
+        if let v = overrides.widerExpandedColumns { widerExpandedColumns = v }
+        if let v = overrides.moveOnExpand { moveOnExpand = v }
+        if let v = overrides.horizontalMaxVisibleRows { horizontalMaxVisibleRows = v }
+        if let v = overrides.verticalMinVisibleRows { verticalMinVisibleRows = v }
+        if let v = overrides.expandable { expandable = v }
     }
 }
 
