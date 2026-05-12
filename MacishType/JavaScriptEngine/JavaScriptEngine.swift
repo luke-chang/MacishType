@@ -21,7 +21,7 @@ import OSLog
 ///
 /// Uses WebKit's private JavaScriptCore module API (declared in
 /// `JSCSPI.h` bridging header) to load engine code as ES modules.
-class JavaScriptEngine: InputEngine {
+class JavaScriptEngine: InputEngine, ObservableObject {
 
     var engineFolderURL: URL? { nil }
 
@@ -33,113 +33,25 @@ class JavaScriptEngine: InputEngine {
 
     nonisolated private static let manifestFileName = "manifest.json"
 
-    // MARK: Manifest
-
-    struct Manifest: Decodable {
-        let entry: String
-        let candidateWindow: CandidateWindowOverrides?
-
-        private enum CodingKeys: String, CodingKey { case entry, candidateWindow }
-
-        init(from decoder: Decoder) throws {
-            let c = try decoder.container(keyedBy: CodingKeys.self)
-            // entry is required: missing / type-mismatch fails the manifest.
-            entry = try c.decode(String.self, forKey: .entry)
-            // candidateWindow wrapper type-mismatch (e.g. user wrote a
-            // string) drops the sub-tree but lets entry still load.
-            do {
-                candidateWindow = try c.decodeIfPresent(
-                    CandidateWindowOverrides.self, forKey: .candidateWindow)
-            } catch {
-                Logger.javaScriptEngine.error(
-                    "manifest candidateWindow ignored: \(String(describing: error), privacy: .public)"
-                )
-                candidateWindow = nil
-            }
-        }
-
-        /// Per-field defensive decode: type mismatches AND value-level
-        /// violations (range, charset) are dropped + logged ONCE at decode
-        /// time. Keeps the hot-path `candidateWindowConfiguration` getter
-        /// free of validation work and per-keystroke log spam.
-        struct CandidateWindowOverrides: Decodable {
-            let layoutDirection: CandidateWindow.LayoutDirection?
-            let fontSize: Int?
-            let indexLabels: String?
-            let pageSize: Int?
-            let widerExpandedColumns: Bool?
-            let moveOnExpand: Bool?
-            let horizontalMaxVisibleRows: Int?
-            let verticalMinVisibleRows: Int?
-            let expandable: Bool?
-
-            private enum CodingKeys: String, CodingKey {
-                case layoutDirection, fontSize, indexLabels, pageSize
-                case widerExpandedColumns, moveOnExpand
-                case horizontalMaxVisibleRows, verticalMinVisibleRows, expandable
-            }
-
-            init(from decoder: Decoder) throws {
-                let c = try decoder.container(keyedBy: CodingKeys.self)
-                layoutDirection = Self.tolerant(c, .layoutDirection, as: CandidateWindow.LayoutDirection.self)
-                fontSize = Self.tolerant(c, .fontSize, as: Int.self)
-                widerExpandedColumns = Self.tolerant(c, .widerExpandedColumns, as: Bool.self)
-                moveOnExpand = Self.tolerant(c, .moveOnExpand, as: Bool.self)
-                horizontalMaxVisibleRows = Self.tolerant(c, .horizontalMaxVisibleRows, as: Int.self)
-                verticalMinVisibleRows = Self.tolerant(c, .verticalMinVisibleRows, as: Int.self)
-                expandable = Self.tolerant(c, .expandable, as: Bool.self)
-
-                // CandidateWindowConfiguration has didSet preconditions on
-                // these two (always-on, not stripped in release). Validate
-                // here so out-of-range manifest values don't crash later.
-                indexLabels = Self.validateIndexLabels(
-                    Self.tolerant(c, .indexLabels, as: String.self))
-                pageSize = Self.validatePageSize(
-                    Self.tolerant(c, .pageSize, as: Int.self))
-            }
-
-            private static func tolerant<T: Decodable>(
-                _ container: KeyedDecodingContainer<CodingKeys>,
-                _ key: CodingKeys, as type: T.Type
-            ) -> T? {
-                do {
-                    return try container.decodeIfPresent(T.self, forKey: key)
-                } catch {
-                    Logger.javaScriptEngine.error(
-                        "manifest candidateWindow.\(key.stringValue, privacy: .public) ignored: \(String(describing: error), privacy: .public)"
-                    )
-                    return nil
-                }
-            }
-
-            private static func validateIndexLabels(_ raw: String?) -> String? {
-                guard let v = raw else { return nil }
-                if CandidateWindowConfiguration.isValidIndexLabels(v) { return v }
-                Logger.javaScriptEngine.error(
-                    "manifest indexLabels rejected (non-ASCII-printable): \(v, privacy: .public)"
-                )
-                return nil
-            }
-
-            private static func validatePageSize(_ raw: Int?) -> Int? {
-                guard let v = raw else { return nil }
-                if CandidateWindowConfiguration.isValidPageSize(v) { return v }
-                Logger.javaScriptEngine.error(
-                    "manifest pageSize out of range \(CandidateWindowConfiguration.validPageSizeRange, privacy: .public): \(v, privacy: .public)"
-                )
-                return nil
-            }
-        }
-    }
+    // MARK: Manifest state
 
     /// Last manifest parsed by `reloadManifest()`. Survives load failures
     /// (teardown leaves it in place) so settings UI can distinguish
     /// "manifest parsed OK, entry broken" from "manifest itself broken".
-    private(set) var manifest: Manifest?
+    /// `@Published` drives `objectWillChange` so SwiftUI views holding
+    /// `@ObservedObject` on the engine re-render on every manifest swap
+    /// (folder pick / clear / FSEvents stale → reload).
+    @Published private(set) var manifest: Manifest?
 
-    /// Emits after `manifest` is reassigned. Narrow-scope reactive bridge
-    /// for settings UI without making the whole engine `@Observable`.
-    let manifestDidUpdate = PassthroughSubject<Void, Never>()
+    /// Snapshot of user-edited settings aligned with the current manifest
+    /// schema. Refreshed at every `reloadManifest()` via sanitize against
+    /// `manifest`. Reset to `[:]` when `manifest == nil` so the blob in
+    /// UserDefaults — which is preserved across that transition — can
+    /// restore values on the next successful manifest load.
+    ///
+    /// No Swift-side consumer yet; UI binds to `ManifestSettingsStore`
+    /// straight off the UserDefaults blob.
+    private(set) var settings: [String: JSONValue] = [:]
 
     /// nil on missing / malformed manifest (already logged).
     nonisolated private static func parseManifest(in folder: URL) -> Manifest? {
@@ -171,10 +83,62 @@ class JavaScriptEngine: InputEngine {
         return Self.parseManifest(in: folder)
     }
 
-    /// Pure data IO; does not touch JSContext.
+    // MARK: Settings storage
+
+    /// Reloads manifest from disk, then aligns the settings cache and blob
+    /// against it. Sanitize is tied to `reloadManifest` — the only path
+    /// that mutates `manifest` — rather than per-activate `reloadConfig`,
+    /// so a transiently-nil manifest (init dynamic dispatch, JSExternal
+    /// `.notConfigured`, stale bookmark) can't wipe a user's persisted blob.
     final func reloadManifest() {
         manifest = readManifestFromDisk()
-        manifestDidUpdate.send()
+        sanitizeBlobAndRefreshCache()
+    }
+
+    private func sanitizeBlobAndRefreshCache() {
+        guard manifest != nil else {
+            settings = [:]
+            return
+        }
+        let key = InputEngine.composedKey(
+            engineID: engineID, subKey: InputEngine.manifestSettingsSubKey)
+        let raw = ManifestSettingsStore.decode(forKey: key)
+        let sanitized = sanitizedSettings(from: raw)
+        settings = sanitized
+        if sanitized != raw {
+            ManifestSettingsStore.encode(sanitized, forKey: key)
+        }
+    }
+
+    /// Reshape the raw blob to match the current manifest schema: drop
+    /// keys not declared by any field, replace type-mismatched values with
+    /// field default, fill declared-but-missing keys with field default.
+    /// Each drop / replace is logged.
+    private func sanitizedSettings(from raw: [String: JSONValue]) -> [String: JSONValue] {
+        guard let sections = manifest?.settings else { return [:] }
+        let declared = Dictionary(uniqueKeysWithValues:
+            sections.flatMap { $0.fields }.map { ($0.key, $0) })
+
+        for key in raw.keys where declared[key] == nil {
+            Logger.javaScriptEngine.notice(
+                "settings: dropped stale key '\(key, privacy: .public)' not in manifest"
+            )
+        }
+
+        var result: [String: JSONValue] = [:]
+        for (key, field) in declared {
+            if let stored = raw[key], field.accepts(stored) {
+                result[key] = stored
+            } else {
+                if raw[key] != nil {
+                    Logger.javaScriptEngine.notice(
+                        "settings: type mismatch for '\(key, privacy: .public)' — using default"
+                    )
+                }
+                result[key] = field.defaultJSONValue
+            }
+        }
+        return result
     }
 
     /// Pure file-existence check for picker-flow validators. Localized

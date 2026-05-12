@@ -145,9 +145,10 @@ class InputEngine {
         "\(engineID)_\(subKey)"
     }
 
-    static let directionSubKey = "candidateWindowDirection"
-    static let fontSizeSubKey = "candidateWindowFontSize"
-    static let showAssociatedWordsSubKey = "showAssociatedWords"
+    nonisolated static let directionSubKey = "candidateWindowDirection"
+    nonisolated static let fontSizeSubKey = "candidateWindowFontSize"
+    nonisolated static let showAssociatedWordsSubKey = "showAssociatedWords"
+    nonisolated static let manifestSettingsSubKey = "manifestSettings"
 
     /// Per-instance: same class may have multiple instances with distinct
     /// IDs (e.g. multi-slot subclasses). Subclass override required;

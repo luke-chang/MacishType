@@ -30,7 +30,7 @@ class JSExternalEngine: JavaScriptEngine {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self else { return }
-                self.clearStoredCandidateWindowConfig()
+                self.clearStoredSettings()
                 if self.isLoaded {
                     // load() does its own reloadManifest — don't duplicate.
                     self.unload()
@@ -42,12 +42,22 @@ class JSExternalEngine: JavaScriptEngine {
             }
     }
 
-    private func clearStoredCandidateWindowConfig() {
+    /// Folder swap → previous manifest's storage no longer applies. Clear
+    /// the manifest-settings blob and the base candidate-window / associated
+    /// sub-keys; the bookmark key is preserved so folder-picker persistence
+    /// survives.
+    private func clearStoredSettings() {
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: InputEngine.composedKey(
-            engineID: engineID, subKey: InputEngine.directionSubKey))
-        defaults.removeObject(forKey: InputEngine.composedKey(
-            engineID: engineID, subKey: InputEngine.fontSizeSubKey))
+            engineID: engineID, subKey: InputEngine.manifestSettingsSubKey))
+        for subKey in [
+            InputEngine.directionSubKey,
+            InputEngine.fontSizeSubKey,
+            InputEngine.showAssociatedWordsSubKey,
+        ] {
+            defaults.removeObject(forKey: InputEngine.composedKey(
+                engineID: engineID, subKey: subKey))
+        }
     }
 
     /// User picked a different folder, or a watched file changed. Don't
@@ -77,6 +87,12 @@ class JSExternalEngine: JavaScriptEngine {
     override func load() {
         guard let folder = folderBookmark.acquire() else {
             loadStatus = .notConfigured
+            // super.load() (which calls reloadManifest) won't run on this
+            // short-circuit. Without an explicit re-read, an unload→load
+            // chain after the bookmark is cleared leaves manifest stale —
+            // engine.manifest keeps the previous folder's parsed value and
+            // SwiftUI views holding it don't refresh.
+            reloadManifest()
             return
         }
         super.load()
@@ -152,16 +168,7 @@ class JSExternalEngine: JavaScriptEngine {
     }
 
     private struct JSExternalSettingsView: View {
-        let engine: JSExternalEngine
-        @State private var manifestSnapshot: Manifest?
-
-        init(engine: JSExternalEngine) {
-            self.engine = engine
-            // Pre-fill backing store so sidebar-cycle (SettingsDetailContent
-            // uses `.id(selection)` → tear down + new instance) doesn't
-            // render a transient picker-only frame before .onAppear syncs.
-            _manifestSnapshot = State(initialValue: engine.manifest)
-        }
+        @ObservedObject var engine: JSExternalEngine
 
         var body: some View {
             InputEngine.settingsForm {
@@ -175,7 +182,7 @@ class JSExternalEngine: JavaScriptEngine {
                     panel.canChooseDirectories = true
                     panel.canChooseFiles = false
                 }
-                if let overrides = manifestSnapshot?.candidateWindow {
+                if let overrides = engine.manifest?.candidateWindow {
                     let showDirection = overrides.layoutDirection == nil
                     let showFontSize = overrides.fontSize == nil
                     if showDirection || showFontSize {
@@ -185,9 +192,13 @@ class JSExternalEngine: JavaScriptEngine {
                             includeFontSize: showFontSize
                         )
                     }
-                } else if manifestSnapshot != nil {
+                } else if engine.manifest != nil {
                     InputEngine.CandidateWindowSection(engine: engine)
                 }
+                JavaScriptEngine.EngineSettingsRenderer(
+                    engine: engine,
+                    sections: engine.manifest?.settings
+                )
             }
             .onAppear {
                 // Inactive engine: re-read disk on every tab entry (FSEvents
@@ -199,10 +210,6 @@ class JSExternalEngine: JavaScriptEngine {
                     engine.unload()
                     engine.load()
                 }
-                manifestSnapshot = engine.manifest
-            }
-            .onReceive(engine.manifestDidUpdate) {
-                manifestSnapshot = engine.manifest
             }
         }
     }
@@ -234,10 +241,7 @@ class JSExternalEngine: JavaScriptEngine {
             guard let info, count > 0 else { return }
             let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] ?? []
             let engine = Unmanaged<JSExternalEngine>.fromOpaque(info).takeUnretainedValue()
-            MainActor.assumeIsolated {
-                guard let firstRelevant = paths.first(where: JSExternalEngine.isRelevantPath) else { return }
-                engine.markStale(reason: "file changed: \(firstRelevant)")
-            }
+            MainActor.assumeIsolated { engine.handleFSEvents(paths: paths) }
         }
         // TODO(when fs API ships): exclude self-write subpaths so the engine's
         // own user-dict writes don't trigger markStale → reload → wipe
@@ -281,5 +285,13 @@ class JSExternalEngine: JavaScriptEngine {
         if name.hasPrefix(".") { return false }   // hidden / editor temp (.swp, .tmp)
         if name.hasSuffix("~") { return false }   // editor backups
         return true
+    }
+
+    /// Any relevant file change marks the engine stale for a full reload
+    /// on next activate.
+    private func handleFSEvents(paths: [String]) {
+        let relevant = paths.filter(Self.isRelevantPath)
+        guard let first = relevant.first else { return }
+        markStale(reason: "file changed: \(first)")
     }
 }

@@ -30,13 +30,16 @@ enum NavigationDirection: Hashable {
 }
 
 struct CandidateWindowConfiguration: Equatable {
-    static let validPageSizeRange: ClosedRange<Int> = 1...11
+    // Pure validators — callable from nonisolated contexts (manifest decode,
+    // FSEvents callbacks). Without `nonisolated`, Swift 6 infers main-actor
+    // isolation from the enclosing module and the static parsers can't use them.
+    nonisolated static let validPageSizeRange: ClosedRange<Int> = 1...11
 
-    static func isValidIndexLabels(_ s: String) -> Bool {
+    nonisolated static func isValidIndexLabels(_ s: String) -> Bool {
         s.allSatisfy(\.isValidIndexLabel)
     }
 
-    static func isValidPageSize(_ v: Int) -> Bool {
+    nonisolated static func isValidPageSize(_ v: Int) -> Bool {
         validPageSizeRange.contains(v)
     }
 
@@ -82,7 +85,7 @@ struct CandidateWindowConfiguration: Equatable {
 extension Character {
     /// Whether this character is a valid `indexLabels` entry: a single
     /// ASCII printable scalar in the range 0x20-0x7E (includes space).
-    var isValidIndexLabel: Bool {
+    nonisolated var isValidIndexLabel: Bool {
         guard unicodeScalars.count == 1, let s = unicodeScalars.first else { return false }
         return s.value >= 0x20 && s.value <= 0x7E
     }

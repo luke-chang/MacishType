@@ -40,7 +40,6 @@ final class SettingsWindow: NSWindow {
         // restore the intended size and pin a min so the user can't squash it.
         setContentSize(NSSize(width: 620, height: 420))
         contentMinSize = NSSize(width: 620, height: 420)
-        titlebarAppearsTransparent = true
         toolbarStyle = .unified
         isReleasedWhenClosed = false
         // Skip the default entrance animation; otherwise the Tahoe rounded
