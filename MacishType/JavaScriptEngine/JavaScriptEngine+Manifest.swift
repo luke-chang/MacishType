@@ -220,6 +220,8 @@ extension JavaScriptEngine {
             let options: [PickerOption]
             let style: PickerStyle?
             let `default`: PickerDefault?
+            let disabledWhen: Condition?
+            let hiddenWhen: Condition?
         }
 
         struct ToggleField: Decodable {
@@ -227,6 +229,8 @@ extension JavaScriptEngine {
             let label: Localizable
             let description: Localizable?
             let `default`: Bool
+            let disabledWhen: Condition?
+            let hiddenWhen: Condition?
         }
 
         struct TextFieldField: Decodable {
@@ -235,6 +239,8 @@ extension JavaScriptEngine {
             let description: Localizable?
             let placeholder: Localizable?
             let `default`: String
+            let disabledWhen: Condition?
+            let hiddenWhen: Condition?
         }
 
         struct NumberField: Decodable {
@@ -245,6 +251,8 @@ extension JavaScriptEngine {
             let max: Double?
             let step: Double?
             let `default`: Double
+            let disabledWhen: Condition?
+            let hiddenWhen: Condition?
         }
 
         struct MultiSelectField: Decodable {
@@ -253,6 +261,8 @@ extension JavaScriptEngine {
             let description: Localizable?
             let options: [PickerOption]
             let `default`: [PickerDefault]?
+            let disabledWhen: Condition?
+            let hiddenWhen: Condition?
         }
 
         struct PickerOption: Decodable {
@@ -340,6 +350,62 @@ extension JavaScriptEngine {
         /// so manifest authors who know SwiftUI aren't surprised by a
         /// different name. `auto` resolves at render time by options count.
         enum PickerStyle: String, Decodable { case auto, menu, radioGroup }
+
+        /// Recursive boolean condition for `disabledWhen` / `hiddenWhen`.
+        /// Bad structure throws (not silently treated as "no condition") so
+        /// `SettingsSection`'s per-field tolerant decode drops the offending
+        /// field — a broken rule should surface as a missing UI, not as a
+        /// field that quietly ignores its own constraint.
+        indirect enum Condition: Decodable {
+            case leaf(key: String, op: Operator)
+            case allOf([Condition])
+            case anyOf([Condition])
+            case not(Condition)
+
+            enum Operator {
+                case equals(JSONValue)
+                case notEquals(JSONValue)
+                case `in`([JSONValue])
+                case notIn([JSONValue])
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case key, equals, notEquals, `in`, notIn, allOf, anyOf, not
+            }
+
+            init(from decoder: Decoder) throws {
+                if let arr = try? decoder.singleValueContainer().decode([Condition].self) {
+                    self = .allOf(arr); return
+                }
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                if let inner = try? c.decode([Condition].self, forKey: .allOf) {
+                    self = .allOf(inner); return
+                }
+                if let inner = try? c.decode([Condition].self, forKey: .anyOf) {
+                    self = .anyOf(inner); return
+                }
+                if let inner = try? c.decode(Condition.self, forKey: .not) {
+                    self = .not(inner); return
+                }
+                let key = try c.decode(String.self, forKey: .key)
+                if let v = try? c.decode(JSONValue.self, forKey: .equals) {
+                    self = .leaf(key: key, op: .equals(v)); return
+                }
+                if let v = try? c.decode(JSONValue.self, forKey: .notEquals) {
+                    self = .leaf(key: key, op: .notEquals(v)); return
+                }
+                if let vs = try? c.decode([JSONValue].self, forKey: .in) {
+                    self = .leaf(key: key, op: .in(vs)); return
+                }
+                if let vs = try? c.decode([JSONValue].self, forKey: .notIn) {
+                    self = .leaf(key: key, op: .notIn(vs)); return
+                }
+                throw DecodingError.dataCorruptedError(
+                    forKey: .key, in: c,
+                    debugDescription: "leaf condition needs one of: equals, notEquals, in, notIn"
+                )
+            }
+        }
     }
 
     // MARK: Manifest helper types
@@ -488,6 +554,52 @@ extension JavaScriptEngine.Manifest.SettingsField {
         case .number(let f):      return .number(f.default)
         case .picker(let f):      return f.defaultValue
         case .multiSelect(let f): return .array(f.defaultValues)
+        }
+    }
+
+    var disabledWhen: JavaScriptEngine.Manifest.Condition? {
+        switch self {
+        case .picker(let f):      return f.disabledWhen
+        case .toggle(let f):      return f.disabledWhen
+        case .textField(let f):   return f.disabledWhen
+        case .number(let f):      return f.disabledWhen
+        case .multiSelect(let f): return f.disabledWhen
+        }
+    }
+
+    var hiddenWhen: JavaScriptEngine.Manifest.Condition? {
+        switch self {
+        case .picker(let f):      return f.hiddenWhen
+        case .toggle(let f):      return f.hiddenWhen
+        case .textField(let f):   return f.hiddenWhen
+        case .number(let f):      return f.hiddenWhen
+        case .multiSelect(let f): return f.hiddenWhen
+        }
+    }
+}
+
+// MARK: - Condition evaluation
+
+extension JavaScriptEngine.Manifest.Condition {
+    /// Lookup missing key resolves to `.null`. Operator semantics against
+    /// `.null` are well-defined (Hashable JSONValue): `equals: null` → true,
+    /// `equals: x` (x ≠ null) → false, `notEquals: x` → true, `notIn: [...]`
+    /// → true (assuming `.null` not in the list). A typo'd key therefore
+    /// flips `notEquals` / `notIn` to permanently satisfied — manifest
+    /// authors must diff-check before shipping a rename.
+    func evaluate(_ values: [String: JavaScriptEngine.JSONValue]) -> Bool {
+        switch self {
+        case .leaf(let key, let op):
+            let v = values[key] ?? .null
+            switch op {
+            case .equals(let x):    return v == x
+            case .notEquals(let x): return v != x
+            case .in(let xs):       return xs.contains(v)
+            case .notIn(let xs):    return !xs.contains(v)
+            }
+        case .allOf(let cs): return cs.allSatisfy { $0.evaluate(values) }
+        case .anyOf(let cs): return cs.contains   { $0.evaluate(values) }
+        case .not(let c):    return !c.evaluate(values)
         }
     }
 }

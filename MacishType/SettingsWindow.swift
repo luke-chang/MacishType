@@ -17,8 +17,8 @@ final class SettingsWindow: NSWindow {
 
     init(initialEngineID: String? = nil) {
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        sidebarItem.minimumThickness = 215
-        sidebarItem.maximumThickness = 215
+        sidebarItem.minimumThickness = 180
+        sidebarItem.maximumThickness = 180
         // Stops AppKit from auto-inserting the sidebar toggle button.
         sidebarItem.canCollapse = false
 

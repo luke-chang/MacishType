@@ -139,16 +139,28 @@ extension JavaScriptEngine {
             @ObservedObject var store: ManifestSettingsStore
             let section: Manifest.SettingsSection
 
+            /// Filter at section level (not inside FieldView body) so Form
+            /// doesn't reserve an empty row for hidden fields.
+            private var visibleFields: [Manifest.SettingsField] {
+                section.fields.filter {
+                    !($0.hiddenWhen?.evaluate(store.values) ?? false)
+                }
+            }
+
             var body: some View {
-                Section {
-                    ForEach(section.fields.indices, id: \.self) { i in
-                        FieldView(store: store, field: section.fields[i])
-                    }
-                } header: {
-                    Text(verbatim: section.title.resolved())
-                } footer: {
-                    if let d = section.description {
-                        Text(verbatim: d.resolved())
+                if !visibleFields.isEmpty {
+                    Section {
+                        // id: \.key — index-based identity would reuse
+                        // @State / @FocusState across slots after filtering.
+                        ForEach(visibleFields, id: \.key) { field in
+                            FieldView(store: store, field: field)
+                        }
+                    } header: {
+                        Text(verbatim: section.title.resolved())
+                    } footer: {
+                        if let d = section.description {
+                            Text(verbatim: d.resolved())
+                        }
                     }
                 }
             }
@@ -159,13 +171,16 @@ extension JavaScriptEngine {
             let field: Manifest.SettingsField
 
             var body: some View {
-                switch field {
-                case .picker(let f):      PickerFieldView(store: store, field: f)
-                case .toggle(let f):      ToggleFieldView(store: store, field: f)
-                case .textField(let f):   TextFieldFieldView(store: store, field: f)
-                case .number(let f):      NumberFieldView(store: store, field: f)
-                case .multiSelect(let f): MultiSelectFieldView(store: store, field: f)
+                Group {
+                    switch field {
+                    case .picker(let f):      PickerFieldView(store: store, field: f)
+                    case .toggle(let f):      ToggleFieldView(store: store, field: f)
+                    case .textField(let f):   TextFieldFieldView(store: store, field: f)
+                    case .number(let f):      NumberFieldView(store: store, field: f)
+                    case .multiSelect(let f): MultiSelectFieldView(store: store, field: f)
+                    }
                 }
+                .disabled(field.disabledWhen?.evaluate(store.values) ?? false)
             }
         }
 
@@ -296,17 +311,13 @@ extension JavaScriptEngine {
             }
 
             @ViewBuilder private var textFieldRow: some View {
-                let labelText = Text(verbatim: field.label.resolved())
-                let promptText = field.placeholder.map { Text(verbatim: $0.resolved()) }
-                if let promptText {
-                    TextField(text: $localText, prompt: promptText, label: { labelText })
-                        .focused($isFocused)
-                        .onSubmit { commit() }
-                } else {
-                    TextField(text: $localText, label: { labelText })
-                        .focused($isFocused)
-                        .onSubmit { commit() }
-                }
+                TextField(
+                    text: $localText,
+                    prompt: field.placeholder.map { Text(verbatim: $0.resolved()) },
+                    label: { Text(verbatim: field.label.resolved()) }
+                )
+                .focused($isFocused)
+                .onSubmit { commit() }
             }
 
             private func commit() {
