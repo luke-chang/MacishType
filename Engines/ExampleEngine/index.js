@@ -55,8 +55,6 @@ function lookupAssociatedCandidates(char) {
   ];
 }
 
-const SHOW_ASSOCIATED_WORDS = true;
-
 // Bridge contract is duck-typed: engines export a default class with any
 // of `activate / deactivate / handleKey / candidateConfirmed /
 // candidateSelectionChanged`. Methods absent from the class are skipped.
@@ -187,7 +185,7 @@ export default class JSExternalEngine {
       event.flushStaged(candidate);
       return;
     }
-    if (SHOW_ASSOCIATED_WORDS && candidate.length === 1) {
+    if (manifest.settings.showAssociatedWords && candidate.length === 1) {
       const related = lookupAssociatedCandidates(candidate);
       if (related.length > 0) {
         event.enterAssociatedMode(candidate, related);

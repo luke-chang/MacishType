@@ -233,6 +233,69 @@ export interface InputEngine {
   candidateSelectionChanged?(event: ConfirmEvent): void;
 }
 
+/** Any value representable as JSON. */
+export type JSONValue =
+  | string | number | boolean | null
+  | JSONValue[]
+  | { [key: string]: JSONValue };
+
+/** Snapshot of user-edited settings, keyed by manifest field `key`. */
+export type Settings = { readonly [key: string]: JSONValue };
+
+export interface SettingsChangeEvent {
+  readonly type: "settingschange";
+}
+
+/**
+ * Live candidate-window configuration. Reads return engine writes (if
+ * any), else manifest declarations, else `undefined`. Writes take effect
+ * at the next session activate.
+ *
+ * Invalid writes — wrong type, out of range, unknown field — are logged
+ * via OSLog and silently ignored; engine execution continues.
+ *
+ * Not the same as `event.candidateWindow` (per-event snapshot of the
+ * effective state).
+ */
+export interface CandidateWindow {
+  layoutDirection?: LayoutDirection;
+  fontSize?: number;
+  indexLabels?: string;
+  pageSize?: number;
+  widerExpandedColumns?: boolean;
+  moveOnExpand?: boolean;
+  horizontalMaxVisibleRows?: number;
+  verticalMinVisibleRows?: number;
+  expandable?: boolean;
+}
+
+/**
+ * Engine-wide info injected by the host.
+ */
+export interface Manifest {
+  /**
+   * User settings keyed by manifest field `key`. Deeply read-only —
+   * writes throw `TypeError`. The reference is stable across updates;
+   * `const { settings } = manifest` is safe and reads always see the
+   * latest values.
+   */
+  readonly settings: Settings;
+
+  /**
+   * Candidate-window override cache. See `CandidateWindow` for details.
+   */
+  readonly candidateWindow: CandidateWindow;
+
+  addEventListener(
+    type: "settingschange",
+    callback: (event: SettingsChangeEvent) => void
+  ): void;
+  removeEventListener(
+    type: "settingschange",
+    callback: (event: SettingsChangeEvent) => void
+  ): void;
+}
+
 /**
  * `console` is provided by the host runtime (bridges to OSLog). Levels:
  * `log`/`info` → info, `debug` → debug, `warn` → notice, `error` → error.
@@ -247,4 +310,6 @@ declare global {
   }
   // eslint-disable-next-line no-var
   var console: Console;
+  // eslint-disable-next-line no-var
+  var manifest: Manifest;
 }

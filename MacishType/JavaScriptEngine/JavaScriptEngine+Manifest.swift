@@ -73,20 +73,42 @@ extension JavaScriptEngine {
         /// time. Keeps the hot-path `candidateWindowConfiguration` getter
         /// free of validation work and per-keystroke log spam.
         struct CandidateWindowOverrides: Decodable {
-            let layoutDirection: CandidateWindow.LayoutDirection?
-            let fontSize: Int?
-            let indexLabels: String?
-            let pageSize: Int?
-            let widerExpandedColumns: Bool?
-            let moveOnExpand: Bool?
-            let horizontalMaxVisibleRows: Int?
-            let verticalMinVisibleRows: Int?
-            let expandable: Bool?
+            var layoutDirection: CandidateWindow.LayoutDirection?
+            var fontSize: Int?
+            var indexLabels: String?
+            var pageSize: Int?
+            var widerExpandedColumns: Bool?
+            var moveOnExpand: Bool?
+            var horizontalMaxVisibleRows: Int?
+            var verticalMinVisibleRows: Int?
+            var expandable: Bool?
 
             private enum CodingKeys: String, CodingKey {
                 case layoutDirection, fontSize, indexLabels, pageSize
                 case widerExpandedColumns, moveOnExpand
                 case horizontalMaxVisibleRows, verticalMinVisibleRows, expandable
+            }
+
+            init(
+                layoutDirection: CandidateWindow.LayoutDirection? = nil,
+                fontSize: Int? = nil,
+                indexLabels: String? = nil,
+                pageSize: Int? = nil,
+                widerExpandedColumns: Bool? = nil,
+                moveOnExpand: Bool? = nil,
+                horizontalMaxVisibleRows: Int? = nil,
+                verticalMinVisibleRows: Int? = nil,
+                expandable: Bool? = nil
+            ) {
+                self.layoutDirection = layoutDirection
+                self.fontSize = fontSize
+                self.indexLabels = indexLabels
+                self.pageSize = pageSize
+                self.widerExpandedColumns = widerExpandedColumns
+                self.moveOnExpand = moveOnExpand
+                self.horizontalMaxVisibleRows = horizontalMaxVisibleRows
+                self.verticalMinVisibleRows = verticalMinVisibleRows
+                self.expandable = expandable
             }
 
             init(from decoder: Decoder) throws {

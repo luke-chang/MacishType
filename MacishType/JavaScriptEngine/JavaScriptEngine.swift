@@ -53,6 +53,23 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// straight off the UserDefaults blob.
     private(set) var settings: [String: JSONValue] = [:]
 
+    /// Mutable mirror of `manifest?.candidateWindow`, re-seeded on every
+    /// `reloadManifest()`. Engine JS code writes here via the
+    /// `manifest.candidateWindow.x = y` Proxy (see runtime.js); reads
+    /// return cache values (manifest declarations OR engine writes).
+    /// Settings UI continues to read `engine.manifest` (immutable static
+    /// declarations) for its hide-logic — engine writes are invisible
+    /// to the UI by design.
+    private var candidateWindowCache = Manifest.CandidateWindowOverrides()
+
+    /// Fields that engine JS code cannot override at runtime. Read remains
+    /// available (returns manifest-declared value or nil). Writes to these
+    /// log a warning and are ignored — host-only fields like
+    /// `animationDuration` belong to the host.
+    private static let readOnlyCandidateWindowFields: Set<String> = [
+        "animationDuration",
+    ]
+
     /// nil on missing / malformed manifest (already logged).
     nonisolated private static func parseManifest(in folder: URL) -> Manifest? {
         let manifestURL = folder.appending(path: manifestFileName)
@@ -90,28 +107,47 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     // MARK: Settings storage
 
     /// Reloads manifest from disk, then aligns the settings cache and blob
-    /// against it. Sanitize is tied to `reloadManifest` — the only path
-    /// that mutates `manifest` — rather than per-activate `reloadConfig`,
-    /// so a transiently-nil manifest (init dynamic dispatch, JSExternal
-    /// `.notConfigured`, stale bookmark) can't wipe a user's persisted blob.
+    /// against it.
     final func reloadManifest() {
         manifest = readManifestFromDisk()
+        // Re-seed the engine-side cache from the freshly parsed manifest.
+        // Engine writes via `manifest.candidateWindow.x = y` from JS only
+        // mutate this cache, not the parsed manifest — so reloading is the
+        // single point where cache returns to declared-values state.
+        candidateWindowCache = manifest?.candidateWindow ?? .init()
+        sanitizeBlobAndRefreshCache()
+    }
+
+    /// Per-activate hook: in addition to the base's UserDefaults-backed
+    /// ivars, re-decode + sanitize the settings blob so a UI edit between
+    /// sessions becomes visible to engine.settings (and to JS via the push
+    /// inside `sanitizeBlobAndRefreshCache`).
+    override func reloadConfig() {
+        super.reloadConfig()
         sanitizeBlobAndRefreshCache()
     }
 
     private func sanitizeBlobAndRefreshCache() {
-        guard manifest != nil else {
-            settings = [:]
-            return
+        let next: [String: JSONValue]
+        if manifest == nil {
+            next = [:]
+        } else {
+            let key = InputEngine.composedKey(
+                engineID: engineID, subKey: InputEngine.manifestSettingsSubKey)
+            let raw = ManifestSettingsStore.decode(forKey: key)
+            let sanitized = sanitizedSettings(from: raw)
+            if sanitized != raw {
+                ManifestSettingsStore.encode(sanitized, forKey: key)
+            }
+            next = sanitized
         }
-        let key = InputEngine.composedKey(
-            engineID: engineID, subKey: InputEngine.manifestSettingsSubKey)
-        let raw = ManifestSettingsStore.decode(forKey: key)
-        let sanitized = sanitizedSettings(from: raw)
-        settings = sanitized
-        if sanitized != raw {
-            ManifestSettingsStore.encode(sanitized, forKey: key)
-        }
+        // Gate the JS push at the Swift side so the marshal + bridge call
+        // (and the resulting settingschange event) skips when nothing
+        // actually changed — common on FSEvents-triggered reloads of
+        // unchanged blobs.
+        guard next != settings else { return }
+        settings = next
+        pushSettingsToJS()
     }
 
     /// Reshape the raw blob to match the current manifest schema: drop
@@ -149,6 +185,161 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// error text lives in the picker-owning subclass.
     nonisolated static func hasValidManifest(in folder: URL) -> Bool {
         FileManager.default.fileExists(atPath: folder.appending(path: manifestFileName).path)
+    }
+
+    // MARK: Settings → JS bridge
+
+    private static func marshal(_ value: JSONValue) -> Any {
+        switch value {
+        case .null:            return NSNull()
+        case .bool(let b):     return b
+        case .number(let n):   return n
+        case .string(let s):   return s
+        case .array(let arr):  return arr.map { marshal($0) }
+        case .object(let obj): return obj.mapValues { marshal($0) }
+        }
+    }
+
+    /// No-op when `jsContext` is nil (engine not yet loaded). In the live
+    /// path, runtime.js has already registered `__MacishType_setSettings`
+    /// before `jsContext` is set, so a missing global means runtime.js
+    /// failed to evaluate — a bridge-structural fault.
+    private func pushSettingsToJS() {
+        guard let context = jsContext else { return }
+        let dict = settings.mapValues { Self.marshal($0) }
+        guard let updater = context.objectForKeyedSubscript("__MacishType_setSettings"),
+              updater.isObject else {
+            Logger.javaScriptEngine.fault(
+                "__MacishType_setSettings missing — runtime.js not loaded?"
+            )
+            return
+        }
+        updater.call(withArguments: [dict])
+    }
+
+    // MARK: candidateWindow cache → JS bridge
+
+    /// Unwraps `Optional<T>` to `Any?` without the double-wrap trap that
+    /// implicit coercion produces: `return value` where `value` is `Int?`
+    /// nil would land as `Any?.some(Optional<Int>.none)`, which breaks
+    /// `?? NSNull()` fallback in the bridge closure.
+    private static func toAny<T>(_ value: T?) -> Any? {
+        if let v = value { return v }
+        return nil
+    }
+
+    private func applyCandidateWindowField(_ field: String, _ jsValue: JSValue) {
+        if Self.readOnlyCandidateWindowFields.contains(field) {
+            Logger.javaScriptEngine.notice(
+                "manifest.candidateWindow.\(field, privacy: .public) is read-only — write ignored"
+            )
+            return
+        }
+        switch field {
+        case "layoutDirection":
+            guard let s = jsValue.toString(),
+                  let dir = CandidateWindow.LayoutDirection(rawValue: s) else {
+                warnInvalidWrite(field, "must be \"horizontal\" or \"vertical\"", jsValue)
+                return
+            }
+            candidateWindowCache.layoutDirection = dir
+        case "fontSize":
+            guard jsValue.isNumber,
+                  let n = Int(exactly: jsValue.toDouble()), n >= 8 else {
+                warnInvalidWrite(field, "must be an integer >= 8", jsValue)
+                return
+            }
+            candidateWindowCache.fontSize = n
+        case "indexLabels":
+            guard let s = jsValue.toString(),
+                  CandidateWindowConfiguration.isValidIndexLabels(s) else {
+                warnInvalidWrite(field, "must be ASCII printable (0x20-0x7E)", jsValue)
+                return
+            }
+            candidateWindowCache.indexLabels = s
+        case "pageSize":
+            guard jsValue.isNumber,
+                  let n = Int(exactly: jsValue.toDouble()),
+                  CandidateWindowConfiguration.isValidPageSize(n) else {
+                warnInvalidWrite(
+                    field,
+                    "must be integer in \(CandidateWindowConfiguration.validPageSizeRange)",
+                    jsValue)
+                return
+            }
+            candidateWindowCache.pageSize = n
+        case "widerExpandedColumns":
+            guard jsValue.isBoolean else {
+                warnInvalidWrite(field, "must be boolean", jsValue); return
+            }
+            candidateWindowCache.widerExpandedColumns = jsValue.toBool()
+        case "moveOnExpand":
+            guard jsValue.isBoolean else {
+                warnInvalidWrite(field, "must be boolean", jsValue); return
+            }
+            candidateWindowCache.moveOnExpand = jsValue.toBool()
+        case "horizontalMaxVisibleRows":
+            guard jsValue.isNumber, let n = Int(exactly: jsValue.toDouble()), n >= 2 else {
+                warnInvalidWrite(field, "must be an integer >= 2", jsValue); return
+            }
+            candidateWindowCache.horizontalMaxVisibleRows = n
+        case "verticalMinVisibleRows":
+            guard jsValue.isNumber, let n = Int(exactly: jsValue.toDouble()), n >= 1 else {
+                warnInvalidWrite(field, "must be an integer >= 1", jsValue); return
+            }
+            candidateWindowCache.verticalMinVisibleRows = n
+        case "expandable":
+            guard jsValue.isBoolean else {
+                warnInvalidWrite(field, "must be boolean", jsValue); return
+            }
+            candidateWindowCache.expandable = jsValue.toBool()
+        default:
+            // Unknown field — typo or forward-compat (engine wrote a name
+            // the host doesn't recognize, possibly because the field hasn't
+            // landed yet or was removed). Same warn-and-ignore policy.
+            Logger.javaScriptEngine.notice(
+                "manifest.candidateWindow.\(field, privacy: .public) is not a recognized field — write ignored"
+            )
+        }
+    }
+
+    private func warnInvalidWrite(
+        _ field: String, _ reason: String, _ jsValue: JSValue
+    ) {
+        Logger.javaScriptEngine.notice(
+            "manifest.candidateWindow.\(field, privacy: .public) write ignored — \(reason, privacy: .public); got \(jsValue.toString() ?? "(unknown)", privacy: .public)"
+        )
+    }
+
+    private func readCandidateWindowField(_ field: String) -> Any? {
+        let c = candidateWindowCache
+        switch field {
+        case "layoutDirection":          return Self.toAny(c.layoutDirection?.rawValue)
+        case "fontSize":                 return Self.toAny(c.fontSize)
+        case "indexLabels":              return Self.toAny(c.indexLabels)
+        case "pageSize":                 return Self.toAny(c.pageSize)
+        case "widerExpandedColumns":     return Self.toAny(c.widerExpandedColumns)
+        case "moveOnExpand":             return Self.toAny(c.moveOnExpand)
+        case "horizontalMaxVisibleRows": return Self.toAny(c.horizontalMaxVisibleRows)
+        case "verticalMinVisibleRows":   return Self.toAny(c.verticalMinVisibleRows)
+        case "expandable":               return Self.toAny(c.expandable)
+        default: return nil
+        }
+    }
+
+    private func listCandidateWindowFields() -> [String] {
+        var fields: [String] = []
+        let c = candidateWindowCache
+        if c.layoutDirection != nil { fields.append("layoutDirection") }
+        if c.fontSize != nil { fields.append("fontSize") }
+        if c.indexLabels != nil { fields.append("indexLabels") }
+        if c.pageSize != nil { fields.append("pageSize") }
+        if c.widerExpandedColumns != nil { fields.append("widerExpandedColumns") }
+        if c.moveOnExpand != nil { fields.append("moveOnExpand") }
+        if c.horizontalMaxVisibleRows != nil { fields.append("horizontalMaxVisibleRows") }
+        if c.verticalMinVisibleRows != nil { fields.append("verticalMinVisibleRows") }
+        if c.expandable != nil { fields.append("expandable") }
+        return fields
     }
 
     // MARK: JSContext state (set up in load())
@@ -226,6 +417,24 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             }
         }
         context.setObject(logFn, forKeyedSubscript: "__MacishType_log" as NSString)
+
+        // candidateWindow Proxy bridges — must exist before runtime.js eval
+        // (which builds the Proxy referencing these) and before the first
+        // reloadManifest() below (which seeds candidateWindowCache).
+        let setCWField: @convention(block) (String, JSValue) -> Void = { [weak self] field, jsValue in
+            self?.applyCandidateWindowField(field, jsValue)
+        }
+        context.setObject(setCWField, forKeyedSubscript: "__MacishType_setCandidateWindowField" as NSString)
+
+        let getCWField: @convention(block) (String) -> Any = { [weak self] field in
+            self?.readCandidateWindowField(field) ?? NSNull()
+        }
+        context.setObject(getCWField, forKeyedSubscript: "__MacishType_getCandidateWindowField" as NSString)
+
+        let listCWFields: @convention(block) () -> [String] = { [weak self] in
+            self?.listCandidateWindowFields() ?? []
+        }
+        context.setObject(listCWFields, forKeyedSubscript: "__MacishType_candidateWindowFields" as NSString)
 
         // Auto-evaluate runtime.js (registers console, future file I/O, etc.)
         // before any engine code runs. Must run after __MacishType_log injection.
@@ -320,9 +529,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     override var candidateWindowConfiguration: CandidateWindowConfiguration {
         var config = super.candidateWindowConfiguration
-        if let overrides = manifest?.candidateWindow {
-            config.apply(overrides)
-        }
+        config.apply(candidateWindowCache)
         return config
     }
 
