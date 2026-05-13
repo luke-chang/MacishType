@@ -238,7 +238,7 @@ extension JavaScriptEngine {
             let label: Localizable
             let description: Localizable?
             let placeholder: Localizable?
-            let `default`: String
+            let `default`: String?
             let disabledWhen: Condition?
             let hiddenWhen: Condition?
         }
@@ -550,7 +550,7 @@ extension JavaScriptEngine.Manifest.SettingsField {
     var defaultJSONValue: JavaScriptEngine.JSONValue {
         switch self {
         case .toggle(let f):      return .bool(f.default)
-        case .textField(let f):   return .string(f.default)
+        case .textField(let f):   return .string(f.default ?? "")
         case .number(let f):      return .number(f.default)
         case .picker(let f):      return f.defaultValue
         case .multiSelect(let f): return .array(f.defaultValues)

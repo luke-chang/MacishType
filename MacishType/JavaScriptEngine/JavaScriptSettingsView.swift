@@ -277,7 +277,7 @@ extension JavaScriptEngine {
                 field: Manifest.TextFieldField
             ) -> String {
                 if case .string(let v) = values[field.key] { return v }
-                return field.default
+                return field.default ?? ""
             }
 
             var body: some View {
