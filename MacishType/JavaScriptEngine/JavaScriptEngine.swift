@@ -80,7 +80,11 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// acquire). nil return → `reloadManifest` sets `self.manifest = nil`.
     func readManifestFromDisk() -> Manifest? {
         guard let folder = engineFolderURL else { return nil }
-        return Self.parseManifest(in: folder)
+        let result = Self.parseManifest(in: folder)
+        if result != nil {
+            recordLoadedFile(folder.appending(path: Self.manifestFileName))
+        }
+        return result
     }
 
     // MARK: Settings storage
@@ -164,6 +168,15 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     // identifiers (including the entry's own URL), look them up here.
     fileprivate var moduleSourceByIdentifier: [String: (source: String, url: URL)] = [:]
 
+    /// Canonical absolute paths of files read off disk by the engine —
+    /// manifest.json, entry script, and every dynamically-imported module.
+    /// Reset at the start of `load()` and on teardown. Consumed by
+    /// file-watching subclasses (e.g. `JSExternalEngine`) to scope reloads
+    /// to files in the engine's import graph. Note: settings-preview
+    /// `reloadManifest()` may populate the manifest entry before any
+    /// `load()`; that's harmless because watchers only run post-`load`.
+    private(set) var loadedFilePaths: Set<String> = []
+
     // JSModuleLoaderDelegate is an ObjC protocol requiring NSObjectProtocol
     // conformance; InputEngine isn't NSObject-derived. Use a small NSObject
     // shim that forwards back to weak self.
@@ -173,6 +186,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     override func load() {
         guard jsContext == nil else { return }
+
+        loadedFilePaths.removeAll()
 
         Logger.javaScriptEngine.info("load() invoked for engine '\(self.engineID, privacy: .public)'")
 
@@ -241,6 +256,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         guard let entry = Self.loadJSSource(
             entryURL, label: "entry script for '\(self.engineID)'"
         ) else { return }
+        recordLoadedFile(entryURL)
         let entrySource = entry.source
 
         // Register entry source so module loader can re-resolve its sourceURL.
@@ -321,6 +337,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         engineClass = nil
         jsInstances.removeAllObjects()
         moduleSourceByIdentifier.removeAll()
+        loadedFilePaths.removeAll()
         moduleLoader.invalidateRootCache()
         // self.manifest intentionally NOT cleared — see its doc comment.
     }
@@ -404,6 +421,17 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             return nil
         }
         return instance.invokeMethod(method, withArguments: args)
+    }
+
+    fileprivate func recordLoadedFile(_ url: URL) {
+        loadedFilePaths.insert(Self.canonicalPath(for: url))
+    }
+
+    /// Same on-disk file → same string regardless of how callers spelled
+    /// the URL. Lets FSEvents paths, recorded load paths, and the import
+    /// containment check compare against each other cleanly.
+    nonisolated static func canonicalPath(for url: URL) -> String {
+        url.resolvingSymlinksInPath().standardizedFileURL.path
     }
 
     /// Resolves a `URL?` and reads its contents as UTF-8 text. Faults +
@@ -718,7 +746,7 @@ private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
     private func normalizedRootPath() -> String? {
         if let cached = cachedRootPath { return cached }
         guard let owner, let root = owner.importRoot else { return nil }
-        let resolved = root.resolvingSymlinksInPath().standardizedFileURL.path
+        let resolved = JavaScriptEngine.canonicalPath(for: root)
         cachedRootPath = resolved
         return resolved
     }
@@ -726,7 +754,7 @@ private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
     /// Verifies `target`'s canonical path is at or below the cached root,
     /// matching with a trailing `/` so `/foo` doesn't match `/foobar`.
     private func isContained(url target: URL, rootPath: String) -> Bool {
-        let normalizedTarget = target.resolvingSymlinksInPath().standardizedFileURL.path
+        let normalizedTarget = JavaScriptEngine.canonicalPath(for: target)
         if normalizedTarget == rootPath { return true }
         let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
         return normalizedTarget.hasPrefix(prefix)
@@ -788,6 +816,7 @@ private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
             }
             do {
                 let source = try String(contentsOf: url, encoding: .utf8)
+                owner.recordLoadedFile(url)
                 #if DEBUG
                 Logger.javaScriptEngine.debug(
                     "loaded module: \(url.path, privacy: .public)"

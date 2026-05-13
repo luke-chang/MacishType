@@ -277,21 +277,28 @@ class JSExternalEngine: JavaScriptEngine {
         watchStream = nil
     }
 
-    /// Filters FSEvents noise: macOS metadata, dotfiles, editor backups.
-    /// Anything else is treated as engine-relevant and triggers markStale.
-    nonisolated private static func isRelevantPath(_ path: String) -> Bool {
+    /// Early short-circuit for high-frequency FSEvents noise — macOS
+    /// metadata, dotfiles, editor backups — so we skip the canonical-path
+    /// syscall for them. The authoritative relevance check is
+    /// `loadedFilePaths` containment.
+    nonisolated private static func isFSEventsNoise(_ path: String) -> Bool {
         let name = (path as NSString).lastPathComponent
-        if name == ".DS_Store" { return false }
-        if name.hasPrefix(".") { return false }   // hidden / editor temp (.swp, .tmp)
-        if name.hasSuffix("~") { return false }   // editor backups
-        return true
+        if name == ".DS_Store" { return true }
+        if name.hasPrefix(".") { return true }   // hidden / editor temp (.swp, .tmp)
+        if name.hasSuffix("~") { return true }   // editor backups
+        return false
     }
 
-    /// Any relevant file change marks the engine stale for a full reload
-    /// on next activate.
+    /// Marks the engine stale only when a file that was actually read during
+    /// the last load is touched. Files outside the import graph (notes,
+    /// drafts, future engine-owned data) are ignored.
     private func handleFSEvents(paths: [String]) {
-        let relevant = paths.filter(Self.isRelevantPath)
-        guard let first = relevant.first else { return }
-        markStale(reason: "file changed: \(first)")
+        let tracked = loadedFilePaths
+        let hit = paths.first { path in
+            !Self.isFSEventsNoise(path)
+                && tracked.contains(Self.canonicalPath(for: URL(fileURLWithPath: path)))
+        }
+        guard let hit else { return }
+        markStale(reason: "tracked file changed: \(hit)")
     }
 }
