@@ -141,11 +141,6 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             }
             next = sanitized
         }
-        // Gate the JS push at the Swift side so the marshal + bridge call
-        // (and the resulting settingschange event) skips when nothing
-        // actually changed — common on FSEvents-triggered reloads of
-        // unchanged blobs.
-        guard next != settings else { return }
         settings = next
         pushSettingsToJS()
     }
@@ -206,6 +201,11 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// failed to evaluate — a bridge-structural fault.
     private func pushSettingsToJS() {
         guard let context = jsContext else { return }
+        // Dedup against JS-side state, not Swift cache — reloadConfig may
+        // populate `settings` while jsContext is nil, leaving a fresh
+        // context's JS-side dict empty despite the Swift cache looking up
+        // to date.
+        guard lastPushedSettings != settings else { return }
         let dict = settings.mapValues { Self.marshal($0) }
         guard let updater = context.objectForKeyedSubscript("__MacishType_setSettings"),
               updater.isObject else {
@@ -215,7 +215,12 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             return
         }
         updater.call(withArguments: [dict])
+        lastPushedSettings = settings
     }
+
+    /// What the current `jsContext` has been told. Reset on teardown
+    /// since a fresh JSContext starts with an empty JS-side dict.
+    private var lastPushedSettings: [String: JSONValue]?
 
     // MARK: candidateWindow cache → JS bridge
 
@@ -547,6 +552,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         loadedFilePaths.removeAll()
         moduleLoader.invalidateRootCache()
         // self.manifest intentionally NOT cleared — see its doc comment.
+        lastPushedSettings = nil
     }
 
     override func activate(context: InputEngineContext, clientIdentifier: String?) {
