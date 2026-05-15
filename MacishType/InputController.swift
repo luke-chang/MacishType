@@ -180,7 +180,8 @@ class InputController: IMKInputController {
     // MARK: - Event Handling
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
-        guard let client = sender as? IMKTextInput else { return false }
+        guard let client = sender as? IMKTextInput,
+              let engine, let engineContext else { return false }
         var themeStale = false
         if CandidateWindow.shared.candidateDelegate !== self {
             CandidateWindow.shared.candidateDelegate = self
