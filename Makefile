@@ -1,4 +1,4 @@
-.PHONY: help build debug reload release release-universal install uninstall clean log log-history preview
+.PHONY: help build debug reload release release-universal install uninstall clean log log-js log-history preview
 
 APP_NAME = MacishType
 BUNDLE_ID = net.lukechang.inputmethod.$(APP_NAME)
@@ -17,6 +17,7 @@ help:
 	@echo "  make uninstall          - Remove installed input method"
 	@echo "  make clean              - Clean build artifacts"
 	@echo "  make log                - Stream live OSLog output"
+	@echo "  make log-js             - Stream JS-originated logs (engine console.*, uncaught exceptions, rejections)"
 	@echo "  make log-history        - Show recent log history (default $(LOG_SHOW_LAST), use LOG_SHOW_LAST=24h to override)"
 	@echo "  make preview            - Build and run CandidateWindow preview app"
 	@echo ""
@@ -105,6 +106,13 @@ log:
 	@echo "Press Ctrl+C to stop"
 	@echo ""
 	log stream --predicate 'subsystem == "$(BUNDLE_ID)"' --level debug --style compact
+
+# Stream JS-originated logs only (category "JavaScript")
+log-js:
+	@echo "Streaming JS-originated logs for $(APP_NAME) ($(BUNDLE_ID))..."
+	@echo "Press Ctrl+C to stop"
+	@echo ""
+	log stream --predicate 'subsystem == "$(BUNDLE_ID)" AND category == "JavaScript"' --level debug --style compact
 
 # Show recent log history
 log-history:

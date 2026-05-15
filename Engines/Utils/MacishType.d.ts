@@ -298,7 +298,9 @@ export interface Manifest {
 
 /**
  * `console` is provided by the host runtime (bridges to OSLog). Levels:
- * `log`/`info` → info, `debug` → debug, `warn` → notice, `error` → error.
+ * `log`/`info`/`trace` → info, `debug` → debug, `warn` → notice,
+ * `error` → error. `warn`/`error`/`trace` automatically append a caller
+ * stack trace.
  */
 declare global {
   interface Console {
@@ -307,6 +309,7 @@ declare global {
     debug(...args: unknown[]): void;
     warn(...args: unknown[]): void;
     error(...args: unknown[]): void;
+    trace(...args: unknown[]): void;
   }
   // eslint-disable-next-line no-var
   var console: Console;

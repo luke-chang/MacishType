@@ -378,6 +378,39 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     // shim that forwards back to weak self.
     private lazy var moduleLoader = ModuleLoader(owner: self)
 
+    // MARK: Exception describing
+
+    /// `JSValue.toString()` on an undefined value returns the literal string
+    /// "undefined" — treat it as absent alongside nil / isUndefined / isNull.
+    private static func stringIfDefined(_ value: JSValue?) -> String? {
+        guard let v = resolved(value),
+              let s = v.toString(), !s.isEmpty, s != "undefined" else { return nil }
+        return s
+    }
+
+    /// JSC populates sourceURL/line/column even when `stack` is undefined
+    /// (common for engine-internal throws), so the location line is the most
+    /// reliable anchor for navigating back to the source.
+    private static func describeJSException(_ exception: JSValue?) -> String {
+        guard let exception else { return "(nil)" }
+        let prop: (String) -> String? = { stringIfDefined(exception.objectForKeyedSubscript($0)) }
+
+        let name = prop("name") ?? "Error"
+        let message = prop("message") ?? exception.toString() ?? "(no message)"
+
+        var location = ""
+        if let src = prop("sourceURL") { location = src }
+        if let line = prop("line") {
+            location += location.isEmpty ? "line \(line)" : ":\(line)"
+            if let col = prop("column") { location += ":\(col)" }
+        }
+
+        var lines = ["\(name): \(message)"]
+        if !location.isEmpty { lines.append("  at \(location)") }
+        if let stack = prop("stack") { lines.append("stack:\n\(stack)") }
+        return lines.joined(separator: "\n")
+    }
+
     // MARK: Lifecycle
 
     override func load() {
@@ -391,11 +424,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         let context = JSContext(virtualMachine: vm)!
 
         context.exceptionHandler = { _, exception in
-            let message = exception?.toString() ?? "(no message)"
-            let stack = exception?.objectForKeyedSubscript("stack")?.toString()
-                ?? "(no stack)"
-            Logger.javaScriptEngine.fault(
-                "JS exception: \(message, privacy: .public)\nstack: \(stack, privacy: .public)"
+            Logger.javaScript.fault(
+                "uncaught exception:\n\(Self.describeJSException(exception), privacy: .public)"
             )
         }
 
@@ -406,17 +436,17 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         let logFn: @convention(block) (String, String) -> Void = { level, message in
             switch level {
             case "debug":
-                Logger.javaScriptEngine.debug("\(message, privacy: .public)")
+                Logger.javaScript.debug("\(message, privacy: .public)")
             case "info":
-                Logger.javaScriptEngine.info("\(message, privacy: .public)")
+                Logger.javaScript.info("\(message, privacy: .public)")
             case "notice":
-                Logger.javaScriptEngine.notice("\(message, privacy: .public)")
+                Logger.javaScript.notice("\(message, privacy: .public)")
             case "error":
-                Logger.javaScriptEngine.error("\(message, privacy: .public)")
+                Logger.javaScript.error("\(message, privacy: .public)")
             case "fault":
-                Logger.javaScriptEngine.fault("\(message, privacy: .public)")
+                Logger.javaScript.fault("\(message, privacy: .public)")
             default:
-                Logger.javaScriptEngine.notice(
+                Logger.javaScript.notice(
                     "[\(level, privacy: .public)] \(message, privacy: .public)"
                 )
             }
@@ -509,8 +539,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             Logger.javaScriptEngine.info("module loaded, engineClass captured")
         }
         let rejectBlock: @convention(block) (JSValue) -> Void = { reason in
-            Logger.javaScriptEngine.fault(
-                "module evaluation rejected: \(reason.toString() ?? "?", privacy: .public)"
+            Logger.javaScript.fault(
+                "module evaluation rejected:\n\(Self.describeJSException(reason), privacy: .public)"
             )
         }
         promise.invokeMethod("then", withArguments: [captureBlock, rejectBlock])

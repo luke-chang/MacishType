@@ -360,19 +360,28 @@ const characterCount = [...seg.segment(markedText)].length;
 
 The host injects `console` and `manifest` into the engine's global scope.
 
+No `require`, `process`, `setTimeout`, network, or filesystem APIs are
+exposed. Engines run inside JavaScriptCore.
+
 #### `console`
 
 Levels map to OSLog:
 
 ```
 console.log   / console.info  → OSLog .info
+console.trace                 → OSLog .info     (with stack)
 console.debug                 → OSLog .debug
-console.warn                  → OSLog .notice
-console.error                 → OSLog .error
+console.warn                  → OSLog .notice   (with stack)
+console.error                 → OSLog .error    (with stack)
 ```
 
-No `require`, `process`, `setTimeout`, network, or filesystem APIs are
-exposed. Engines run inside JavaScriptCore.
+Uncaught exceptions also appear in the log with a stack trace.
+
+View engine logs:
+
+- **Console.app**: filter `subsystem:net.lukechang.inputmethod.MacishType category:JavaScript`
+- **Terminal**: `log stream --predicate 'subsystem == "net.lukechang.inputmethod.MacishType" AND category == "JavaScript"' --level debug --style compact`
+- **In this repo**: `make log-js` wraps the terminal command.
 
 #### `manifest`
 

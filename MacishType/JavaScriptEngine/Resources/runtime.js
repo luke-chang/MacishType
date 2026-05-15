@@ -20,12 +20,21 @@ function __MacishType_format(args) {
   }).join(" ");
 }
 
+// Drop frames originating from this runtime so the reported first line is
+// the engine-side caller, not the console wrapper plumbing.
+function __MacishType_callerStack() {
+  const stack = new Error().stack;
+  if (!stack) return "";
+  return stack.split("\n").filter((line) => !line.includes("runtime.js")).join("\n");
+}
+
 globalThis.console = {
   log:   (...args) => __MacishType_log("info",   __MacishType_format(args)),
   info:  (...args) => __MacishType_log("info",   __MacishType_format(args)),
   debug: (...args) => __MacishType_log("debug",  __MacishType_format(args)),
-  warn:  (...args) => __MacishType_log("notice", __MacishType_format(args)),
-  error: (...args) => __MacishType_log("error",  __MacishType_format(args)),
+  warn:  (...args) => __MacishType_log("notice", __MacishType_format(args) + "\n" + __MacishType_callerStack()),
+  error: (...args) => __MacishType_log("error",  __MacishType_format(args) + "\n" + __MacishType_callerStack()),
+  trace: (...args) => __MacishType_log("info",   __MacishType_format(args) + "\n" + __MacishType_callerStack()),
 };
 
 (function () {
