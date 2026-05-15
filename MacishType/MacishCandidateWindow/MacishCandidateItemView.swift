@@ -63,7 +63,10 @@ class MacishCandidateItemView: NSView {
     var absoluteIndex: Int = 0
 
     var isHighlighted: Bool = false {
-        didSet { updateAppearance() }
+        didSet {
+            guard isHighlighted != oldValue else { return }
+            updateAppearance()
+        }
     }
 
     var highlightColor: NSColor = .selectedContentBackgroundColor {
