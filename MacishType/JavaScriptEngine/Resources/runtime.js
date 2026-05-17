@@ -147,3 +147,76 @@ globalThis.console = {
     dispatch("settingschange");
   };
 })();
+
+// localStorage — file-backed via Swift bridges. Reads are cached for
+// the current sync task (microtask-bounded) so iteration / repeated
+// reads only hit Swift once; mutations invalidate immediately.
+(function () {
+  let cachedKeys = null;
+  const cachedValues = new Map();
+  let invalidationScheduled = false;
+
+  // Promise microtask drains when the host call's JS stack empties,
+  // giving per-handleKey cache lifetime. queueMicrotask isn't in pure
+  // JSC (no WebCore globals); Promise.resolve().then is ECMAScript.
+  function scheduleInvalidate() {
+    if (invalidationScheduled) return;
+    invalidationScheduled = true;
+    Promise.resolve().then(() => {
+      cachedKeys = null;
+      cachedValues.clear();
+      invalidationScheduled = false;
+    });
+  }
+  function invalidateNow() {
+    cachedKeys = null;
+    cachedValues.clear();
+  }
+
+  const localStorage = {
+    get length() {
+      if (cachedKeys === null) {
+        cachedKeys = __MacishType_storageKeys();
+        scheduleInvalidate();
+      }
+      return cachedKeys.length;
+    },
+    key(index) {
+      const i = Number(index);
+      if (!Number.isFinite(i) || i < 0) return null;
+      if (cachedKeys === null) {
+        cachedKeys = __MacishType_storageKeys();
+        scheduleInvalidate();
+      }
+      const idx = Math.floor(i);
+      return idx < cachedKeys.length ? cachedKeys[idx] : null;
+    },
+    getItem(key) {
+      const k = String(key);
+      if (cachedValues.has(k)) return cachedValues.get(k);
+      const value = __MacishType_storageGetItem(k);
+      cachedValues.set(k, value);
+      scheduleInvalidate();
+      return value;
+    },
+    setItem(key, value) {
+      __MacishType_storageSetItem(String(key), String(value));
+      invalidateNow();
+    },
+    removeItem(key) {
+      __MacishType_storageRemoveItem(String(key));
+      invalidateNow();
+    },
+    clear() {
+      __MacishType_storageClear();
+      invalidateNow();
+    },
+  };
+
+  Object.defineProperty(globalThis, "localStorage", {
+    value: Object.freeze(localStorage),
+    writable: false,
+    enumerable: true,
+    configurable: false,
+  });
+})();

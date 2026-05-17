@@ -5,3 +5,4 @@ xcuserdata/
 *.hmap
 *.dSYM.zip
 *.dSYM
+Engines/**/_storage/

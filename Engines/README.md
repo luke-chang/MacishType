@@ -358,10 +358,11 @@ const characterCount = [...seg.segment(markedText)].length;
 
 ### Runtime globals
 
-The host injects `console` and `manifest` into the engine's global scope.
+The host injects `console`, `manifest`, and `localStorage` into the
+engine's global scope.
 
-No `require`, `process`, `setTimeout`, network, or filesystem APIs are
-exposed. Engines run inside JavaScriptCore.
+No `require`, `process`, `setTimeout`, or network APIs are exposed.
+Engines run inside JavaScriptCore.
 
 #### `console`
 
@@ -504,6 +505,70 @@ control stays visible but the user's change has no effect). If the
 engine intends to manage these itself, declare a placeholder value in
 `manifest.json`'s `candidateWindow` to hide the corresponding Settings
 UI control, then drive the actual value through this object.
+
+#### `localStorage`
+
+Per-engine, file-backed persistence with the Web Storage `Storage`
+interface. Data survives engine reload and app restart.
+
+```js
+localStorage.setItem('lastUsed', JSON.stringify({ ts: Date.now() }));
+const last = JSON.parse(localStorage.getItem('lastUsed') ?? 'null');
+```
+
+Data lives in `<engineFolder>/_storage/`, one file per key. Files are
+named by percent-encoding the key (so `cache.v1` → `cache%2Ev1`),
+with a `localStorage_` prefix to leave room for future storage kinds.
+
+The `_storage/` folder is the engine's private data area: file changes
+inside it never trigger engine reload. **Don't put engine source code
+there** — edits won't hot-reload.
+
+**API** (subset of Web Storage `Storage`):
+
+| Member | Behavior |
+|---|---|
+| `localStorage.getItem(key)` | Returns the stored string, or `null` if missing. |
+| `localStorage.setItem(key, value)` | Stores value. Both args coerced to string. |
+| `localStorage.removeItem(key)` | Removes if present; no-op otherwise. |
+| `localStorage.clear()` | Removes every key in this engine's storage. |
+| `localStorage.length` | Current key count. |
+| `localStorage.key(index)` | The i-th key, sorted alphabetically. `null` if out of range. |
+
+The following are **programmer errors** and throw:
+
+- Empty key (`""`).
+- Encoded filename exceeds 200 bytes (raw key + UTF-8 expansion).
+- Value exceeds 10 MB.
+
+```js
+try {
+  localStorage.setItem('', 'x');  // throws: empty key
+} catch (e) { console.error(e); }
+```
+
+**Filesystem errors** (permission denied, disk full, etc.) are logged
+via OSLog and **silently swallowed**:
+
+- `getItem` returns `null` on read failure.
+- `setItem` / `removeItem` / `clear` drop the operation.
+
+Engine code can call localStorage freely without try/catch around
+environmental failures; only argument errors need handling.
+
+**Property access is not supported.** Use the methods:
+
+```js
+localStorage.foo = 'bar';   // does NOT persist (frozen object)
+const x = localStorage.foo; // undefined
+```
+
+**Lifecycle**: data persists until `removeItem` / `clear`, or until
+the storage folder is deleted out-of-band. If the user re-picks the
+same engine folder later, the previous `_storage/` is reused — values
+written before survive folder re-pick. Picking a different folder
+naturally points to that folder's own `_storage/` (empty unless
+previously written into).
 
 ## TypeScript hint
 

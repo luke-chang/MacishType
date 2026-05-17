@@ -31,6 +31,25 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// override only to narrow.
     var importRoot: URL? { engineFolderURL }
 
+    /// Root directory for this engine's `localStorage`. nil signals
+    /// "no writable location" to bridges, which surface as logged
+    /// no-ops rather than writing to a fallback the user can't find.
+    var storageURL: URL? {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return nil }
+        let support = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return support
+            .appendingPathComponent(bundleID)
+            .appendingPathComponent(engineID)
+    }
+
+    /// Computed per call so folder swap (JSExternal) picks up the new
+    /// location immediately.
+    private var storage: JavaScriptStorage? {
+        guard let url = storageURL else { return nil }
+        return JavaScriptStorage(rootURL: url)
+    }
+
     nonisolated private static let manifestFileName = "manifest.json"
 
     // MARK: Manifest state
@@ -347,6 +366,19 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         return fields
     }
 
+    // MARK: localStorage bridge
+
+    private static func throwJSError(_ message: String) {
+        guard let ctx = JSContext.current() else { return }
+        ctx.exception = JSValue(newErrorFromMessage: message, in: ctx)
+    }
+
+    private static func logStorageUnavailable(_ op: String) {
+        Logger.javaScriptEngine.error(
+            "localStorage \(op, privacy: .public) failed: storage location unavailable"
+        )
+    }
+
     // MARK: JSContext state (set up in load())
 
     fileprivate var virtualMachine: JSVirtualMachine!
@@ -471,8 +503,67 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         }
         context.setObject(listCWFields, forKeyedSubscript: "__MacishType_candidateWindowFields" as NSString)
 
-        // Auto-evaluate runtime.js (registers console, future file I/O, etc.)
-        // before any engine code runs. Must run after __MacishType_log injection.
+        // localStorage bridges — must register before runtime.js eval.
+        let storageGetItem: @convention(block) (String) -> Any = { [weak self] key in
+            guard let storage = self?.storage else {
+                Self.logStorageUnavailable("getItem")
+                return NSNull()
+            }
+            do {
+                return try storage.getItem(key) ?? NSNull()
+            } catch {
+                Self.throwJSError(error.localizedDescription)
+                return NSNull()
+            }
+        }
+        context.setObject(storageGetItem, forKeyedSubscript: "__MacishType_storageGetItem" as NSString)
+
+        let storageSetItem: @convention(block) (String, String) -> Void = { [weak self] key, value in
+            guard let storage = self?.storage else {
+                Self.logStorageUnavailable("setItem")
+                return
+            }
+            do {
+                try storage.setItem(key, value)
+            } catch {
+                Self.throwJSError(error.localizedDescription)
+            }
+        }
+        context.setObject(storageSetItem, forKeyedSubscript: "__MacishType_storageSetItem" as NSString)
+
+        let storageRemoveItem: @convention(block) (String) -> Void = { [weak self] key in
+            guard let storage = self?.storage else {
+                Self.logStorageUnavailable("removeItem")
+                return
+            }
+            do {
+                try storage.removeItem(key)
+            } catch {
+                Self.throwJSError(error.localizedDescription)
+            }
+        }
+        context.setObject(storageRemoveItem, forKeyedSubscript: "__MacishType_storageRemoveItem" as NSString)
+
+        let storageClear: @convention(block) () -> Void = { [weak self] in
+            guard let storage = self?.storage else {
+                Self.logStorageUnavailable("clear")
+                return
+            }
+            storage.clear()
+        }
+        context.setObject(storageClear, forKeyedSubscript: "__MacishType_storageClear" as NSString)
+
+        let storageKeys: @convention(block) () -> [String] = { [weak self] in
+            guard let storage = self?.storage else {
+                Self.logStorageUnavailable("keys")
+                return []
+            }
+            return storage.keys()
+        }
+        context.setObject(storageKeys, forKeyedSubscript: "__MacishType_storageKeys" as NSString)
+
+        // Auto-evaluate runtime.js before any engine code runs;
+        // must follow bridge registration above.
         guard let runtime = Self.loadJSSource(
             Bundle.main.url(forResource: "runtime", withExtension: "js", subdirectory: "JavaScript"),
             label: "runtime.js"

@@ -315,4 +315,22 @@ declare global {
   var console: Console;
   // eslint-disable-next-line no-var
   var manifest: Manifest;
+
+  /** Web Storage `Storage` minus property access. */
+  interface Storage {
+    readonly length: number;
+    key(index: number): string | null;
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+    removeItem(key: string): void;
+    clear(): void;
+  }
+
+  /**
+   * Per-engine file-backed persistence. Throws on empty key, encoded
+   * key > 200 bytes, or value > 10 MB. Filesystem errors log + return
+   * safe defaults (null / no-op).
+   */
+  // eslint-disable-next-line no-var
+  var localStorage: Storage;
 }

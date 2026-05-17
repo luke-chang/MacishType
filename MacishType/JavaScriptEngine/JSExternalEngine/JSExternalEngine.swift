@@ -19,6 +19,14 @@ class JSExternalEngine: JavaScriptEngine {
 
     override var engineFolderURL: URL? { folderBookmark.url }
 
+    /// `<engineFolder>/_storage/` — sandbox scope is held for the
+    /// loaded lifetime (acquire in load, release in unload), so I/O
+    /// here doesn't need bridge-side scope handling.
+    override var storageURL: URL? {
+        guard let folder = engineFolderURL else { return nil }
+        return folder.appendingPathComponent("_storage")
+    }
+
     override init() {
         super.init()
         folderObserver = folderBookmark.$url
@@ -249,10 +257,6 @@ class JSExternalEngine: JavaScriptEngine {
             let engine = Unmanaged<JSExternalEngine>.fromOpaque(info).takeUnretainedValue()
             MainActor.assumeIsolated { engine.handleFSEvents(paths: paths) }
         }
-        // TODO(when fs API ships): exclude self-write subpaths so the engine's
-        // own user-dict writes don't trigger markStale → reload → wipe
-        // learned state. Currently no fs API in runtime.js, so always-on is
-        // safe.
         guard let stream = FSEventStreamCreate(
             nil, callback, &context,
             [folder.path] as CFArray,
@@ -294,15 +298,16 @@ class JSExternalEngine: JavaScriptEngine {
         }
     }
 
-    /// Early short-circuit for high-frequency FSEvents noise — macOS
-    /// metadata, dotfiles, editor backups — so we skip the canonical-path
-    /// syscall for them. The authoritative relevance check is
-    /// `loadedFilePaths` containment.
+    /// Two categories: editor/metadata noise (perf — skip the
+    /// `canonicalPath` syscall for files never in `loadedFilePaths`)
+    /// and `/_storage/` paths (contract — must never trigger reload,
+    /// even when an engine imports from inside `_storage/`).
     nonisolated private static func isFSEventsNoise(_ path: String) -> Bool {
         let name = (path as NSString).lastPathComponent
         if name == ".DS_Store" { return true }
-        if name.hasPrefix(".") { return true }   // hidden / editor temp (.swp, .tmp)
-        if name.hasSuffix("~") { return true }   // editor backups
+        if name.hasPrefix(".") { return true }
+        if name.hasSuffix("~") { return true }
+        if path.contains("/_storage/") { return true }
         return false
     }
 
