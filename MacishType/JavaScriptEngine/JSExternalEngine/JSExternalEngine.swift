@@ -27,6 +27,21 @@ class JSExternalEngine: JavaScriptEngine {
         return folder.appendingPathComponent("_storage")
     }
 
+    override var hasExternalStorageWatcher: Bool { true }
+
+    /// Canonical path of storageURL + trailing slash, cached so each
+    /// FSEvent path can be cheaply prefix-matched. Cleared whenever
+    /// the folder changes (clearStoredSettings) or engine unloads.
+    private var cachedStoragePathPrefix: String?
+
+    private func storagePathPrefix() -> String? {
+        if let cached = cachedStoragePathPrefix { return cached }
+        guard let url = storageURL else { return nil }
+        let prefix = Self.canonicalPath(for: url) + "/"
+        cachedStoragePathPrefix = prefix
+        return prefix
+    }
+
     override init() {
         super.init()
         folderObserver = folderBookmark.$url
@@ -66,6 +81,7 @@ class JSExternalEngine: JavaScriptEngine {
             defaults.removeObject(forKey: InputEngine.composedKey(
                 engineID: engineID, subKey: subKey))
         }
+        cachedStoragePathPrefix = nil
     }
 
     /// User picked a different folder, or a watched file changed. Don't
@@ -128,6 +144,7 @@ class JSExternalEngine: JavaScriptEngine {
         stopWatching()
         super.unload()
         folderBookmark.release()
+        cachedStoragePathPrefix = nil
         loadStatus = .notConfigured
     }
 
@@ -298,29 +315,40 @@ class JSExternalEngine: JavaScriptEngine {
         }
     }
 
-    /// Two categories: editor/metadata noise (perf — skip the
-    /// `canonicalPath` syscall for files never in `loadedFilePaths`)
-    /// and `/_storage/` paths (contract — must never trigger reload,
-    /// even when an engine imports from inside `_storage/`).
+    /// Editor / metadata noise that's never in `loadedFilePaths` and
+    /// should short-circuit before paying the `canonicalPath` syscall.
+    /// `_storage/` paths get explicit routing in `handleFSEvents`
+    /// (not here) so they reach the storage event pipeline.
     nonisolated private static func isFSEventsNoise(_ path: String) -> Bool {
         let name = (path as NSString).lastPathComponent
         if name == ".DS_Store" { return true }
         if name.hasPrefix(".") { return true }
         if name.hasSuffix("~") { return true }
-        if path.contains("/_storage/") { return true }
         return false
     }
 
-    /// Marks the engine stale only when a file that was actually read during
-    /// the last load is touched. Files outside the import graph (notes,
-    /// drafts, future engine-owned data) are ignored.
+    /// `_storage/` paths route to the storage-event pipeline; other
+    /// import-graph hits trigger reload via markStale.
     private func handleFSEvents(paths: [String]) {
-        let tracked = loadedFilePaths
-        let hit = paths.first { path in
-            !Self.isFSEventsNoise(path)
-                && tracked.contains(Self.canonicalPath(for: URL(fileURLWithPath: path)))
+        let storagePrefix = storagePathPrefix()
+        var trackedHit: String?
+        for path in paths {
+            // Substring pre-check is cheap; only canonicalize when
+            // the path is a storage candidate or could be a tracked
+            // import. .DS_Store et al. short-circuit before realpath.
+            let maybeStorage = path.contains("/_storage/")
+            if !maybeStorage && Self.isFSEventsNoise(path) { continue }
+            let canonical = Self.canonicalPath(for: URL(fileURLWithPath: path))
+            if maybeStorage, let storagePrefix,
+               canonical.hasPrefix(storagePrefix) {
+                handleStorageEvent(path: path)
+                continue
+            }
+            if loadedFilePaths.contains(canonical) {
+                trackedHit = path
+                break
+            }
         }
-        guard let hit else { return }
-        markStale(reason: "tracked file changed: \(hit)")
+        if let trackedHit { markStale(reason: "tracked file changed: \(trackedHit)") }
     }
 }

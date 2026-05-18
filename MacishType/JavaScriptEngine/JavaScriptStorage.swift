@@ -80,7 +80,11 @@ struct JavaScriptStorage {
         }
     }
 
-    func setItem(_ key: String, _ value: String) throws {
+    /// Returns the written URL on success, nil if the disk wasn't
+    /// actually touched (mkdir or write failed and got logged).
+    /// Callers track self-writes via the returned URL.
+    @discardableResult
+    func setItem(_ key: String, _ value: String) throws -> URL? {
         let url = try fileURL(for: key)
         let byteCount = value.utf8.count
         if byteCount > Self.maxValueByteCount {
@@ -95,39 +99,52 @@ struct JavaScriptStorage {
             Logger.javaScriptEngine.error(
                 "storage mkdir failed at \(self.rootURL.path, privacy: .public): \(String(describing: error), privacy: .public)"
             )
-            return
+            return nil
         }
         do {
             try Data(value.utf8).write(to: url, options: .atomic)
+            return url
         } catch {
             Logger.javaScriptEngine.error(
                 "storage write failed for '\(key, privacy: .public)': \(String(describing: error), privacy: .public)"
             )
+            return nil
         }
     }
 
-    func removeItem(_ key: String) throws {
+    /// Returns the removed URL on success, nil if the key didn't
+    /// exist or the remove failed.
+    @discardableResult
+    func removeItem(_ key: String) throws -> URL? {
         let url = try fileURL(for: key)
         do {
             try FileManager.default.removeItem(at: url)
+            return url
         } catch CocoaError.fileNoSuchFile {
-            // Web Storage spec: missing key is no-op.
+            return nil
         } catch {
             Logger.javaScriptEngine.error(
                 "storage remove failed for '\(key, privacy: .public)': \(String(describing: error), privacy: .public)"
             )
+            return nil
         }
     }
 
-    /// Only removes files with `filenamePrefix` — keeps future storage
-    /// kinds in the same `rootURL` intact.
-    func clear() {
+    /// Removes only files with `filenamePrefix` — keeps future
+    /// storage kinds in the same `rootURL` intact. Returns the URLs
+    /// actually removed so callers can track them as self-writes.
+    @discardableResult
+    func clear() -> [URL] {
         guard let names = try? FileManager.default.contentsOfDirectory(
-            atPath: rootURL.path) else { return }
+            atPath: rootURL.path) else { return [] }
+        var removed: [URL] = []
         for name in names where name.hasPrefix(Self.filenamePrefix) {
-            try? FileManager.default.removeItem(
-                at: rootURL.appendingPathComponent(name))
+            let url = rootURL.appendingPathComponent(name)
+            if (try? FileManager.default.removeItem(at: url)) != nil {
+                removed.append(url)
+            }
         }
+        return removed
     }
 
     /// Sorted for deterministic `key(i)` indexing across calls.

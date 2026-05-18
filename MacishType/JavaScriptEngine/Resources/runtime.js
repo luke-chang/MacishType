@@ -148,13 +148,15 @@ globalThis.console = {
   };
 })();
 
-// localStorage — file-backed via Swift bridges. Reads are cached for
-// the current sync task (microtask-bounded) so iteration / repeated
+// localStorage + storage events — shared closure so dispatch can
+// reach invalidateNow without exposing it. Reads are cached for the
+// current sync task (microtask-bounded) so iteration / repeated
 // reads only hit Swift once; mutations invalidate immediately.
 (function () {
   let cachedKeys = null;
   const cachedValues = new Map();
   let invalidationScheduled = false;
+  const storageListeners = new Set();
 
   // Promise microtask drains when the host call's JS stack empties,
   // giving per-handleKey cache lifetime. queueMicrotask isn't in pure
@@ -219,4 +221,98 @@ globalThis.console = {
     enumerable: true,
     configurable: false,
   });
+
+  // --- storage events ---
+
+  // Maps user-supplied callback → wrapped self-removing callback for
+  // `{ once: true }` registrations. WeakMap so we don't hold callbacks
+  // after the user drops their reference.
+  const onceWrappers = new WeakMap();
+
+  function parseAddEventListenerOptions(options) {
+    if (options === undefined) return { once: false };
+    if (!options || typeof options !== "object") {
+      console.warn("addEventListener: only object options are supported");
+      return { once: false };
+    }
+    for (const k of Object.keys(options)) {
+      if (k !== "once") {
+        console.warn(`addEventListener: option '${k}' is ignored`);
+      }
+    }
+    return { once: !!options.once };
+  }
+
+  globalThis.addEventListener = function (type, callback, options) {
+    if (type !== "storage") {
+      console.warn(`addEventListener: only 'storage' is supported (got '${type}')`);
+      return;
+    }
+    if (typeof callback !== "function") return;
+
+    const { once } = parseAddEventListenerOptions(options);
+
+    let effective = callback;
+    if (once) {
+      effective = function (event) {
+        storageListeners.delete(effective);
+        onceWrappers.delete(callback);
+        if (storageListeners.size === 0) __MacishType_setStorageListening(false);
+        callback(event);
+      };
+      onceWrappers.set(callback, effective);
+    }
+
+    const wasEmpty = storageListeners.size === 0;
+    storageListeners.add(effective);
+    if (wasEmpty) __MacishType_setStorageListening(true);
+  };
+
+  globalThis.removeEventListener = function (type, callback) {
+    if (type !== "storage") return;
+    const target = onceWrappers.get(callback) ?? callback;
+    onceWrappers.delete(callback);
+    const had = storageListeners.delete(target);
+    if (had && storageListeners.size === 0) __MacishType_setStorageListening(false);
+  };
+
+  globalThis.__MacishType_dispatchStorageEvent = function (key) {
+    if (storageListeners.size === 0) return;
+    // External mod just landed → cache must not return stale value
+    // to listeners. The microtask of the previous JS task should
+    // already have drained the cache, but explicit invalidation
+    // removes any dependency on JSC drain timing.
+    invalidateNow();
+
+    const event = {
+      type: "storage",
+      key,
+      oldValue: null,
+      storageArea: localStorage,
+    };
+    // Lazy: read disk only when a listener actually touches
+    // newValue, then freeze via property redefinition so further
+    // accesses don't re-read.
+    Object.defineProperty(event, "newValue", {
+      get() {
+        const value = localStorage.getItem(key);
+        Object.defineProperty(event, "newValue", {
+          value, enumerable: true, configurable: true, writable: false,
+        });
+        return value;
+      },
+      enumerable: true,
+      configurable: true,
+    });
+
+    // Snapshot before iterating so add/remove during a callback
+    // matches the DOM-style "listener list at dispatch time"
+    // semantics.
+    for (const cb of [...storageListeners]) {
+      try { cb(event); }
+      catch (e) {
+        console.error("storage listener threw:", e?.stack ?? String(e));
+      }
+    }
+  };
 })();

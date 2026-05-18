@@ -333,4 +333,38 @@ declare global {
    */
   // eslint-disable-next-line no-var
   var localStorage: Storage;
+
+  /**
+   * Fired when `_storage/` files are modified outside this engine
+   * (e.g. user editing them in Finder/CLI). The engine's own
+   * setItem/removeItem/clear do NOT fire here.
+   *
+   * Field types follow the Web Storage spec (matches `lib.dom.d.ts`
+   * declaration-merging): `key` and `storageArea` are nullable per
+   * spec, though in this host they're always non-null at dispatch
+   * — engines can null-check defensively or assume non-null.
+   * `oldValue` is always `null` (host doesn't cache prior values).
+   * `newValue` is lazy — disk is only read when a listener actually
+   * accesses it, then frozen for subsequent accesses.
+   */
+  interface StorageEvent {
+    readonly key: string | null;
+    readonly oldValue: string | null;
+    readonly newValue: string | null;
+    readonly storageArea: Storage | null;
+  }
+
+  interface AddEventListenerOptions {
+    once?: boolean;
+  }
+
+  function addEventListener(
+    type: "storage",
+    callback: (event: StorageEvent) => void,
+    options?: AddEventListenerOptions
+  ): void;
+  function removeEventListener(
+    type: "storage",
+    callback: (event: StorageEvent) => void
+  ): void;
 }

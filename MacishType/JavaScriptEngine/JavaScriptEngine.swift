@@ -50,6 +50,23 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         return JavaScriptStorage(rootURL: url)
     }
 
+    /// True when a subclass-provided FSEvent watcher already covers
+    /// `storageURL`. Bundle-resource engines have no folder watcher
+    /// of their own, so they need a lazy dedicated stream — see
+    /// `updateStorageWatcher`. `JSExternalEngine` overrides to true.
+    var hasExternalStorageWatcher: Bool { false }
+
+    /// Canonical paths of storage files our own setItem/removeItem/
+    /// clear just wrote, mapped to write time. FSEvent callback
+    /// within `selfWriteWindow` of a timestamp is treated as a
+    /// self-write and not redispatched. Touched only on main.
+    private var recentSelfWrites: [String: Date] = [:]
+    private static let selfWriteWindow: TimeInterval = 2.0
+
+    private func recordSelfWrite(_ url: URL, at time: Date = Date()) {
+        recentSelfWrites[Self.canonicalPath(for: url)] = time
+    }
+
     nonisolated private static let manifestFileName = "manifest.json"
 
     // MARK: Manifest state
@@ -379,6 +396,98 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         )
     }
 
+    // MARK: Storage event pipeline
+
+    /// `newValue` is NOT read here — JS reads it lazily only if a
+    /// listener accesses `event.newValue`. Files lacking the
+    /// `localStorage_` prefix (atomic-write temp files, foreign
+    /// files) are skipped via decodeFilename returning nil.
+    func handleStorageEvent(path: String) {
+        let canonical = Self.canonicalPath(for: URL(fileURLWithPath: path))
+        if let last = recentSelfWrites[canonical],
+           Date().timeIntervalSince(last) < Self.selfWriteWindow {
+            return
+        }
+        recentSelfWrites[canonical] = nil  // lazy GC stale entry
+        let filename = (path as NSString).lastPathComponent
+        guard let key = JavaScriptStorage.decodeFilename(filename) else {
+            return
+        }
+        dispatchStorageEvent(key: key)
+    }
+
+    private func dispatchStorageEvent(key: String) {
+        guard let context = jsContext,
+              let fn = context.objectForKeyedSubscript("__MacishType_dispatchStorageEvent"),
+              fn.isObject else { return }
+        fn.call(withArguments: [key])
+    }
+
+    // MARK: Bundle storage watcher (lazy, listener-driven)
+
+    private var bundleStorageWatcher: FSEventStreamRef?
+
+    /// Toggled by JS `__MacishType_setStorageListening` when the
+    /// listener count crosses 0↔1. No-op for engines with their own
+    /// folder watcher (JSExternal piggybacks on the engine-folder
+    /// stream); for bundle engines this is the lifecycle hook.
+    fileprivate func updateStorageWatcher(active: Bool) {
+        if hasExternalStorageWatcher { return }
+        if active {
+            if bundleStorageWatcher == nil { startBundleStorageWatcher() }
+        } else {
+            stopBundleStorageWatcher()
+        }
+    }
+
+    private func startBundleStorageWatcher() {
+        guard let url = storageURL else { return }
+        // FSEventStream needs the directory to exist or it watches
+        // ancestor changes we don't care about.
+        try? FileManager.default.createDirectory(
+            at: url, withIntermediateDirectories: true)
+        var context = FSEventStreamContext(
+            version: 0,
+            info: Unmanaged.passUnretained(self).toOpaque(),
+            retain: nil, release: nil, copyDescription: nil
+        )
+        let callback: FSEventStreamCallback = { _, info, count, eventPaths, _, _ in
+            guard let info, count > 0 else { return }
+            let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] ?? []
+            let engine = Unmanaged<JavaScriptEngine>.fromOpaque(info).takeUnretainedValue()
+            MainActor.assumeIsolated {
+                for path in paths { engine.handleStorageEvent(path: path) }
+            }
+        }
+        guard let stream = FSEventStreamCreate(
+            nil, callback, &context,
+            [url.path] as CFArray,
+            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+            0.5,
+            FSEventStreamCreateFlags(
+                kFSEventStreamCreateFlagFileEvents
+                | kFSEventStreamCreateFlagNoDefer
+                | kFSEventStreamCreateFlagUseCFTypes
+            )
+        ) else {
+            Logger.javaScriptEngine.error(
+                "bundle storage FSEvents stream creation failed for \(url.path, privacy: .public)"
+            )
+            return
+        }
+        FSEventStreamSetDispatchQueue(stream, DispatchQueue.main)
+        FSEventStreamStart(stream)
+        bundleStorageWatcher = stream
+    }
+
+    private func stopBundleStorageWatcher() {
+        guard let stream = bundleStorageWatcher else { return }
+        FSEventStreamStop(stream)
+        FSEventStreamInvalidate(stream)
+        FSEventStreamRelease(stream)
+        bundleStorageWatcher = nil
+    }
+
     // MARK: JSContext state (set up in load())
 
     fileprivate var virtualMachine: JSVirtualMachine!
@@ -519,12 +628,14 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         context.setObject(storageGetItem, forKeyedSubscript: "__MacishType_storageGetItem" as NSString)
 
         let storageSetItem: @convention(block) (String, String) -> Void = { [weak self] key, value in
-            guard let storage = self?.storage else {
+            guard let self, let storage = self.storage else {
                 Self.logStorageUnavailable("setItem")
                 return
             }
             do {
-                try storage.setItem(key, value)
+                if let url = try storage.setItem(key, value) {
+                    self.recordSelfWrite(url)
+                }
             } catch {
                 Self.throwJSError(error.localizedDescription)
             }
@@ -532,12 +643,14 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         context.setObject(storageSetItem, forKeyedSubscript: "__MacishType_storageSetItem" as NSString)
 
         let storageRemoveItem: @convention(block) (String) -> Void = { [weak self] key in
-            guard let storage = self?.storage else {
+            guard let self, let storage = self.storage else {
                 Self.logStorageUnavailable("removeItem")
                 return
             }
             do {
-                try storage.removeItem(key)
+                if let url = try storage.removeItem(key) {
+                    self.recordSelfWrite(url)
+                }
             } catch {
                 Self.throwJSError(error.localizedDescription)
             }
@@ -545,11 +658,14 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         context.setObject(storageRemoveItem, forKeyedSubscript: "__MacishType_storageRemoveItem" as NSString)
 
         let storageClear: @convention(block) () -> Void = { [weak self] in
-            guard let storage = self?.storage else {
+            guard let self, let storage = self.storage else {
                 Self.logStorageUnavailable("clear")
                 return
             }
-            storage.clear()
+            let now = Date()
+            for url in storage.clear() {
+                self.recordSelfWrite(url, at: now)
+            }
         }
         context.setObject(storageClear, forKeyedSubscript: "__MacishType_storageClear" as NSString)
 
@@ -561,6 +677,11 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             return storage.keys()
         }
         context.setObject(storageKeys, forKeyedSubscript: "__MacishType_storageKeys" as NSString)
+
+        let setStorageListening: @convention(block) (Bool) -> Void = { [weak self] active in
+            self?.updateStorageWatcher(active: active)
+        }
+        context.setObject(setStorageListening, forKeyedSubscript: "__MacishType_setStorageListening" as NSString)
 
         // Auto-evaluate runtime.js before any engine code runs;
         // must follow bridge registration above.
@@ -665,6 +786,11 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 
     private func teardownContext() {
+        // Stop watcher and clear self-write tracking before nil'ing
+        // context so any in-flight FSEvent callbacks find a clean
+        // state on the main runloop.
+        stopBundleStorageWatcher()
+        recentSelfWrites.removeAll()
         jsContext = nil
         virtualMachine = nil
         engineClass = nil

@@ -570,6 +570,55 @@ written before survive folder re-pick. Picking a different folder
 naturally points to that folder's own `_storage/` (empty unless
 previously written into).
 
+#### Storage events
+
+When `_storage/` files are modified **outside** this engine — typically
+the user editing them in Finder or via the shell — a `storage` event
+fires. The engine's own `setItem` / `removeItem` / `clear` do **not**
+trigger it (matches the Web Storage spec: storage events fire in
+*other* contexts).
+
+```js
+addEventListener('storage', (event) => {
+  if (event.key === 'config') {
+    reloadConfig(event.newValue);
+  }
+});
+```
+
+**Event shape**:
+
+| Field | Value |
+|---|---|
+| `type` | `'storage'` |
+| `key` | The localStorage key whose value changed. |
+| `oldValue` | Always `null` (host doesn't cache prior values). |
+| `newValue` | Current value, or `null` if the file was deleted. **Lazy** — disk is only read when a listener actually accesses `event.newValue`, then frozen for further reads. |
+| `storageArea` | The `localStorage` object. |
+
+**API**:
+
+- `globalThis.addEventListener('storage', callback, options?)` —
+  register. Unknown event types log a warning and are ignored.
+  `options` accepts `{ once: true }`; other keys (`capture`,
+  `signal`, `passive`) log a warning and are ignored.
+- `globalThis.removeEventListener('storage', callback)` — same
+  callback reference required. Works on `once`-registered
+  listeners too (the original callback is the handle).
+
+**External `clear` not modeled.** When the user deletes the whole
+`_storage/` folder, FSEvents reports per-file deletions and a
+separate event fires for each key — not a single Web-style
+`key === null` clear event.
+
+**Lazy `newValue` edge case**: all listeners on one dispatch share
+the same `event` object. If a listener mutates storage (e.g.
+`localStorage.setItem(key, "X")`) before `event.newValue` has been
+read for the first time, the eventual first read sees the
+post-mutation value rather than the value that originally triggered
+the event. Read `newValue` early if precise "value-at-event-time"
+matters.
+
 ## TypeScript hint
 
 `Utils/MacishType.d.ts` ships with the project. Plain JS engines can pull
