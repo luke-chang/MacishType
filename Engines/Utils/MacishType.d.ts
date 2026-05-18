@@ -355,6 +355,11 @@ declare global {
     callback: (event: SettingsChangeEvent) => void,
     options?: { once?: boolean }
   ): void;
+  function addEventListener(
+    type: "languagechange",
+    callback: (event: LanguageChangeEvent) => void,
+    options?: { once?: boolean }
+  ): void;
   function removeEventListener(
     type: "storage",
     callback: (event: StorageEvent) => void
@@ -363,4 +368,31 @@ declare global {
     type: "settingschange",
     callback: (event: SettingsChangeEvent) => void
   ): void;
+  function removeEventListener(
+    type: "languagechange",
+    callback: (event: LanguageChangeEvent) => void
+  ): void;
+
+  /**
+   * Host info and locale preferences, modeled after Web `navigator`.
+   */
+  interface Navigator {
+    /** Most preferred BCP 47 language (e.g. `"zh-TW"`), `""` if none. */
+    readonly language: string;
+    /** Frozen list of BCP 47 preferences, most preferred first. */
+    readonly languages: ReadonlyArray<string>;
+    /** Static host identifier, e.g. `"MacishType/0.1.0 (macOS 26.5.0) JavaScriptCore/21624"`. */
+    readonly userAgent: string;
+  }
+
+  /**
+   * Fired on `globalThis` when system language preferences change.
+   * Read `navigator.languages` for the new list.
+   */
+  interface LanguageChangeEvent {
+    readonly type: "languagechange";
+  }
+
+  // eslint-disable-next-line no-var
+  var navigator: Navigator;
 }

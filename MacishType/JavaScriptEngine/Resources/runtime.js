@@ -325,3 +325,40 @@ function __MacishType_dispatchGlobal(event) {
     __MacishType_dispatchGlobal(event);
   };
 })();
+
+// navigator — Web-aligned host info + locale preferences. languages
+// can change at runtime via NSLocale notification; userAgent is static.
+(function () {
+  let cachedLanguages = Object.freeze(__MacishType_getLanguages());
+  const userAgent = __MacishType_userAgent;
+
+  function sameArray(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  const navigator = {};
+  Object.defineProperties(navigator, {
+    language: { get() { return cachedLanguages[0] ?? ""; }, enumerable: true },
+    languages: { get() { return cachedLanguages; }, enumerable: true },
+    userAgent: { value: userAgent, enumerable: true, writable: false },
+  });
+
+  Object.defineProperty(globalThis, "navigator", {
+    value: Object.freeze(navigator),
+    writable: false,
+    enumerable: true,
+    configurable: false,
+  });
+
+  globalThis.__MacishType_dispatchLanguageChange = function () {
+    // NSLocale notification fires on many locale changes (calendar /
+    // currency / numbering system) — not just languages. Dedup
+    // before freezing so spurious notifications don't even allocate.
+    const next = __MacishType_getLanguages();
+    if (sameArray(cachedLanguages, next)) return;
+    cachedLanguages = Object.freeze(next);
+    __MacishType_dispatchGlobal({ type: "languagechange" });
+  };
+})();

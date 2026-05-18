@@ -488,6 +488,105 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         bundleStorageWatcher = nil
     }
 
+    // MARK: Locale + user agent (shared across all engine instances)
+
+    private static var sharedLocaleObserver: NSObjectProtocol?
+    private static let languageSubscribers = NSHashTable<JavaScriptEngine>.weakObjects()
+
+    /// First subscriber installs the observer; later subscribers
+    /// piggyback. Per-engine `dispatchLanguageChange` reaches each
+    /// live JSContext.
+    private static func subscribeToLanguageChanges(_ engine: JavaScriptEngine) {
+        languageSubscribers.add(engine)
+        if sharedLocaleObserver != nil { return }
+        sharedLocaleObserver = NotificationCenter.default.addObserver(
+            forName: NSLocale.currentLocaleDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            for engine in languageSubscribers.allObjects {
+                engine.dispatchLanguageChange()
+            }
+        }
+    }
+
+    /// Idempotent — safe to call when subscribe never ran (e.g. load
+    /// defer-rollback path). NSHashTable.remove is no-op for absent
+    /// entries; the observer-teardown branch checks emptiness first.
+    private static func unsubscribeFromLanguageChanges(_ engine: JavaScriptEngine) {
+        languageSubscribers.remove(engine)
+        if languageSubscribers.count == 0, let token = sharedLocaleObserver {
+            NotificationCenter.default.removeObserver(token)
+            sharedLocaleObserver = nil
+        }
+    }
+
+    /// Web-style BCP 47: drops script subtag when redundant.
+    /// `zh-Hant-TW` → `zh-TW` (3-segment),
+    /// `zh-Hant` → `zh` (2-segment with script),
+    /// `en-US` → `en-US` (no script, unchanged).
+    /// Matches what Safari's `navigator.languages` returns so engine
+    /// code from a browser context doesn't need to handle both forms.
+    nonisolated private static func normalizeBCP47(_ tag: String) -> String {
+        let parts = tag.split(separator: "-").map(String.init)
+        let isScript: (String) -> Bool = {
+            $0.count == 4 && $0.first?.isUppercase == true
+        }
+        if parts.count == 3, isScript(parts[1]) {
+            return "\(parts[0])-\(parts[2])"
+        }
+        if parts.count == 2, isScript(parts[1]) {
+            return parts[0]
+        }
+        return tag
+    }
+
+    /// macOS Settings UI tacks the user's region onto secondary
+    /// preferred languages — e.g. user picks 繁中(TW) + English while
+    /// region is Taiwan, stored list becomes `[zh-Hant-TW, en-TW]`.
+    /// `en-TW` is rarely meaningful; strip the region when it matches
+    /// the user's region AND it's not the primary entry (which the
+    /// user explicitly chose).
+    nonisolated private static func stripAutoTaggedRegions(_ tags: [String]) -> [String] {
+        guard let userRegion = Locale.current.region?.identifier else { return tags }
+        return tags.enumerated().map { (i, tag) in
+            if i == 0 { return tag }
+            let parts = tag.split(separator: "-").map(String.init)
+            guard parts.count >= 2, let last = parts.last else { return tag }
+            let isRegion = (last.count == 2 && last.allSatisfy { $0.isUppercase })
+                        || (last.count == 3 && last.allSatisfy { $0.isNumber })
+            guard isRegion, last == userRegion else { return tag }
+            return parts.dropLast().joined(separator: "-")
+        }
+    }
+
+    /// Chrome-style expansion: each tag is followed by its base
+    /// (language-only) form, deduped. Engines doing first-match get
+    /// a natural fallback chain. `[zh-TW, en]` → `[zh-TW, zh, en]`.
+    nonisolated private static func expandWithBases(_ tags: [String]) -> [String] {
+        var result: [String] = []
+        var seen = Set<String>()
+        for tag in tags {
+            if seen.insert(tag).inserted { result.append(tag) }
+            let base = String(tag.split(separator: "-").first ?? "")
+            if !base.isEmpty, seen.insert(base).inserted { result.append(base) }
+        }
+        return result
+    }
+
+    nonisolated private static func preferredLanguagesForJS() -> [String] {
+        let normalized = Locale.preferredLanguages.map(normalizeBCP47)
+        let stripped = stripAutoTaggedRegions(normalized)
+        return expandWithBases(stripped)
+    }
+
+    private func dispatchLanguageChange() {
+        guard let context = jsContext,
+              let fn = context.objectForKeyedSubscript("__MacishType_dispatchLanguageChange"),
+              fn.isObject else { return }
+        fn.call(withArguments: [])
+    }
+
     // MARK: JSContext state (set up in load())
 
     fileprivate var virtualMachine: JSVirtualMachine!
@@ -683,6 +782,23 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         }
         context.setObject(setStorageListening, forKeyedSubscript: "__MacishType_setStorageListening" as NSString)
 
+        // navigator bridges. Pipeline lives in preferredLanguagesForJS.
+        let getLanguages: @convention(block) () -> [String] = {
+            Self.preferredLanguagesForJS()
+        }
+        context.setObject(getLanguages, forKeyedSubscript: "__MacishType_getLanguages" as NSString)
+
+        let appVersion = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
+                          as? String) ?? "0.0"
+        let osVersion = ProcessInfo.processInfo.operatingSystemVersion
+        let osVersionString = "\(osVersion.majorVersion).\(osVersion.minorVersion).\(osVersion.patchVersion)"
+        // `Bundle(for:)` returns the framework bundle of a given class —
+        // here, JavaScriptCore.framework's Info.plist.
+        let jscVersion = (Bundle(for: JSContext.self)
+                          .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "?"
+        let userAgent = "MacishType/\(appVersion) (macOS \(osVersionString)) JavaScriptCore/\(jscVersion)"
+        context.setObject(userAgent, forKeyedSubscript: "__MacishType_userAgent" as NSString)
+
         // Auto-evaluate runtime.js before any engine code runs;
         // must follow bridge registration above.
         guard let runtime = Self.loadJSSource(
@@ -767,6 +883,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         }
 
         success = true
+        Self.subscribeToLanguageChanges(self)
         super.load()
     }
 
@@ -790,6 +907,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // context so any in-flight FSEvent callbacks find a clean
         // state on the main runloop.
         stopBundleStorageWatcher()
+        Self.unsubscribeFromLanguageChanges(self)
         recentSelfWrites.removeAll()
         jsContext = nil
         virtualMachine = nil

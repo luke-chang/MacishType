@@ -374,11 +374,31 @@ const characterCount = [...seg.segment(markedText)].length;
 
 ### Runtime globals
 
-The host injects `console`, `manifest`, and `localStorage` into the
-engine's global scope.
+The host injects `console`, `manifest`, `navigator`, and `localStorage`
+into the engine's global scope.
 
 No `require`, `process`, `setTimeout`, or network APIs are exposed.
 Engines run inside JavaScriptCore.
+
+#### Global events
+
+Host-emitted events (`storage`, `settingschange`, `languagechange`)
+follow DOM conventions on `globalThis`:
+
+```js
+addEventListener(type, callback, options?);
+removeEventListener(type, callback);
+```
+
+- `options` accepts `{ once: true }`. Other keys (`capture`, `signal`,
+  `passive`, ...) log a warning and are ignored.
+- Unknown event types are accepted silently (per DOM spec) — the
+  listener simply never fires.
+- `removeEventListener` takes the same `callback` reference used to
+  register. `once`-registered listeners work the same way.
+
+Per-event payload and dispatch semantics live in each event's own
+subsection below.
 
 #### `console`
 
@@ -431,21 +451,11 @@ const { settings } = manifest;
 
 Deeply read-only — writes throw `TypeError`.
 
-##### `addEventListener('settingschange', callback, options?)`
+##### Event: `settingschange`
 
 Fired when `manifest.settings` content changes (deep-equal dirty check;
 no spurious events). The callback receives `{ type: 'settingschange' }`
 — read `manifest.settings` for the current values.
-
-`options` accepts `{ once: true }`; same shape as `'storage'`.
-
-Unknown event types are accepted silently (matches the DOM spec) — a
-typo in `type` won't warn or throw; the listener simply never fires.
-
-##### `removeEventListener('settingschange', callback)`
-
-Standard DOM-style detach. Works on `once`-registered listeners too
-(the original callback is the handle).
 
 Attach at module scope, not on an instance — settings are engine-wide
 and the listener registry only resets on engine reload (folder change,
@@ -528,6 +538,47 @@ engine intends to manage these itself, declare a placeholder value in
 `manifest.json`'s `candidateWindow` to hide the corresponding Settings
 UI control, then drive the actual value through this object.
 
+#### `navigator`
+
+Web-aligned host info and locale preferences.
+
+| Property | Value |
+|---|---|
+| `navigator.language` | Most preferred language, BCP 47 (e.g. `"zh-TW"`). `""` if no preference. |
+| `navigator.languages` | Frozen `ReadonlyArray<string>` of BCP 47 preferences, most preferred first. |
+| `navigator.userAgent` | Static host identifier in the form `MacishType/{appVer} (macOS {osVer}) JavaScriptCore/{jscVer}`, e.g. `"MacishType/0.1.0 (macOS 26.5.0) JavaScriptCore/21624"`. Future engine ports may replace the trailing `JavaScriptCore/...` segment. |
+
+Tags are web-style BCP 47 (lowercase language, uppercase region,
+script dropped when redundant). Each region-tagged entry is followed
+by its base form so first-match lookups get a natural fallback chain
+— `[zh-TW, zh, en-US, en]`.
+
+This reflects the user's preference, which may differ from the
+language MacishType itself displays. Pick from your engine's own
+translation table; don't assume MacishType ships matching translations.
+
+Use `languages` to pick from your engine's own translation table:
+
+```js
+function applyL10n() {
+  for (const lang of navigator.languages) {
+    if (translations.has(lang)) { current = lang; return; }
+  }
+  current = 'en';
+}
+applyL10n();
+addEventListener('languagechange', applyL10n);
+```
+
+##### Event: `languagechange`
+
+Fired when the user's system language preferences change. The callback
+receives `{ type: 'languagechange' }`; read `navigator.languages` for
+the new list.
+
+Deduplicated — unrelated locale changes (calendar / currency /
+numbering system) don't fire this event.
+
 #### `localStorage`
 
 Per-engine, file-backed persistence with the Web Storage `Storage`
@@ -592,13 +643,13 @@ written before survive folder re-pick. Picking a different folder
 naturally points to that folder's own `_storage/` (empty unless
 previously written into).
 
-#### Storage events
+##### Event: `storage`
 
-When `_storage/` files are modified **outside** this engine — typically
-the user editing them in Finder or via the shell — a `storage` event
-fires. The engine's own `setItem` / `removeItem` / `clear` do **not**
-trigger it (matches the Web Storage spec: storage events fire in
-*other* contexts).
+Fired when `_storage/` files are modified **outside** this engine —
+typically the user editing them in Finder or via the shell. The
+engine's own `setItem` / `removeItem` / `clear` do **not** trigger
+it (matches the Web Storage spec: storage events fire in *other*
+contexts).
 
 ```js
 addEventListener('storage', (event) => {
@@ -617,16 +668,6 @@ addEventListener('storage', (event) => {
 | `oldValue` | Always `null` (host doesn't cache prior values). |
 | `newValue` | Current value, or `null` if the file was deleted. **Lazy** — disk is only read when a listener actually accesses `event.newValue`, then frozen for further reads. |
 | `storageArea` | The `localStorage` object. |
-
-**API**:
-
-- `globalThis.addEventListener('storage', callback, options?)` —
-  register. Unknown event types log a warning and are ignored.
-  `options` accepts `{ once: true }`; other keys (`capture`,
-  `signal`, `passive`) log a warning and are ignored.
-- `globalThis.removeEventListener('storage', callback)` — same
-  callback reference required. Works on `once`-registered
-  listeners too (the original callback is the handle).
 
 **External `clear` not modeled.** When the user deletes the whole
 `_storage/` folder, FSEvents reports per-file deletions and a
