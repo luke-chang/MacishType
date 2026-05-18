@@ -285,15 +285,6 @@ export interface Manifest {
    * Candidate-window override cache. See `CandidateWindow` for details.
    */
   readonly candidateWindow: CandidateWindow;
-
-  addEventListener(
-    type: "settingschange",
-    callback: (event: SettingsChangeEvent) => void
-  ): void;
-  removeEventListener(
-    type: "settingschange",
-    callback: (event: SettingsChangeEvent) => void
-  ): void;
 }
 
 /**
@@ -354,17 +345,22 @@ declare global {
     readonly storageArea: Storage | null;
   }
 
-  interface AddEventListenerOptions {
-    once?: boolean;
-  }
-
   function addEventListener(
     type: "storage",
     callback: (event: StorageEvent) => void,
-    options?: AddEventListenerOptions
+    options?: { once?: boolean }
+  ): void;
+  function addEventListener(
+    type: "settingschange",
+    callback: (event: SettingsChangeEvent) => void,
+    options?: { once?: boolean }
   ): void;
   function removeEventListener(
     type: "storage",
     callback: (event: StorageEvent) => void
+  ): void;
+  function removeEventListener(
+    type: "settingschange",
+    callback: (event: SettingsChangeEvent) => void
   ): void;
 }

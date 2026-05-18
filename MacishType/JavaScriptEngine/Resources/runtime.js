@@ -37,27 +37,100 @@ globalThis.console = {
   trace: (...args) => __MacishType_log("info",   __MacishType_format(args) + "\n" + __MacishType_callerStack()),
 };
 
+// Only `once` is supported; other Web-spec keys warn and are ignored.
+function __MacishType_parseListenerOptions(options) {
+  if (options === undefined) return { once: false };
+  if (!options || typeof options !== "object") {
+    console.warn("addEventListener: only object options are supported");
+    return { once: false };
+  }
+  for (const k of Object.keys(options)) {
+    if (k !== "once") {
+      console.warn(`addEventListener: option '${k}' is ignored`);
+    }
+  }
+  return { once: !!options.once };
+}
+
+// Snapshot before iterating so add/remove during a callback matches the
+// listener-list-at-dispatch-time semantics. `label` shows up in the
+// per-listener error log to identify which event type threw.
+function __MacishType_dispatchListeners(listeners, event, label) {
+  for (const cb of [...listeners]) {
+    try { cb(event); }
+    catch (e) {
+      console.error(`${label} listener threw:`, e?.stack ?? String(e));
+    }
+  }
+}
+
+// Generic globalThis event registry. onceWrappers is per-type so the
+// same callback registered with `{ once: true }` to multiple types
+// gets distinct wrappers. Hooks let event owners react to 0↔1
+// listener-count transitions (e.g. storage's lazy FSEvent watcher).
+const __MacishType_globalListeners = new Map();
+const __MacishType_globalOnceWrappers = new Map();  // type → WeakMap<cb, wrapper>
+const __MacishType_globalListenerHooks = new Map();
+
+function __MacishType_onceWrappersForType(type) {
+  let m = __MacishType_globalOnceWrappers.get(type);
+  if (!m) {
+    m = new WeakMap();
+    __MacishType_globalOnceWrappers.set(type, m);
+  }
+  return m;
+}
+
+globalThis.addEventListener = function (type, callback, options) {
+  if (typeof callback !== "function") return;
+  const { once } = __MacishType_parseListenerOptions(options);
+  let effective = callback;
+  if (once) {
+    const wrappers = __MacishType_onceWrappersForType(type);
+    effective = function (event) {
+      const set = __MacishType_globalListeners.get(type);
+      set?.delete(effective);
+      wrappers.delete(callback);
+      if (set?.size === 0) {
+        __MacishType_globalListenerHooks.get(type)?.(false);
+      }
+      callback(event);
+    };
+    wrappers.set(callback, effective);
+  }
+  if (!__MacishType_globalListeners.has(type)) {
+    __MacishType_globalListeners.set(type, new Set());
+  }
+  const set = __MacishType_globalListeners.get(type);
+  const wasEmpty = set.size === 0;
+  set.add(effective);
+  if (wasEmpty) __MacishType_globalListenerHooks.get(type)?.(true);
+};
+
+globalThis.removeEventListener = function (type, callback) {
+  const set = __MacishType_globalListeners.get(type);
+  if (!set) return;
+  const wrappers = __MacishType_globalOnceWrappers.get(type);
+  const target = wrappers?.get(callback) ?? callback;
+  wrappers?.delete(callback);
+  const had = set.delete(target);
+  if (had && set.size === 0) {
+    __MacishType_globalListenerHooks.get(type)?.(false);
+  }
+};
+
+function __MacishType_dispatchGlobal(event) {
+  const set = __MacishType_globalListeners.get(event.type);
+  if (!set) return;
+  __MacishType_dispatchListeners(set, event, event.type);
+}
+
 (function () {
-  const listeners = new Map();
   // Stable reference: same object across updates so engines can destructure
   // `const { settings } = manifest` and keep using `settings`. Content is
   // replaced in-place; engines must treat it as read-only (no runtime
   // freeze — that would prevent the in-place update).
   const settings = {};
-
-  function dispatch(type) {
-    const cbs = listeners.get(type);
-    if (!cbs) return;
-    const event = { type };
-    for (const cb of cbs) {
-      try { cb(event); }
-      catch (e) {
-        // Error own properties are non-enumerable, so JSON.stringify(e)
-        // collapses to "{}" — reach into .stack for a meaningful log.
-        console.error("settingschange listener threw:", e?.stack ?? String(e));
-      }
-    }
-  }
 
   // Shallow read-only Proxy: top-level writes throw, reads forward to
   // the internal `settings` object. Nested objects/arrays aren't frozen
@@ -82,14 +155,6 @@ globalThis.console = {
 
   globalThis.manifest = {
     get settings() { return settingsProxy; },
-    addEventListener(type, callback) {
-      if (typeof callback !== "function") return;
-      if (!listeners.has(type)) listeners.set(type, new Set());
-      listeners.get(type).add(callback);
-    },
-    removeEventListener(type, callback) {
-      listeners.get(type)?.delete(callback);
-    },
   };
 
   // manifest.candidateWindow — Proxy-backed cache the engine can read/write.
@@ -144,7 +209,7 @@ globalThis.console = {
     // blocks engine top-level writes. Freeze nested values so engine
     // can't mutate them either — full deep read-only as seen by JS.
     for (const k of Object.keys(settings)) deepFreeze(settings[k]);
-    dispatch("settingschange");
+    __MacishType_dispatchGlobal({ type: "settingschange" });
   };
 })();
 
@@ -156,7 +221,6 @@ globalThis.console = {
   let cachedKeys = null;
   const cachedValues = new Map();
   let invalidationScheduled = false;
-  const storageListeners = new Set();
 
   // Promise microtask drains when the host call's JS stack empties,
   // giving per-handleKey cache lifetime. queueMicrotask isn't in pure
@@ -224,60 +288,13 @@ globalThis.console = {
 
   // --- storage events ---
 
-  // Maps user-supplied callback → wrapped self-removing callback for
-  // `{ once: true }` registrations. WeakMap so we don't hold callbacks
-  // after the user drops their reference.
-  const onceWrappers = new WeakMap();
-
-  function parseAddEventListenerOptions(options) {
-    if (options === undefined) return { once: false };
-    if (!options || typeof options !== "object") {
-      console.warn("addEventListener: only object options are supported");
-      return { once: false };
-    }
-    for (const k of Object.keys(options)) {
-      if (k !== "once") {
-        console.warn(`addEventListener: option '${k}' is ignored`);
-      }
-    }
-    return { once: !!options.once };
-  }
-
-  globalThis.addEventListener = function (type, callback, options) {
-    if (type !== "storage") {
-      console.warn(`addEventListener: only 'storage' is supported (got '${type}')`);
-      return;
-    }
-    if (typeof callback !== "function") return;
-
-    const { once } = parseAddEventListenerOptions(options);
-
-    let effective = callback;
-    if (once) {
-      effective = function (event) {
-        storageListeners.delete(effective);
-        onceWrappers.delete(callback);
-        if (storageListeners.size === 0) __MacishType_setStorageListening(false);
-        callback(event);
-      };
-      onceWrappers.set(callback, effective);
-    }
-
-    const wasEmpty = storageListeners.size === 0;
-    storageListeners.add(effective);
-    if (wasEmpty) __MacishType_setStorageListening(true);
-  };
-
-  globalThis.removeEventListener = function (type, callback) {
-    if (type !== "storage") return;
-    const target = onceWrappers.get(callback) ?? callback;
-    onceWrappers.delete(callback);
-    const had = storageListeners.delete(target);
-    if (had && storageListeners.size === 0) __MacishType_setStorageListening(false);
-  };
+  __MacishType_globalListenerHooks.set("storage", (active) => {
+    __MacishType_setStorageListening(active);
+  });
 
   globalThis.__MacishType_dispatchStorageEvent = function (key) {
-    if (storageListeners.size === 0) return;
+    const set = __MacishType_globalListeners.get("storage");
+    if (!set || set.size === 0) return;
     // External mod just landed → cache must not return stale value
     // to listeners. The microtask of the previous JS task should
     // already have drained the cache, but explicit invalidation
@@ -305,14 +322,6 @@ globalThis.console = {
       configurable: true,
     });
 
-    // Snapshot before iterating so add/remove during a callback
-    // matches the DOM-style "listener list at dispatch time"
-    // semantics.
-    for (const cb of [...storageListeners]) {
-      try { cb(event); }
-      catch (e) {
-        console.error("storage listener threw:", e?.stack ?? String(e));
-      }
-    }
+    __MacishType_dispatchGlobal(event);
   };
 })();

@@ -415,15 +415,21 @@ const { settings } = manifest;
 
 Deeply read-only — writes throw `TypeError`.
 
-##### `manifest.addEventListener('settingschange', callback)`
+##### `addEventListener('settingschange', callback, options?)`
 
 Fired when `manifest.settings` content changes (deep-equal dirty check;
 no spurious events). The callback receives `{ type: 'settingschange' }`
 — read `manifest.settings` for the current values.
 
-##### `manifest.removeEventListener('settingschange', callback)`
+`options` accepts `{ once: true }`; same shape as `'storage'`.
 
-Standard DOM-style detach.
+Unknown event types are accepted silently (matches the DOM spec) — a
+typo in `type` won't warn or throw; the listener simply never fires.
+
+##### `removeEventListener('settingschange', callback)`
+
+Standard DOM-style detach. Works on `once`-registered listeners too
+(the original callback is the handle).
 
 Attach at module scope, not on an instance — settings are engine-wide
 and the listener registry only resets on engine reload (folder change,
@@ -445,7 +451,7 @@ work — reloading a dictionary, rebuilding a trie, recompiling a regex:
 
 ```js
 let dictionary = loadDictionary(manifest.settings.dictionaryPath);
-manifest.addEventListener('settingschange', () => {
+addEventListener('settingschange', () => {
   dictionary = loadDictionary(manifest.settings.dictionaryPath);
 });
 ```
@@ -470,7 +476,7 @@ function applyConfig() {
   manifest.candidateWindow.indexLabels = manifest.settings.candidateKeys;
 }
 applyConfig();
-manifest.addEventListener('settingschange', applyConfig);
+addEventListener('settingschange', applyConfig);
 ```
 
 **Failed writes never throw** — invalid values (wrong type, out of
