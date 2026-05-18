@@ -43,11 +43,9 @@ class MacishCandidateItemView: NSView {
         templateView = nil
     }
 
-    /// Engine activation hook. Whitespace-only `defaultLabels` disables the
-    /// index column; any non-empty value enables it.
-    /// Per-update empty labels do NOT route through here — slot stays reserved.
-    static func configureIndexColumn(defaultLabels: String) {
-        let enabled = !defaultLabels.allSatisfy(\.isWhitespace)
+    /// Toggle the index-column slot. Per-position label content is
+    /// rendered independently — pass a blank label to keep the slot empty.
+    static func configureIndexColumn(enabled: Bool) {
         guard enabled != indexColumnEnabled else { return }
         indexColumnEnabled = enabled
         templateView = nil

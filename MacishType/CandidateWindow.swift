@@ -43,9 +43,9 @@ struct CandidateWindowConfiguration: Equatable {
         validPageSizeRange.contains(v)
     }
 
-    // Duplicate chars are allowed; the lookup in `candidateIndex(for:)`
-    // returns the first occurrence (matches `firstIndex`/`enumerated().first`
-    // semantics), so later duplicates are unreachable but not an error.
+    /// `""` collapses the index column; `" "` reserves the slot but renders
+    /// blank; otherwise labels render as-is. Duplicate chars are allowed —
+    /// `candidateIndex(for:)` matches first occurrence (`firstIndex` semantics).
     var indexLabels: String = "1234567890" {
         didSet {
             precondition(
@@ -54,6 +54,8 @@ struct CandidateWindowConfiguration: Equatable {
             )
         }
     }
+
+    var reservesIndexSlot: Bool { !indexLabels.isEmpty }
     var pageSize: Int = 9 {
         didSet {
             precondition(
@@ -205,13 +207,11 @@ class CandidateWindow {
 
     var isVisible: Bool { activeImpl.isVisible }
 
-    /// Standalone path (engine activation, preview app). Decides whether
-    /// the engine wants an index column based on its default labels.
+    /// Standalone path (engine activation, preview app).
     /// Short-circuits when unchanged.
     func configure(_ configuration: CandidateWindowConfiguration) {
         guard engineConfiguration != configuration else { return }
-        engineConfiguration = configuration
-        MacishCandidateItemView.configureIndexColumn(defaultLabels: configuration.indexLabels)
+        applyEngineConfiguration(configuration)
         apply()
     }
 
@@ -221,19 +221,24 @@ class CandidateWindow {
 
     /// Combined update — applies `configuration` (when changed) in the
     /// same rebuild as candidates to avoid configure-then-render flicker.
-    /// Per-update changes do NOT toggle the engine-level index column state;
-    /// only `configure()` does that.
     func updateCandidates(_ candidates: [Candidate], suspendHighlight: Bool,
                          configuration: CandidateWindowConfiguration? = nil) {
         let cfgToApply: CandidateWindowConfiguration?
         if let cfg = configuration, engineConfiguration != cfg {
-            engineConfiguration = cfg
+            applyEngineConfiguration(cfg)
             cfgToApply = cfg
         } else {
             cfgToApply = nil
         }
         activeImpl.updateCandidates(candidates, suspendHighlight: suspendHighlight,
                                     configuration: cfgToApply)
+    }
+
+    /// Single writer for `engineConfiguration` — keeps the index-column
+    /// slot state in lockstep with the active configuration.
+    private func applyEngineConfiguration(_ cfg: CandidateWindowConfiguration) {
+        engineConfiguration = cfg
+        MacishCandidateItemView.configureIndexColumn(enabled: cfg.reservesIndexSlot)
     }
 
     func show(near rect: NSRect) {

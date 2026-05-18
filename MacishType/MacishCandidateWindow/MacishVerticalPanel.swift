@@ -348,9 +348,8 @@ class MacishVerticalPanel: MacishBasePanel {
                 : Candidate(candidates[i].text, annotation: nil)
             if i >= numberedStart, i < numberedEnd {
                 item.showIndex = true
-                // pos >= indexLabels.count yields "" but keeps showIndex=true
-                // (slot still reserved). Don't conflate with the scroll-out
-                // case below where showIndex=false visually hides the slot.
+                // Tail positions (past indexLabels.count) get "" labels but
+                // keep the slot reserved; the else branch hides the slot.
                 item.configure(label: label(for: i - anchorIndex), candidate: candidate)
             } else {
                 item.configure(label: "", candidate: candidate)

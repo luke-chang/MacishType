@@ -50,13 +50,29 @@ default below applies.
 |---|---|---|---|
 | ★ `layoutDirection` | `"horizontal"` \| `"vertical"` | `"horizontal"` | Candidate row vs. column. |
 | ★ `fontSize` | integer ≥ 8 | `16` | Point size for candidate text. |
-| `indexLabels` | string | `"1234567890"` | Per-candidate label characters; ASCII-printable only (0x20-0x7E). |
+| `indexLabels` | string | `"1234567890"` | Per-candidate label characters; ASCII-printable only (0x20-0x7E), which includes space (see below). |
 | `pageSize` | integer 1–11 | `9` | Candidates per page. |
 | `expandable` | boolean | `true` | Pick the horizontal-mode panel style: `true` shows a single row that expands to reveal more, `false` uses paging instead. Horizontal mode only. |
 | `horizontalMaxVisibleRows` | integer ≥ 2 | `5` | Cap on visible rows. Requires `expandable: true`. |
 | `widerExpandedColumns` | boolean | `true` | Widen columns when the window is expanded. Requires `expandable: true`. |
 | `moveOnExpand` | boolean | `false` | When navigation expands the collapsed window, also move the selection highlight to the newly revealed row. Requires `expandable: true`. |
 | `verticalMinVisibleRows` | integer ≥ 1 | `pageSize` | Minimum visible rows. Vertical mode only. |
+
+`indexLabels` distinguishes two empty-looking values:
+
+- `""` collapses the index column entirely — candidates render with no
+  label slot reserved.
+- `" "` (or any string containing only whitespace) keeps the slot
+  reserved but renders blank. Use this when you want consistent
+  alignment with engines that do show labels, or when only some
+  positions should display a character (shorter-than-`pageSize` labels
+  pad the tail with blanks while keeping slots reserved).
+
+Whitespace can also appear mid-string — e.g. `" 123"` is valid and
+makes position 0 blank while positions 1-3 render `"1"` / `"2"` / `"3"`.
+Whitespace characters anywhere in `indexLabels` never match quick-commit
+key input — `event.candidateWindow.candidateIndex(" ")` returns `null`,
+so the space key remains available for engine logic.
 
 ### `settings` (optional)
 
@@ -267,7 +283,7 @@ Replace the candidate list shown in the candidate window.
 - `options.offset` *(integer, default `0`)* — character index into `markedText` to anchor the window under. `0` places it below the start; larger values shift the anchor along the marked text (e.g. after a fixed prefix).
 - `options.suspendHighlight` *(boolean, default `false`)* — when `true`, no candidate appears pre-selected. The first navigation action (arrow key, click) clears the suspension and the highlight resumes for the rest of the session.
 - `options.layoutDirection` *(`"horizontal"` \| `"vertical"`)* — override the candidate window's layout direction for this update only.
-- `options.indexLabels` *(string)* — override the index-label characters for this update only.
+- `options.indexLabels` *(string)* — override the index-label characters for this update only. Same `""`-collapses-vs-`" "`-blank-slot semantics as the manifest field.
 - `options.pageSize` *(integer)* — override the per-page candidate count for this update only.
 
 #### `commit(candidate)`
