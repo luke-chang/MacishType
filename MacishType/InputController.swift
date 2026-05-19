@@ -244,14 +244,15 @@ class InputController: IMKInputController {
                 setMarkedText(text, cursor: cursor, emphasis: emphasis, client: client)
                 let effective = staged < 0 ? text.count : min(max(staged, 0), text.count)
                 engineContext.stagedText = String(text.prefix(effective))
-            case .updateCandidates(let candidates, let offset, let suspendHighlight, let configure):
+            case .updateCandidates(let candidates, let anchorAt, let initialHighlight, let configure):
                 var cfg = engine.candidateWindowConfiguration
                 configure?(&cfg)
-                updateCandidates(candidates, offset: offset,
-                                 suspendHighlight: suspendHighlight,
+                updateCandidates(candidates, anchorAt: anchorAt,
+                                 initialHighlight: initialHighlight,
                                  configuration: cfg, client: client)
             case .commit(let candidate):
-                candidateConfirmed(candidate.text, raw: candidate)
+                // Engine-driven commit: no specific candidate-list index.
+                candidateConfirmed(candidate.text, absoluteIndex: -1, raw: candidate)
             case .commitSelectedCandidate:
                 CandidateWindow.shared.commitSelectedCandidate()
             case .commitCandidateAtIndex(let index):
@@ -270,7 +271,7 @@ class InputController: IMKInputController {
                 engineContext.isAssociating = true
                 executeActions([
                     .updateMarkedText(heldChar, staged: -1),
-                    .updateCandidates(candidates, offset: 1, suspendHighlight: true)
+                    .updateCandidates(candidates, anchorAt: 1, initialHighlight: -1)
                 ], client: client)
             }
         }
@@ -309,7 +310,7 @@ class InputController: IMKInputController {
 
     // MARK: - Candidate Window
 
-    private func showCandidateWindow(offset: Int, client: IMKTextInput) {
+    private func showCandidateWindow(anchorAt: Int, client: IMKTextInput) {
         let text = engineContext.markedText
         guard !text.isEmpty else { return }
         let length = text.count
@@ -317,15 +318,15 @@ class InputController: IMKInputController {
 
         var lineHeightRect = NSRect.zero
         var attrs: [AnyHashable: Any]?
-        if offset < length {
-            // Offset maps to the start of a real character; query directly.
-            let utf16Idx = text.prefix(offset).utf16.count
+        if anchorAt < length {
+            // anchorAt maps to the start of a real character; query directly.
+            let utf16Idx = text.prefix(anchorAt).utf16.count
             attrs = client.attributes(forCharacterIndex: utf16Idx, lineHeightRectangle: &lineHeightRect)
             if lineHeightRect.origin == .zero {
                 attrs = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &lineHeightRect)
             }
         } else {
-            // offset == length (past end): simulate by querying the last
+            // anchorAt == length (past end): simulate by querying the last
             // character's rect and shifting x by its width. Avoids the cache
             // poisoning caused by querying utf16 index == length directly.
             let lastUtf16 = text.prefix(length - 1).utf16.count
@@ -346,7 +347,7 @@ class InputController: IMKInputController {
         let utf16Count = compositionText.utf16.count
         let startX = CandidateWindow.shared.compositionStartX
 
-        if offset < length {
+        if anchorAt < length {
             // Existing provider: lazily compute the marked-text end x.
             CandidateWindow.shared.setCompositionEndXProvider { [weak client] in
                 guard let client, let font else { return startX }
@@ -363,7 +364,7 @@ class InputController: IMKInputController {
                 return lastRect.minX + lastChar.size(withAttributes: [.font: font]).width
             }
         } else {
-            // offset == length: lineHeightRect.origin.x is already the end x,
+            // anchorAt == length: lineHeightRect.origin.x is already the end x,
             // so the provider just returns the precomputed value.
             let endX = lineHeightRect.origin.x
             CandidateWindow.shared.setCompositionEndXProvider { endX }
@@ -377,7 +378,7 @@ class InputController: IMKInputController {
     }
 
     private func updateCandidates(
-        _ candidates: [Candidate], offset: Int, suspendHighlight: Bool,
+        _ candidates: [Candidate], anchorAt: Int, initialHighlight: Int,
         configuration: CandidateWindowConfiguration?, client: IMKTextInput
     ) {
         guard !candidates.isEmpty else {
@@ -385,24 +386,26 @@ class InputController: IMKInputController {
             return
         }
         CandidateWindow.shared.updateCandidates(candidates,
-                                                suspendHighlight: suspendHighlight,
+                                                initialHighlight: initialHighlight,
                                                 configuration: configuration)
-        showCandidateWindow(offset: offset, client: client)
+        showCandidateWindow(anchorAt: anchorAt, client: client)
     }
 }
 
 // MARK: - CandidateWindowDelegate
 
 extension InputController: CandidateWindowDelegate {
-    func candidateConfirmed(_ candidate: String, raw: Candidate?) {
+    func candidateConfirmed(_ candidate: String, absoluteIndex: Int, raw: Candidate?) {
         guard let client = client() else { return }
-        let actions = engine.candidateConfirmed(context: engineContext, candidate, raw: raw)
+        let actions = engine.candidateConfirmed(
+            context: engineContext, candidate, absoluteIndex: absoluteIndex, raw: raw)
         executeActions(actions, client: client)
     }
 
-    func candidateSelectionChanged(_ candidate: String, raw: Candidate) {
+    func candidateSelectionChanged(_ candidate: String, absoluteIndex: Int, raw: Candidate) {
         guard let client = client() else { return }
-        let actions = engine.candidateSelectionChanged(context: engineContext, candidate, raw: raw)
+        let actions = engine.candidateSelectionChanged(
+            context: engineContext, candidate, absoluteIndex: absoluteIndex, raw: raw)
         executeActions(actions, client: client)
     }
 }

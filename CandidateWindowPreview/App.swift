@@ -150,6 +150,10 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     @Published var isEditing = false
     @Published var isEditingIndexLabels = false
     @Published var suspendHighlight = false
+    // Set when our own callback flips suspendHighlight back off after the
+    // user's first navigation; tells `.onChange` to skip the applyCandidates
+    // round-trip so it doesn't clobber the panel's just-moved selection.
+    var skipNextSuspendApply = false
 
     var isEditingAnyText: Bool { isEditing || isEditingIndexLabels }
 
@@ -184,6 +188,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     }
 
     func applyStyle() {
+        syncPositionIfNeeded()
         candidateWindow.setStyle(styleOverride)
         attachCandidatePanel()
     }
@@ -196,6 +201,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     }
 
     func applyConfiguration() {
+        syncPositionIfNeeded()
         var config = CandidateWindowConfiguration()
         config.layoutDirection = vertical ? .vertical : .horizontal
         config.fontSize = fontSize
@@ -240,7 +246,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
             candidateWindow.hide()
             return
         }
-        candidateWindow.updateCandidates(candidates, suspendHighlight: suspendHighlight)
+        candidateWindow.updateCandidates(candidates, initialHighlight: suspendHighlight ? -1 : 0)
         if let window {
             let rect = window.frame
             candidateWindow.show(near: NSRect(x: rect.minX, y: rect.minY - 10, width: 0, height: 20))
@@ -257,20 +263,19 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
         }
     }
 
-    func candidateConfirmed(_ candidate: String, raw: Candidate?) {
+    func candidateConfirmed(_ candidate: String, absoluteIndex: Int, raw: Candidate?) {
         if let raw {
-            print("Selected: \(candidate) (annotation: \(raw.annotation ?? "nil"))")
+            print("Selected: \(candidate) [\(absoluteIndex)] (annotation: \(raw.annotation ?? "nil"))")
         } else {
             print("Selected: <none>")
         }
     }
 
-    func candidateSelectionChanged(_ candidate: String, raw: Candidate) {
-        print("Changed: \(candidate) (annotation: \(raw.annotation ?? "nil"))")
-        // Selection callbacks only fire after the window has cleared its
-        // internal suspendHighlight flag (the flag guards notification while
-        // it is true). Sync the toggle to reflect the reset.
+    func candidateSelectionChanged(_ candidate: String, absoluteIndex: Int, raw: Candidate) {
+        print("Changed: \(candidate) [\(absoluteIndex)] (annotation: \(raw.annotation ?? "nil"))")
+        // First user nav reveals the highlight; mirror that on the toggle.
         if suspendHighlight {
+            skipNextSuspendApply = true
             suspendHighlight = false
         }
     }
@@ -559,12 +564,13 @@ struct PreviewContentView: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Toggle("Slow animations (1s)", isOn: $state.slowMotion)
                     Toggle("Wider expanded columns", isOn: $state.widerColumns)
                     Toggle("Move on expand", isOn: $state.moveOnExpand)
                     Toggle("Vertical layout", isOn: $state.vertical)
                     Toggle("Expandable", isOn: $state.expandable)
                         .disabled(state.vertical)
+                    Divider()
+                    Toggle("Slow animations (1s)", isOn: $state.slowMotion)
                     Toggle("Suspend highlight", isOn: $state.suspendHighlight)
                 }
                 .toggleStyle(.checkbox)
@@ -585,7 +591,13 @@ struct PreviewContentView: View {
         .onChange(of: state.fontSize) { state.applyConfiguration() }
         .onChange(of: state.indexLabels) { state.applyConfiguration() }
         .onChange(of: state.pageSize) { state.applyConfiguration() }
-        .onChange(of: state.suspendHighlight) { state.applyCandidates() }
+        .onChange(of: state.suspendHighlight) {
+            if state.skipNextSuspendApply {
+                state.skipNextSuspendApply = false
+                return
+            }
+            state.applyCandidates()
+        }
         .onChange(of: state.appearanceOverride) {
             let appearance = state.appearanceOverride.nsAppearance
             state.window?.appearance = appearance

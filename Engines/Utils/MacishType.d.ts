@@ -114,19 +114,19 @@ export interface MarkedTextOptions {
 /** Options for `updateCandidates`. */
 export interface CandidateUpdateOptions {
   /**
-   * Character index into `markedText` to anchor the candidate window under.
-   * Default 0 places the window below the start of the composing text;
-   * larger values shift the anchor along the marked text (e.g. anchor
-   * after a fixed prefix character). Indices follow the same character
-   * semantics as `EmphasisRange` (grapheme clusters, not UTF-16).
+   * Cursor position in `markedText` where the candidate window's left
+   * edge anchors. Range `0...markedText.length` — `0` = before the
+   * first character, `length` = after the last. Grapheme clusters,
+   * not UTF-16.
    */
-  offset?: number;
+  anchorAt?: number;
   /**
-   * Suppress the initial selection highlight so no candidate appears
-   * pre-selected. The first navigation action (arrow key, click) clears
-   * the suspension and the highlight resumes for the rest of the session.
+   * Initial selection. 0 (default) highlights the first candidate.
+   * Positive values highlight that absolute index (clamped to the
+   * displayed range). -1 suspends the initial highlight; the first
+   * navigation reveals the highlight and resumes normal behavior.
    */
-  suspendHighlight?: boolean;
+  initialHighlight?: number;
   /** Override the candidate window's layout direction for this update only. */
   layoutDirection?: LayoutDirection;
   /** Override the index-label characters for this update only. */
@@ -205,6 +205,18 @@ export interface KeyEvent extends EventContext, EventMutators {
 export interface ConfirmEvent extends EventContext, EventMutators {
   /** Confirmed display text. */
   readonly candidate: string;
+  /**
+   * Absolute index of the candidate within the list emitted by the most
+   * recent `updateCandidates`. -1 when no candidate is active (e.g. a
+   * commit fired while `initialHighlight: -1` was in effect, or an
+   * engine-driven `commit()`).
+   *
+   * Distinct from the page-relative index taken by `commitCandidateAtIndex(_)`.
+   * Example with `pageSize: 5`, user on page 1 confirms the 2nd visible item:
+   *   `commitCandidateAtIndex(1)` — page-relative (0..pageSize-1)
+   *   `event.absoluteIndex === 6` — into the full list
+   */
+  readonly absoluteIndex: number;
   /** Annotation propagated from the original Candidate emitted via `updateCandidates`. */
   readonly annotation?: string;
   /** Payload propagated from the original Candidate emitted via `updateCandidates`. */

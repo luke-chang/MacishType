@@ -53,7 +53,7 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
         super.apply(configuration, deferRender: deferRender)
         if !deferRender, isVisible, !candidates.isEmpty {
             buildCandidateLayout()
-            restoreSelection(to: impl?.selectedIndex ?? 0)
+            moveSelection(to: impl?.selectedIndex ?? -1, animated: false)
             if lastShowNearRect != .zero {
                 show(near: lastShowNearRect)
             }
@@ -192,6 +192,12 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
     }
 
     private func goToPage(_ page: Int, preserving direction: PageDirection? = nil) {
+        if !hasSelection {
+            // No current selection: skip preserving (no x-position to map).
+            switchToPage(page)
+            moveSelection(to: currentPageItems.first?.candidateIndex ?? 0)
+            return
+        }
         var xStart: CGFloat = 0
         var xEnd: CGFloat = 0
         if direction != nil {
@@ -304,20 +310,17 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
         }
     }
 
-    override func restoreSelection(to index: Int) {
-        let target = min(index, max(displayCount - 1, 0))
-        if let pageIdx = pages.firstIndex(where: { $0.contains { $0.candidateIndex == target } }),
-           pageIdx != currentPage {
-            switchToPage(pageIdx)
+    override func ensureSelectionVisible(animated: Bool) {
+        // Same-page fast path skips the full pages[] scan on every move.
+        if pages[currentPage].contains(where: { $0.candidateIndex == selectedIndex }) {
+            return
         }
-        moveSelection(to: target)
-    }
-
-    override func ensureSelectionVisible() {
-        if let pageIdx = pages.firstIndex(where: { $0.contains { $0.candidateIndex == selectedIndex } }),
-           pageIdx != currentPage {
-            switchToPage(pageIdx)
-        }
+        // Materialize lazy pages so firstIndex can find off-page targets.
+        buildRemainingPages()
+        guard let pageIdx = pages.firstIndex(where: {
+            $0.contains { $0.candidateIndex == selectedIndex }
+        }) else { return }
+        switchToPage(pageIdx)
     }
 
     // MARK: - Commit
@@ -328,7 +331,8 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
         let candidateIndex = currentPageItems[index].candidateIndex
         guard candidateIndex < candidates.count else { return }
         let chosen = candidates[candidateIndex]
-        impl.candidateDelegate?.candidateConfirmed(chosen.text, raw: chosen)
+        impl.candidateDelegate?.candidateConfirmed(
+            chosen.text, absoluteIndex: candidateIndex, raw: chosen)
     }
 
     // MARK: - Mask

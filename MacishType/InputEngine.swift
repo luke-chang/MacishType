@@ -47,9 +47,12 @@ struct CandidateWindowState {
 enum EngineAction {
     // staged: leading chars confirmed for commit on session end (negative = whole text).
     case updateMarkedText(String, cursor: Int? = nil, emphasis: Range<Int>? = nil, staged: Int = 0)
-    // `configure` overrides engine default per-update (associated mode,
-    // mode-specific labels, etc.). Nil sticks with engine default.
-    case updateCandidates([Candidate], offset: Int = 0, suspendHighlight: Bool = false,
+    // `anchorAt`: cursor position in markedText (0...markedText.count)
+    // where the window's left edge anchors. `initialHighlight`: 0 =
+    // first candidate; n > 0 = absolute index (clamped); negative = no
+    // selection. `configure` overrides engine default per-update; nil
+    // keeps the engine default.
+    case updateCandidates([Candidate], anchorAt: Int = 0, initialHighlight: Int = 0,
                           configure: ((inout CandidateWindowConfiguration) -> Void)? = nil)
     // Engine-confirmed candidate: routes through engine.candidateConfirmed.
     case commit(Candidate)
@@ -63,7 +66,7 @@ enum EngineAction {
     // hide window and reset context.
     case flushStaged(String = "")
     // Enter associated-phrase mode: held char becomes staged marked text,
-    // candidates are displayed with offset=1 suspendHighlight=true. Payload
+    // candidates are displayed with anchorAt=1 initialHighlight=-1. Payload
     // carries pre-looked-up candidates so Controller doesn't re-query.
     case enterAssociatedMode(String, [String])
 }
@@ -80,14 +83,14 @@ extension EngineAction {
     /// annotations construct `[Candidate]` directly and hit the case above.
     static func updateCandidates(
         _ texts: [String],
-        offset: Int = 0,
-        suspendHighlight: Bool = false,
+        anchorAt: Int = 0,
+        initialHighlight: Int = 0,
         configure: ((inout CandidateWindowConfiguration) -> Void)? = nil
     ) -> EngineAction {
         .updateCandidates(
             texts.map { Candidate($0) },
-            offset: offset,
-            suspendHighlight: suspendHighlight,
+            anchorAt: anchorAt,
+            initialHighlight: initialHighlight,
             configure: configure
         )
     }
@@ -355,7 +358,7 @@ class InputEngine {
     }
 
     func candidateConfirmed(
-        context: InputEngineContext, _ candidate: String, raw: Candidate?
+        context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate?
     ) -> [EngineAction] {
         if context.isAssociating {
             return [.flushStaged(candidate)]
@@ -371,7 +374,7 @@ class InputEngine {
     }
 
     func candidateSelectionChanged(
-        context: InputEngineContext, _ candidate: String, raw: Candidate
+        context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate
     ) -> [EngineAction] {
         []
     }

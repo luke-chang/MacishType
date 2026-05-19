@@ -95,11 +95,13 @@ extension Character {
 
 protocol CandidateWindowDelegate: AnyObject {
     /// Called when a candidate is committed. `candidate` is the chosen
-    /// string, or `""` when the window was in suspendHighlight state and
-    /// commitSelectedCandidate was invoked (i.e. no item is actively
-    /// selected); `raw` is `nil` in that case. Callers may use either form.
-    func candidateConfirmed(_ candidate: String, raw: Candidate?)
-    func candidateSelectionChanged(_ candidate: String, raw: Candidate)
+    /// string, or `""` when commitSelectedCandidate was invoked with no
+    /// active selection; `raw` is `nil` and `absoluteIndex` is `-1` in
+    /// that case. `absoluteIndex` is into the candidates array emitted
+    /// by the most recent updateCandidates (distinct from the
+    /// page-relative index taken by `commitCandidateAtIndex(_)`).
+    func candidateConfirmed(_ candidate: String, absoluteIndex: Int, raw: Candidate?)
+    func candidateSelectionChanged(_ candidate: String, absoluteIndex: Int, raw: Candidate)
 }
 
 protocol CandidateItemClickable: AnyObject {
@@ -154,7 +156,7 @@ class CandidateWindow {
         _impl = nil
         apply()
         if !savedCandidates.isEmpty {
-            updateCandidates(savedCandidates, suspendHighlight: false)
+            updateCandidates(savedCandidates, initialHighlight: 0)
         }
         if wasVisible {
             show(near: lastShowNearRect)
@@ -221,7 +223,7 @@ class CandidateWindow {
 
     /// Combined update — applies `configuration` (when changed) in the
     /// same rebuild as candidates to avoid configure-then-render flicker.
-    func updateCandidates(_ candidates: [Candidate], suspendHighlight: Bool,
+    func updateCandidates(_ candidates: [Candidate], initialHighlight: Int,
                          configuration: CandidateWindowConfiguration? = nil) {
         let cfgToApply: CandidateWindowConfiguration?
         if let cfg = configuration, engineConfiguration != cfg {
@@ -230,7 +232,7 @@ class CandidateWindow {
         } else {
             cfgToApply = nil
         }
-        activeImpl.updateCandidates(candidates, suspendHighlight: suspendHighlight,
+        activeImpl.updateCandidates(candidates, initialHighlight: initialHighlight,
                                     configuration: cfgToApply)
     }
 
@@ -290,19 +292,15 @@ class CandidateWindowImpl {
     // MARK: - Candidate State
 
     var candidates: [Candidate] = []
-    var selectedIndex: Int = 0
-
-    // Visual-only suspension: selectedIndex remains a valid Int but no item is
-    // highlighted and selection-change notifications are skipped. Used for
-    // associated-phrase candidates, where highlight only appears after the
-    // first explicit navigation / click.
-    var suspendHighlight: Bool = false
+    // -1 sentinel = no selection.
+    var selectedIndex: Int = -1
+    var hasSelection: Bool { selectedIndex >= 0 }
 
     func notifySelectionChanged() {
-        if suspendHighlight { return }
-        guard !candidates.isEmpty else { return }
+        guard hasSelection, !candidates.isEmpty else { return }
         let selected = candidates[selectedIndex]
-        candidateDelegate?.candidateSelectionChanged(selected.text, raw: selected)
+        candidateDelegate?.candidateSelectionChanged(
+            selected.text, absoluteIndex: selectedIndex, raw: selected)
     }
 
     // MARK: - Subclass Override Points
@@ -312,7 +310,7 @@ class CandidateWindowImpl {
     func syncTheme() {}
 
     func apply(_ configuration: CandidateWindowConfiguration) {}
-    func updateCandidates(_ candidates: [Candidate], suspendHighlight: Bool,
+    func updateCandidates(_ candidates: [Candidate], initialHighlight: Int,
                           configuration: CandidateWindowConfiguration?) {}
     func show(near rect: NSRect) {}
     func hide() {}

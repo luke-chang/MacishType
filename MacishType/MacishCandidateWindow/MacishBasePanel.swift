@@ -20,6 +20,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     var animationDuration: TimeInterval { configuration.animationDuration }
     var candidates: [Candidate] { impl.candidates }
     var selectedIndex: Int { impl.selectedIndex }
+    var hasSelection: Bool { impl.hasSelection }
     var indexLabels: String { configuration.indexLabels }
     var pageSize: Int { configuration.pageSize }
 
@@ -411,54 +412,53 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         guard !isAnimating else { return }
         if doubleClick {
             let chosen = candidates[index]
-            impl.candidateDelegate?.candidateConfirmed(chosen.text, raw: chosen)
+            impl.candidateDelegate?.candidateConfirmed(
+                chosen.text, absoluteIndex: index, raw: chosen)
         } else {
             moveSelection(to: index)
         }
     }
 
     func commitSelectedCandidate() {
-        guard isVisible, selectedIndex >= 0, selectedIndex < displayCount else { return }
+        guard isVisible, hasSelection, selectedIndex < displayCount else { return }
         let chosen = candidates[selectedIndex]
-        impl.candidateDelegate?.candidateConfirmed(chosen.text, raw: chosen)
+        impl.candidateDelegate?.candidateConfirmed(
+            chosen.text, absoluteIndex: selectedIndex, raw: chosen)
     }
 
-    func updateCandidates(_ candidates: [Candidate]) {
+    func updateCandidates(_ candidates: [Candidate], initialIndex: Int = 0) {
         impl.candidates = candidates
-        impl.selectedIndex = 0
+        // Reset so the suspend case (initialIndex < 0) dedups in moveSelection
+        // — a stale non-negative selectedIndex would make -1 fire spurious notify.
+        impl.selectedIndex = -1
         buildCandidateLayout()
-        impl.notifySelectionChanged()
+        let target = initialIndex < 0 ? -1
+            : max(0, min(initialIndex, max(displayCount - 1, 0)))
+        moveSelection(to: target, animated: false)
     }
 
     // MARK: - Selection
 
-    func moveSelection(to newIndex: Int) {
-        // Any explicit selection move (keyboard navigation, single click)
-        // clears the suspended-highlight state.
-        impl.suspendHighlight = false
+    // Order: state → visible → highlight → notify. ensureSelectionVisible
+    // may switch page / expand / scroll, which moves which item views are
+    // showable. updateItemHighlights must run after that so highlights
+    // paint on the settled item set. notify dedups when index is unchanged
+    // (transition / apply rebuild paths reuse this — they still want the
+    // visual rerun but no spurious callback).
+    func moveSelection(to newIndex: Int, animated: Bool = true) {
+        let changed = (newIndex != impl.selectedIndex)
         impl.selectedIndex = newIndex
+        ensureSelectionVisible(animated: animated)
         updateItemHighlights()
-        impl.notifySelectionChanged()
+        if changed {
+            impl.notifySelectionChanged()
+        }
     }
 
     func updateItemHighlights() {
-        if impl.suspendHighlight {
-            for item in allItemViews {
-                item.isHighlighted = false
-            }
-            return
-        }
         for item in allItemViews {
             item.isHighlighted = item.absoluteIndex == selectedIndex
         }
-    }
-
-    func restoreSelection(to index: Int) {
-        // Preserve impl.suspendHighlight across panel transitions: bypass
-        // moveSelection (which would clear the flag) and just redraw.
-        impl.selectedIndex = min(index, max(displayCount - 1, 0))
-        updateItemHighlights()
-        ensureSelectionVisible()
     }
 
     // MARK: - Helpers
@@ -527,7 +527,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     func buildCandidateLayout() {}
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}
     func commitCandidate(at index: Int) {}
-    func ensureSelectionVisible() {}
+    func ensureSelectionVisible(animated: Bool) {}
     func handleScrollerStyleChange() {}
 }
 

@@ -258,7 +258,7 @@ and applied after the engine method returns — reading `event.markedText`
 right after `event.updateMarkedText(…)` still returns the snapshot from
 method entry.
 
-All character-index parameters (`cursor`, `staged`, `emphasis`, `offset`)
+All character-index parameters (`cursor`, `staged`, `emphasis`, `anchorAt`)
 count **extended grapheme clusters**, not UTF-16 code units. See
 [Character indices](#character-indices) for the alignment helper.
 
@@ -280,8 +280,8 @@ Replace the candidate list shown in the candidate window.
   - `annotation` *(string)* — optional disambiguator shown beside the candidate (e.g. description of a symbol).
   - `payload` *(any)* — opaque value round-tripped back via `candidateConfirmed` / `candidateSelectionChanged`, so engines can attach IDs without parsing display text.
 - Pass an **empty array** to hide the window.
-- `options.offset` *(integer, default `0`)* — character index into `markedText` to anchor the window under. `0` places it below the start; larger values shift the anchor along the marked text (e.g. after a fixed prefix).
-- `options.suspendHighlight` *(boolean, default `false`)* — when `true`, no candidate appears pre-selected. The first navigation action (arrow key, click) clears the suspension and the highlight resumes for the rest of the session.
+- `options.anchorAt` *(integer, default `0`)* — cursor position in `markedText` where the window's left edge anchors. Range `0...markedText.length`: `0` = before the first character, `length` = after the last.
+- `options.initialHighlight` *(integer, default `0`)* — initial selection. `0` highlights the first candidate; a positive `n` highlights absolute index `n` (clamped to the displayed range, independent of `pageSize`); `-1` suspends the initial highlight — the first navigation action reveals it and normal behavior resumes.
 - `options.layoutDirection` *(`"horizontal"` \| `"vertical"`)* — override the candidate window's layout direction for this update only.
 - `options.indexLabels` *(string)* — override the index-label characters for this update only. Same `""`-collapses-vs-`" "`-blank-slot semantics as the manifest field.
 - `options.pageSize` *(integer)* — override the per-page candidate count for this update only.
@@ -358,13 +358,28 @@ the new key is processed normally.
 `characters` (string \| null), `modifiers` (`{ shift, ctrl, option, command }`),
 and `candidateWindow` (snapshot at method entry).
 
-`ConfirmEvent` additionally has `candidate`, `annotation?`, and
-`payload?` (round-tripped from the original `Candidate`).
+`ConfirmEvent` additionally has `candidate`, `absoluteIndex`,
+`annotation?`, and `payload?` (the last two round-tripped from the original
+`Candidate`).
+
+`event.absoluteIndex` is the index into the full candidate list emitted
+by the most recent `updateCandidates`. It is `-1` when no candidate is
+active (a commit fired while `initialHighlight: -1` was in effect, or an
+engine-driven `commit()`). This is **distinct** from the page-relative
+index taken by `commitCandidateAtIndex(_)`. Example with `pageSize: 5`,
+user on page 1 confirms the 2nd visible item:
+
+```js
+// inside handleKey
+event.commitCandidateAtIndex(1);     // page-relative (0..pageSize-1)
+// later, inside candidateConfirmed
+event.absoluteIndex === 6;           // into the full list
+```
 
 ### Character indices
 
 `EmphasisRange`, `MarkedTextOptions.cursor`, and
-`CandidateUpdateOptions.offset` count **extended grapheme clusters**, not
+`CandidateUpdateOptions.anchorAt` count **extended grapheme clusters**, not
 UTF-16 code units. Use `Intl.Segmenter` to get aligned counts:
 
 ```js

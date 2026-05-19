@@ -61,7 +61,7 @@ class MacishVerticalPanel: MacishBasePanel {
         minVisibleRows = configuration.verticalMinVisibleRows ?? configuration.pageSize
         if !deferRender, isVisible, !candidates.isEmpty {
             buildCandidateLayout()
-            restoreSelection(to: impl?.selectedIndex ?? 0)
+            moveSelection(to: impl?.selectedIndex ?? -1, animated: false)
         }
     }
 
@@ -363,34 +363,22 @@ class MacishVerticalPanel: MacishBasePanel {
     override func handleNavigation(direction: NavigationDirection, wrapping: Bool) {
         guard !candidates.isEmpty else { return }
 
+        // moveSelection internally runs ensureSelectionVisible; jump-key
+        // branches use scrollToRow when explicit anchor placement is needed.
         switch direction {
         case .up, .itemBackward:
-            let target: Int?
-            if selectedIndex > 0 {
-                target = selectedIndex - 1
-            } else {
-                target = wrapping ? displayCount - 1 : nil
-            }
-            if let target {
-                moveSelection(to: target)
-                ensureSelectionVisible()
-            }
+            let target: Int? = selectedIndex > 0 ? selectedIndex - 1
+                : (wrapping ? displayCount - 1 : nil)
+            if let target { moveSelection(to: target) }
 
         case .down, .itemForward:
-            let target: Int?
-            if selectedIndex < displayCount - 1 {
-                target = selectedIndex + 1
-            } else {
-                target = wrapping ? 0 : nil
-            }
-            if let target {
-                moveSelection(to: target)
-                ensureSelectionVisible()
-            }
+            let target: Int? = selectedIndex < displayCount - 1 ? selectedIndex + 1
+                : (wrapping ? 0 : nil)
+            if let target { moveSelection(to: target) }
 
         case .right, .pageDown, .pageForward:
-            ensureSelectionVisible()
-            let visualOffset = selectedIndex - anchorIndex
+            ensureSelectionVisible(animated: true)
+            let visualOffset = max(selectedIndex, 0) - anchorIndex
             let newAnchor = anchorIndex + pageSize
             if newAnchor < displayCount {
                 let target = min(newAnchor + visualOffset, displayCount - 1)
@@ -401,12 +389,11 @@ class MacishVerticalPanel: MacishBasePanel {
                 scrollToRow(0, atVisiblePosition: 0)
             } else if selectedIndex < displayCount - 1 {
                 moveSelection(to: displayCount - 1)
-                ensureSelectionVisible()
             }
 
         case .left, .pageUp, .pageBackward:
-            ensureSelectionVisible()
-            let visualOffset = selectedIndex - anchorIndex
+            ensureSelectionVisible(animated: true)
+            let visualOffset = max(selectedIndex, 0) - anchorIndex
             let newAnchor = anchorIndex - pageSize
             if newAnchor >= 0 {
                 let target = newAnchor + visualOffset
@@ -418,7 +405,6 @@ class MacishVerticalPanel: MacishBasePanel {
                 scrollToRow(target, atVisiblePosition: min(visualOffset, target))
             } else if wrapping {
                 moveSelection(to: displayCount - 1)
-                ensureSelectionVisible()
             } else if selectedIndex > 0 {
                 moveSelection(to: 0)
                 scrollToRow(0, atVisiblePosition: 0)
@@ -433,12 +419,13 @@ class MacishVerticalPanel: MacishBasePanel {
         case .end:
             if selectedIndex != displayCount - 1 {
                 moveSelection(to: displayCount - 1)
-                ensureSelectionVisible()
             }
         }
     }
 
-    override func ensureSelectionVisible() {
+    override func ensureSelectionVisible(animated: Bool) {
+        // `animated` ignored: vertical scroll doesn't animate at this layer.
+        guard hasSelection else { return }
         guard selectedIndex < anchorIndex || selectedIndex >= anchorIndex + pageSize else { return }
 
         let itemTop = yForRow(selectedIndex)
@@ -480,11 +467,10 @@ class MacishVerticalPanel: MacishBasePanel {
     override func updateItemHighlights() {
         super.updateItemHighlights()
         guard style == .tahoe else { return }
-        let suspended = impl.suspendHighlight
         for (i, sep) in separatorViews.enumerated() where !sep.isHidden {
             // separator[i] sits between item[i] and item[i+1]
             let adjacentToSelection = i == selectedIndex - 1 || i == selectedIndex
-            sep.alphaValue = (!suspended && adjacentToSelection) ? 0 : 1
+            sep.alphaValue = (hasSelection && adjacentToSelection) ? 0 : 1
         }
     }
 
@@ -496,7 +482,8 @@ class MacishVerticalPanel: MacishBasePanel {
         let candidateIndex = anchorIndex + index
         guard candidateIndex < displayCount else { return }
         let chosen = candidates[candidateIndex]
-        impl.candidateDelegate?.candidateConfirmed(chosen.text, raw: chosen)
+        impl.candidateDelegate?.candidateConfirmed(
+            chosen.text, absoluteIndex: candidateIndex, raw: chosen)
     }
 
     // MARK: - Frame Animation

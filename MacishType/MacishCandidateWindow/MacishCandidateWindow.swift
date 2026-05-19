@@ -38,7 +38,8 @@ class MacishCandidateWindow: CandidateWindowImpl {
         newPanel.syncTheme()
         if !candidates.isEmpty {
             newPanel.buildCandidateLayout()
-            newPanel.restoreSelection(to: selectedIndex)
+            // selectedIndex is shared via impl; -1 is preserved naturally.
+            newPanel.moveSelection(to: selectedIndex, animated: false)
         }
         if wasVisible {
             newPanel.show(near: lastShowNearRect)
@@ -66,7 +67,7 @@ class MacishCandidateWindow: CandidateWindowImpl {
         }
     }
 
-    override func updateCandidates(_ candidates: [Candidate], suspendHighlight: Bool,
+    override func updateCandidates(_ candidates: [Candidate], initialHighlight: Int,
                                    configuration: CandidateWindowConfiguration?) {
         var pendingTransition: (oldPanel: MacishBasePanel, nearRect: NSRect)?
 
@@ -88,10 +89,7 @@ class MacishCandidateWindow: CandidateWindowImpl {
             }
         }
 
-        // suspendHighlight must be set BEFORE rebuild so notifications
-        // inside buildCandidateLayout respect it.
-        self.suspendHighlight = suspendHighlight
-        activePanel.updateCandidates(candidates)
+        activePanel.updateCandidates(candidates, initialIndex: initialHighlight)
 
         if let pending = pendingTransition {
             activePanel.show(near: pending.nearRect)
@@ -108,31 +106,29 @@ class MacishCandidateWindow: CandidateWindowImpl {
     }
 
     override func handleNavigation(direction: NavigationDirection, wrapping: Bool) {
-        if suspendHighlight {
+        if !hasSelection {
             switch direction {
             case .up, .down, .left, .right, .itemForward, .itemBackward:
-                // Pure directional keys: reveal the existing selection
-                // (index 0) without advancing.
-                activePanel.moveSelection(to: selectedIndex)
+                activePanel.moveSelection(to: 0)
                 return
-            case .home, .end, .pageUp, .pageDown, .pageForward, .pageBackward:
-                // Pagination / jump keys: treat index 0 as the starting
-                // point and let the panel run its normal logic. moveSelection
-                // inside the panel will clear the flag and highlight the
-                // destination.
-                break
+            default:
+                break   // jump keys fall through; panels handle -1 themselves
             }
         }
         activePanel.handleNavigation(direction: direction, wrapping: wrapping)
+        // Reveal at 0 when the panel's jump-key logic short-circuited
+        // (e.g. .pageUp from page 0 no-wrap) and left selection unchanged.
+        if !hasSelection {
+            activePanel.moveSelection(to: 0)
+        }
     }
 
     override func commitSelectedCandidate() {
-        // When no item is actively highlighted, report an empty selection
-        // to the delegate. Callers can interpret "" however they want (for
-        // example, fall back to committing only the surrounding marked
-        // text, or treat it as a no-op).
-        if suspendHighlight {
-            candidateDelegate?.candidateConfirmed("", raw: nil)
+        // When no item is selected, report an empty commit to the delegate.
+        // Callers can interpret "" / -1 however they want (fall back to
+        // committing surrounding marked text, treat as no-op, etc).
+        if !hasSelection {
+            candidateDelegate?.candidateConfirmed("", absoluteIndex: -1, raw: nil)
             return
         }
         activePanel.commitSelectedCandidate()

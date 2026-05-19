@@ -962,24 +962,28 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 
     override func candidateConfirmed(
-        context: InputEngineContext, _ candidate: String, raw: Candidate?
+        context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate?
     ) -> [EngineAction] {
-        dispatchCandidate("candidateConfirmed", context: context, candidate: candidate, raw: raw)
+        dispatchCandidate("candidateConfirmed", context: context,
+                          candidate: candidate, absoluteIndex: absoluteIndex, raw: raw)
     }
 
     override func candidateSelectionChanged(
-        context: InputEngineContext, _ candidate: String, raw: Candidate
+        context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate
     ) -> [EngineAction] {
-        dispatchCandidate("candidateSelectionChanged", context: context, candidate: candidate, raw: raw)
+        dispatchCandidate("candidateSelectionChanged", context: context,
+                          candidate: candidate, absoluteIndex: absoluteIndex, raw: raw)
     }
 
     private func dispatchCandidate(
         _ jsMethod: String,
-        context: InputEngineContext, candidate: String, raw: Candidate?
+        context: InputEngineContext, candidate: String, absoluteIndex: Int, raw: Candidate?
     ) -> [EngineAction] {
         guard let instance = jsInstance(for: context) else { return [] }
         let sink = ActionSink()
-        let event = makeConfirmEvent(context: context, candidate: candidate, raw: raw, sink: sink)
+        let event = makeConfirmEvent(
+            context: context, candidate: candidate, absoluteIndex: absoluteIndex,
+            raw: raw, sink: sink)
         Self.invokeIfDefined(instance, jsMethod, withArguments: [event])
         return sink.actions
     }
@@ -1114,11 +1118,13 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     private func makeConfirmEvent(
         context: InputEngineContext,
         candidate: String,
+        absoluteIndex: Int,
         raw: Candidate?,
         sink: ActionSink
     ) -> JSValue {
         let event = JSValue(newObjectIn: jsContext)!
         event.setObject(candidate, forKeyedSubscript: "candidate" as NSString)
+        event.setObject(absoluteIndex, forKeyedSubscript: "absoluteIndex" as NSString)
         if let annotation = raw?.annotation {
             event.setObject(annotation, forKeyedSubscript: "annotation" as NSString)
         }
@@ -1227,9 +1233,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // Swift's `configure` closure on the action).
         let updateCandidates: @convention(block) (JSValue, JSValue?) -> Void = { itemsArr, options in
             let opts = Self.resolved(options)
-            let offset = opts?.objectForKeyedSubscript("offset")?.toInt32() ?? 0
-            let suspendHighlight = opts?
-                .objectForKeyedSubscript("suspendHighlight")?.toBool() ?? false
+            let anchorAt = Self.optInt(opts, "anchorAt") ?? 0
+            let initialHighlight = Self.optInt(opts, "initialHighlight") ?? 0
             let count = Int(itemsArr.objectForKeyedSubscript("length")?.toInt32() ?? 0)
             let candidates = (0..<count).compactMap { i -> Candidate? in
                 guard let item = itemsArr.objectAtIndexedSubscript(i) else { return nil }
@@ -1237,8 +1242,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             }
             sink.actions.append(.updateCandidates(
                 candidates,
-                offset: Int(offset),
-                suspendHighlight: suspendHighlight,
+                anchorAt: anchorAt,
+                initialHighlight: initialHighlight,
                 configure: Self.parseCandidateWindowOverrides(opts)))
         }
         // Accepts either a plain string or `{text, annotation?, payload?}` —

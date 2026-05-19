@@ -92,7 +92,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         moveOnExpand = configuration.moveOnExpand
         if !deferRender, isVisible, !candidates.isEmpty {
             buildCandidateLayout()
-            restoreSelection(to: impl?.selectedIndex ?? 0)
+            moveSelection(to: impl?.selectedIndex ?? -1, animated: false)
             if lastShowNearRect != .zero {
                 show(near: lastShowNearRect)
             }
@@ -352,7 +352,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
                 scrollView.reflectScrolledClipView(scrollView.contentView)
                 scrollView.flashScrollers()
             }
-            ensureSelectionVisible()
+            ensureSelectionVisible(animated: false)
         } else {
             for item in expandedItemViews {
                 item.isHidden = true
@@ -421,7 +421,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
             rowHighlightView?.alphaValue = 1
             setContentSize(contentSize)
             updateCorners()
-            ensureSelectionVisible()
+            ensureSelectionVisible(animated: false)
             if lastShowNearRect != .zero { show(near: lastShowNearRect) }
             return
         }
@@ -661,7 +661,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
                     let targetRow = expandedGridRows[targetRowIdx]
                     let savedGridRows = gridRows
                     gridRows = expandedGridRows
-                    if let (rowIdx, item) = findGridPosition(of: selectedIndex) {
+                    if let (rowIdx, item) = findGridPosition(of: max(selectedIndex, 0)) {
                         if rowIdx == 0 {
                             if let target = findOverlappingItem(in: targetRow, columnStart: item.columnStart, columnEnd: item.columnStart + item.columnSpan) {
                                 moveSelection(to: target)
@@ -694,8 +694,9 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
             if target >= collapsedCount {
                 if shouldMoveOnExpand {
                     moveSelection(to: target)
+                } else {
+                    expandWindow(animated: true)
                 }
-                expandWindow(animated: true)
                 return
             }
         }
@@ -740,7 +741,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     }
 
     private func gridNavigateVertical(direction: Int, rowCount: Int = 1) -> Int? {
-        guard let (rowIdx, item) = findGridPosition(of: selectedIndex) else { return nil }
+        guard let (rowIdx, item) = findGridPosition(of: max(selectedIndex, 0)) else { return nil }
         let targetRowIdx = rowIdx + direction * rowCount
         let clampedRowIdx = max(0, min(targetRowIdx, gridRows.count - 1))
         guard clampedRowIdx != rowIdx else { return nil }
@@ -754,7 +755,11 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         ) ?? targetRow.items.last?.candidateIndex
     }
 
+    // `startIndex` normalizes the -1 no-selection sentinel to 0 for offset
+    // arithmetic; bound/dedup comparisons further down keep raw `selectedIndex`
+    // so -1 still triggers a move on the first navigation.
     private func wrappingTarget(direction: NavigationDirection) -> Int? {
+        let startIndex = max(selectedIndex, 0)
         switch direction {
         case .right where selectedIndex >= displayCount - 1:
             return 0
@@ -765,7 +770,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         case .itemBackward where selectedIndex <= 0:
             return displayCount - 1
         case .down, .up, .pageForward, .pageBackward:
-            guard let (rowIdx, item) = findGridPosition(of: selectedIndex) else { return nil }
+            guard let (rowIdx, item) = findGridPosition(of: startIndex) else { return nil }
             let colStart = item.columnStart
             let colEnd = colStart + item.columnSpan
             if direction == .down || direction == .pageForward, rowIdx >= gridRows.count - 1 {
@@ -782,21 +787,22 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     }
 
     private func navigationTarget(direction: NavigationDirection) -> Int? {
+        let startIndex = max(selectedIndex, 0)
         switch direction {
         case .right:
-            return selectedIndex + 1 < displayCount ? selectedIndex + 1 : nil
+            return startIndex + 1 < displayCount ? startIndex + 1 : nil
         case .left:
-            return selectedIndex > 0 ? selectedIndex - 1 : nil
+            return startIndex > 0 ? startIndex - 1 : nil
         case .down:
             return gridNavigateVertical(direction: 1)
         case .up:
             return gridNavigateVertical(direction: -1)
         case .home:
-            guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return nil }
+            guard let (rowIdx, _) = findGridPosition(of: startIndex) else { return nil }
             let first = gridRows[rowIdx].items.first!.candidateIndex
             return selectedIndex != first ? first : nil
         case .end:
-            guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return nil }
+            guard let (rowIdx, _) = findGridPosition(of: startIndex) else { return nil }
             let last = gridRows[rowIdx].items.last!.candidateIndex
             return selectedIndex != last ? last : nil
         case .pageUp:
@@ -804,9 +810,9 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         case .pageDown:
             return gridNavigateVertical(direction: 1, rowCount: maxVisibleRows - 1)
         case .itemForward:
-            return selectedIndex + 1 < displayCount ? selectedIndex + 1 : nil
+            return startIndex + 1 < displayCount ? startIndex + 1 : nil
         case .itemBackward:
-            return selectedIndex > 0 ? selectedIndex - 1 : nil
+            return startIndex > 0 ? startIndex - 1 : nil
         case .pageForward:
             return gridNavigateVertical(direction: 1)
         case .pageBackward:
@@ -816,30 +822,21 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
 
     // MARK: - Selection & Highlights
 
-    override func restoreSelection(to index: Int) {
-        let target = min(index, max(displayCount - 1, 0))
-        if displayMode == .collapsed, target >= collapsedVisibleCount, displayCount > collapsedVisibleCount {
-            moveSelection(to: target)
-            expandWindow(animated: false)
-        } else {
-            moveSelection(to: target)
-        }
-    }
-
-    override func moveSelection(to newIndex: Int) {
-        let oldRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
-        super.moveSelection(to: newIndex)
+    override func updateItemHighlights() {
+        super.updateItemHighlights()
         if displayMode == .expanded {
-            let newRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
-            if oldRowIdx != newRowIdx {
-                updateRowHighlightsAndIndices()
-                layoutHighlight()
-                ensureSelectionVisible()
-            }
+            updateRowHighlightsAndIndices()
+            layoutHighlight()
         }
     }
 
-    override func ensureSelectionVisible() {
+    override func ensureSelectionVisible(animated: Bool) {
+        if displayMode == .collapsed,
+           selectedIndex >= collapsedVisibleCount,
+           displayCount > collapsedVisibleCount {
+            expandWindow(animated: animated)
+            return
+        }
         guard displayMode == .expanded,
               let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return }
         let rowY = yForRow(rowIdx)
@@ -859,7 +856,9 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
 
     private func updateRowHighlightsAndIndices() {
         guard displayMode == .expanded else { return }
-        guard let (selectedRowIdx, _) = findGridPosition(of: selectedIndex) else { return }
+        // selectedRowIdx == nil when no selection (-1 sentinel) — no row
+        // claims showIndex.
+        let selectedRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
 
         var rowForCandidate: [Int: Int] = [:]
         for (rowIndex, row) in gridRows.enumerated() {
@@ -876,7 +875,14 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     }
 
     private func layoutHighlight() {
-        guard displayMode == .expanded, let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return }
+        guard displayMode == .expanded else { return }
+        // Hide the row highlight bar when there's no selection so it doesn't
+        // sit at a stale row from the previous selection.
+        guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else {
+            rowHighlightView?.alphaValue = 0
+            return
+        }
+        rowHighlightView?.alphaValue = 1
         let y = yForRow(rowIdx)
         rowHighlightView?.frame = NSRect(x: 0, y: y, width: frame.width, height: itemHeight)
     }
@@ -887,14 +893,17 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         guard isVisible else { return }
         guard index >= 0 else { return }
 
-        guard let (rowIdx, _) = findGridPosition(of: selectedIndex) else { return }
+        // -1 (no selection) is treated as row 0 so number-key commit still
+        // works in the suspend state (e.g. associated-phrase mode).
+        guard let (rowIdx, _) = findGridPosition(of: max(selectedIndex, 0)) else { return }
         let row = gridRows[rowIdx]
         guard index < row.items.count else { return }
 
         let candidateIndex = row.items[index].candidateIndex
         guard candidateIndex < candidates.count else { return }
         let chosen = candidates[candidateIndex]
-        impl.candidateDelegate?.candidateConfirmed(chosen.text, raw: chosen)
+        impl.candidateDelegate?.candidateConfirmed(
+            chosen.text, absoluteIndex: candidateIndex, raw: chosen)
     }
 
     // MARK: - Scroller Style
