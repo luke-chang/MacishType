@@ -362,3 +362,19 @@ function __MacishType_dispatchGlobal(event) {
     __MacishType_dispatchGlobal({ type: "languagechange" });
   };
 })();
+
+// fetch — minimal subset for reading files from the engine folder.
+// Path must start with "./". Only Response.text/json/arrayBuffer are
+// implemented; no headers, method, body, streams, abort signal, etc.
+globalThis.fetch = function (input, init) {
+  if (typeof input !== "string") {
+    return Promise.reject(new TypeError(
+      "fetch: input must be a string (got " + typeof input + ")"));
+  }
+  if (init !== undefined) {
+    console.warn("fetch: init argument is ignored");
+  }
+  return new Promise((resolve, reject) => {
+    __MacishType_fetch(input, resolve, reject);
+  });
+};

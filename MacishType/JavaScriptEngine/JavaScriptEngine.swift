@@ -587,6 +587,276 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         fn.call(withArguments: [])
     }
 
+    // MARK: fetch bridge
+
+    /// Body-consumed flag shared across the three body method closures.
+    /// Reference type so mutations are visible across closure captures
+    /// (same trick as `ActionSink` in `attachMutators`).
+    private final class FetchBodyState {
+        var consumed = false
+    }
+
+    /// Cached canonical path of `engineFolderURL`. Same realpath-syscall
+    /// avoidance as `ModuleLoader.cachedRootPath` but keyed off the full
+    /// folder (which fetch uses) rather than `importRoot` (potentially
+    /// narrower). Invalidated alongside other JS state in `teardownContext`.
+    private var cachedEngineFolderRoot: String?
+
+    private func engineFolderRootPath() -> String? {
+        if let cached = cachedEngineFolderRoot { return cached }
+        guard let folder = engineFolderURL else { return nil }
+        let resolved = Self.canonicalPath(for: folder)
+        cachedEngineFolderRoot = resolved
+        return resolved
+    }
+
+    private func handleFetch(path: String, resolve: JSValue, reject: JSValue) {
+        guard path.hasPrefix("./") else {
+            Self.rejectWith(reject, message: "fetch: path must start with './' (got '\(path)')")
+            return
+        }
+        guard let folder = engineFolderURL, let rootPath = engineFolderRootPath() else {
+            Self.rejectWith(reject, message: "fetch: engine folder unavailable")
+            return
+        }
+        let target = folder.appendingPathComponent(String(path.dropFirst(2)))
+        guard Self.isContained(url: target, in: rootPath) else {
+            Self.rejectWith(reject, message: "fetch: path '\(path)' escapes engine folder")
+            return
+        }
+
+        // Stat on background — engine folder may sit on network volume /
+        // sleeping disk / iCloud stub; can't block the main thread.
+        // resolve/reject retain their JSContext, so they're callable even if
+        // engine teardown happens before the read completes.
+        Self.statFile(url: target) { [weak self] result in
+            switch result {
+            case .success(let type):
+                guard type == .regular else {
+                    Self.rejectWith(reject, message: "fetch: '\(path)' is not a regular file")
+                    return
+                }
+                self?.recordLoadedFile(target)
+                guard let ctx = resolve.context else { return }
+                resolve.call(withArguments: [Self.makeFetchResponse(in: ctx, url: target)])
+            case .failure(let error):
+                Self.rejectWith(
+                    reject,
+                    message: "fetch: not reachable '\(path)': \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Response with lazy body — actual disk read happens inside body
+    /// method closures, not at fetch() time. Body-consumed flag uses
+    /// lock-on-entry semantics (sync mark before dispatch) with unmark
+    /// on recoverable failure so engine can fall back / retry.
+    private static func makeFetchResponse(in ctx: JSContext, url: URL) -> JSValue {
+        let response = JSValue(newObjectIn: ctx)!
+        response.setObject(true, forKeyedSubscript: "ok" as NSString)
+        response.setObject(200, forKeyedSubscript: "status" as NSString)
+        response.setObject(url.absoluteString, forKeyedSubscript: "url" as NSString)
+
+        let state = FetchBodyState()
+
+        let textFn: @convention(block) () -> JSValue = {
+            Self.textBody(state: state, url: url) { text, resolve, _ in
+                resolve.call(withArguments: [text])
+            }
+        }
+        response.setObject(textFn, forKeyedSubscript: "text" as NSString)
+
+        let jsonFn: @convention(block) () -> JSValue = {
+            Self.textBody(state: state, url: url) { text, resolve, _ in
+                // Promise.resolve(text).then(JSON.parse) — outer adopts inner
+                // so SyntaxError surfaces as rejection, web-aligned.
+                guard let ctx = resolve.context else { return }
+                let jsonParse = ctx.objectForKeyedSubscript("JSON")!
+                    .objectForKeyedSubscript("parse")!
+                let resolved = Self.resolvedPromise(in: ctx, value: text)
+                let parsed = resolved.invokeMethod("then", withArguments: [jsonParse])!
+                resolve.call(withArguments: [parsed])
+            }
+        }
+        response.setObject(jsonFn, forKeyedSubscript: "json" as NSString)
+
+        let arrayBufferFn: @convention(block) () -> JSValue = {
+            let ctx = JSContext.current()!
+            if state.consumed {
+                return Self.rejectedPromise(in: ctx, message: "Body has already been consumed")
+            }
+            state.consumed = true
+            return Self.deferredPromise(in: ctx) { resolve, reject in
+                Self.readRaw(url: url) { result in
+                    switch result {
+                    case .success(let data):
+                        guard let ctx = resolve.context else { return }
+                        guard let buffer = Self.makeArrayBuffer(from: data, in: ctx) else {
+                            state.consumed = false
+                            Self.rejectWith(reject, message: "Failed to construct ArrayBuffer")
+                            return
+                        }
+                        resolve.call(withArguments: [buffer])
+                    case .failure(let error):
+                        state.consumed = false
+                        Self.rejectWith(
+                            reject,
+                            message: "Body read failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+        response.setObject(arrayBufferFn, forKeyedSubscript: "arrayBuffer" as NSString)
+
+        return response
+    }
+
+    private static func resolvedPromise(in ctx: JSContext, value: Any) -> JSValue {
+        ctx.objectForKeyedSubscript("Promise")!
+            .invokeMethod("resolve", withArguments: [value])
+    }
+
+    private static func rejectedPromise(in ctx: JSContext, message: String) -> JSValue {
+        let promiseClass = ctx.objectForKeyedSubscript("Promise")!
+        let errorClass = ctx.objectForKeyedSubscript("Error")!
+        let error = errorClass.construct(withArguments: [message])!
+        return promiseClass.invokeMethod("reject", withArguments: [error])
+    }
+
+    /// Build an Error and invoke a Promise-style reject callback.
+    /// Used both by handleFetch sync rejects and body-method async rejects.
+    private static func rejectWith(_ reject: JSValue, message: String) {
+        guard let ctx = reject.context else { return }
+        let errorClass = ctx.objectForKeyedSubscript("Error")!
+        let error = errorClass.construct(withArguments: [message])!
+        reject.call(withArguments: [error])
+    }
+
+    /// Builds an ArrayBuffer-typed JSValue. Goes through the JSC C API
+    /// because the ObjC JSValue bridge doesn't expose an ArrayBuffer
+    /// initializer. Copies bytes into a heap buffer that JSC frees via
+    /// the deallocator when the ArrayBuffer is GC'd. Returns nil on
+    /// allocation failure so callers can surface a rejection rather than
+    /// resolving with `undefined`.
+    private static func makeArrayBuffer(from data: Data, in ctx: JSContext) -> JSValue? {
+        // `allocate(byteCount: 0, ...)` is unspecified; route empty files
+        // through JS-side construction to avoid UB.
+        if data.isEmpty {
+            return ctx.evaluateScript("new ArrayBuffer(0)")
+        }
+        let count = data.count
+        let ptr = UnsafeMutableRawPointer.allocate(byteCount: count, alignment: 1)
+        data.copyBytes(to: ptr.assumingMemoryBound(to: UInt8.self), count: count)
+        let deallocator: JSTypedArrayBytesDeallocator = { bytes, _ in
+            bytes?.deallocate()
+        }
+        var exception: JSValueRef?
+        guard let bufferRef = JSObjectMakeArrayBufferWithBytesNoCopy(
+            ctx.jsGlobalContextRef,
+            ptr, count,
+            deallocator, nil,
+            &exception
+        ) else {
+            ptr.deallocate()
+            return nil
+        }
+        return JSValue(jsValueRef: bufferRef, in: ctx)
+    }
+
+    /// Sentinel for UTF-8 decode failure inside `readAndDecode`.
+    /// Caller distinguishes via `error is InvalidUTF8` to choose between
+    /// "not valid UTF-8" message and generic read-failure message.
+    private struct InvalidUTF8: Error {}
+
+    /// Shared shape for `text()` and `json()` body methods: lock-on-entry,
+    /// dispatch UTF-8 decode, unmark + classify error on failure, hand the
+    /// decoded text to the caller for per-method post-processing on success.
+    private static func textBody(
+        state: FetchBodyState,
+        url: URL,
+        onText: @escaping (String, JSValue, JSValue) -> Void
+    ) -> JSValue {
+        let ctx = JSContext.current()!
+        if state.consumed {
+            return Self.rejectedPromise(in: ctx, message: "Body has already been consumed")
+        }
+        state.consumed = true
+        return Self.deferredPromise(in: ctx) { resolve, reject in
+            Self.readAndDecode(url: url) { result in
+                switch result {
+                case .success(let text):
+                    onText(text, resolve, reject)
+                case .failure(let error):
+                    state.consumed = false
+                    let message = error is InvalidUTF8
+                        ? "Body is not valid UTF-8"
+                        : "Body read failed: \(error.localizedDescription)"
+                    Self.rejectWith(reject, message: message)
+                }
+            }
+        }
+    }
+
+    /// Stat on background queue using URL.resourceValues, which follows
+    /// symlinks (symlink-to-regular returns .regular, matching what
+    /// `Data(contentsOf:)` will see at read time).
+    private static func statFile(
+        url: URL,
+        completion: @escaping (Result<URLFileResourceType, Error>) -> Void
+    ) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result: Result<URLFileResourceType, Error>
+            do {
+                let values = try url.resourceValues(forKeys: [.fileResourceTypeKey])
+                result = .success(values.fileResourceType ?? .unknown)
+            } catch {
+                result = .failure(error)
+            }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// Read + UTF-8 decode on background, deliver Result on main.
+    /// UTF-8 failure surfaces as `.failure(InvalidUTF8())`; disk read
+    /// failure surfaces as `.failure(realError)`.
+    private static func readAndDecode(url: URL, completion: @escaping (Result<String, Error>) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result: Result<String, Error>
+            do {
+                let data = try Data(contentsOf: url)
+                if let text = String(data: data, encoding: .utf8) {
+                    result = .success(text)
+                } else {
+                    result = .failure(InvalidUTF8())
+                }
+            } catch {
+                result = .failure(error)
+            }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// Read raw bytes on background, deliver Result on main.
+    private static func readRaw(url: URL, completion: @escaping (Result<Data, Error>) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = Result { try Data(contentsOf: url) }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// Construct `new Promise((resolve, reject) => work(resolve, reject))`
+    /// from Swift. Used by body methods to defer Promise settlement until
+    /// background read completes.
+    private static func deferredPromise(
+        in ctx: JSContext,
+        _ work: @escaping (JSValue, JSValue) -> Void
+    ) -> JSValue {
+        let executor: @convention(block) (JSValue, JSValue) -> Void = { resolve, reject in
+            work(resolve, reject)
+        }
+        return ctx.objectForKeyedSubscript("Promise")!.construct(withArguments: [executor])!
+    }
+
     // MARK: JSContext state (set up in load())
 
     fileprivate var virtualMachine: JSVirtualMachine!
@@ -604,13 +874,20 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     // identifiers (including the entry's own URL), look them up here.
     fileprivate var moduleSourceByIdentifier: [String: (source: String, url: URL)] = [:]
 
-    /// Canonical absolute paths of files read off disk by the engine —
-    /// manifest.json, entry script, and every dynamically-imported module.
-    /// Reset at the start of `load()` and on teardown. Consumed by
-    /// file-watching subclasses (e.g. `JSExternalEngine`) to scope reloads
-    /// to files in the engine's import graph. Note: settings-preview
-    /// `reloadManifest()` may populate the manifest entry before any
-    /// `load()`; that's harmless because watchers only run post-`load`.
+    /// Canonical absolute paths of files the engine has expressed interest
+    /// in — manifest.json, entry script, every dynamically-imported module,
+    /// and every successfully-stat'd fetched resource. Reset at the start
+    /// of `load()` and on teardown. Consumed by file-watching subclasses
+    /// (e.g. `JSExternalEngine`) to scope reloads.
+    ///
+    /// Import paths are recorded post-read-success (an import failing
+    /// reading faults the whole load, leaving no half-watched file).
+    /// Fetched paths are recorded post-stat-success, before the body is
+    /// (or isn't) consumed — fetch alone is enough to express "I care
+    /// about this file" and should drive hot-reload on later edits.
+    /// Note: settings-preview `reloadManifest()` may populate the
+    /// manifest entry before any `load()`; that's harmless because
+    /// watchers only run post-`load`.
     private(set) var loadedFilePaths: Set<String> = []
 
     // JSModuleLoaderDelegate is an ObjC protocol requiring NSObjectProtocol
@@ -799,6 +1076,11 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         let userAgent = "MacishType/\(appVersion) (macOS \(osVersionString)) JavaScriptCore/\(jscVersion)"
         context.setObject(userAgent, forKeyedSubscript: "__MacishType_userAgent" as NSString)
 
+        let fetchFn: @convention(block) (String, JSValue, JSValue) -> Void = { [weak self] path, resolve, reject in
+            self?.handleFetch(path: path, resolve: resolve, reject: reject)
+        }
+        context.setObject(fetchFn, forKeyedSubscript: "__MacishType_fetch" as NSString)
+
         // Auto-evaluate runtime.js before any engine code runs;
         // must follow bridge registration above.
         guard let runtime = Self.loadJSSource(
@@ -916,6 +1198,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         moduleSourceByIdentifier.removeAll()
         loadedFilePaths.removeAll()
         moduleLoader.invalidateRootCache()
+        cachedEngineFolderRoot = nil
         // self.manifest intentionally NOT cleared — see its doc comment.
         lastPushedSettings = nil
     }
@@ -1014,6 +1297,15 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// containment check compare against each other cleanly.
     nonisolated static func canonicalPath(for url: URL) -> String {
         url.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    /// Trailing-slash prefix match so `/foo` doesn't accept `/foobar`,
+    /// plus exact-match for the root itself.
+    nonisolated static func isContained(url target: URL, in rootPath: String) -> Bool {
+        let normalizedTarget = canonicalPath(for: target)
+        if normalizedTarget == rootPath { return true }
+        let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        return normalizedTarget.hasPrefix(prefix)
     }
 
     /// Resolves a `URL?` and reads its contents as UTF-8 text. Faults +
@@ -1334,15 +1626,6 @@ private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
         return resolved
     }
 
-    /// Verifies `target`'s canonical path is at or below the cached root,
-    /// matching with a trailing `/` so `/foo` doesn't match `/foobar`.
-    private func isContained(url target: URL, rootPath: String) -> Bool {
-        let normalizedTarget = JavaScriptEngine.canonicalPath(for: target)
-        if normalizedTarget == rootPath { return true }
-        let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
-        return normalizedTarget.hasPrefix(prefix)
-    }
-
     func context(
         _ context: JSContext!,
         fetchModuleForIdentifier identifier: JSValue!,
@@ -1390,7 +1673,7 @@ private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
                 reject.call(withArguments: ["file imports disabled"])
                 return
             }
-            guard isContained(url: url, rootPath: rootPath) else {
+            guard JavaScriptEngine.isContained(url: url, in: rootPath) else {
                 Logger.javaScriptEngine.error(
                     "import \(id, privacy: .public) outside engine folder \(rootPath, privacy: .public)"
                 )

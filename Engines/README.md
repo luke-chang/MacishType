@@ -389,11 +389,12 @@ const characterCount = [...seg.segment(markedText)].length;
 
 ### Runtime globals
 
-The host injects `console`, `manifest`, `navigator`, and `localStorage`
-into the engine's global scope.
+The host injects `console`, `manifest`, `navigator`, `localStorage`,
+and `fetch` into the engine's global scope.
 
 No `require`, `process`, `setTimeout`, or network APIs are exposed.
-Engines run inside JavaScriptCore.
+Engines run inside JavaScriptCore. `fetch` is a read-only file API
+for engine-folder resources, not network access.
 
 #### Global events
 
@@ -593,6 +594,44 @@ the new list.
 
 Deduplicated — unrelated locale changes (calendar / currency /
 numbering system) don't fire this event.
+
+#### `fetch(path)`
+
+Reads a file from the engine folder. Web-aligned subset — read-only,
+no network access.
+
+```js
+const dict = await fetch('./dict.json').then(r => r.json());
+const text = await fetch('./templates/welcome.txt').then(r => r.text());
+const blob = await fetch('./model.bin').then(r => r.arrayBuffer());
+```
+
+| Constraint | |
+|---|---|
+| Path | Must start with `./`. Bare names, absolute paths, and `../` escapes reject. |
+| Body | `text()` / `json()` / `arrayBuffer()` — first successful call consumes the body; subsequent body method calls reject with `Error("Body has already been consumed")`. A failed UTF-8 decode does **not** consume the body, so engines can fall back to `arrayBuffer()` on a non-text file. |
+| Init arg | Declared `init?: unknown` for signature parity with the Web fetch API. Completely ignored at runtime; passing a non-undefined value emits `console.warn`. No headers / method / body / streams / abort. |
+| Threading | Read runs off the main thread; the Promise resolves on the JS event loop. |
+| Hot-reload | Fetched files are watched alongside imports — modifying one outside the engine triggers a full module reload. See example below for the recommended pattern. |
+| Errors | `fetch()` rejects on invalid path / missing file / read failure. `text()` / `json()` reject on non-UTF-8 body or malformed JSON. |
+
+The TypeScript return type is named `FetchResponse` (not `Response`)
+to avoid colliding with the full DOM `Response` interface in
+`lib.dom.d.ts`, which has many fields this host doesn't implement.
+
+```js
+// Module top-level — runs once per engine load. Editing dict.json
+// from outside triggers a module reload, so `dict` is reassigned
+// with the new file content automatically.
+const dict = await fetch('./dict.json').then(r => r.json());
+console.info('dict loaded, entries:', Object.keys(dict).length);
+
+export default class MyEngine {
+  handleKey(event) {
+    // `dict` is shared across every text-field session via closure.
+  }
+}
+```
 
 #### `localStorage`
 

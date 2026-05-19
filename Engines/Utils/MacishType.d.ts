@@ -407,4 +407,56 @@ declare global {
 
   // eslint-disable-next-line no-var
   var navigator: Navigator;
+
+  /**
+   * Response returned by `fetch()`. Named to avoid declaration-merging
+   * with `lib.dom.d.ts`'s `Response` interface — only these fields are
+   * actually implemented; headers/blob/formData/clone/etc. don't exist.
+   *
+   * Body can be consumed once. Calling any of `text()` / `json()` /
+   * `arrayBuffer()` marks the body as consumed; subsequent body method
+   * calls (any of the three) reject with `Error("Body has already been
+   * consumed")`. Web-spec aligned.
+   *
+   * UTF-8 decode failure in `text()` / `json()` does NOT mark the body
+   * as consumed — the engine can fall back to `arrayBuffer()` on a
+   * non-text file.
+   */
+  interface FetchResponse {
+    /** Always `true` — non-2xx is not modeled (file reads either succeed or `fetch()` rejects). */
+    readonly ok: boolean;
+    /** Always `200`. Present for web parity, not meaningful here. */
+    readonly status: number;
+    /** Resolved file URL (e.g. `"file:///.../engine/dict.json"`). */
+    readonly url: string;
+    /** UTF-8 decode of file contents. Rejects with `Error("Body is not valid UTF-8")` if decode fails. */
+    text(): Promise<string>;
+    /** Equivalent to `text().then(JSON.parse)`. Rejects with `SyntaxError` on malformed JSON. */
+    json(): Promise<unknown>;
+    /** Raw file bytes. */
+    arrayBuffer(): Promise<ArrayBuffer>;
+  }
+
+  /**
+   * Read a file from the engine folder. Only relative paths starting
+   * with `"./"` are accepted; absolute paths, parent-escapes (`../`),
+   * and bare names reject. The read runs off the main thread.
+   *
+   * Rejects (with `Error`) on: invalid path, file not found, read
+   * failure. Per web fetch convention, the Promise rejects rather than
+   * resolving with `ok: false` for these errors.
+   *
+   * Fetched files are tracked alongside imports — modifying one outside
+   * the engine (e.g. the user editing the file in a text editor)
+   * triggers a module reload. Fetch at module top level (with `await`)
+   * so the new content is picked up automatically; fetching inside
+   * `activate()` or the class constructor would re-read on every
+   * text-field focus.
+   *
+   * @param init Web-fetch init bag — accepted for signature parity with
+   *   the Web fetch API but **completely ignored**. Headers, method,
+   *   body, cache, redirect, signal, etc. are not implemented. Passing
+   *   any non-undefined value emits a runtime `console.warn`.
+   */
+  function fetch(input: string, init?: unknown): Promise<FetchResponse>;
 }
