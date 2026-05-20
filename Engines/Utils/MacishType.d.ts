@@ -413,21 +413,19 @@ declare global {
    * with `lib.dom.d.ts`'s `Response` interface — only these fields are
    * actually implemented; headers/blob/formData/clone/etc. don't exist.
    *
-   * Body can be consumed once. Calling any of `text()` / `json()` /
-   * `arrayBuffer()` marks the body as consumed; subsequent body method
-   * calls (any of the three) reject with `Error("Body has already been
-   * consumed")`. Web-spec aligned.
-   *
-   * UTF-8 decode failure in `text()` / `json()` does NOT mark the body
-   * as consumed — the engine can fall back to `arrayBuffer()` on a
-   * non-text file.
+   * Body methods lock on entry: calling any of `text()` / `json()` /
+   * `arrayBuffer()` synchronously marks the body as consumed, so a
+   * second body method call rejects immediately with `Error("Body has
+   * already been consumed")`. Recoverable failures (UTF-8 decode fail,
+   * disk read fail, ArrayBuffer alloc fail) un-mark so the engine can
+   * fall back or retry.
    */
   interface FetchResponse {
     /** Always `true` — non-2xx is not modeled (file reads either succeed or `fetch()` rejects). */
     readonly ok: boolean;
     /** Always `200`. Present for web parity, not meaningful here. */
     readonly status: number;
-    /** Resolved file URL (e.g. `"file:///.../engine/dict.json"`). */
+    /** Synthetic `engine:///<path>` URL (e.g. `"engine:///dict.json"`). */
     readonly url: string;
     /** UTF-8 decode of file contents. Rejects with `Error("Body is not valid UTF-8")` if decode fails. */
     text(): Promise<string>;
@@ -438,12 +436,20 @@ declare global {
   }
 
   /**
-   * Read a file from the engine folder. Only relative paths starting
-   * with `"./"` are accepted; absolute paths, parent-escapes (`../`),
-   * and bare names reject. The read runs off the main thread.
+   * Read a file from the engine folder. Two path forms:
+   * - `"./<relative>"` resolves from the engine folder root
+   * - `"engine:///<path>"` is an absolute synthetic URL (built from
+   *   `import.meta.url` for module-relative paths)
    *
-   * Rejects (with `Error`) on: invalid path, file not found, read
-   * failure. Per web fetch convention, the Promise rejects rather than
+   * Parent-escapes (`../`), bare names, `file://` URLs, query strings,
+   * and fragments all reject.
+   *
+   * `fetch()` itself stat's the file off the main thread and resolves
+   * with a `FetchResponse`. The actual read happens lazily inside
+   * `text()` / `json()` / `arrayBuffer()`.
+   *
+   * Rejects (with `Error`) on: invalid path, file not found, non-regular
+   * file. Per web fetch convention, the Promise rejects rather than
    * resolving with `ok: false` for these errors.
    *
    * Fetched files are tracked alongside imports — modifying one outside

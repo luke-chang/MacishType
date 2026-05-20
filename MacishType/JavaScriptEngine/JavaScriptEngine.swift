@@ -25,7 +25,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     var engineFolderURL: URL? { nil }
 
-    /// File-system root for `import "file://..."`; module imports outside
+    /// File-system root for engine-local `import` resolution (which JS
+    /// sees as `engine:///<path>` URLs); module imports resolving outside
     /// it are rejected. Defaults to the whole engine folder so subdir
     /// entries (e.g. `src/index.js`) can import siblings; subclasses
     /// override only to narrow.
@@ -587,6 +588,34 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         fn.call(withArguments: [])
     }
 
+    // MARK: engine:// URL synthesis
+
+    /// Shared base for all `engine:///<path>` URLs. Parsed once at type
+    /// init rather than per call to `syntheticURL`.
+    nonisolated private static let syntheticURLBase = URL(string: "engine:///")!
+
+    /// Build a synthetic `engine:///<path>` URL for a path relative to
+    /// `engineFolderURL`. Used as sourceURL for module scripts and as
+    /// `Response.url`, so JS-visible URLs never leak the user's
+    /// filesystem path. `appending(path:)` handles percent-encoding for
+    /// CJK / spaces / reserved chars (avoiding URL(string:) trap).
+    nonisolated fileprivate static func syntheticURL(forRelativePath relativePath: String) -> URL {
+        syntheticURLBase.appending(path: relativePath)
+    }
+
+    /// Translate a synthetic `engine:///<path>` URL back to the real
+    /// `file://` URL for disk I/O. Rejects non-engine schemes, non-empty
+    /// hosts (no `engine://malicious/path` smuggling), and missing folder.
+    fileprivate func realFileURL(forSyntheticURL url: URL) -> URL? {
+        guard url.scheme == "engine",
+              (url.host ?? "").isEmpty,
+              let folder = engineFolderURL else { return nil }
+        // url.path for engine:///foo is "/foo"; strip the leading slash so
+        // appendingPathComponent doesn't produce a double slash.
+        let relative = String(url.path.dropFirst())
+        return folder.appendingPathComponent(relative)
+    }
+
     // MARK: fetch bridge
 
     /// Reference-type box so closures can mutate a shared flag.
@@ -616,15 +645,38 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 
     private func handleFetch(path: String, resolve: JSValue, reject: JSValue) {
-        guard path.hasPrefix("./") else {
-            Self.rejectWith(reject, message: "fetch: path must start with './' (got '\(path)')")
-            return
-        }
         guard let folder = engineFolderURL, let rootPath = engineFolderRootPath() else {
             Self.rejectWith(reject, message: "fetch: engine folder unavailable")
             return
         }
-        let target = folder.appendingPathComponent(String(path.dropFirst(2)))
+
+        // Sync path validation. `syntheticInput` captures the parsed URL on
+        // the engine:/// branch, so the stat callback can build displayURL
+        // without re-parsing or force-unwrapping.
+        let target: URL
+        let syntheticInput: URL?
+        if path.hasPrefix("./") {
+            syntheticInput = nil
+            target = folder.appendingPathComponent(String(path.dropFirst(2)))
+        } else if path.hasPrefix("engine:///"), let url = URL(string: path) {
+            if url.query != nil || url.fragment != nil {
+                Self.rejectWith(
+                    reject,
+                    message: "fetch: query and fragment not supported in '\(path)'")
+                return
+            }
+            guard let realURL = realFileURL(forSyntheticURL: url) else {
+                Self.rejectWith(reject, message: "fetch: bad engine URL '\(path)'")
+                return
+            }
+            syntheticInput = url
+            target = realURL
+        } else {
+            Self.rejectWith(
+                reject,
+                message: "fetch: path must start with './' or 'engine:///' (got '\(path)')")
+            return
+        }
         guard Self.isContained(url: target, in: rootPath) else {
             Self.rejectWith(reject, message: "fetch: path '\(path)' escapes engine folder")
             return
@@ -642,8 +694,12 @@ class JavaScriptEngine: InputEngine, ObservableObject {
                     return
                 }
                 self?.recordLoadedFile(target)
+                let displayURL = syntheticInput
+                    ?? Self.syntheticURL(forRelativePath: String(path.dropFirst(2)))
                 guard let ctx = resolve.context else { return }
-                resolve.call(withArguments: [Self.makeFetchResponse(in: ctx, url: target)])
+                resolve.call(withArguments: [
+                    Self.makeFetchResponse(in: ctx, realURL: target, displayURL: displayURL)
+                ])
             case .failure(let error):
                 Self.rejectWith(
                     reject,
@@ -653,26 +709,28 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 
     /// Response with lazy body — actual disk read happens inside body
-    /// method closures, not at fetch() time. Body-consumed flag uses
-    /// lock-on-entry semantics (sync mark before dispatch) with unmark
-    /// on recoverable failure so engine can fall back / retry.
-    private static func makeFetchResponse(in ctx: JSContext, url: URL) -> JSValue {
+    /// method closures, not at fetch() time. `realURL` is the file URL
+    /// used for I/O; `displayURL` is the synthetic engine:/// URL exposed
+    /// to JS via `Response.url` (keeps the user's filesystem path private).
+    /// Body-consumed flag uses lock-on-entry semantics (sync mark before
+    /// dispatch) with unmark on recoverable failure for fallback / retry.
+    private static func makeFetchResponse(in ctx: JSContext, realURL: URL, displayURL: URL) -> JSValue {
         let response = JSValue(newObjectIn: ctx)!
         response.setObject(true, forKeyedSubscript: "ok" as NSString)
         response.setObject(200, forKeyedSubscript: "status" as NSString)
-        response.setObject(url.absoluteString, forKeyedSubscript: "url" as NSString)
+        response.setObject(displayURL.absoluteString, forKeyedSubscript: "url" as NSString)
 
         let state = FetchBodyState()
 
         let textFn: @convention(block) () -> JSValue = {
-            Self.textBody(state: state, url: url) { text, resolve, _ in
+            Self.textBody(state: state, url: realURL) { text, resolve, _ in
                 resolve.call(withArguments: [text])
             }
         }
         response.setObject(textFn, forKeyedSubscript: "text" as NSString)
 
         let jsonFn: @convention(block) () -> JSValue = {
-            Self.textBody(state: state, url: url) { text, resolve, _ in
+            Self.textBody(state: state, url: realURL) { text, resolve, _ in
                 // Promise.resolve(text).then(JSON.parse) — outer adopts inner
                 // so SyntaxError surfaces as rejection, web-aligned.
                 guard let ctx = resolve.context else { return }
@@ -692,7 +750,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             }
             state.consumed = true
             return Self.deferredPromise(in: ctx) { resolve, reject in
-                Self.readRaw(url: url) { result in
+                Self.readRaw(url: realURL) { result in
                     switch result {
                     case .success(let data):
                         guard let ctx = resolve.context else { return }
@@ -1111,25 +1169,30 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // the same disk snapshot (avoid stale-cache vs new-disk mismatch).
         reloadManifest()
         guard let manifest = self.manifest else { return }
-        let entryURL = folder.appending(path: manifest.entry)
+        let entryRealURL = folder.appending(path: manifest.entry)
         guard let entry = Self.loadJSSource(
-            entryURL, label: "entry script for '\(self.engineID)'"
+            entryRealURL, label: "entry script for '\(self.engineID)'"
         ) else { return }
-        recordLoadedFile(entryURL)
+        recordLoadedFile(entryRealURL)
         let entrySource = entry.source
+
+        // Synthetic engine:/// URL is what JS sees as `import.meta.url` and
+        // what relative imports resolve against. Disk I/O still uses the
+        // real file URL (entryRealURL) — translation happens in ModuleLoader.
+        let entrySyntheticURL = Self.syntheticURL(forRelativePath: manifest.entry)
 
         // Register entry source so module loader can re-resolve its sourceURL.
         // JSC re-fetches the entry via fetchModuleForIdentifier even though we
         // pass the constructed JSScript directly; the loader looks up the URL
-        // here.
-        moduleSourceByIdentifier[entryURL.absoluteString] = (entrySource, entryURL)
+        // here keyed by synthetic URL.
+        moduleSourceByIdentifier[entrySyntheticURL.absoluteString] = (entrySource, entrySyntheticURL)
 
         let entryScript: JSScript
         do {
             entryScript = try JSScript(
                 of: .module,
                 withSource: entrySource,
-                andSourceURL: entryURL,
+                andSourceURL: entrySyntheticURL,
                 andBytecodeCache: nil,
                 in: vm
             )
@@ -1669,11 +1732,25 @@ private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
             return
         }
 
-        // Engine-local relative imports (file:// outside our cache).
-        if id.hasPrefix("file://"), let url = URL(string: id) {
-            // Defense-in-depth on top of the sandbox: containment check rejects
-            // `../foo`-style escapes and symlinks that point out of the engine
-            // folder before the read syscall runs.
+        // Engine-local relative imports — JSC resolves `./X` / `/X` against
+        // the importing module's synthetic engine:/// sourceURL, so it
+        // hands us engine:/// identifiers. Translate to real file URL for
+        // I/O; sourceURL of the resulting JSScript stays synthetic so
+        // `import.meta.url` doesn't leak the user's filesystem path.
+        // Strict 3-slash prefix matches handleFetch — `engine://host/path`
+        // forms fall through to "unknown module" reject, consistent with
+        // realFileURL's empty-host requirement.
+        if id.hasPrefix("engine:///"), let syntheticURL = URL(string: id) {
+            guard let realURL = owner.realFileURL(forSyntheticURL: syntheticURL) else {
+                Logger.javaScriptEngine.error(
+                    "bad engine URL: \(id, privacy: .public)"
+                )
+                reject.call(withArguments: ["bad engine URL: \(id)"])
+                return
+            }
+            // Defense-in-depth on top of the sandbox: containment check in
+            // real-path space rejects symlinks that point out of the
+            // engine folder before the read syscall runs.
             guard let rootPath = normalizedRootPath() else {
                 Logger.javaScriptEngine.error(
                     "file import disabled: no importRoot for '\(owner.engineID, privacy: .public)'"
@@ -1681,7 +1758,7 @@ private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
                 reject.call(withArguments: ["file imports disabled"])
                 return
             }
-            guard JavaScriptEngine.isContained(url: url, in: rootPath) else {
+            guard JavaScriptEngine.isContained(url: realURL, in: rootPath) else {
                 Logger.javaScriptEngine.error(
                     "import \(id, privacy: .public) outside engine folder \(rootPath, privacy: .public)"
                 )
@@ -1689,17 +1766,17 @@ private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
                 return
             }
             do {
-                let source = try String(contentsOf: url, encoding: .utf8)
-                owner.recordLoadedFile(url)
+                let source = try String(contentsOf: realURL, encoding: .utf8)
+                owner.recordLoadedFile(realURL)
                 #if DEBUG
                 Logger.javaScriptEngine.debug(
-                    "loaded module: \(url.path, privacy: .public)"
+                    "loaded module: \(id, privacy: .public)"
                 )
                 #endif
                 let script = try JSScript(
                     of: .module,
                     withSource: source,
-                    andSourceURL: url,
+                    andSourceURL: syntheticURL,
                     andBytecodeCache: nil,
                     in: owner.virtualMachine
                 )

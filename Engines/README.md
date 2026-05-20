@@ -608,12 +608,12 @@ const blob = await fetch('./model.bin').then(r => r.arrayBuffer());
 
 | Constraint | |
 |---|---|
-| Path | Must start with `./`. Bare names, absolute paths, and `../` escapes reject. |
-| Body | `text()` / `json()` / `arrayBuffer()` — first successful call consumes the body; subsequent body method calls reject with `Error("Body has already been consumed")`. A failed UTF-8 decode does **not** consume the body, so engines can fall back to `arrayBuffer()` on a non-text file. |
+| Path | Either `./<relative>` (resolved from the engine folder root) or an absolute `engine:///<path>` URL string. Bare names, `file://` URLs, parent-escapes (`../`), query strings, and fragments all reject. |
+| Body | `text()` / `json()` / `arrayBuffer()` — calling any one synchronously locks the body; a second body method call (including a second call to the same method) rejects immediately with `Error("Body has already been consumed")`. Recoverable failures (UTF-8 decode fail / read fail / ArrayBuffer alloc fail) un-lock so engines can fall back or retry. |
 | Init arg | Declared `init?: unknown` for signature parity with the Web fetch API. Completely ignored at runtime; passing a non-undefined value emits `console.warn`. No headers / method / body / streams / abort. |
-| Threading | Read runs off the main thread; the Promise resolves on the JS event loop. |
+| Threading | `fetch()` returns once a background stat confirms the file is readable — disk reads run inside the body methods, off the main thread. |
 | Hot-reload | Fetched files are watched alongside imports — modifying one outside the engine triggers a full module reload. See example below for the recommended pattern. |
-| Errors | `fetch()` rejects on invalid path / missing file / read failure. `text()` / `json()` reject on non-UTF-8 body or malformed JSON. |
+| Errors | `fetch()` rejects on invalid path / missing file / non-regular file. `text()` / `json()` reject on non-UTF-8 body or malformed JSON. `arrayBuffer()` rejects on read failure or ArrayBuffer construction failure. |
 
 The TypeScript return type is named `FetchResponse` (not `Response`)
 to avoid colliding with the full DOM `Response` interface in
@@ -638,6 +638,36 @@ export default class MyEngine {
 ```
 
 Top-level `await` is not supported — module load faults. Use `.then(...)` as shown.
+
+##### Module-relative paths
+
+`./<relative>` resolves from the **engine folder root** — the same regardless
+of which module calls `fetch()`. If a module nested in a subfolder wants to
+fetch a sibling file, derive the absolute URL from `import.meta.url`:
+
+```js
+// In foo/B.js (import.meta.url = "engine:///foo/B.js")
+const baseURL = import.meta.url.slice(0, import.meta.url.lastIndexOf('/') + 1);
+const sibling = await fetch(baseURL + 'sibling.txt').then(r => r.text());
+// Fetches engine:///foo/sibling.txt
+```
+
+`import.meta.url` is a synthetic `engine:///<path>` URL — it doesn't leak the
+user's filesystem location, and `Response.url` follows the same scheme.
+
+#### Module import resolution
+
+`import` statements resolve relative to the importing module's URL (standard
+ES module semantics):
+
+| In `foo/B.js`, `import` of... | Resolves to |
+|---|---|
+| `'./sibling.js'` | `engine:///foo/sibling.js` |
+| `'../shared.js'` | `engine:///shared.js` |
+| `'/util.js'` | `engine:///util.js` (engine folder root) |
+| `'util'` (bare specifier) | Rejected — no import map support |
+
+`import 'X.js'` without `./` / `../` / `/` is a bare specifier — not supported.
 
 #### `localStorage`
 
