@@ -432,7 +432,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// listener count crosses 0↔1. No-op for engines with their own
     /// folder watcher (JSExternal piggybacks on the engine-folder
     /// stream); for bundle engines this is the lifecycle hook.
-    fileprivate func updateStorageWatcher(active: Bool) {
+    private func updateStorageWatcher(active: Bool) {
         if hasExternalStorageWatcher { return }
         if active {
             if bundleStorageWatcher == nil { startBundleStorageWatcher() }
@@ -588,341 +588,15 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         fn.call(withArguments: [])
     }
 
-    // MARK: engine:// URL synthesis
-
-    /// Shared base for all `engine:///<path>` URLs. Parsed once at type
-    /// init rather than per call to `syntheticURL`.
-    nonisolated private static let syntheticURLBase = URL(string: "engine:///")!
-
-    /// Build a synthetic `engine:///<path>` URL for a path relative to
-    /// `engineFolderURL`. Used as sourceURL for module scripts and as
-    /// `Response.url`, so JS-visible URLs never leak the user's
-    /// filesystem path. `appending(path:)` handles percent-encoding for
-    /// CJK / spaces / reserved chars (avoiding URL(string:) trap).
-    nonisolated fileprivate static func syntheticURL(forRelativePath relativePath: String) -> URL {
-        syntheticURLBase.appending(path: relativePath)
-    }
-
-    /// Translate a synthetic `engine:///<path>` URL back to the real
-    /// `file://` URL for disk I/O. Rejects non-engine schemes, non-empty
-    /// hosts (no `engine://malicious/path` smuggling), and missing folder.
-    fileprivate func realFileURL(forSyntheticURL url: URL) -> URL? {
-        guard url.scheme == "engine",
-              (url.host ?? "").isEmpty,
-              let folder = engineFolderURL else { return nil }
-        // url.path for engine:///foo is "/foo"; strip the leading slash so
-        // appendingPathComponent doesn't produce a double slash.
-        let relative = String(url.path.dropFirst())
-        return folder.appendingPathComponent(relative)
-    }
-
-    // MARK: fetch bridge
-
-    /// Reference-type box so closures can mutate a shared flag.
-    /// Used for body-consumed tracking (fetch Response).
-    private final class FetchBodyState {
-        var consumed = false
-    }
-
-    /// Reference-type box for detecting whether the entry module's
-    /// Promise settled synchronously inside invokeMethod.
-    private final class SyncSettleFlag {
-        var settled = false
-    }
-
     /// Cached canonical path of `engineFolderURL`. Same realpath-syscall
     /// avoidance as `ModuleLoader.cachedRootPath` but keyed off the full
     /// folder (which fetch uses) rather than `importRoot` (potentially
     /// narrower). Invalidated alongside other JS state in `teardownContext`.
-    private var cachedEngineFolderRoot: String?
-
-    private func engineFolderRootPath() -> String? {
-        if let cached = cachedEngineFolderRoot { return cached }
-        guard let folder = engineFolderURL else { return nil }
-        let resolved = Self.canonicalPath(for: folder)
-        cachedEngineFolderRoot = resolved
-        return resolved
-    }
-
-    private func handleFetch(path: String, resolve: JSValue, reject: JSValue) {
-        guard let folder = engineFolderURL, let rootPath = engineFolderRootPath() else {
-            Self.rejectWith(reject, message: "fetch: engine folder unavailable")
-            return
-        }
-
-        // Sync path validation. `syntheticInput` captures the parsed URL on
-        // the engine:/// branch, so the stat callback can build displayURL
-        // without re-parsing or force-unwrapping.
-        let target: URL
-        let syntheticInput: URL?
-        if path.hasPrefix("./") {
-            syntheticInput = nil
-            target = folder.appendingPathComponent(String(path.dropFirst(2)))
-        } else if path.hasPrefix("engine:///"), let url = URL(string: path) {
-            if url.query != nil || url.fragment != nil {
-                Self.rejectWith(
-                    reject,
-                    message: "fetch: query and fragment not supported in '\(path)'")
-                return
-            }
-            guard let realURL = realFileURL(forSyntheticURL: url) else {
-                Self.rejectWith(reject, message: "fetch: bad engine URL '\(path)'")
-                return
-            }
-            syntheticInput = url
-            target = realURL
-        } else {
-            Self.rejectWith(
-                reject,
-                message: "fetch: path must start with './' or 'engine:///' (got '\(path)')")
-            return
-        }
-        guard Self.isContained(url: target, in: rootPath) else {
-            Self.rejectWith(reject, message: "fetch: path '\(path)' escapes engine folder")
-            return
-        }
-
-        // Stat on background — engine folder may sit on network volume /
-        // sleeping disk / iCloud stub; can't block the main thread.
-        // resolve/reject retain their JSContext, so they're callable even if
-        // engine teardown happens before the read completes.
-        Self.statFile(url: target) { [weak self] result in
-            switch result {
-            case .success(let type):
-                guard type == .regular else {
-                    Self.rejectWith(reject, message: "fetch: '\(path)' is not a regular file")
-                    return
-                }
-                self?.recordLoadedFile(target)
-                let displayURL = syntheticInput
-                    ?? Self.syntheticURL(forRelativePath: String(path.dropFirst(2)))
-                guard let ctx = resolve.context else { return }
-                resolve.call(withArguments: [
-                    Self.makeFetchResponse(in: ctx, realURL: target, displayURL: displayURL)
-                ])
-            case .failure(let error):
-                Self.rejectWith(
-                    reject,
-                    message: "fetch: not reachable '\(path)': \(error.localizedDescription)")
-            }
-        }
-    }
-
-    /// Response with lazy body — actual disk read happens inside body
-    /// method closures, not at fetch() time. `realURL` is the file URL
-    /// used for I/O; `displayURL` is the synthetic engine:/// URL exposed
-    /// to JS via `Response.url` (keeps the user's filesystem path private).
-    /// Body-consumed flag uses lock-on-entry semantics (sync mark before
-    /// dispatch) with unmark on recoverable failure for fallback / retry.
-    private static func makeFetchResponse(in ctx: JSContext, realURL: URL, displayURL: URL) -> JSValue {
-        let response = JSValue(newObjectIn: ctx)!
-        response.setObject(true, forKeyedSubscript: "ok" as NSString)
-        response.setObject(200, forKeyedSubscript: "status" as NSString)
-        response.setObject(displayURL.absoluteString, forKeyedSubscript: "url" as NSString)
-
-        let state = FetchBodyState()
-
-        let textFn: @convention(block) () -> JSValue = {
-            Self.textBody(state: state, url: realURL) { text, resolve, _ in
-                resolve.call(withArguments: [text])
-            }
-        }
-        response.setObject(textFn, forKeyedSubscript: "text" as NSString)
-
-        let jsonFn: @convention(block) () -> JSValue = {
-            Self.textBody(state: state, url: realURL) { text, resolve, _ in
-                // Promise.resolve(text).then(JSON.parse) — outer adopts inner
-                // so SyntaxError surfaces as rejection, web-aligned.
-                guard let ctx = resolve.context else { return }
-                let jsonParse = ctx.objectForKeyedSubscript("JSON")!
-                    .objectForKeyedSubscript("parse")!
-                let resolved = Self.resolvedPromise(in: ctx, value: text)
-                let parsed = resolved.invokeMethod("then", withArguments: [jsonParse])!
-                resolve.call(withArguments: [parsed])
-            }
-        }
-        response.setObject(jsonFn, forKeyedSubscript: "json" as NSString)
-
-        let arrayBufferFn: @convention(block) () -> JSValue = {
-            let ctx = JSContext.current()!
-            if state.consumed {
-                return Self.rejectedPromise(in: ctx, message: "Body has already been consumed")
-            }
-            state.consumed = true
-            return Self.deferredPromise(in: ctx) { resolve, reject in
-                Self.readRaw(url: realURL) { result in
-                    switch result {
-                    case .success(let data):
-                        guard let ctx = resolve.context else { return }
-                        guard let buffer = Self.makeArrayBuffer(from: data, in: ctx) else {
-                            state.consumed = false
-                            Self.rejectWith(reject, message: "Failed to construct ArrayBuffer")
-                            return
-                        }
-                        resolve.call(withArguments: [buffer])
-                    case .failure(let error):
-                        state.consumed = false
-                        Self.rejectWith(
-                            reject,
-                            message: "Body read failed: \(error.localizedDescription)")
-                    }
-                }
-            }
-        }
-        response.setObject(arrayBufferFn, forKeyedSubscript: "arrayBuffer" as NSString)
-
-        return response
-    }
-
-    private static func resolvedPromise(in ctx: JSContext, value: Any) -> JSValue {
-        ctx.objectForKeyedSubscript("Promise")!
-            .invokeMethod("resolve", withArguments: [value])
-    }
-
-    private static func rejectedPromise(in ctx: JSContext, message: String) -> JSValue {
-        let promiseClass = ctx.objectForKeyedSubscript("Promise")!
-        let errorClass = ctx.objectForKeyedSubscript("Error")!
-        let error = errorClass.construct(withArguments: [message])!
-        return promiseClass.invokeMethod("reject", withArguments: [error])
-    }
-
-    /// Build an Error and invoke a Promise-style reject callback.
-    /// Used both by handleFetch sync rejects and body-method async rejects.
-    private static func rejectWith(_ reject: JSValue, message: String) {
-        guard let ctx = reject.context else { return }
-        let errorClass = ctx.objectForKeyedSubscript("Error")!
-        let error = errorClass.construct(withArguments: [message])!
-        reject.call(withArguments: [error])
-    }
-
-    /// Builds an ArrayBuffer-typed JSValue. Goes through the JSC C API
-    /// because the ObjC JSValue bridge doesn't expose an ArrayBuffer
-    /// initializer. Copies bytes into a heap buffer that JSC frees via
-    /// the deallocator when the ArrayBuffer is GC'd. Returns nil on
-    /// allocation failure so callers can surface a rejection rather than
-    /// resolving with `undefined`.
-    private static func makeArrayBuffer(from data: Data, in ctx: JSContext) -> JSValue? {
-        // `allocate(byteCount: 0, ...)` is unspecified; route empty files
-        // through JS-side construction to avoid UB.
-        if data.isEmpty {
-            return ctx.evaluateScript("new ArrayBuffer(0)")
-        }
-        let count = data.count
-        let ptr = UnsafeMutableRawPointer.allocate(byteCount: count, alignment: 1)
-        data.copyBytes(to: ptr.assumingMemoryBound(to: UInt8.self), count: count)
-        let deallocator: JSTypedArrayBytesDeallocator = { bytes, _ in
-            bytes?.deallocate()
-        }
-        var exception: JSValueRef?
-        guard let bufferRef = JSObjectMakeArrayBufferWithBytesNoCopy(
-            ctx.jsGlobalContextRef,
-            ptr, count,
-            deallocator, nil,
-            &exception
-        ) else {
-            ptr.deallocate()
-            return nil
-        }
-        return JSValue(jsValueRef: bufferRef, in: ctx)
-    }
-
-    /// Sentinel for UTF-8 decode failure inside `readAndDecode`.
-    /// Caller distinguishes via `error is InvalidUTF8` to choose between
-    /// "not valid UTF-8" message and generic read-failure message.
-    private struct InvalidUTF8: Error {}
-
-    /// Shared shape for `text()` and `json()` body methods: lock-on-entry,
-    /// dispatch UTF-8 decode, unmark + classify error on failure, hand the
-    /// decoded text to the caller for per-method post-processing on success.
-    private static func textBody(
-        state: FetchBodyState,
-        url: URL,
-        onText: @escaping (String, JSValue, JSValue) -> Void
-    ) -> JSValue {
-        let ctx = JSContext.current()!
-        if state.consumed {
-            return Self.rejectedPromise(in: ctx, message: "Body has already been consumed")
-        }
-        state.consumed = true
-        return Self.deferredPromise(in: ctx) { resolve, reject in
-            Self.readAndDecode(url: url) { result in
-                switch result {
-                case .success(let text):
-                    onText(text, resolve, reject)
-                case .failure(let error):
-                    state.consumed = false
-                    let message = error is InvalidUTF8
-                        ? "Body is not valid UTF-8"
-                        : "Body read failed: \(error.localizedDescription)"
-                    Self.rejectWith(reject, message: message)
-                }
-            }
-        }
-    }
-
-    /// Stat on background queue using URL.resourceValues, which follows
-    /// symlinks (symlink-to-regular returns .regular, matching what
-    /// `Data(contentsOf:)` will see at read time).
-    private static func statFile(
-        url: URL,
-        completion: @escaping (Result<URLFileResourceType, Error>) -> Void
-    ) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let result: Result<URLFileResourceType, Error>
-            do {
-                let values = try url.resourceValues(forKeys: [.fileResourceTypeKey])
-                result = .success(values.fileResourceType ?? .unknown)
-            } catch {
-                result = .failure(error)
-            }
-            DispatchQueue.main.async { completion(result) }
-        }
-    }
-
-    /// Read + UTF-8 decode on background, deliver Result on main.
-    /// UTF-8 failure surfaces as `.failure(InvalidUTF8())`; disk read
-    /// failure surfaces as `.failure(realError)`.
-    private static func readAndDecode(url: URL, completion: @escaping (Result<String, Error>) -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let result: Result<String, Error>
-            do {
-                let data = try Data(contentsOf: url)
-                if let text = String(data: data, encoding: .utf8) {
-                    result = .success(text)
-                } else {
-                    result = .failure(InvalidUTF8())
-                }
-            } catch {
-                result = .failure(error)
-            }
-            DispatchQueue.main.async { completion(result) }
-        }
-    }
-
-    /// Read raw bytes on background, deliver Result on main.
-    private static func readRaw(url: URL, completion: @escaping (Result<Data, Error>) -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let result = Result { try Data(contentsOf: url) }
-            DispatchQueue.main.async { completion(result) }
-        }
-    }
-
-    /// Construct `new Promise((resolve, reject) => work(resolve, reject))`
-    /// from Swift. Used by body methods to defer Promise settlement until
-    /// background read completes.
-    private static func deferredPromise(
-        in ctx: JSContext,
-        _ work: @escaping (JSValue, JSValue) -> Void
-    ) -> JSValue {
-        let executor: @convention(block) (JSValue, JSValue) -> Void = { resolve, reject in
-            work(resolve, reject)
-        }
-        return ctx.objectForKeyedSubscript("Promise")!.construct(withArguments: [executor])!
-    }
+    var cachedEngineFolderRoot: String?
 
     // MARK: JSContext state (set up in load())
 
-    fileprivate var virtualMachine: JSVirtualMachine!
+    var virtualMachine: JSVirtualMachine!
     private var jsContext: JSContext!
     private var engineClass: JSValue?
     // Auto-removes entries on context dealloc; pointer-personality keeps
@@ -935,7 +609,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     // Source registry for the module loader: when JSC re-fetches module
     // identifiers (including the entry's own URL), look them up here.
-    fileprivate var moduleSourceByIdentifier: [String: (source: String, url: URL)] = [:]
+    var moduleSourceByIdentifier: [String: (source: String, url: URL)] = [:]
 
     /// Canonical absolute paths of files the engine has expressed interest
     /// in — manifest.json, entry script, every dynamically-imported module,
@@ -958,45 +632,16 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     // shim that forwards back to weak self.
     private lazy var moduleLoader = ModuleLoader(owner: self)
 
-    // MARK: Exception describing
-
-    /// `JSValue.toString()` on an undefined value returns the literal string
-    /// "undefined" — treat it as absent alongside nil / isUndefined / isNull.
-    private static func stringIfDefined(_ value: JSValue?) -> String? {
-        guard let v = resolved(value),
-              let s = v.toString(), !s.isEmpty, s != "undefined" else { return nil }
-        return s
-    }
-
-    /// JSC populates sourceURL/line/column even when `stack` is undefined
-    /// (common for engine-internal throws), so the location line is the most
-    /// reliable anchor for navigating back to the source.
-    private static func describeJSException(_ exception: JSValue?) -> String {
-        guard let exception else { return "(nil)" }
-        let prop: (String) -> String? = { stringIfDefined(exception.objectForKeyedSubscript($0)) }
-
-        let name = prop("name") ?? "Error"
-        let message = prop("message") ?? exception.toString() ?? "(no message)"
-
-        var location = ""
-        if let src = prop("sourceURL") { location = src }
-        if let line = prop("line") {
-            location += location.isEmpty ? "line \(line)" : ":\(line)"
-            if let col = prop("column") { location += ":\(col)" }
-        }
-
-        var lines = ["\(name): \(message)"]
-        if !location.isEmpty { lines.append("  at \(location)") }
-        if let stack = prop("stack") { lines.append("stack:\n\(stack)") }
-        return lines.joined(separator: "\n")
-    }
-
     // MARK: Lifecycle
+
+    /// Reference-type box for detecting whether the entry module's
+    /// Promise settled synchronously inside invokeMethod.
+    private final class SyncSettleFlag {
+        var settled = false
+    }
 
     override func load() {
         guard jsContext == nil else { return }
-
-        loadedFilePaths.removeAll()
 
         Logger.javaScriptEngine.info("load() invoked for engine '\(self.engineID, privacy: .public)'")
 
@@ -1359,7 +1004,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         return instance.invokeMethod(method, withArguments: args)
     }
 
-    fileprivate func recordLoadedFile(_ url: URL) {
+    func recordLoadedFile(_ url: URL) {
         loadedFilePaths.insert(Self.canonicalPath(for: url))
     }
 
@@ -1377,31 +1022,6 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         if normalizedTarget == rootPath { return true }
         let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
         return normalizedTarget.hasPrefix(prefix)
-    }
-
-    /// Resolves a `URL?` and reads its contents as UTF-8 text. Faults +
-    /// returns nil on missing URL or read failure; `label` shows up in the
-    /// fault log to disambiguate the call site (e.g. "runtime.js" vs
-    /// "entry script for 'JSExternal'").
-    private static func loadJSSource(_ url: URL?, label: String) -> (source: String, url: URL)? {
-        guard let url else {
-            Logger.javaScriptEngine.fault("\(label, privacy: .public): URL not provided")
-            return nil
-        }
-        do {
-            let source = try String(contentsOf: url, encoding: .utf8)
-            #if DEBUG
-            Logger.javaScriptEngine.debug(
-                "loaded \(label, privacy: .public): \(url.path, privacy: .public)"
-            )
-            #endif
-            return (source, url)
-        } catch {
-            Logger.javaScriptEngine.fault(
-                "\(label, privacy: .public): failed to read — \(String(describing: error), privacy: .public)"
-            )
-            return nil
-        }
     }
 
     /// Reference-type wrapper so `@convention(block)` closures can mutate a
@@ -1506,7 +1126,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     // for String? params (instead of nil). Always take optional JS args as
     // JSValue? and unwrap via this helper, which filters nil / isUndefined /
     // isNull together.
-    private static func resolved(_ value: JSValue?) -> JSValue? {
+    static func resolved(_ value: JSValue?) -> JSValue? {
         guard let v = value, !v.isUndefined, !v.isNull else { return nil }
         return v
     }
@@ -1668,135 +1288,6 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 }
 
-// MARK: - Module loader shim
-
-/// NSObject shim that conforms to the `JSModuleLoaderDelegate` ObjC protocol
-/// and forwards to its owning `JavaScriptEngine`. The engine itself can't
-/// conform directly because the protocol requires `NSObjectProtocol` and
-/// `InputEngine` (the base class) isn't NSObject-derived.
-private final class ModuleLoader: NSObject, JSModuleLoaderDelegate {
-    private weak var owner: JavaScriptEngine?
-    /// Cached canonical root path. `resolvingSymlinksInPath` is a `realpath`
-    /// syscall; the root doesn't change across imports in one load, so resolve
-    /// once and reuse. Invalidated by `invalidateRootCache()` on teardown.
-    private var cachedRootPath: String?
-
-    init(owner: JavaScriptEngine) {
-        self.owner = owner
-    }
-
-    func invalidateRootCache() {
-        cachedRootPath = nil
-    }
-
-    private func normalizedRootPath() -> String? {
-        if let cached = cachedRootPath { return cached }
-        guard let owner, let root = owner.importRoot else { return nil }
-        let resolved = JavaScriptEngine.canonicalPath(for: root)
-        cachedRootPath = resolved
-        return resolved
-    }
-
-    func context(
-        _ context: JSContext!,
-        fetchModuleForIdentifier identifier: JSValue!,
-        withResolveHandler resolve: JSValue!,
-        andRejectHandler reject: JSValue!
-    ) {
-        guard let owner else {
-            reject.call(withArguments: ["JavaScriptEngine deallocated"])
-            return
-        }
-        let id = identifier.toString() ?? ""
-        Logger.javaScriptEngine.debug(
-            "module loader: fetch \(id, privacy: .public)"
-        )
-
-        // Re-fetch of an already-known module (entry script's own sourceURL).
-        if let cached = owner.moduleSourceByIdentifier[id] {
-            do {
-                let script = try JSScript(
-                    of: .module,
-                    withSource: cached.source,
-                    andSourceURL: cached.url,
-                    andBytecodeCache: nil,
-                    in: owner.virtualMachine
-                )
-                resolve.call(withArguments: [script])
-            } catch {
-                Logger.javaScriptEngine.fault(
-                    "failed to rebuild cached JSScript for \(id, privacy: .public): \(String(describing: error), privacy: .public)"
-                )
-                reject.call(withArguments: ["script construction failed: \(error)"])
-            }
-            return
-        }
-
-        // Engine-local relative imports — JSC resolves `./X` / `/X` against
-        // the importing module's synthetic engine:/// sourceURL, so it
-        // hands us engine:/// identifiers. Translate to real file URL for
-        // I/O; sourceURL of the resulting JSScript stays synthetic so
-        // `import.meta.url` doesn't leak the user's filesystem path.
-        // Strict 3-slash prefix matches handleFetch — `engine://host/path`
-        // forms fall through to "unknown module" reject, consistent with
-        // realFileURL's empty-host requirement.
-        if id.hasPrefix("engine:///"), let syntheticURL = URL(string: id) {
-            guard let realURL = owner.realFileURL(forSyntheticURL: syntheticURL) else {
-                Logger.javaScriptEngine.error(
-                    "bad engine URL: \(id, privacy: .public)"
-                )
-                reject.call(withArguments: ["bad engine URL: \(id)"])
-                return
-            }
-            // Defense-in-depth on top of the sandbox: containment check in
-            // real-path space rejects symlinks that point out of the
-            // engine folder before the read syscall runs.
-            guard let rootPath = normalizedRootPath() else {
-                Logger.javaScriptEngine.error(
-                    "file import disabled: no importRoot for '\(owner.engineID, privacy: .public)'"
-                )
-                reject.call(withArguments: ["file imports disabled"])
-                return
-            }
-            guard JavaScriptEngine.isContained(url: realURL, in: rootPath) else {
-                Logger.javaScriptEngine.error(
-                    "import \(id, privacy: .public) outside engine folder \(rootPath, privacy: .public)"
-                )
-                reject.call(withArguments: ["import outside engine folder: \(id)"])
-                return
-            }
-            do {
-                let source = try String(contentsOf: realURL, encoding: .utf8)
-                owner.recordLoadedFile(realURL)
-                #if DEBUG
-                Logger.javaScriptEngine.debug(
-                    "loaded module: \(id, privacy: .public)"
-                )
-                #endif
-                let script = try JSScript(
-                    of: .module,
-                    withSource: source,
-                    andSourceURL: syntheticURL,
-                    andBytecodeCache: nil,
-                    in: owner.virtualMachine
-                )
-                resolve.call(withArguments: [script])
-            } catch {
-                Logger.javaScriptEngine.error(
-                    "failed to load file module \(id, privacy: .public): \(String(describing: error), privacy: .public)"
-                )
-                reject.call(withArguments: ["file module load failed: \(error)"])
-            }
-            return
-        }
-
-        Logger.javaScriptEngine.error(
-            "module loader: unknown module \(id, privacy: .public)"
-        )
-        reject.call(withArguments: ["unknown module: \(id)"])
-    }
-}
-
 // MARK: - Manifest overrides apply
 
 extension CandidateWindowConfiguration {
@@ -1816,4 +1307,3 @@ extension CandidateWindowConfiguration {
         if let v = overrides.expandable { expandable = v }
     }
 }
-
