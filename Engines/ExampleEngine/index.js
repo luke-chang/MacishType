@@ -42,7 +42,36 @@ function navigationAction(keyCode, modifiers) {
 
 const validCompositionCharacters = new Set("abcdefghijklmnopqrstuvwxyz");
 
+// Module-scope demo table — kicks off at engine load. Hot-reload demo:
+// editing demo.txt externally triggers a module reload and this fetch
+// re-runs with the new content. Class methods read via closure.
+// Format per line: `<key> <candidate1>,<candidate2>,...`
+let demoTable = new Map();
+fetch('./demo.txt')
+  .then((r) => r.text())
+  .then((text) => {
+    const next = new Map();
+    for (const line of text.split(/\r?\n/)) {
+      const match = line.match(/^\s*(\S+)\s+(.+?)\s*$/);
+      if (!match) continue;
+      const [, key, valuesPart] = match;
+      const values = valuesPart.split(',')
+        .map((v) => v.trim())
+        .filter((v) => v.length > 0);
+      if (values.length > 0) next.set(key.toLowerCase(), values);
+    }
+    demoTable = next;
+    console.info('demo.txt loaded, entries:', demoTable.size);
+  })
+  .catch((err) => {
+    console.error('demo.txt load failed:', err.message);
+  });
+
 function lookupCandidates(key) {
+  const values = demoTable.get(key.toLowerCase());
+  if (values) {
+    return values.map((text) => ({ candidate: text, annotation: 'demo' }));
+  }
   return [...key].map(toFullwidth).filter((c) => c !== null);
 }
 
