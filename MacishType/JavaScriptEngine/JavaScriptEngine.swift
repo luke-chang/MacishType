@@ -589,11 +589,16 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     // MARK: fetch bridge
 
-    /// Body-consumed flag shared across the three body method closures.
-    /// Reference type so mutations are visible across closure captures
-    /// (same trick as `ActionSink` in `attachMutators`).
+    /// Reference-type box so closures can mutate a shared flag.
+    /// Used for body-consumed tracking (fetch Response).
     private final class FetchBodyState {
         var consumed = false
+    }
+
+    /// Reference-type box for detecting whether the entry module's
+    /// Promise settled synchronously inside invokeMethod.
+    private final class SyncSettleFlag {
+        var settled = false
     }
 
     /// Cached canonical path of `engineFolderURL`. Same realpath-syscall
@@ -1142,27 +1147,30 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             return
         }
 
-        // Sync-resolve: registering .then on a settled promise fires callback
-        // immediately. No microtask drain needed.
+        // JSC drains microtasks inside invokeMethod, so a sync module's
+        // callback fires before the call returns. Unsettled = top-level
+        // await with real async I/O — unsupported.
+        let settle = SyncSettleFlag()
         let captureBlock: @convention(block) (JSValue) -> Void = { [weak self] namespace in
+            settle.settled = true
             self?.engineClass = namespace.objectForKeyedSubscript("default")
             Logger.javaScriptEngine.info("module loaded, engineClass captured")
         }
         let rejectBlock: @convention(block) (JSValue) -> Void = { reason in
+            settle.settled = true
             Logger.javaScript.fault(
                 "module evaluation rejected:\n\(Self.describeJSException(reason), privacy: .public)"
             )
         }
         promise.invokeMethod("then", withArguments: [captureBlock, rejectBlock])
 
-        // Module reject (top-level throw, missing default export, etc.) leaves
-        // engineClass nil; must return so defer rolls back.
-        guard engineClass != nil else {
+        guard settle.settled else {
             Logger.javaScriptEngine.fault(
-                "engine class not captured after module evaluation for '\(self.engineID, privacy: .public)'"
+                "entry module of '\(self.engineID, privacy: .public)' did not settle synchronously — top-level `await` is not supported; use `.then(...)` chains instead"
             )
             return
         }
+        guard engineClass != nil else { return }
 
         success = true
         Self.subscribeToLanguageChanges(self)

@@ -620,18 +620,24 @@ to avoid colliding with the full DOM `Response` interface in
 `lib.dom.d.ts`, which has many fields this host doesn't implement.
 
 ```js
-// Module top-level — runs once per engine load. Editing dict.json
-// from outside triggers a module reload, so `dict` is reassigned
-// with the new file content automatically.
-const dict = await fetch('./dict.json').then(r => r.json());
-console.info('dict loaded, entries:', Object.keys(dict).length);
+// Module top-level — kicks off at engine load. Editing dict.json
+// from outside triggers a module reload, so this fetch re-runs and
+// `dict` is repopulated with the new file content automatically.
+let dict = {};
+fetch('./dict.json')
+  .then(r => r.json())
+  .then(d => { dict = d; })
+  .catch(err => console.error('dict load failed:', err.message));
 
 export default class MyEngine {
   handleKey(event) {
     // `dict` is shared across every text-field session via closure.
+    // Until the fetch resolves it stays empty; handle as best-effort.
   }
 }
 ```
+
+Top-level `await` is not supported — module load faults. Use `.then(...)` as shown.
 
 #### `localStorage`
 
