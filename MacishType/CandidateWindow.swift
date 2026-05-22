@@ -134,17 +134,19 @@ class CandidateWindow {
 
     private var styleOverride: Style?
 
-    private var _impl: MacishCandidateWindow?
+    private var _impl: CandidateWindowImpl?
 
-    private var impl: MacishCandidateWindow {
+    private var activeImpl: CandidateWindowImpl {
         if let existing = _impl { return existing }
-        let instance = MacishCandidateWindow(style: styleOverride ?? Self.autoResolvedStyle)
+        let style = styleOverride ?? Self.autoResolvedStyle
+        let instance: CandidateWindowImpl = switch style {
+        case .sequoia, .tahoe:
+            MacishCandidateWindow(style: style)
+        }
         instance.owner = self
         _impl = instance
         return instance
     }
-
-    private var activeImpl: CandidateWindowImpl { impl }
 
     func setStyle(_ override: Style?) {
         guard override != styleOverride else { return }
