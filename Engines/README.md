@@ -1,4 +1,4 @@
-# Writing a MacishType engine
+# Writing a MacishType JavaScript engine
 
 A MacishType JavaScript engine is a folder picked by the user through
 **Settings → JSExternal → Choose Folder…**. The host loads the folder via a
