@@ -271,9 +271,18 @@ struct SettingsDetailContent: View {
 
 private struct EmptySettingsView: View {
     var body: some View {
-        ContentUnavailableView {
-            Label("No customizable settings.", systemImage: "slider.horizontal.3")
-                .font(.title3)  // default .title2 ~22pt; .title3 ~20pt
-        }
+        // Wrap in the same Form chrome as engine pages so the grouped background
+        // extends under the toolbar and matches the engine pages' look — without
+        // it, the toolbar's material edge shows as a visible line against the
+        // bare SwiftUI background. ContentUnavailableView is layered as an
+        // overlay so it stays centered instead of becoming an empty Form row.
+        InputEngine.settingsForm { }
+            .allowsHitTesting(false)
+            .overlay {
+                ContentUnavailableView {
+                    Label("No customizable settings.", systemImage: "slider.horizontal.3")
+                        .font(.title3)  // default .title2 ~22pt; .title3 ~20pt
+                }
+            }
     }
 }
