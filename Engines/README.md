@@ -404,8 +404,16 @@ follow DOM conventions on `globalThis`:
 ```js
 addEventListener(type, callback, options?);
 removeEventListener(type, callback);
+
+// Object form: `this` binds to the listener object on dispatch.
+addEventListener('storage', {
+  handleEvent(event) { /* ... */ }
+});
 ```
 
+- `callback` may be a function or an object with a `handleEvent(event)`
+  method. `handleEvent` is read at dispatch time, so reassigning it
+  after registration is honored on the next event.
 - `options` accepts `{ once: true }`. Other keys (`capture`, `signal`,
   `passive`, ...) log a warning and are ignored.
 - Unknown event types are accepted silently (per DOM spec) — the

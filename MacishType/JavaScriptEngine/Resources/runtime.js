@@ -52,12 +52,20 @@ function __MacishType_parseListenerOptions(options) {
   return { once: !!options.once };
 }
 
+// Spec: `handleEvent` is read at dispatch time (engines may reassign
+// after registration) and a non-callable value is a silent no-op.
+function __MacishType_invokeListener(cb, event) {
+  if (typeof cb === "function") { cb(event); return; }
+  const fn = cb.handleEvent;
+  if (typeof fn === "function") fn.call(cb, event);
+}
+
 // Snapshot before iterating so add/remove during a callback matches the
 // listener-list-at-dispatch-time semantics. `label` shows up in the
 // per-listener error log to identify which event type threw.
 function __MacishType_dispatchListeners(listeners, event, label) {
   for (const cb of [...listeners]) {
-    try { cb(event); }
+    try { __MacishType_invokeListener(cb, event); }
     catch (e) {
       console.error(`${label} listener threw:`, e?.stack ?? String(e));
     }
@@ -82,19 +90,25 @@ function __MacishType_onceWrappersForType(type) {
 }
 
 globalThis.addEventListener = function (type, callback, options) {
-  if (typeof callback !== "function") return;
+  const isFunction = typeof callback === "function";
+  const isObject = !isFunction && callback !== null && typeof callback === "object";
+  if (!isFunction && !isObject) return;
+  // Catch the common typo (handelEvent / forgot to assign) early. Still
+  // registered, since spec allows assigning handleEvent after the fact.
+  if (isObject && typeof callback.handleEvent !== "function") {
+    console.warn(`addEventListener('${type}'): listener object has no callable handleEvent (typo?)`);
+  }
   const { once } = __MacishType_parseListenerOptions(options);
   let effective = callback;
   if (once) {
     const wrappers = __MacishType_onceWrappersForType(type);
     effective = function (event) {
       const set = __MacishType_globalListeners.get(type);
-      set?.delete(effective);
       wrappers.delete(callback);
-      if (set?.size === 0) {
+      if (set?.delete(effective) && set.size === 0) {
         __MacishType_globalListenerHooks.get(type)?.(false);
       }
-      callback(event);
+      __MacishType_invokeListener(callback, event);
     };
     wrappers.set(callback, effective);
   }

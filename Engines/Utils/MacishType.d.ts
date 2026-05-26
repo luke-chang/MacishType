@@ -351,38 +351,48 @@ declare global {
    * accesses it, then frozen for subsequent accesses.
    */
   interface StorageEvent {
+    readonly type: "storage";
     readonly key: string | null;
     readonly oldValue: string | null;
     readonly newValue: string | null;
     readonly storageArea: Storage | null;
   }
 
+  /**
+   * Web-spec listener form. For the object form, `handleEvent` is read
+   * at dispatch time (reassign after registration is honored) and `this`
+   * binds to the listener object.
+   */
+  type EventListenerOrObject<E> =
+    | ((event: E) => void)
+    | { handleEvent: (event: E) => void };
+
   function addEventListener(
     type: "storage",
-    callback: (event: StorageEvent) => void,
+    callback: EventListenerOrObject<StorageEvent>,
     options?: { once?: boolean }
   ): void;
   function addEventListener(
     type: "settingschange",
-    callback: (event: SettingsChangeEvent) => void,
+    callback: EventListenerOrObject<SettingsChangeEvent>,
     options?: { once?: boolean }
   ): void;
   function addEventListener(
     type: "languagechange",
-    callback: (event: LanguageChangeEvent) => void,
+    callback: EventListenerOrObject<LanguageChangeEvent>,
     options?: { once?: boolean }
   ): void;
   function removeEventListener(
     type: "storage",
-    callback: (event: StorageEvent) => void
+    callback: EventListenerOrObject<StorageEvent>
   ): void;
   function removeEventListener(
     type: "settingschange",
-    callback: (event: SettingsChangeEvent) => void
+    callback: EventListenerOrObject<SettingsChangeEvent>
   ): void;
   function removeEventListener(
     type: "languagechange",
-    callback: (event: LanguageChangeEvent) => void
+    callback: EventListenerOrObject<LanguageChangeEvent>
   ): void;
 
   /**
