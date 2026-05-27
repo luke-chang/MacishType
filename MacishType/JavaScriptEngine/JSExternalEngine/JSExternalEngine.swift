@@ -166,36 +166,31 @@ class JSExternalEngine: JavaScriptEngine {
 
     override func handleKey(
         context: InputEngineContext,
-        keyCode: UInt16,
-        characters: String?,
-        modifiers: NSEvent.ModifierFlags,
-        isRepeat: Bool,
+        keyEvent: KeyEventInput,
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
         // .stale still uses the OLD engine — passes through to super (the
         // running JS) until next activate() triggers the swap.
         if loadStatus == .loaded || loadStatus == .stale {
             return super.handleKey(
-                context: context, keyCode: keyCode,
-                characters: characters, modifiers: modifiers,
-                isRepeat: isRepeat,
+                context: context, keyEvent: keyEvent,
                 candidateWindow: candidateWindow
             )
         }
 
-        let pure = modifiers.intersection(.deviceIndependentFlagsMask)
+        let pure = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
 
         if !pure.intersection([.command, .control]).isEmpty {
             return context.isComposing ? .handled() : .notHandled
         }
         // Esc / Backspace cancel the status prompt when composing.
-        if keyCode == 53 || keyCode == 51 {
+        if keyEvent.keyCode == 53 || keyEvent.keyCode == 51 {
             return context.isComposing ? .handled([.resetContext]) : .notHandled
         }
         // Non-printing keys (Return, Space, Tab, arrows, F-keys, etc.)
         // pass through when idle so the user can still send / navigate;
         // while composing they re-show the prompt instead of leaking out.
-        if !Self.isPrintingKey(characters) && !context.isComposing {
+        if !Self.isPrintingKey(keyEvent.characters) && !context.isComposing {
             return .notHandled
         }
         return .handled([.updateMarkedText(statusMessage)])

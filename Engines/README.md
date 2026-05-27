@@ -382,6 +382,11 @@ the new key is processed normally.
   `"Alt"`, `"Meta"`, `"CapsLock"`). Other web-spec strings (`"Fn"` /
   `"NumLock"` / `"AltGraph"` / etc.) return `false` — macOS either lacks
   the key or can't report it faithfully.
+- `keyIgnoringModifiers` *(host extension, not in the web spec)* — the
+  layout-aware character with Option / Command / Control stripped (Shift
+  preserved). Useful on macOS where Option doubles as a dead-key modifier
+  and rewrites `key`: Option+(Dvorak p position) gives `keyIgnoringModifiers
+  === "p"` even though `key === "π"`.
 - `candidateWindow` — snapshot at method entry.
 
 `ConfirmEvent` additionally has `candidate`, `absoluteIndex`,

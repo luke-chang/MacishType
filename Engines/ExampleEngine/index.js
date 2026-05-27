@@ -2,31 +2,8 @@
 // surface end-to-end (handleKey rules, candidate window, fullwidth, nav,
 // associated mode).
 
-// Maps web `event.code` (layout-independent US QWERTY physical position) to
-// [unshifted, shifted] US character pair. Mirrors the Swift InputEngine's
-// fullwidth lookup but keyed by code string so it works across layouts —
-// AZERTY's physical "A" position still goes to fullwidth "ａ" even though
-// the user types "q" there.
-const usKeyForCode = {
-  KeyA: ["a", "A"], KeyB: ["b", "B"], KeyC: ["c", "C"], KeyD: ["d", "D"],
-  KeyE: ["e", "E"], KeyF: ["f", "F"], KeyG: ["g", "G"], KeyH: ["h", "H"],
-  KeyI: ["i", "I"], KeyJ: ["j", "J"], KeyK: ["k", "K"], KeyL: ["l", "L"],
-  KeyM: ["m", "M"], KeyN: ["n", "N"], KeyO: ["o", "O"], KeyP: ["p", "P"],
-  KeyQ: ["q", "Q"], KeyR: ["r", "R"], KeyS: ["s", "S"], KeyT: ["t", "T"],
-  KeyU: ["u", "U"], KeyV: ["v", "V"], KeyW: ["w", "W"], KeyX: ["x", "X"],
-  KeyY: ["y", "Y"], KeyZ: ["z", "Z"],
-  Digit1: ["1", "!"], Digit2: ["2", "@"], Digit3: ["3", "#"],
-  Digit4: ["4", "$"], Digit5: ["5", "%"], Digit6: ["6", "^"],
-  Digit7: ["7", "&"], Digit8: ["8", "*"], Digit9: ["9", "("],
-  Digit0: ["0", ")"],
-  Minus: ["-", "_"], Equal: ["=", "+"],
-  BracketLeft: ["[", "{"], BracketRight: ["]", "}"],
-  Backslash: ["\\", "|"], Semicolon: [";", ":"], Quote: ["'", '"'],
-  Comma: [",", "<"], Period: [".", ">"], Slash: ["/", "?"],
-  Backquote: ["`", "~"], Space: [" ", " "],
-};
-
 function toFullwidth(char) {
+  if (char.length !== 1) return null;
   if (char === " ") return "　";
   const code = char.charCodeAt(0);
   if (code < 0x21 || code > 0x7E) return null;
@@ -159,19 +136,14 @@ export default class JSExternalEngine {
       return true;
     }
 
-    // Base rule 7: Option+key fullwidth. Look up the US-layout character by
-    // physical `code` so the mapping stays stable across input sources —
-    // Option+physical-A always yields fullwidth "ａ" even on AZERTY/Dvorak.
+    // Base rule 7: Option+key fullwidth via keyIgnoringModifiers so the
+    // mapping follows the active layout (Dvorak / AZERTY etc.).
     if (event.altKey) {
-      const layout = usKeyForCode[event.code];
-      if (layout) {
-        const ch = event.shiftKey ? layout[1] : layout[0];
-        const fw = toFullwidth(ch);
-        if (fw) {
-          if (event.isComposing) return true;
-          event.flushStaged(fw);
-          return true;
-        }
+      const fw = toFullwidth(event.keyIgnoringModifiers);
+      if (fw) {
+        if (event.isComposing) return true;
+        event.flushStaged(fw);
+        return true;
       }
     }
 

@@ -207,11 +207,22 @@ class InputController: IMKInputController {
         let candidateWindowState = CandidateWindowState(
             isVisible: CandidateWindow.shared.isVisible,
             configuration: CandidateWindow.shared.currentConfiguration)
+        // charactersIgnoringModifiers is unreliable in IMK: strips Shift along
+        // with Option and resolves dead keys to combining marks (Option+E → "´"
+        // not "e"). characters(byApplyingModifiers:) routes through the OS
+        // layout query and returns the expected base / shifted character.
+        let shiftOnly = event.modifierFlags.intersection(.shift)
+        let charactersIgnoringModifiers = event.characters(byApplyingModifiers: shiftOnly)
+        let keyEvent = KeyEventInput(
+            keyCode: event.keyCode,
+            characters: event.characters,
+            charactersIgnoringModifiers: charactersIgnoringModifiers,
+            modifiers: event.modifierFlags,
+            isRepeat: event.isARepeat)
         if engineContext.isAssociating {
             // Tier 1: candidate window / dismiss keys
             if let action = engine.candidateWindowAction(
-                keyCode: event.keyCode, characters: event.characters,
-                modifiers: event.modifierFlags,
+                keyEvent: keyEvent,
                 candidateWindow: candidateWindowState
             ) {
                 executeActions([action], client: client)
@@ -222,10 +233,7 @@ class InputController: IMKInputController {
         }
         let result = engine.handleKey(
             context: engineContext,
-            keyCode: event.keyCode,
-            characters: event.characters,
-            modifiers: event.modifierFlags,
-            isRepeat: event.isARepeat,
+            keyEvent: keyEvent,
             candidateWindow: candidateWindowState)
         switch result {
         case .notHandled:

@@ -266,6 +266,22 @@ export interface KeyEvent extends EventContext, EventMutators {
    *   `"OS"` — no Mac equivalent.
    */
   getModifierState(key: string): boolean;
+  /**
+   * Host extension (not part of the web KeyboardEvent spec). The layout-aware
+   * character with Option / Command / Control stripped; Shift is preserved.
+   *
+   * Useful on macOS where Option doubles as a dead-key modifier and rewrites
+   * `key` (Option+a → `"å"` on US, `"π"` on Dvorak via the layout's Option
+   * layer). `keyIgnoringModifiers` gives the original character the active
+   * layout would have produced without those modifiers, so it works across
+   * Dvorak / AZERTY / etc.:
+   *
+   * - Option+A on US → `"a"`; Option+(Dvorak p position) → `"p"`
+   * - Shift+1 → `"!"` (Shift is preserved)
+   * - Tab → `"\t"`, Escape → `"\u{1B}"`, Backspace → `"\u{7F}"` (control
+   *   characters for named keys — prefer `code` for those)
+   */
+  readonly keyIgnoringModifiers: string;
   readonly candidateWindow: CandidateWindowState;
 }
 

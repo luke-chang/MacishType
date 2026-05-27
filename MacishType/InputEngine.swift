@@ -107,21 +107,16 @@ extension EngineAction {
 
 // MARK: - Base Engine
 
-// US keyboard layout: keyCode -> (base, shifted) character
-let usKeyboardLayout: [UInt16: (Character, Character)] = [
-    0: ("a", "A"), 1: ("s", "S"), 2: ("d", "D"), 3: ("f", "F"),
-    4: ("h", "H"), 5: ("g", "G"), 6: ("z", "Z"), 7: ("x", "X"),
-    8: ("c", "C"), 9: ("v", "V"), 11: ("b", "B"), 12: ("q", "Q"),
-    13: ("w", "W"), 14: ("e", "E"), 15: ("r", "R"), 16: ("y", "Y"),
-    17: ("t", "T"), 18: ("1", "!"), 19: ("2", "@"), 20: ("3", "#"),
-    21: ("4", "$"), 22: ("6", "^"), 23: ("5", "%"), 24: ("=", "+"),
-    25: ("9", "("), 26: ("7", "&"), 27: ("-", "_"), 28: ("8", "*"),
-    29: ("0", ")"), 30: ("]", "}"), 31: ("o", "O"), 32: ("u", "U"),
-    33: ("[", "{"), 34: ("i", "I"), 35: ("p", "P"), 37: ("l", "L"),
-    38: ("j", "J"), 39: ("'", "\""), 40: ("k", "K"), 41: (";", ":"),
-    42: ("\\", "|"), 43: (",", "<"), 44: ("/", "?"), 45: ("n", "N"),
-    46: ("m", "M"), 47: (".", ">"), 49: (" ", " "), 50: ("`", "~"),
-]
+/// Raw keyboard event payload threaded from InputController into the engine
+/// protocol. Bundled so `handleKey` and its helpers can grow new fields
+/// without rippling parameter lists across every override.
+struct KeyEventInput {
+    let keyCode: UInt16
+    let characters: String?
+    let charactersIgnoringModifiers: String?
+    let modifiers: NSEvent.ModifierFlags
+    let isRepeat: Bool
+}
 
 class InputEngine {
 
@@ -292,13 +287,10 @@ class InputEngine {
 
     func handleKey(
         context: InputEngineContext,
-        keyCode: UInt16,
-        characters: String?,
-        modifiers: NSEvent.ModifierFlags,
-        isRepeat: Bool,
+        keyEvent: KeyEventInput,
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
-        let pureModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
+        let pureModifiers = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
 
         // 1. Command/Control
         if !pureModifiers.intersection([.command, .control]).isEmpty {
@@ -309,14 +301,14 @@ class InputEngine {
         //    so letter labels work; option reserved for fullwidth (section 7).
         if context.isComposing,
            !pureModifiers.contains(.option),
-           let text = characters, text.count == 1, let char = text.first,
+           let text = keyEvent.characters, text.count == 1, let char = text.first,
            let index = candidateWindow.configuration.candidateIndex(for: char) {
             return .handled([.commitCandidateAtIndex(index)])
         }
 
         // 3. Uppercase letter (skip when Option is held; falls through to fullwidth)
         if !pureModifiers.contains(.option),
-           let text = characters, text.count == 1,
+           let text = keyEvent.characters, text.count == 1,
            let char = text.first, char.isUppercase, char.isLetter {
             if context.isComposing {
                 return .handled()
@@ -325,33 +317,33 @@ class InputEngine {
         }
 
         // 4. Escape
-        if keyCode == 53 {
+        if keyEvent.keyCode == 53 {
             guard context.isComposing else { return .notHandled }
             return .handled([.flushStaged()])
         }
 
         // 5. Navigation (arrow keys, Tab, Home/End, engine-specific extensions)
-        if let action = navigationAction(keyCode: keyCode, characters: characters, modifiers: modifiers) {
+        if let action = navigationAction(keyEvent: keyEvent) {
             guard context.isComposing else { return .notHandled }
             return .handled([action])
         }
 
         // 6. Enter
-        if keyCode == 36 {
+        if keyEvent.keyCode == 36 {
             guard context.isComposing else { return .notHandled }
             return .handled([.commitSelectedCandidate])
         }
 
-        // 7. Option+key -> fullwidth
+        // 7. Option+key -> fullwidth. Use charactersIgnoringModifiers so the
+        // mapping follows the active layout (Dvorak / AZERTY etc.).
         if pureModifiers.contains(.option),
-           let (base, shifted) = usKeyboardLayout[keyCode] {
-            let char = pureModifiers.contains(.shift) ? shifted : base
-            if let fullwidth = Self.toFullwidth(char) {
-                if context.isComposing {
-                    return .handled()
-                }
-                return .handled([.flushStaged(String(fullwidth))])
+           let chars = keyEvent.charactersIgnoringModifiers,
+           chars.count == 1, let char = chars.first,
+           let fullwidth = Self.toFullwidth(char) {
+            if context.isComposing {
+                return .handled()
             }
+            return .handled([.flushStaged(String(fullwidth))])
         }
 
         // 8. Not handled
@@ -405,12 +397,10 @@ class InputEngine {
     // Maps a key event to a candidate-window navigation action, or nil if the
     // key isn't a nav key. Default covers standard keyboard nav (Tab, arrows,
     // Page Up/Down, Home, End); subclasses may add engine-specific keys.
-    func navigationAction(
-        keyCode: UInt16, characters: String?, modifiers: NSEvent.ModifierFlags
-    ) -> EngineAction? {
-        switch keyCode {
+    func navigationAction(keyEvent: KeyEventInput) -> EngineAction? {
+        switch keyEvent.keyCode {
         case 48: // Tab
-            let dir: NavigationDirection = modifiers.contains(.shift) ? .itemBackward : .itemForward
+            let dir: NavigationDirection = keyEvent.modifiers.contains(.shift) ? .itemBackward : .itemForward
             return .navigateCandidates(dir, wrapping: true)
         case 123: return .navigateCandidates(.left)
         case 124: return .navigateCandidates(.right)
@@ -429,23 +419,23 @@ class InputEngine {
     // intercept to reuse engine's composing-mode window key semantics.
     // Returns nil when Command/Control are held (system shortcuts must pass).
     final func candidateWindowAction(
-        keyCode: UInt16, characters: String?, modifiers: NSEvent.ModifierFlags,
+        keyEvent: KeyEventInput,
         candidateWindow: CandidateWindowState
     ) -> EngineAction? {
-        let pureModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
+        let pureModifiers = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
         if !pureModifiers.intersection([.command, .control]).isEmpty { return nil }
 
-        if let nav = navigationAction(keyCode: keyCode, characters: characters, modifiers: modifiers) {
+        if let nav = navigationAction(keyEvent: keyEvent) {
             return nav
         }
-        if keyCode == 36 { return .commitSelectedCandidate }
-        if keyCode == 53 { return .flushStaged() }
+        if keyEvent.keyCode == 36 { return .commitSelectedCandidate }
+        if keyEvent.keyCode == 53 { return .flushStaged() }
 
         // Live config (not engine default) honors per-update closure
         // overrides — controller intercept in associated mode must use
         // the labels actually displayed.
         if !pureModifiers.contains(.option),
-           let text = characters, text.count == 1, let char = text.first,
+           let text = keyEvent.characters, text.count == 1, let char = text.first,
            let index = candidateWindow.configuration.candidateIndex(for: char) {
             return .commitCandidateAtIndex(index)
         }

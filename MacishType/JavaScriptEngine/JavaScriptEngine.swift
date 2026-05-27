@@ -935,10 +935,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     override func handleKey(
         context: InputEngineContext,
-        keyCode: UInt16,
-        characters: String?,
-        modifiers: NSEvent.ModifierFlags,
-        isRepeat: Bool,
+        keyEvent: KeyEventInput,
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
         guard let instance = jsInstance(for: context) else {
@@ -947,8 +944,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
         let sink = ActionSink()
         let event = makeEvent(
-            keyCode: keyCode, characters: characters, modifiers: modifiers,
-            isRepeat: isRepeat,
+            keyEvent: keyEvent,
             context: context, candidateWindow: candidateWindow,
             sink: sink
         )
@@ -1062,27 +1058,26 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 
     private func makeEvent(
-        keyCode: UInt16,
-        characters: String?,
-        modifiers: NSEvent.ModifierFlags,
-        isRepeat: Bool,
+        keyEvent: KeyEventInput,
         context: InputEngineContext,
         candidateWindow: CandidateWindowState,
         sink: ActionSink
     ) -> JSValue {
-        let pure = modifiers.intersection(.deviceIndependentFlagsMask)
+        let pure = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
 
         let event = JSValue(newObjectIn: jsContext)!
-        event.setObject(KeyboardEventMapping.webKey(for: keyCode, characters: characters),
-                        forKeyedSubscript: "key" as NSString)
-        event.setObject(KeyboardEventMapping.webCode(for: keyCode),
+        let key = KeyboardEventMapping.webKey(for: keyEvent.keyCode, characters: keyEvent.characters)
+        event.setObject(key, forKeyedSubscript: "key" as NSString)
+        event.setObject(KeyboardEventMapping.webCode(for: keyEvent.keyCode),
                         forKeyedSubscript: "code" as NSString)
+        event.setObject(keyEvent.charactersIgnoringModifiers ?? key,
+                        forKeyedSubscript: "keyIgnoringModifiers" as NSString)
         event.setObject(pure.contains(.shift), forKeyedSubscript: "shiftKey" as NSString)
         event.setObject(pure.contains(.control), forKeyedSubscript: "ctrlKey" as NSString)
         event.setObject(pure.contains(.option), forKeyedSubscript: "altKey" as NSString)
         event.setObject(pure.contains(.command), forKeyedSubscript: "metaKey" as NSString)
-        event.setObject(isRepeat, forKeyedSubscript: "repeat" as NSString)
-        event.setObject(KeyboardEventMapping.location(for: keyCode),
+        event.setObject(keyEvent.isRepeat, forKeyedSubscript: "repeat" as NSString)
+        event.setObject(KeyboardEventMapping.location(for: keyEvent.keyCode),
                         forKeyedSubscript: "location" as NSString)
 
         // Web standard `getModifierState(key)`. Returns true only for the five
@@ -1091,6 +1086,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // "Fn" is intentionally not supported — NSEvent.ModifierFlags.function
         // gets set automatically on arrow / F-keys / Page Up/Down / Home / End
         // even when no Fn key is held, which would mislead callers.
+        let modifiers = keyEvent.modifiers
         let getModifierState: @convention(block) (String) -> Bool = { stateKey in
             switch stateKey {
             case "Shift": return modifiers.contains(.shift)
