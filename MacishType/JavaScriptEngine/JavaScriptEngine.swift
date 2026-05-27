@@ -938,6 +938,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         keyCode: UInt16,
         characters: String?,
         modifiers: NSEvent.ModifierFlags,
+        isRepeat: Bool,
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
         guard let instance = jsInstance(for: context) else {
@@ -947,6 +948,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         let sink = ActionSink()
         let event = makeEvent(
             keyCode: keyCode, characters: characters, modifiers: modifiers,
+            isRepeat: isRepeat,
             context: context, candidateWindow: candidateWindow,
             sink: sink
         )
@@ -994,6 +996,11 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// the bridge contract is duck-typed: engines may opt out of any of
     /// `activate / deactivate / handleKey / candidateConfirmed /
     /// candidateSelectionChanged`.
+    ///
+    /// JSC's context `exceptionHandler` only fires for top-level evaluation
+    /// (`evaluateScript` etc.); a throw inside `invokeMethod` is recorded on
+    /// `context.exception` but does NOT trigger the handler. Check and log
+    /// explicitly so engine bugs aren't silently swallowed.
     @discardableResult
     private static func invokeIfDefined(
         _ instance: JSValue, _ method: String, withArguments args: [Any]
@@ -1001,7 +1008,15 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         guard let fn = instance.objectForKeyedSubscript(method), !fn.isUndefined else {
             return nil
         }
-        return instance.invokeMethod(method, withArguments: args)
+        let result = instance.invokeMethod(method, withArguments: args)
+        if let context = instance.context, let exception = context.exception {
+            Logger.javaScript.fault(
+                "uncaught exception in \(method, privacy: .public):\n\(Self.describeJSException(exception), privacy: .public)"
+            )
+            // Clear so the next invocation isn't blamed for this throw.
+            context.exception = nil
+        }
+        return result
     }
 
     func recordLoadedFile(_ url: URL) {
@@ -1050,26 +1065,44 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         keyCode: UInt16,
         characters: String?,
         modifiers: NSEvent.ModifierFlags,
+        isRepeat: Bool,
         context: InputEngineContext,
         candidateWindow: CandidateWindowState,
         sink: ActionSink
     ) -> JSValue {
         let pure = modifiers.intersection(.deviceIndependentFlagsMask)
-        let modifiersDict: [String: Bool] = [
-            "shift": pure.contains(.shift),
-            "ctrl": pure.contains(.control),
-            "option": pure.contains(.option),
-            "command": pure.contains(.command),
-        ]
 
         let event = JSValue(newObjectIn: jsContext)!
-        event.setObject(keyCode, forKeyedSubscript: "keyCode" as NSString)
-        if let characters {
-            event.setObject(characters, forKeyedSubscript: "characters" as NSString)
-        } else {
-            event.setObject(NSNull(), forKeyedSubscript: "characters" as NSString)
+        event.setObject(KeyboardEventMapping.webKey(for: keyCode, characters: characters),
+                        forKeyedSubscript: "key" as NSString)
+        event.setObject(KeyboardEventMapping.webCode(for: keyCode),
+                        forKeyedSubscript: "code" as NSString)
+        event.setObject(pure.contains(.shift), forKeyedSubscript: "shiftKey" as NSString)
+        event.setObject(pure.contains(.control), forKeyedSubscript: "ctrlKey" as NSString)
+        event.setObject(pure.contains(.option), forKeyedSubscript: "altKey" as NSString)
+        event.setObject(pure.contains(.command), forKeyedSubscript: "metaKey" as NSString)
+        event.setObject(isRepeat, forKeyedSubscript: "repeat" as NSString)
+        event.setObject(KeyboardEventMapping.location(for: keyCode),
+                        forKeyedSubscript: "location" as NSString)
+
+        // Web standard `getModifierState(key)`. Returns true only for the five
+        // states macOS can faithfully report; everything else (NumLock /
+        // ScrollLock / AltGraph / Hyper / Super / Symbol / etc.) returns false.
+        // "Fn" is intentionally not supported — NSEvent.ModifierFlags.function
+        // gets set automatically on arrow / F-keys / Page Up/Down / Home / End
+        // even when no Fn key is held, which would mislead callers.
+        let getModifierState: @convention(block) (String) -> Bool = { stateKey in
+            switch stateKey {
+            case "Shift": return modifiers.contains(.shift)
+            case "Control": return modifiers.contains(.control)
+            case "Alt": return modifiers.contains(.option)
+            case "Meta": return modifiers.contains(.command)
+            case "CapsLock": return modifiers.contains(.capsLock)
+            default: return false
+            }
         }
-        event.setObject(modifiersDict, forKeyedSubscript: "modifiers" as NSString)
+        event.setObject(getModifierState, forKeyedSubscript: "getModifierState" as NSString)
+
         event.setObject(context.markedText, forKeyedSubscript: "markedText" as NSString)
         event.setObject(context.stagedText, forKeyedSubscript: "stagedText" as NSString)
         event.setObject(context.isComposing, forKeyedSubscript: "isComposing" as NSString)

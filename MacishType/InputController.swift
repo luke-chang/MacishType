@@ -225,6 +225,7 @@ class InputController: IMKInputController {
             keyCode: event.keyCode,
             characters: event.characters,
             modifiers: event.modifierFlags,
+            isRepeat: event.isARepeat,
             candidateWindow: candidateWindowState)
         switch result {
         case .notHandled:

@@ -53,6 +53,11 @@ class JSExternalEngine: JavaScriptEngine {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self else { return }
+                #if DEBUG
+                Logger.javaScriptEngine.debug(
+                    "JSExternal engine folder: \(self.folderBookmark.url?.path ?? "(cleared)", privacy: .public)"
+                )
+                #endif
                 self.clearStoredSettings()
                 if self.isLoaded {
                     // load() does its own reloadManifest — don't duplicate.
@@ -164,6 +169,7 @@ class JSExternalEngine: JavaScriptEngine {
         keyCode: UInt16,
         characters: String?,
         modifiers: NSEvent.ModifierFlags,
+        isRepeat: Bool,
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
         // .stale still uses the OLD engine — passes through to super (the
@@ -172,6 +178,7 @@ class JSExternalEngine: JavaScriptEngine {
             return super.handleKey(
                 context: context, keyCode: keyCode,
                 characters: characters, modifiers: modifiers,
+                isRepeat: isRepeat,
                 candidateWindow: candidateWindow
             )
         }

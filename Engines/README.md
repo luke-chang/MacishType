@@ -307,8 +307,13 @@ Commit the candidate at a page-relative position.
   implement label-based quick-commit:
 
   ```js
-  const idx = event.candidateWindow.candidateIndex(event.characters);
-  if (idx !== null) event.commitCandidateAtIndex(idx);
+  // event.key is the layout-aware character (or a named string like "Tab"
+  // for non-printable keys), so guard on length before treating it as a
+  // candidate-label char.
+  if (event.key && event.key.length === 1) {
+    const idx = event.candidateWindow.candidateIndex(event.key);
+    if (idx !== null) event.commitCandidateAtIndex(idx);
+  }
   ```
 
 #### `navigateCandidates(direction, options?)`
@@ -354,9 +359,30 @@ the new key is processed normally.
 | `isComposing` | Whether marked text is non-empty. |
 | `isAssociating` | Whether the engine is in associated-phrase mode. |
 
-`KeyEvent` additionally has `keyCode` (macOS virtual key code),
-`characters` (string \| null), `modifiers` (`{ shift, ctrl, option, command }`),
-and `candidateWindow` (snapshot at method entry).
+`KeyEvent` field names and semantics track web
+[`KeyboardEvent`](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent):
+
+- `key` — layout-aware key value: the character produced (`"a"` / `"A"` /
+  `"!"`) for printable keys, or a named string (`"Enter"` / `"Tab"` /
+  `"ArrowLeft"` / `" "` for Space) for non-printable ones. Use this for
+  "what character did the user type".
+- `code` — layout-independent physical key code keyed by US QWERTY position
+  (`"KeyA"` / `"Digit1"` / `"Space"` / `"Enter"` / `"ArrowLeft"` /
+  `"Numpad0"` / `"ShiftLeft"`). On Dvorak / AZERTY the same physical
+  position still reports `"KeyA"`, while `key` reflects the layout's actual
+  output. Use this for "which physical key was pressed".
+- `altKey` / `ctrlKey` / `shiftKey` / `metaKey` — modifier booleans. macOS
+  Option maps to `altKey`, Command maps to `metaKey`.
+- `repeat` — true on auto-repeated keydowns past the OS repeat delay.
+- `location` — `0` standard / `1` left modifier / `2` right modifier /
+  `3` numpad. Redundant with `code` for numpad keys (those already start
+  with `"Numpad"`); prefer `code` for detection.
+- `isComposing` — same as the read-only context field above.
+- `getModifierState(key)` — query individual states (`"Shift"`, `"Control"`,
+  `"Alt"`, `"Meta"`, `"CapsLock"`). Other web-spec strings (`"Fn"` /
+  `"NumLock"` / `"AltGraph"` / etc.) return `false` — macOS either lacks
+  the key or can't report it faithfully.
+- `candidateWindow` — snapshot at method entry.
 
 `ConfirmEvent` additionally has `candidate`, `absoluteIndex`,
 `annotation?`, and `payload?` (the last two round-tripped from the original

@@ -2,20 +2,28 @@
 // surface end-to-end (handleKey rules, candidate window, fullwidth, nav,
 // associated mode).
 
-// 1:1 port of Swift InputEngine.usKeyboardLayout (keyCodes 0-50 minus 10/36/48).
-const usKeyboardLayout = {
-  0: ["a", "A"],   1: ["s", "S"],  2: ["d", "D"],  3: ["f", "F"],
-  4: ["h", "H"],   5: ["g", "G"],  6: ["z", "Z"],  7: ["x", "X"],
-  8: ["c", "C"],   9: ["v", "V"],  11: ["b", "B"], 12: ["q", "Q"],
-  13: ["w", "W"],  14: ["e", "E"], 15: ["r", "R"], 16: ["y", "Y"],
-  17: ["t", "T"],  18: ["1", "!"], 19: ["2", "@"], 20: ["3", "#"],
-  21: ["4", "$"],  22: ["6", "^"], 23: ["5", "%"], 24: ["=", "+"],
-  25: ["9", "("],  26: ["7", "&"], 27: ["-", "_"], 28: ["8", "*"],
-  29: ["0", ")"],  30: ["]", "}"], 31: ["o", "O"], 32: ["u", "U"],
-  33: ["[", "{"],  34: ["i", "I"], 35: ["p", "P"], 37: ["l", "L"],
-  38: ["j", "J"],  39: ["'", '"'], 40: ["k", "K"], 41: [";", ":"],
-  42: ["\\", "|"], 43: [",", "<"], 44: ["/", "?"], 45: ["n", "N"],
-  46: ["m", "M"],  47: [".", ">"], 49: [" ", " "], 50: ["`", "~"],
+// Maps web `event.code` (layout-independent US QWERTY physical position) to
+// [unshifted, shifted] US character pair. Mirrors the Swift InputEngine's
+// fullwidth lookup but keyed by code string so it works across layouts —
+// AZERTY's physical "A" position still goes to fullwidth "ａ" even though
+// the user types "q" there.
+const usKeyForCode = {
+  KeyA: ["a", "A"], KeyB: ["b", "B"], KeyC: ["c", "C"], KeyD: ["d", "D"],
+  KeyE: ["e", "E"], KeyF: ["f", "F"], KeyG: ["g", "G"], KeyH: ["h", "H"],
+  KeyI: ["i", "I"], KeyJ: ["j", "J"], KeyK: ["k", "K"], KeyL: ["l", "L"],
+  KeyM: ["m", "M"], KeyN: ["n", "N"], KeyO: ["o", "O"], KeyP: ["p", "P"],
+  KeyQ: ["q", "Q"], KeyR: ["r", "R"], KeyS: ["s", "S"], KeyT: ["t", "T"],
+  KeyU: ["u", "U"], KeyV: ["v", "V"], KeyW: ["w", "W"], KeyX: ["x", "X"],
+  KeyY: ["y", "Y"], KeyZ: ["z", "Z"],
+  Digit1: ["1", "!"], Digit2: ["2", "@"], Digit3: ["3", "#"],
+  Digit4: ["4", "$"], Digit5: ["5", "%"], Digit6: ["6", "^"],
+  Digit7: ["7", "&"], Digit8: ["8", "*"], Digit9: ["9", "("],
+  Digit0: ["0", ")"],
+  Minus: ["-", "_"], Equal: ["=", "+"],
+  BracketLeft: ["[", "{"], BracketRight: ["]", "}"],
+  Backslash: ["\\", "|"], Semicolon: [";", ":"], Quote: ["'", '"'],
+  Comma: [",", "<"], Period: [".", ">"], Slash: ["/", "?"],
+  Backquote: ["`", "~"], Space: [" ", " "],
 };
 
 function toFullwidth(char) {
@@ -25,17 +33,17 @@ function toFullwidth(char) {
   return String.fromCharCode(code + 0xFEE0);
 }
 
-function navigationAction(keyCode, modifiers) {
-  switch (keyCode) {
-    case 48: return { direction: modifiers.shift ? "itemBackward" : "itemForward", wrapping: true };
-    case 123: return { direction: "left" };
-    case 124: return { direction: "right" };
-    case 125: return { direction: "down" };
-    case 126: return { direction: "up" };
-    case 116: return { direction: "pageUp" };
-    case 121: return { direction: "pageDown" };
-    case 115: return { direction: "home" };
-    case 119: return { direction: "end" };
+function navigationAction(event) {
+  switch (event.code) {
+    case "Tab": return { direction: event.shiftKey ? "itemBackward" : "itemForward", wrapping: true };
+    case "ArrowLeft": return { direction: "left" };
+    case "ArrowRight": return { direction: "right" };
+    case "ArrowDown": return { direction: "down" };
+    case "ArrowUp": return { direction: "up" };
+    case "PageUp": return { direction: "pageUp" };
+    case "PageDown": return { direction: "pageDown" };
+    case "Home": return { direction: "home" };
+    case "End": return { direction: "end" };
     default: return null;
   }
 }
@@ -98,41 +106,43 @@ export default class JSExternalEngine {
   /** @param {KeyEvent} event */
   handleKey(event) {
     // Base rule 1: Cmd/Ctrl bypass — let modifier shortcuts pass through.
-    if (event.modifiers.command || event.modifiers.ctrl) {
+    if (event.metaKey || event.ctrlKey) {
       if (event.isComposing) return true;
       return false;
     }
 
-    // Base rule 2: indexLabels quick-commit while composing.
-    if (event.isComposing && !event.modifiers.option
-        && event.characters && event.characters.length === 1) {
-      const idx = event.candidateWindow.candidateIndex(event.characters);
+    // Base rule 2: indexLabels quick-commit while composing. `event.key`
+    // returns named-key strings (e.g. "Backspace") for non-character keys,
+    // so the `length === 1` guard is required before treating it as a
+    // candidate label character.
+    if (event.isComposing && !event.altKey
+        && event.key && event.key.length === 1) {
+      const idx = event.candidateWindow.candidateIndex(event.key);
       if (idx !== null) {
         event.commitCandidateAtIndex(idx);
         return true;
       }
     }
 
-    // Base rule 3: Uppercase letter passthrough.
-    // Mirrors Swift `char.isUppercase && char.isLetter` — Unicode-aware.
-    if (!event.modifiers.option && event.characters
-        && event.characters.length === 1
-        && event.characters.toUpperCase() === event.characters
-        && event.characters.toLowerCase() !== event.characters) {
+    // Base rule 3: Uppercase letter passthrough. Single-char guard, see rule 2.
+    if (!event.altKey && event.key
+        && event.key.length === 1
+        && event.key.toUpperCase() === event.key
+        && event.key.toLowerCase() !== event.key) {
       if (event.isComposing) return true;
-      event.flushStaged(event.characters);
+      event.flushStaged(event.key);
       return true;
     }
 
     // Base rule 4: Esc.
-    if (event.keyCode === 53) {
+    if (event.code === "Escape") {
       if (!event.isComposing) return false;
       event.flushStaged();
       return true;
     }
 
     // Base rule 5: Navigation (arrows, Tab, Page, Home/End).
-    const nav = navigationAction(event.keyCode, event.modifiers);
+    const nav = navigationAction(event);
     if (nav) {
       if (!event.isComposing) return false;
       event.navigateCandidates(
@@ -143,17 +153,19 @@ export default class JSExternalEngine {
     }
 
     // Base rule 6: Enter.
-    if (event.keyCode === 36) {
+    if (event.code === "Enter") {
       if (!event.isComposing) return false;
       event.commitSelectedCandidate();
       return true;
     }
 
-    // Base rule 7: Option+key fullwidth.
-    if (event.modifiers.option) {
-      const layout = usKeyboardLayout[event.keyCode];
+    // Base rule 7: Option+key fullwidth. Look up the US-layout character by
+    // physical `code` so the mapping stays stable across input sources —
+    // Option+physical-A always yields fullwidth "ａ" even on AZERTY/Dvorak.
+    if (event.altKey) {
+      const layout = usKeyForCode[event.code];
       if (layout) {
-        const ch = event.modifiers.shift ? layout[1] : layout[0];
+        const ch = event.shiftKey ? layout[1] : layout[0];
         const fw = toFullwidth(ch);
         if (fw) {
           if (event.isComposing) return true;
@@ -164,47 +176,49 @@ export default class JSExternalEngine {
     }
 
     // Engine-specific Space / Backspace / letter handling.
-    const m = event.modifiers;
-    if (m.command || m.ctrl || m.option || m.shift) return false;
-    if (!event.characters || event.characters.length !== 1) {
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
+
+    // Named-key actions must run before the character path below: otherwise
+    // Space (`event.key === " "` passes length guard but isn't in
+    // validCompositionCharacters) and Backspace (length-9 name fails guard)
+    // would both hit the composing-default-true trap and silently no-op.
+    if (event.code === "Space") {
+      // commit first candidate (engine-driven, runs candidateConfirmed pipeline)
+      if (!event.isComposing) return false;
+      const first = lookupCandidates(event.markedText)[0];
+      if (first !== undefined) {
+        event.commit(first);
+      } else {
+        event.resetContext();
+      }
+      return true;
+    }
+    if (event.code === "Backspace") {
+      if (!event.isComposing) return false;
+      const newMarked = event.markedText.slice(0, -1);
+      if (newMarked.length === 0) {
+        event.resetContext();
+        return true;
+      }
+      event.updateMarkedText(newMarked);
+      event.updateCandidates(lookupCandidates(newMarked));
+      return true;
+    }
+
+    // Character composition path — letter keys produce a single-char key.
+    if (!event.key || event.key.length !== 1) {
       if (event.isComposing) return true;
       return false;
     }
-    const char = event.characters;
-
-    switch (event.keyCode) {
-      case 49: { // Space → commit first candidate (engine-driven, runs candidateConfirmed pipeline)
-        if (!event.isComposing) return false;
-        const first = lookupCandidates(event.markedText)[0];
-        if (first !== undefined) {
-          event.commit(first);
-        } else {
-          event.resetContext();
-        }
-        return true;
-      }
-      case 51: { // Backspace
-        if (!event.isComposing) return false;
-        const newMarked = event.markedText.slice(0, -1);
-        if (newMarked.length === 0) {
-          event.resetContext();
-          return true;
-        }
-        event.updateMarkedText(newMarked);
-        event.updateCandidates(lookupCandidates(newMarked));
-        return true;
-      }
-      default: {
-        if (validCompositionCharacters.has(char)) {
-          const newMarked = event.markedText + char.toUpperCase();
-          event.updateMarkedText(newMarked);
-          event.updateCandidates(lookupCandidates(newMarked));
-          return true;
-        }
-        if (event.isComposing) return true;
-        return false;
-      }
+    const char = event.key;
+    if (validCompositionCharacters.has(char)) {
+      const newMarked = event.markedText + char.toUpperCase();
+      event.updateMarkedText(newMarked);
+      event.updateCandidates(lookupCandidates(newMarked));
+      return true;
     }
+    if (event.isComposing) return true;
+    return false;
   }
 
   /** @param {ConfirmEvent} event */

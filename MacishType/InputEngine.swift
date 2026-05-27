@@ -295,6 +295,7 @@ class InputEngine {
         keyCode: UInt16,
         characters: String?,
         modifiers: NSEvent.ModifierFlags,
+        isRepeat: Bool,
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
         let pureModifiers = modifiers.intersection(.deviceIndependentFlagsMask)

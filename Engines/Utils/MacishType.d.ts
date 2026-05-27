@@ -13,14 +13,6 @@
 //   /** @implements {InputEngine} */
 //   export default class MyEngine { ... }
 
-/** Modifier flags reflect the device-independent flag mask only. */
-export interface Modifiers {
-  readonly shift: boolean;
-  readonly ctrl: boolean;
-  readonly option: boolean;
-  readonly command: boolean;
-}
-
 export type LayoutDirection = "horizontal" | "vertical";
 
 export type NavigationDirection =
@@ -191,13 +183,89 @@ export interface EventContext {
   readonly isAssociating: boolean;
 }
 
-/** Payload passed to `handleKey`. */
+/**
+ * Payload passed to `handleKey`. Field names and semantics track web
+ * `KeyboardEvent` (https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent)
+ * so existing web-keyboard handling code drops in with minimal rewrites.
+ *
+ * The host omits `Event` base properties (`type`, `timeStamp`, `target`,
+ * `bubbles`, etc.) — KeyEvent is a method parameter, not a dispatched
+ * event, so propagation / cancellation machinery doesn't apply. Cancellation
+ * is expressed by `handleKey`'s return value, not `preventDefault()`.
+ */
 export interface KeyEvent extends EventContext, EventMutators {
-  /** Raw macOS virtual key code. */
-  readonly keyCode: number;
-  /** Character(s) produced by the key, or null for keys with no character mapping. */
-  readonly characters: string | null;
-  readonly modifiers: Modifiers;
+  /**
+   * Layout-aware key value, e.g. `"a"` / `"A"` / `"!"` for character keys
+   * (reflecting Shift + Caps Lock + the active keyboard layout), or a named
+   * value for non-printable keys (`"Enter"` / `"Tab"` / `"Escape"` /
+   * `"ArrowLeft"` / `"Backspace"` / `" "` for Space, etc.). Falls back to
+   * `"Unidentified"` for unknown keys with no character output.
+   *
+   * Use `key` when you want the *character the user actually typed*. Use
+   * `code` when you want the *physical key position*.
+   */
+  readonly key: string;
+  /**
+   * Layout-independent physical key code. Always reflects the US QWERTY
+   * position of the pressed key, so `"KeyA"` means "the key in QWERTY-A's
+   * position" regardless of whether the active layout is Dvorak / AZERTY
+   * etc. — on AZERTY the same key produces `key: "q"` but
+   * `code: "KeyA"` (still the physical A spot). Returns `""` for unknown
+   * physical keys.
+   *
+   * Numpad keys use dedicated `"Numpad*"` codes (e.g. `"Numpad0"` /
+   * `"NumpadEnter"` / `"NumpadAdd"`), never `"Digit*"` plus `location`.
+   * Mac's physical Clear key on the numpad reports `code: "NumLock"` per
+   * the W3C UI Events spec — Clear sits where NumLock lives on PC keyboards.
+   *
+   * Format examples: `"KeyA"` / `"Digit1"` / `"Space"` / `"Enter"` /
+   * `"ArrowLeft"` / `"ShiftLeft"` / `"Numpad0"` / `"F1"`.
+   */
+  readonly code: string;
+  /** True when Option is held. (macOS Option maps to web Alt.) */
+  readonly altKey: boolean;
+  /** True when Control is held. */
+  readonly ctrlKey: boolean;
+  /** True when Shift is held. */
+  readonly shiftKey: boolean;
+  /** True when Command is held. (macOS Command maps to web Meta.) */
+  readonly metaKey: boolean;
+  /**
+   * True when this keydown was synthesized by the OS as a result of the user
+   * holding the key down past the repeat delay. The first keydown of a press
+   * is always `false`; subsequent repeats are `true`.
+   */
+  readonly repeat: boolean;
+  /**
+   * Where on the keyboard the key sits:
+   * - `0` — standard (default; main keyboard area)
+   * - `1` — left side of a paired modifier (left Shift / Control / Option / Command)
+   * - `2` — right side of a paired modifier
+   * - `3` — numpad cluster
+   *
+   * For numpad keys this is redundant with `code` (since `code` already
+   * starts with `"Numpad"`); prefer `code` for numpad detection.
+   */
+  readonly location: number;
+  /**
+   * Query an individual modifier or lock state.
+   *
+   * Supported keys returning the live state:
+   * - `"Shift"` / `"Control"` / `"Alt"` / `"Meta"` — same as the boolean
+   *   `*Key` properties above (web spec exposes both forms).
+   * - `"CapsLock"` — the only state without a corresponding `*Key` flag.
+   *
+   * Everything else returns `false`, including web-spec values that don't
+   * map cleanly on macOS:
+   * - `"Fn"` — NSEvent has a `.function` flag, but macOS auto-sets it on
+   *   arrows / F-keys / Page Up/Down / Home / End even with no Fn key held,
+   *   which would mislead callers. Use `code` to detect those keys instead.
+   * - `"NumLock"` / `"ScrollLock"` / `"FnLock"` — Mac keyboards don't have
+   *   these keys.
+   * - `"AltGraph"` / `"Hyper"` / `"Super"` / `"Symbol"` / `"SymbolLock"` /
+   *   `"OS"` — no Mac equivalent.
+   */
+  getModifierState(key: string): boolean;
   readonly candidateWindow: CandidateWindowState;
 }
 
