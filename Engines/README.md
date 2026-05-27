@@ -358,6 +358,7 @@ the new key is processed normally.
 | `stagedText` | Prefix already staged for commit. |
 | `isComposing` | Whether marked text is non-empty. |
 | `isAssociating` | Whether the engine is in associated-phrase mode. |
+| `candidateWindow` | Snapshot of the candidate window state at method entry. |
 
 `KeyEvent` field names and semantics track web
 [`KeyboardEvent`](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent):
@@ -387,7 +388,6 @@ the new key is processed normally.
   preserved). Useful on macOS where Option doubles as a dead-key modifier
   and rewrites `key`: Option+(Dvorak p position) gives `keyIgnoringModifiers
   === "p"` even though `key === "π"`.
-- `candidateWindow` — snapshot at method entry.
 
 `ConfirmEvent` additionally has `candidate`, `absoluteIndex`,
 `annotation?`, and `payload?` (the last two round-tripped from the original

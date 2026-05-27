@@ -204,9 +204,7 @@ class InputController: IMKInputController {
         if themeStale {
             CandidateWindow.shared.syncTheme()
         }
-        let candidateWindowState = CandidateWindowState(
-            isVisible: CandidateWindow.shared.isVisible,
-            configuration: CandidateWindow.shared.currentConfiguration)
+        let candidateWindowState = currentCandidateWindowState()
         // charactersIgnoringModifiers is unreliable in IMK: strips Shift along
         // with Option and resolves dead keys to combining marks (Option+E → "´"
         // not "e"). characters(byApplyingModifiers:) routes through the OS
@@ -407,14 +405,24 @@ extension InputController: CandidateWindowDelegate {
     func candidateConfirmed(_ candidate: String, absoluteIndex: Int, raw: Candidate?) {
         guard let client = client() else { return }
         let actions = engine.candidateConfirmed(
-            context: engineContext, candidate, absoluteIndex: absoluteIndex, raw: raw)
+            context: engineContext, candidate, absoluteIndex: absoluteIndex, raw: raw,
+            candidateWindow: currentCandidateWindowState())
         executeActions(actions, client: client)
     }
 
     func candidateSelectionChanged(_ candidate: String, absoluteIndex: Int, raw: Candidate) {
         guard let client = client() else { return }
         let actions = engine.candidateSelectionChanged(
-            context: engineContext, candidate, absoluteIndex: absoluteIndex, raw: raw)
+            context: engineContext, candidate, absoluteIndex: absoluteIndex, raw: raw,
+            candidateWindow: currentCandidateWindowState())
         executeActions(actions, client: client)
+    }
+}
+
+private extension InputController {
+    func currentCandidateWindowState() -> CandidateWindowState {
+        CandidateWindowState(
+            isVisible: CandidateWindow.shared.isVisible,
+            configuration: CandidateWindow.shared.currentConfiguration)
     }
 }

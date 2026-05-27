@@ -959,28 +959,33 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 
     override func candidateConfirmed(
-        context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate?
+        context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate?,
+        candidateWindow: CandidateWindowState
     ) -> [EngineAction] {
         dispatchCandidate("candidateConfirmed", context: context,
-                          candidate: candidate, absoluteIndex: absoluteIndex, raw: raw)
+                          candidate: candidate, absoluteIndex: absoluteIndex, raw: raw,
+                          candidateWindow: candidateWindow)
     }
 
     override func candidateSelectionChanged(
-        context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate
+        context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate,
+        candidateWindow: CandidateWindowState
     ) -> [EngineAction] {
         dispatchCandidate("candidateSelectionChanged", context: context,
-                          candidate: candidate, absoluteIndex: absoluteIndex, raw: raw)
+                          candidate: candidate, absoluteIndex: absoluteIndex, raw: raw,
+                          candidateWindow: candidateWindow)
     }
 
     private func dispatchCandidate(
         _ jsMethod: String,
-        context: InputEngineContext, candidate: String, absoluteIndex: Int, raw: Candidate?
+        context: InputEngineContext, candidate: String, absoluteIndex: Int, raw: Candidate?,
+        candidateWindow: CandidateWindowState
     ) -> [EngineAction] {
         guard let instance = jsInstance(for: context) else { return [] }
         let sink = ActionSink()
         let event = makeConfirmEvent(
             context: context, candidate: candidate, absoluteIndex: absoluteIndex,
-            raw: raw, sink: sink)
+            raw: raw, candidateWindow: candidateWindow, sink: sink)
         Self.invokeIfDefined(instance, jsMethod, withArguments: [event])
         return sink.actions
     }
@@ -1099,11 +1104,27 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         }
         event.setObject(getModifierState, forKeyedSubscript: "getModifierState" as NSString)
 
+        attachEventContext(to: event, context: context, candidateWindow: candidateWindow)
+        attachMutators(to: event, sink: sink)
+        return event
+    }
+
+    /// Mirrors the shape of TS `EventContext`: the fields every event payload
+    /// (KeyEvent, ConfirmEvent) shares. Adding a new context field is now a
+    /// one-line edit here instead of touching every makeXxxEvent helper.
+    private func attachEventContext(
+        to event: JSValue, context: InputEngineContext, candidateWindow: CandidateWindowState
+    ) {
         event.setObject(context.markedText, forKeyedSubscript: "markedText" as NSString)
         event.setObject(context.stagedText, forKeyedSubscript: "stagedText" as NSString)
         event.setObject(context.isComposing, forKeyedSubscript: "isComposing" as NSString)
         event.setObject(context.isAssociating, forKeyedSubscript: "isAssociating" as NSString)
+        attachCandidateWindow(to: event, candidateWindow: candidateWindow)
+    }
 
+    private func attachCandidateWindow(
+        to event: JSValue, candidateWindow: CandidateWindowState
+    ) {
         let cw = JSValue(newObjectIn: jsContext)!
         cw.setObject(candidateWindow.isVisible,
                      forKeyedSubscript: "isVisible" as NSString)
@@ -1122,9 +1143,6 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         }
         cw.setObject(candidateIndex, forKeyedSubscript: "candidateIndex" as NSString)
         event.setObject(cw, forKeyedSubscript: "candidateWindow" as NSString)
-
-        attachMutators(to: event, sink: sink)
-        return event
     }
 
     private func makeConfirmEvent(
@@ -1132,6 +1150,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         candidate: String,
         absoluteIndex: Int,
         raw: Candidate?,
+        candidateWindow: CandidateWindowState,
         sink: ActionSink
     ) -> JSValue {
         let event = JSValue(newObjectIn: jsContext)!
@@ -1143,10 +1162,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         if let payload = raw?.payload {
             event.setObject(payload, forKeyedSubscript: "payload" as NSString)
         }
-        event.setObject(context.markedText, forKeyedSubscript: "markedText" as NSString)
-        event.setObject(context.stagedText, forKeyedSubscript: "stagedText" as NSString)
-        event.setObject(context.isComposing, forKeyedSubscript: "isComposing" as NSString)
-        event.setObject(context.isAssociating, forKeyedSubscript: "isAssociating" as NSString)
+        attachEventContext(to: event, context: context, candidateWindow: candidateWindow)
         attachMutators(to: event, sink: sink)
         return event
     }

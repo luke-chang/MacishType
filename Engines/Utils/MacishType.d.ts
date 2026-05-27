@@ -181,6 +181,8 @@ export interface EventContext {
   readonly stagedText: string;
   readonly isComposing: boolean;
   readonly isAssociating: boolean;
+  /** Snapshot of the candidate window state at method entry. */
+  readonly candidateWindow: CandidateWindowState;
 }
 
 /**
@@ -282,7 +284,6 @@ export interface KeyEvent extends EventContext, EventMutators {
    *   characters for named keys — prefer `code` for those)
    */
   readonly keyIgnoringModifiers: string;
-  readonly candidateWindow: CandidateWindowState;
 }
 
 /** Payload passed to `candidateConfirmed` and `candidateSelectionChanged`. */
