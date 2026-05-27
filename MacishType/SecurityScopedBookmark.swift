@@ -37,7 +37,7 @@ final class SecurityScopedBookmark: ObservableObject {
         panel.allowsMultipleSelection = false
         configure(panel)
 
-        let response = await panel.beginSheetSafely()
+        let response = await panel.beginSheetSafely(for: parent)
         guard response == .OK, let picked = panel.url else { return false }
 
         if let validate, let failure = validate(picked) {
@@ -170,10 +170,16 @@ final class SecurityScopedBookmark: ObservableObject {
 
 extension NSOpenPanel {
     @MainActor
-    fileprivate func beginSheetSafely() async -> NSApplication.ModalResponse {
+    fileprivate func beginSheetSafely(for parent: NSWindow?) async -> NSApplication.ModalResponse {
         await withCheckedContinuation { continuation in
-            self.begin { response in
-                continuation.resume(returning: response)
+            if let parent {
+                self.beginSheetModal(for: parent) { response in
+                    continuation.resume(returning: response)
+                }
+            } else {
+                self.begin { response in
+                    continuation.resume(returning: response)
+                }
             }
         }
     }
