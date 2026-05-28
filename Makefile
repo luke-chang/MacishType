@@ -1,4 +1,4 @@
-.PHONY: help build debug reload release release-universal install uninstall clean log log-js log-history preview
+.PHONY: help build debug reload release release-universal install uninstall prepare update-resources clean-resources clean log log-js log-history preview
 
 APP_NAME = MacishType
 BUNDLE_ID = net.lukechang.inputmethod.$(APP_NAME)
@@ -51,6 +51,8 @@ endef
 help:
 	@echo "$(APP_NAME) - Available Commands:"
 	@echo ""
+	@echo "  make prepare            - Download external resources (run after clone or lock bump)"
+	@echo "  make update-resources   - Bump pinned upstream SHAs in lock and re-prepare"
 	@echo "  make build              - Build Debug version"
 	@echo "  make debug              - Build Debug, deploy, and reload"
 	@echo "  make reload             - Force restart input method by killing its process"
@@ -59,6 +61,7 @@ help:
 	@echo "  make install            - Build Release, deploy, and reload"
 	@echo "  make uninstall          - Remove installed input method"
 	@echo "  make clean              - Clean build artifacts"
+	@echo "  make clean-resources    - Remove downloaded external resources"
 	@echo "  make log                - Stream live OSLog output"
 	@echo "  make log-js             - Stream JS-originated logs (engine console.*, uncaught exceptions, rejections)"
 	@echo "  make log-history        - Show recent log history (default $(LOG_SHOW_LAST), use LOG_SHOW_LAST=24h to override)"
@@ -168,3 +171,12 @@ preview:
 	@killall CandidateWindowPreview 2>/dev/null || true
 	@sleep 0.3
 	@open ./build/Debug/CandidateWindowPreview.app
+
+prepare:
+	@./Scripts/HandleExternalResources.sh --prepare
+
+update-resources:
+	@./Scripts/HandleExternalResources.sh --update
+
+clean-resources:
+	@./Scripts/HandleExternalResources.sh --clean

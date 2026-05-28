@@ -6,3 +6,7 @@ xcuserdata/
 *.dSYM.zip
 *.dSYM
 Engines/**/_storage/
+
+# Downloaded external resources (managed by Scripts/HandleExternalResources.sh).
+MacishType/Resources/AssociatedPhrases.*.txt
+MacishType/Resources/**/*.LICENSE.txt

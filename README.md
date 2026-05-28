@@ -25,17 +25,22 @@ Requires Xcode (used by `make install` to build the Release binary).
 
 ### First install
 
-1. `make install`
+1. `make prepare`
+   - Downloads external data files and licenses pinned in [`Scripts/HandleExternalResources.lock`](Scripts/HandleExternalResources.lock). Required after a fresh clone (and again any time the lock is bumped). Subsequent builds verify these files exist; if missing, the build halts with a reminder to re-run this.
+2. `make install`
    - Builds Release, copies the app to `~/Library/Input Methods/`, and kills any running input method process.
-2. **Log out and back in.**
+3. **Log out and back in.**
    - On first install, MacishType won't show up in the input source picker until you log back in.
-3. Open **System Settings → Keyboard → Input Sources → +** and pick the input sources you want from the MacishType section.
+4. Open **System Settings → Keyboard → Input Sources → +** and pick the input sources you want from the MacishType section.
 
 ### Upgrade
 
-1. `make install`
+1. `git pull` (or however you pull latest).
+2. `make prepare`
+   - Re-downloads external resources to whatever the lock currently pins. Safe to run after every pull; if the lock didn't change, the result is the same content.
+3. `make install`
    - The Makefile removes the old version, kills the running process, and installs the new one.
-2. **Log out and back in** *(only if needed).*
+4. **Log out and back in** *(only if needed).*
    - Updates usually take effect immediately. But if a change doesn't seem to apply — or a newly added input source doesn't show up in the picker — logging out and back in is worth trying.
 
 ### Uninstall
@@ -65,7 +70,10 @@ After a code change:
 
 - `make build` — build Debug without installing.
 - `make release` / `make release-universal` — build Release (current architecture or universal binary).
+- `make prepare` — re-download external resources to current lock state (run after a lock bump).
+- `make update-resources` — bump pinned upstream SHAs to their current default-branch HEAD and re-prepare.
 - `make clean` — clean build artifacts.
+- `make clean-resources` — remove downloaded external resources.
 - `make reload` — restart the input method without rebuilding (e.g. after editing installed bundle resources in place).
 
 ## Writing an engine
@@ -111,7 +119,7 @@ Subclass [`InputEngine`](MacishType/InputEngine.swift), override `engineID` and 
 > [!IMPORTANT]
 > The source `Resources/` folder **must** be excluded from the default Copy Resources phase, otherwise resources end up in the bundle root and collide across engines. In Xcode, select the `Resources/` folder → File Inspector → **Build Rules** → switch *Apply to Each File* to **Apply Once to Folder**.
 
-For menu and palette icons, [`Scripts/GenerateIcon.swift`](Scripts/GenerateIcon.swift) produces a system-style rounded-square TIFF with a character cut out — e.g. `swift Scripts/GenerateIcon.swift 例 ExampleEngine/Resources/ExampleMenuIcon`.
+For menu and palette icons, [`Scripts/GenerateIcon.swift`](Scripts/GenerateIcon.swift) produces a system-style rounded-square TIFF with a character cut out — e.g. `./Scripts/GenerateIcon.swift 例 ExampleEngine/Resources/ExampleMenuIcon`.
 
 Reference: [`MacishType/ExampleEngine/`](MacishType/ExampleEngine/) — the bundled Swift engine, including associated-phrase mode, a Settings form, and the resources layout.
 
@@ -120,6 +128,10 @@ Reference: [`MacishType/ExampleEngine/`](MacishType/ExampleEngine/) — the bund
 The bundled [`MacishType/MacishCandidateWindow/`](MacishType/MacishCandidateWindow/) is one implementation of [`CandidateWindowImpl`](MacishType/CandidateWindow.swift), the abstract base that defines the override points (`apply`, `updateCandidates`, `show`, `hide`, `handleNavigation`, `commitSelectedCandidate`, etc.). To build a different candidate window, create a parallel folder under `MacishType/` with your own `CandidateWindowImpl` subclass and any supporting types, then add a `Style` case in [`CandidateWindow.swift`](MacishType/CandidateWindow.swift) and a matching arm in the `activeImpl` switch that constructs your subclass.
 
 Shared types (`Candidate`, `CandidateWindowConfiguration`, `CandidateWindowDelegate`) live in `CandidateWindow.swift`.
+
+## Acknowledgements
+
+Associated-phrase data, downloaded by `make prepare` from [McBopomofo](https://github.com/openvanilla/McBopomofo), is used under its [MIT License](https://github.com/openvanilla/McBopomofo/blob/master/LICENSE.txt) (bundled with the data).
 
 ## License
 

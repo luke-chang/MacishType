@@ -142,6 +142,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 86A0E7FB2F77ED5000722BF2 /* Build configuration list for PBXNativeTarget "MacishType" */;
 			buildPhases = (
+				86478FE92FC9466A00BC34DF /* Check External Resources */,
 				86A0E7EC2F77ED4F00722BF2 /* Sources */,
 				86A0E7ED2F77ED4F00722BF2 /* Frameworks */,
 				86A0E7EE2F77ED4F00722BF2 /* Resources */,
@@ -219,6 +220,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		86478FE92FC9466A00BC34DF /* Check External Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Check External Resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "${SRCROOT}/Scripts/HandleExternalResources.sh --check\n";
+		};
 		8648E1062FACEBD100465485 /* Stage Engine Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
