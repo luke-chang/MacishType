@@ -153,6 +153,22 @@ class InputEngine {
     /// `InputEngine` is abstract.
     var engineID: String { fatalError("Subclasses must override") }
 
+    /// BCP47 language tag from Info.plist's `ComponentInputModeDict` entry
+    /// for this engine. nil if the entry or `TISIntendedLanguage` key is
+    /// missing (a misconfiguration; logged as .fault).
+    lazy var intendedLanguage: String? = {
+        guard let bundleID = Bundle.main.bundleIdentifier,
+              let comp = Bundle.main.infoDictionary?["ComponentInputModeDict"] as? [String: Any],
+              let list = comp["tsInputModeListKey"] as? [String: [String: Any]],
+              let entry = list["\(bundleID).\(engineID)"],
+              let lang = entry["TISIntendedLanguage"] as? String
+        else {
+            Logger.inputEngine.fault("No TISIntendedLanguage for engine \"\(self.engineID, privacy: .public)\" — check Info.plist ComponentInputModeDict")
+            return nil
+        }
+        return lang
+    }()
+
     // Defaults below are per-class — same value across all instances of a
     // given subclass, hence `class var`.
     class var defaultDirection: CandidateWindow.LayoutDirection { .horizontal }

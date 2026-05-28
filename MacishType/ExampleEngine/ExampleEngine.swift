@@ -12,6 +12,18 @@ class ExampleEngine: InputEngine {
     // immediately after enabling Example, without having to open Settings.
     override class var defaultShowAssociatedWords: Bool { true }
 
+    // A-Z → common zh-Hant characters, for demoing the AssociatedPhrases flow.
+    private static let keyMap: [Character: Character] = [
+        "A": "的", "B": "是", "C": "一", "D": "不", "E": "有",
+        "F": "在", "G": "我", "H": "人", "I": "這", "J": "了",
+        "K": "個", "L": "以", "M": "會", "N": "大", "O": "為",
+        "P": "來", "Q": "要", "R": "中", "S": "國", "T": "他",
+        "U": "到", "V": "就", "W": "們", "X": "上", "Y": "可",
+        "Z": "也",
+    ]
+
+    private var associatedPhrasesHandle: AssociatedPhrases.Handle?
+
     override var settingsView: AnyView {
         AnyView(
             InputEngine.settingsForm {
@@ -23,8 +35,23 @@ class ExampleEngine: InputEngine {
         )
     }
 
+    override func load() {
+        super.load()
+        reconcileAssociatedPhrases(handle: &associatedPhrasesHandle)
+    }
+
+    override func activate(context: InputEngineContext, clientIdentifier: String?) {
+        super.activate(context: context, clientIdentifier: clientIdentifier)
+        reconcileAssociatedPhrases(handle: &associatedPhrasesHandle)
+    }
+
+    override func unload() {
+        associatedPhrasesHandle = nil
+        super.unload()
+    }
+
     private func lookupCandidates(_ key: String) -> [String] {
-        key.compactMap { Self.toFullwidth($0).map(String.init) }
+        key.compactMap { Self.keyMap[$0].map(String.init) }
     }
 
     override func handleKey(
@@ -78,11 +105,6 @@ class ExampleEngine: InputEngine {
     }
 
     override func lookupAssociatedCandidates(for char: Character) -> [String] {
-        let s = String(char)
-        return [
-            String(repeating: s, count: 4),
-            String(repeating: s, count: 3),
-            String(repeating: s, count: 2),
-        ] + Array(repeating: s, count: 20)
+        associatedPhrasesHandle?.phrases.lookup(char) ?? []
     }
 }
