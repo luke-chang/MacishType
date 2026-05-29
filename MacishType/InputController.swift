@@ -234,11 +234,12 @@ class InputController: IMKInputController {
             keyEvent: keyEvent,
             candidateWindow: candidateWindowState)
         switch result {
-        case .notHandled:
-            return false
         case .handled(let actions):
             executeActions(actions, client: client)
             return true
+        case .notHandled(let actions):
+            executeActions(actions, client: client)
+            return false
         }
     }
 

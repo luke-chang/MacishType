@@ -181,17 +181,17 @@ class JSExternalEngine: JavaScriptEngine {
         let pure = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
 
         if !pure.intersection([.command, .control]).isEmpty {
-            return context.isComposing ? .handled() : .notHandled
+            return context.isComposing ? .handled() : .notHandled()
         }
         // Esc / Backspace cancel the status prompt when composing.
         if keyEvent.keyCode == 53 || keyEvent.keyCode == 51 {
-            return context.isComposing ? .handled([.resetContext]) : .notHandled
+            return context.isComposing ? .handled([.resetContext]) : .notHandled()
         }
         // Non-printing keys (Return, Space, Tab, arrows, F-keys, etc.)
         // pass through when idle so the user can still send / navigate;
         // while composing they re-show the prompt instead of leaking out.
         if !Self.isPrintingKey(keyEvent.characters) && !context.isComposing {
-            return .notHandled
+            return .notHandled()
         }
         return .handled([.updateMarkedText(statusMessage)])
     }

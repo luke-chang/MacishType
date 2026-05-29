@@ -65,24 +65,24 @@ class ExampleEngine: InputEngine {
         if case .handled = base { return base }
 
         if !keyEvent.modifiers.intersection(.deviceIndependentFlagsMask).isEmpty {
-            return .notHandled
+            return .notHandled()
         }
 
         guard let text = keyEvent.characters, text.count == 1,
               let char = text.first else {
-            return context.isComposing ? .handled() : .notHandled
+            return context.isComposing ? .handled() : .notHandled()
         }
 
         switch keyEvent.keyCode {
         case 49: // Space
-            guard context.isComposing else { return .notHandled }
+            guard context.isComposing else { return .notHandled() }
             if let first = lookupCandidates(context.markedText).first {
                 return .handled([.commit(first)])
             }
             return .handled([.resetContext])
 
         case 51: // Backspace
-            guard context.isComposing else { return .notHandled }
+            guard context.isComposing else { return .notHandled() }
             let newMarked = String(context.markedText.dropLast())
             if newMarked.isEmpty {
                 return .handled([.resetContext])
@@ -100,7 +100,7 @@ class ExampleEngine: InputEngine {
                     .updateCandidates(lookupCandidates(newMarked)),
                 ])
             }
-            return context.isComposing ? .handled() : .notHandled
+            return context.isComposing ? .handled() : .notHandled()
         }
     }
 

@@ -73,7 +73,7 @@ enum EngineAction {
 
 enum EngineHandleResult {
     case handled([EngineAction] = [])
-    case notHandled
+    case notHandled([EngineAction] = [])
 }
 
 extension EngineAction {
@@ -310,7 +310,7 @@ class InputEngine {
 
         // 1. Command/Control
         if !pureModifiers.intersection([.command, .control]).isEmpty {
-            return context.isComposing ? .handled() : .notHandled
+            return context.isComposing ? .handled() : .notHandled()
         }
 
         // 2. Quick-commit by indexLabels — placed before uppercase letter
@@ -334,19 +334,19 @@ class InputEngine {
 
         // 4. Escape
         if keyEvent.keyCode == 53 {
-            guard context.isComposing else { return .notHandled }
+            guard context.isComposing else { return .notHandled() }
             return .handled([.flushStaged()])
         }
 
         // 5. Navigation (arrow keys, Tab, Home/End, engine-specific extensions)
         if let action = navigationAction(keyEvent: keyEvent) {
-            guard context.isComposing else { return .notHandled }
+            guard context.isComposing else { return .notHandled() }
             return .handled([action])
         }
 
         // 6. Enter
         if keyEvent.keyCode == 36 {
-            guard context.isComposing else { return .notHandled }
+            guard context.isComposing else { return .notHandled() }
             return .handled([.commitSelectedCandidate])
         }
 
@@ -363,7 +363,7 @@ class InputEngine {
         }
 
         // 8. Not handled
-        return .notHandled
+        return .notHandled()
     }
 
     func candidateConfirmed(

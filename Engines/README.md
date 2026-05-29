@@ -256,7 +256,7 @@ export default class MyEngine {
   /** @param {KeyEvent} event */
   handleKey(event) {
     // return true  → key consumed
-    // return false → fall through to OS
+    // return false → fall through to OS (queued mutators still apply)
   }
 
   /** @param {ConfirmEvent} event */
@@ -281,7 +281,8 @@ truth. Highlights:
   (composition buffers, mode flags, lookup caches per session, etc.) is
   not touched — clear it here, otherwise it leaks into the next session.
 - `handleKey(event)` — return `true` to consume the key, `false` to let
-  the OS see it.
+  the OS see it. Queued `event.xxx(...)` mutators apply regardless of the
+  return value; the return value only governs OS passthrough.
 - `candidateConfirmed(event)` — after the host commits a candidate
   (engine-driven or user-picked). See [Host fallback](#host-fallback) for
   the return-value contract.
@@ -291,19 +292,14 @@ truth. Highlights:
 #### Host fallback
 
 `candidateConfirmed` and `candidateSelectionChanged` share a single
-contract for delegating back to the host's built-in behavior. The host
-treats the callback as **handled** when EITHER:
+contract for delegating back to the host's built-in behavior.
 
-- the function returns `true`, OR
-- the function called any `event.xxx(...)` mutator (queue is non-empty).
+Return `true` to mark the callback as **handled** — the host applies any
+queued mutators and stops there.
 
-In that case the host applies the queued mutators verbatim and does not
-fall back.
-
-The host **falls back** when ALL of the following hold:
-
-- the method is undefined on the class, OR returns `false` / `undefined`, AND
-- no `event` mutator was called (queue is empty).
+Return `false` / `undefined` (or omit the method) to **fall back**. Queued
+mutators still apply, but the host then layers its default behavior on
+top of them.
 
 **Fallback for `candidateConfirmed`**:
 
@@ -319,9 +315,9 @@ The host **falls back** when ALL of the following hold:
 no actions). The hook exists so future host defaults can apply
 automatically.
 
-To intentionally **suppress** fallback (e.g. "do nothing on commit"),
-return `true` from an empty body. A bare `return;` or omitting the
-method triggers fallback.
+To intentionally **suppress** fallback with no side effect, return `true`
+from an empty body. A bare `return;` or omitting the method triggers
+fallback.
 
 ### Event mutators
 

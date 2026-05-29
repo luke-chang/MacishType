@@ -996,7 +996,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
         guard let instance = jsInstance(for: context) else {
-            return .notHandled
+            return .notHandled()
         }
 
         let sink = ActionSink()
@@ -1009,22 +1009,18 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         let handled = Self.invokeIfDefined(instance, "handleKey", withArguments: [event])?
             .toBool() ?? false
 
-        if !handled && sink.actions.isEmpty {
-            return .notHandled
-        }
-        return .handled(sink.actions)
+        return handled ? .handled(sink.actions) : .notHandled(sink.actions)
     }
 
     override func candidateConfirmed(
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate?,
         candidateWindow: CandidateWindowState
     ) -> [EngineAction] {
-        if let actions = dispatchCandidate(
+        let (handled, actions) = dispatchCandidate(
             "candidateConfirmed", context: context, candidate: candidate,
-            absoluteIndex: absoluteIndex, raw: raw, candidateWindow: candidateWindow) {
-            return actions
-        }
-        return super.candidateConfirmed(
+            absoluteIndex: absoluteIndex, raw: raw, candidateWindow: candidateWindow)
+        if handled { return actions }
+        return actions + super.candidateConfirmed(
             context: context, candidate, absoluteIndex: absoluteIndex,
             raw: raw, candidateWindow: candidateWindow)
     }
@@ -1033,33 +1029,32 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate,
         candidateWindow: CandidateWindowState
     ) -> [EngineAction] {
-        if let actions = dispatchCandidate(
+        let (handled, actions) = dispatchCandidate(
             "candidateSelectionChanged", context: context, candidate: candidate,
-            absoluteIndex: absoluteIndex, raw: raw, candidateWindow: candidateWindow) {
-            return actions
-        }
-        return super.candidateSelectionChanged(
+            absoluteIndex: absoluteIndex, raw: raw, candidateWindow: candidateWindow)
+        if handled { return actions }
+        return actions + super.candidateSelectionChanged(
             context: context, candidate, absoluteIndex: absoluteIndex,
             raw: raw, candidateWindow: candidateWindow)
     }
 
-    /// Returns `nil` when the JS engine did not handle the callback —
-    /// neither returned `true` nor queued any event mutator. Caller falls
-    /// back to `super` in that case. Mirrors `handleKey`'s convention.
+    /// Invokes the named JS callback. `handled` reflects the JS return value
+    /// alone (`true` → handled, anything else → fall back). `actions` are the
+    /// mutators queued during the call, applied regardless — when falling back,
+    /// callers concatenate them before the `super` result.
     private func dispatchCandidate(
         _ jsMethod: String,
         context: InputEngineContext, candidate: String, absoluteIndex: Int, raw: Candidate?,
         candidateWindow: CandidateWindowState
-    ) -> [EngineAction]? {
-        guard let instance = jsInstance(for: context) else { return nil }
+    ) -> (handled: Bool, actions: [EngineAction]) {
+        guard let instance = jsInstance(for: context) else { return (false, []) }
         let sink = ActionSink()
         let event = makeConfirmEvent(
             context: context, candidate: candidate, absoluteIndex: absoluteIndex,
             raw: raw, candidateWindow: candidateWindow, sink: sink)
         let handled = Self.invokeIfDefined(instance, jsMethod, withArguments: [event])?
             .toBool() ?? false
-        if !handled && sink.actions.isEmpty { return nil }
-        return sink.actions
+        return (handled, sink.actions)
     }
 
     // MARK: Helpers

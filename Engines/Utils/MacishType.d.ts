@@ -330,24 +330,25 @@ export interface InputEngine {
    * Called for every keystroke.
    *
    * Return `true` to mark the key consumed. Returning `false` / `undefined`
-   * (including omitting the method) and not calling any event mutator lets
-   * the host pass the key through to the OS.
+   * (including omitting the method) lets the host pass the key through to
+   * the OS. Queued event mutators apply regardless of the return value.
    */
   handleKey?(event: KeyEvent): boolean | void;
   /**
    * Called after a candidate is committed (engine-driven or by the user).
    *
    * Return `true` to mark as handled. Returning `false` / `undefined`
-   * (including omitting the method) and not calling any event mutator
-   * makes the host fall back to its default behavior — see README.
+   * (including omitting the method) makes the host fall back to its
+   * default behavior; queued mutators still apply and the fallback layers
+   * on top — see README.
    */
   candidateConfirmed?(event: ConfirmEvent): boolean | void;
   /**
    * Called when the highlighted candidate changes (e.g. after navigation).
    *
    * Return `true` to mark as handled. Returning `false` / `undefined`
-   * (including omitting the method) and not calling any event mutator
-   * makes the host fall back to its default behavior (currently a no-op)
+   * (including omitting the method) makes the host fall back to its
+   * default behavior (currently a no-op); queued mutators still apply
    * — see README.
    */
   candidateSelectionChanged?(event: ConfirmEvent): boolean | void;
