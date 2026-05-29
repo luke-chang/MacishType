@@ -171,8 +171,15 @@ export interface EventMutators {
    * and `candidates` appear as suggested follow-ups. Picking a candidate
    * commits `heldChar` followed by the chosen candidate; typing anything
    * else commits `heldChar` alone and the new key is processed normally.
+   *
+   * Omitting `candidates` falls back to the host's `AssociatedPhrases`
+   * dictionary keyed by `heldChar`'s first character. The fallback only
+   * yields suggestions when the manifest opts in via a
+   * `{ "key": "showAssociatedWords", "type": "system" }` field and the
+   * toggle is on; otherwise the array is empty and no associated mode
+   * is entered.
    */
-  enterAssociatedMode(heldChar: string, candidates: readonly string[]): void;
+  enterAssociatedMode(heldChar: string, candidates?: readonly string[]): void;
 }
 
 /** Context fields shared by every event payload. */
@@ -320,14 +327,30 @@ export interface InputEngine {
   /** Per-session teardown. Fires when focus leaves the text field. */
   deactivate?(): void;
   /**
-   * Returns `true` to signal the key was consumed; `false` lets the host
-   * fall through to its default handling (and ultimately to the OS).
+   * Called for every keystroke.
+   *
+   * Return `true` to mark the key consumed. Returning `false` / `undefined`
+   * (including omitting the method) and not calling any event mutator lets
+   * the host pass the key through to the OS.
    */
-  handleKey?(event: KeyEvent): boolean;
-  /** Called after a candidate is committed (engine-driven or by the user). */
-  candidateConfirmed?(event: ConfirmEvent): void;
-  /** Called when the highlighted candidate changes (e.g. after navigation). */
-  candidateSelectionChanged?(event: ConfirmEvent): void;
+  handleKey?(event: KeyEvent): boolean | void;
+  /**
+   * Called after a candidate is committed (engine-driven or by the user).
+   *
+   * Return `true` to mark as handled. Returning `false` / `undefined`
+   * (including omitting the method) and not calling any event mutator
+   * makes the host fall back to its default behavior — see README.
+   */
+  candidateConfirmed?(event: ConfirmEvent): boolean | void;
+  /**
+   * Called when the highlighted candidate changes (e.g. after navigation).
+   *
+   * Return `true` to mark as handled. Returning `false` / `undefined`
+   * (including omitting the method) and not calling any event mutator
+   * makes the host fall back to its default behavior (currently a no-op)
+   * — see README.
+   */
+  candidateSelectionChanged?(event: ConfirmEvent): boolean | void;
 }
 
 /** Any value representable as JSON. */

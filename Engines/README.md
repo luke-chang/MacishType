@@ -88,7 +88,8 @@ Array of sections rendered in the engine's Settings tab. Each section:
 
 #### Field types
 
-Every field shares these properties:
+The standard field types (`toggle`, `textField`, `number`, `picker`,
+`multiSelect`) share these properties:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
@@ -99,6 +100,9 @@ Every field shares these properties:
 | `default` | type-specific | varies | See per-type table below. |
 | `disabledWhen` | [Condition](#condition) | | Renders the field disabled when the condition holds. |
 | `hiddenWhen` | [Condition](#condition) | | Renders the field hidden when the condition holds. A section with all fields hidden collapses entirely. |
+
+There's also a `system` field type, which renders host-provided UI and
+has its own minimal schema — see [`system`](#system) below.
 
 ##### `toggle`
 | Property | Type | Required | Notes |
@@ -130,6 +134,38 @@ Every field shares these properties:
 |---|---|---|---|
 | `options` | [PickerOption](#pickeroption)`[]` | yes | Selectable options. |
 | `default` | (integer \| string)`[]` | | Indices or tags of pre-selected options. Omit → empty selection. |
+
+##### `system`
+
+Renders a host-provided control (UI, label, and storage all live on the
+host side). Use this to expose a system feature in your engine's Settings
+without having to model it in your manifest. Reading the field's value from
+JS works the same as any other field: `manifest.settings[key]`.
+
+The schema is minimal — only `key`, `type`, and `default` are accepted;
+`label`, `description`, `disabledWhen`, `hiddenWhen` etc. do not apply.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `key` | string | yes | System feature identifier. Currently the only supported value is `"showAssociatedWords"`. |
+| `default` | boolean | | Initial value applied the first time this engine loads, before the user has made a choice. Omit and the host's own default is used. |
+
+```jsonc
+{
+  "title": { "en": "Typing", "zh-Hant": "輸入行為" },
+  "fields": [
+    {
+      "key": "showAssociatedWords",
+      "type": "system",
+      "default": true
+    }
+  ]
+}
+```
+
+When `showAssociatedWords` is on, calling `event.enterAssociatedMode(heldChar)`
+without a second argument falls back to the host's `AssociatedPhrases`
+dictionary keyed by this engine's `TISIntendedLanguage`.
 
 #### Localizable
 
@@ -247,9 +283,45 @@ truth. Highlights:
 - `handleKey(event)` — return `true` to consume the key, `false` to let
   the OS see it.
 - `candidateConfirmed(event)` — after the host commits a candidate
-  (engine-driven or user-picked).
+  (engine-driven or user-picked). See [Host fallback](#host-fallback) for
+  the return-value contract.
 - `candidateSelectionChanged(event)` — after the highlight moves (e.g.
-  arrow keys).
+  arrow keys). Same return-value contract as `candidateConfirmed`.
+
+#### Host fallback
+
+`candidateConfirmed` and `candidateSelectionChanged` share a single
+contract for delegating back to the host's built-in behavior. The host
+treats the callback as **handled** when EITHER:
+
+- the function returns `true`, OR
+- the function called any `event.xxx(...)` mutator (queue is non-empty).
+
+In that case the host applies the queued mutators verbatim and does not
+fall back.
+
+The host **falls back** when ALL of the following hold:
+
+- the method is undefined on the class, OR returns `false` / `undefined`, AND
+- no `event` mutator was called (queue is empty).
+
+**Fallback for `candidateConfirmed`**:
+
+1. If `event.isAssociating` is true → flush the staged prefix together
+   with this committed character, then exit associated mode.
+2. Else if `event.candidate.length === 1` AND
+   `manifest.settings.showAssociatedWords` is true AND the host's
+   `AssociatedPhrases` dictionary has follow-ups for that character →
+   enter associated mode with those follow-ups.
+3. Otherwise → flush staged.
+
+**Fallback for `candidateSelectionChanged`**: nothing happens (host emits
+no actions). The hook exists so future host defaults can apply
+automatically.
+
+To intentionally **suppress** fallback (e.g. "do nothing on commit"),
+return `true` from an empty body. A bare `return;` or omitting the
+method triggers fallback.
 
 ### Event mutators
 
@@ -340,7 +412,7 @@ optionally append more text.
 
 - `append` *(string, optional)* — text appended after the staged prefix in the same commit. Call with no argument to flush whatever was staged.
 
-#### `enterAssociatedMode(heldChar, candidates)`
+#### `enterAssociatedMode(heldChar, candidates?)`
 
 Enter associated-phrase mode: `heldChar` becomes staged marked text and
 `candidates` appear as suggested follow-ups. Picking a candidate commits
@@ -348,7 +420,12 @@ Enter associated-phrase mode: `heldChar` becomes staged marked text and
 the new key is processed normally.
 
 - `heldChar` *(string, required)* — the just-committed character to keep as the staged prefix.
-- `candidates` *(string[], required)* — follow-up suggestions to show in the candidate window.
+- `candidates` *(string[], optional)* — follow-up suggestions. Omit to fall
+  back to the host's `AssociatedPhrases` dictionary keyed by `heldChar`'s
+  first character. The fallback requires the manifest to opt in via
+  `{ "key": "showAssociatedWords", "type": "system" }` and the toggle to
+  be on; otherwise the lookup yields an empty list and associated mode
+  is not entered.
 
 ### Event context (read-only)
 

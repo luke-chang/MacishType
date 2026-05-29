@@ -27,6 +27,17 @@ function navigationAction(event) {
 
 const validCompositionCharacters = new Set("abcdefghijklmnopqrstuvwxyz");
 
+// A-Z → common zh-Hant characters, for exercising the system-provided
+// associated-phrase flow.
+const keyMap = {
+  A: '的', B: '是', C: '一', D: '不', E: '有',
+  F: '在', G: '我', H: '人', I: '這', J: '了',
+  K: '個', L: '以', M: '會', N: '大', O: '為',
+  P: '來', Q: '要', R: '中', S: '國', T: '他',
+  U: '到', V: '就', W: '們', X: '上', Y: '可',
+  Z: '也',
+};
+
 // Module-scope demo table — kicks off at engine load. Hot-reload demo:
 // editing demo.txt externally triggers a module reload and this fetch
 // re-runs with the new content. Class methods read via closure.
@@ -57,16 +68,7 @@ function lookupCandidates(key) {
   if (values) {
     return values.map((text) => ({ candidate: text, annotation: 'demo' }));
   }
-  return [...key].map(toFullwidth).filter((c) => c !== null);
-}
-
-function lookupAssociatedCandidates(char) {
-  return [
-    char.repeat(4),
-    char.repeat(3),
-    char.repeat(2),
-    ...Array(20).fill(char),
-  ];
+  return [...key].map((c) => keyMap[c.toUpperCase()]).filter((c) => c !== undefined);
 }
 
 // Bridge contract is duck-typed: engines export a default class with any
@@ -76,7 +78,6 @@ function lookupAssociatedCandidates(char) {
 
 /** @typedef {import("../Utils/MacishType").InputEngine} InputEngine */
 /** @typedef {import("../Utils/MacishType").KeyEvent} KeyEvent */
-/** @typedef {import("../Utils/MacishType").ConfirmEvent} ConfirmEvent */
 
 /** @implements {InputEngine} */
 export default class JSExternalEngine {
@@ -191,22 +192,5 @@ export default class JSExternalEngine {
     }
     if (event.isComposing) return true;
     return false;
-  }
-
-  /** @param {ConfirmEvent} event */
-  candidateConfirmed(event) {
-    const { candidate } = event;
-    if (event.isAssociating) {
-      event.flushStaged(candidate);
-      return;
-    }
-    if (manifest.settings.showAssociatedWords && candidate.length === 1) {
-      const related = lookupAssociatedCandidates(candidate);
-      if (related.length > 0) {
-        event.enterAssociatedMode(candidate, related);
-        return;
-      }
-    }
-    event.flushStaged(candidate);
   }
 }

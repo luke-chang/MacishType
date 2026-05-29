@@ -104,10 +104,12 @@ extension JavaScriptEngine {
     /// `ManifestSettingsStore` so external writes propagate live via
     /// `UserDefaults.didChangeNotification`.
     struct EngineSettingsRenderer: View {
+        let engine: JavaScriptEngine
         let sections: [Manifest.SettingsSection]?
         @StateObject private var store: ManifestSettingsStore
 
         init(engine: JavaScriptEngine, sections: [Manifest.SettingsSection]?) {
+            self.engine = engine
             self.sections = sections
             _store = StateObject(wrappedValue: ManifestSettingsStore(engineID: engine.engineID))
         }
@@ -115,7 +117,7 @@ extension JavaScriptEngine {
         var body: some View {
             if let sections, !sections.isEmpty {
                 ForEach(sections.indices, id: \.self) { i in
-                    SectionView(store: store, section: sections[i])
+                    SectionView(engine: engine, store: store, section: sections[i])
                 }
             }
         }
@@ -136,6 +138,7 @@ extension JavaScriptEngine {
         }
 
         private struct SectionView: View {
+            let engine: JavaScriptEngine
             @ObservedObject var store: ManifestSettingsStore
             let section: Manifest.SettingsSection
 
@@ -153,7 +156,7 @@ extension JavaScriptEngine {
                         // id: \.key — index-based identity would reuse
                         // @State / @FocusState across slots after filtering.
                         ForEach(visibleFields, id: \.key) { field in
-                            FieldView(store: store, field: field)
+                            FieldView(engine: engine, store: store, field: field)
                         }
                     } header: {
                         Text(verbatim: section.title.resolved())
@@ -167,6 +170,7 @@ extension JavaScriptEngine {
         }
 
         private struct FieldView: View {
+            let engine: JavaScriptEngine
             @ObservedObject var store: ManifestSettingsStore
             let field: Manifest.SettingsField
 
@@ -178,9 +182,27 @@ extension JavaScriptEngine {
                     case .textField(let f):   TextFieldFieldView(store: store, field: f)
                     case .number(let f):      NumberFieldView(store: store, field: f)
                     case .multiSelect(let f): MultiSelectFieldView(store: store, field: f)
+                    case .system(let f):      SystemFieldView(engine: engine, field: f)
                     }
                 }
                 .disabled(field.disabledWhen?.evaluate(store.values) ?? false)
+            }
+        }
+
+        /// Renders a field whose UI / label / storage come from the system.
+        private struct SystemFieldView: View {
+            let engine: JavaScriptEngine
+            let field: Manifest.SystemField
+
+            var body: some View {
+                switch field.key {
+                case "showAssociatedWords":
+                    InputEngine.ShowAssociatedWordsToggle(
+                        engine: engine, defaultOverride: field.defaultValue)
+                default:
+                    // Schema validation guarantees we never land here.
+                    EmptyView()
+                }
             }
         }
 

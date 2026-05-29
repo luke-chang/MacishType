@@ -107,6 +107,37 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         "animationDuration",
     ]
 
+    // MARK: - System fields
+
+    /// Backs `lookupAssociatedCandidates(for:)` and the single-arg
+    /// `enterAssociatedMode` fallback while the manifest opts in.
+    private var associatedPhrasesHandle: AssociatedPhrases.Handle?
+
+    /// Maps a system feature identifier to the InputEngine subKey storing
+    /// its value. When adding a new feature: also update
+    /// `JSExternalEngine.clearStoredSettings` to clear on folder swap.
+    private static func systemFeatureSubKey(_ feature: String) -> String? {
+        switch feature {
+        case "showAssociatedWords": return InputEngine.showAssociatedWordsSubKey
+        default: return nil
+        }
+    }
+
+    /// First-time default for each `"type": "system"` field with a
+    /// `"default"` declared. Only writes when the standalone key has no
+    /// stored value — subsequent calls (after the user toggled) are no-ops.
+    private func applySystemFieldDefaults(_ manifest: Manifest) {
+        guard let sections = manifest.settings else { return }
+        for case .system(let sf) in sections.flatMap(\.fields) {
+            guard let defaultValue = sf.defaultValue,
+                  let subKey = Self.systemFeatureSubKey(sf.key) else { continue }
+            let storageKey = InputEngine.composedKey(engineID: engineID, subKey: subKey)
+            if UserDefaults.standard.object(forKey: storageKey) == nil {
+                UserDefaults.standard.set(defaultValue, forKey: storageKey)
+            }
+        }
+    }
+
     /// nil on missing / malformed manifest (already logged).
     nonisolated private static func parseManifest(in folder: URL) -> Manifest? {
         let manifestURL = folder.appending(path: manifestFileName)
@@ -152,6 +183,9 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // mutate this cache, not the parsed manifest — so reloading is the
         // single point where cache returns to declared-values state.
         candidateWindowCache = manifest?.candidateWindow ?? .init()
+        // Apply defaults before sanitize so the standalone keys are populated
+        // for the first read.
+        if let m = manifest { applySystemFieldDefaults(m) }
         sanitizeBlobAndRefreshCache()
     }
 
@@ -199,6 +233,18 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
         var result: [String: JSONValue] = [:]
         for (key, field) in declared {
+            // System fields read from the standalone key (populated by
+            // applySystemFieldDefaults before sanitize). The `?? false` tail
+            // only fires if there's no manifest default and no user choice.
+            if case .system(let sf) = field {
+                if let subKey = Self.systemFeatureSubKey(sf.key) {
+                    let storageKey = InputEngine.composedKey(engineID: engineID, subKey: subKey)
+                    let current = (UserDefaults.standard.object(forKey: storageKey) as? Bool)
+                        ?? sf.defaultValue ?? false
+                    result[key] = .bool(current)
+                }
+                continue
+            }
             if let stored = raw[key], field.accepts(stored) {
                 result[key] = stored
             } else {
@@ -883,6 +929,9 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         success = true
         Self.subscribeToLanguageChanges(self)
         super.load()
+        // After super.load() so a mid-load early return above doesn't acquire
+        // a handle for an engine that isn't actually live.
+        reconcileAssociatedPhrases(handle: &associatedPhrasesHandle)
     }
 
     /// Subclasses inspect this after `super.load()` to detect success vs
@@ -896,6 +945,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 
     override func unload() {
+        // Drop the handle before teardown, mirroring load's acquire order.
+        associatedPhrasesHandle = nil
         teardownContext()
         super.unload()
     }
@@ -921,6 +972,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     override func activate(context: InputEngineContext, clientIdentifier: String?) {
         super.activate(context: context, clientIdentifier: clientIdentifier)
+        // Catches toggle changes from between sessions — load() runs only once.
+        reconcileAssociatedPhrases(handle: &associatedPhrasesHandle)
         guard let instance = jsInstance(for: context) else { return }
         Self.invokeIfDefined(instance, "activate", withArguments: [])
     }
@@ -929,6 +982,10 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // Don't construct on deactivate — only call if instance already exists.
         guard let instance = jsInstances.object(forKey: context) else { return }
         Self.invokeIfDefined(instance, "deactivate", withArguments: [])
+    }
+
+    override func lookupAssociatedCandidates(for char: Character) -> [String] {
+        associatedPhrasesHandle?.phrases.lookup(char) ?? []
     }
 
     // MARK: Event Handling
@@ -962,31 +1019,46 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate?,
         candidateWindow: CandidateWindowState
     ) -> [EngineAction] {
-        dispatchCandidate("candidateConfirmed", context: context,
-                          candidate: candidate, absoluteIndex: absoluteIndex, raw: raw,
-                          candidateWindow: candidateWindow)
+        if let actions = dispatchCandidate(
+            "candidateConfirmed", context: context, candidate: candidate,
+            absoluteIndex: absoluteIndex, raw: raw, candidateWindow: candidateWindow) {
+            return actions
+        }
+        return super.candidateConfirmed(
+            context: context, candidate, absoluteIndex: absoluteIndex,
+            raw: raw, candidateWindow: candidateWindow)
     }
 
     override func candidateSelectionChanged(
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate,
         candidateWindow: CandidateWindowState
     ) -> [EngineAction] {
-        dispatchCandidate("candidateSelectionChanged", context: context,
-                          candidate: candidate, absoluteIndex: absoluteIndex, raw: raw,
-                          candidateWindow: candidateWindow)
+        if let actions = dispatchCandidate(
+            "candidateSelectionChanged", context: context, candidate: candidate,
+            absoluteIndex: absoluteIndex, raw: raw, candidateWindow: candidateWindow) {
+            return actions
+        }
+        return super.candidateSelectionChanged(
+            context: context, candidate, absoluteIndex: absoluteIndex,
+            raw: raw, candidateWindow: candidateWindow)
     }
 
+    /// Returns `nil` when the JS engine did not handle the callback —
+    /// neither returned `true` nor queued any event mutator. Caller falls
+    /// back to `super` in that case. Mirrors `handleKey`'s convention.
     private func dispatchCandidate(
         _ jsMethod: String,
         context: InputEngineContext, candidate: String, absoluteIndex: Int, raw: Candidate?,
         candidateWindow: CandidateWindowState
-    ) -> [EngineAction] {
-        guard let instance = jsInstance(for: context) else { return [] }
+    ) -> [EngineAction]? {
+        guard let instance = jsInstance(for: context) else { return nil }
         let sink = ActionSink()
         let event = makeConfirmEvent(
             context: context, candidate: candidate, absoluteIndex: absoluteIndex,
             raw: raw, candidateWindow: candidateWindow, sink: sink)
-        Self.invokeIfDefined(instance, jsMethod, withArguments: [event])
+        let handled = Self.invokeIfDefined(instance, jsMethod, withArguments: [event])?
+            .toBool() ?? false
+        if !handled && sink.actions.isEmpty { return nil }
         return sink.actions
     }
 
@@ -1296,7 +1368,16 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             let text = Self.resolved(append)?.toString() ?? ""
             sink.actions.append(.flushStaged(text))
         }
-        let enterAssociatedMode: @convention(block) (String, [String]) -> Void = { heldChar, candidates in
+        let enterAssociatedMode: @convention(block) (String, JSValue?) -> Void = { [weak self] heldChar, candidatesValue in
+            // Two-arg form uses the JS-supplied array; one-arg falls back to
+            // the system AssociatedPhrases lookup.
+            let candidates: [String]
+            if let resolved = Self.resolved(candidatesValue),
+               resolved.isArray, let arr = resolved.toArray() as? [String] {
+                candidates = arr
+            } else {
+                candidates = heldChar.first.flatMap { self?.lookupAssociatedCandidates(for: $0) } ?? []
+            }
             sink.actions.append(.enterAssociatedMode(heldChar, candidates))
         }
 

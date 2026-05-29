@@ -204,6 +204,7 @@ extension JavaScriptEngine {
             case textField(TextFieldField)
             case number(NumberField)
             case multiSelect(MultiSelectField)
+            case system(SystemField)
 
             var key: String {
                 switch self {
@@ -212,6 +213,7 @@ extension JavaScriptEngine {
                 case .textField(let f):   return f.key
                 case .number(let f):      return f.key
                 case .multiSelect(let f): return f.key
+                case .system(let f):      return f.key
                 }
             }
 
@@ -226,12 +228,40 @@ extension JavaScriptEngine {
                 case "textField":   self = .textField(try TextFieldField(from: decoder))
                 case "number":      self = .number(try NumberField(from: decoder))
                 case "multiSelect": self = .multiSelect(try MultiSelectField(from: decoder))
+                case "system":      self = .system(try SystemField(from: decoder))
                 default:
                     throw DecodingError.dataCorruptedError(
                         forKey: TypeKey.type, in: c,
                         debugDescription: "unknown settings field type: \(type)"
                     )
                 }
+            }
+        }
+
+        /// Borrows a host-provided UI / label / storage. `key` picks the
+        /// feature (currently only `"showAssociatedWords"`); unknown keys
+        /// throw at decode.
+        struct SystemField: Decodable {
+            static let supportedKeys: Set<String> = ["showAssociatedWords"]
+
+            let key: String
+            let defaultValue: Bool?
+
+            private enum CodingKeys: String, CodingKey {
+                case key, defaultValue = "default"
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                let parsedKey = try c.decode(String.self, forKey: .key)
+                guard Self.supportedKeys.contains(parsedKey) else {
+                    throw DecodingError.dataCorruptedError(
+                        forKey: CodingKeys.key, in: c,
+                        debugDescription: "unknown system field key: \(parsedKey)"
+                    )
+                }
+                self.key = parsedKey
+                self.defaultValue = try c.decodeIfPresent(Bool.self, forKey: .defaultValue)
             }
         }
 
@@ -562,6 +592,11 @@ extension JavaScriptEngine.Manifest.SettingsField {
             if case .array(let arr) = v {
                 return arr.allSatisfy { stored in f.options.contains { $0.value == stored } }
             }
+        case .system:
+            // System fields are intercepted in sanitizedSettings; returning
+            // false here means any stale blob entry falls through to the
+            // default path (also intercepted) and gets discarded.
+            return false
         }
         return false
     }
@@ -576,6 +611,7 @@ extension JavaScriptEngine.Manifest.SettingsField {
         case .number(let f):      return .number(f.default)
         case .picker(let f):      return f.defaultValue
         case .multiSelect(let f): return .array(f.defaultValues)
+        case .system(let f):      return .bool(f.defaultValue ?? false)
         }
     }
 
@@ -586,6 +622,7 @@ extension JavaScriptEngine.Manifest.SettingsField {
         case .textField(let f):   return f.disabledWhen
         case .number(let f):      return f.disabledWhen
         case .multiSelect(let f): return f.disabledWhen
+        case .system:             return nil   // not supported on system fields
         }
     }
 
@@ -596,6 +633,7 @@ extension JavaScriptEngine.Manifest.SettingsField {
         case .textField(let f):   return f.hiddenWhen
         case .number(let f):      return f.hiddenWhen
         case .multiSelect(let f): return f.hiddenWhen
+        case .system:             return nil
         }
     }
 }

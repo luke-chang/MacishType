@@ -540,9 +540,9 @@ extension InputEngine {
     struct ShowAssociatedWordsToggle: View {
         @AppStorage private var value: Bool
 
-        init(engine: InputEngine) {
+        init(engine: InputEngine, defaultOverride: Bool? = nil) {
             self._value = AppStorage(
-                wrappedValue: type(of: engine).defaultShowAssociatedWords,
+                wrappedValue: defaultOverride ?? type(of: engine).defaultShowAssociatedWords,
                 InputEngine.composedKey(engineID: engine.engineID, subKey: InputEngine.showAssociatedWordsSubKey))
         }
 

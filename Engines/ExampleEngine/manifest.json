@@ -6,8 +6,7 @@
       "fields": [
         {
           "key": "showAssociatedWords",
-          "type": "toggle",
-          "label": { "en": "Show associated words", "zh-Hant": "顯示關聯字" },
+          "type": "system",
           "default": true
         }
       ]
