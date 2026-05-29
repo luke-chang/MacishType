@@ -894,7 +894,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         guard index >= 0 else { return }
 
         // -1 (no selection) is treated as row 0 so number-key commit still
-        // works in the suspend state (e.g. associated-phrase mode).
+        // works in the suspend state (e.g. associated mode).
         guard let (rowIdx, _) = findGridPosition(of: max(selectedIndex, 0)) else { return }
         let row = gridRows[rowIdx]
         guard index < row.items.count else { return }

@@ -196,8 +196,8 @@ extension JavaScriptEngine {
 
             var body: some View {
                 switch field.key {
-                case "showAssociatedWords":
-                    InputEngine.ShowAssociatedWordsToggle(
+                case "enableAssociatedMode":
+                    InputEngine.EnableAssociatedModeToggle(
                         engine: engine, defaultOverride: field.defaultValue)
                 default:
                     // Schema validation guarantees we never land here.

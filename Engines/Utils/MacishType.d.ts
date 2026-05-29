@@ -167,15 +167,15 @@ export interface EventMutators {
    */
   flushStaged(append?: string): void;
   /**
-   * Enter associated-phrase mode: `heldChar` becomes staged marked text
+   * Enter associated mode: `heldChar` becomes staged marked text
    * and `candidates` appear as suggested follow-ups. Picking a candidate
    * commits `heldChar` followed by the chosen candidate; typing anything
    * else commits `heldChar` alone and the new key is processed normally.
    *
-   * Omitting `candidates` falls back to the host's `AssociatedPhrases`
+   * Omitting `candidates` falls back to the host's `AssociatedDictionary`
    * dictionary keyed by `heldChar`'s first character. The fallback only
    * yields suggestions when the manifest opts in via a
-   * `{ "key": "showAssociatedWords", "type": "system" }` field and the
+   * `{ "key": "enableAssociatedMode", "type": "system" }` field and the
    * toggle is on; otherwise the array is empty and no associated mode
    * is entered.
    */

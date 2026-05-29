@@ -239,10 +239,10 @@ extension JavaScriptEngine {
         }
 
         /// Borrows a host-provided UI / label / storage. `key` picks the
-        /// feature (currently only `"showAssociatedWords"`); unknown keys
+        /// feature (currently only `"enableAssociatedMode"`); unknown keys
         /// throw at decode.
         struct SystemField: Decodable {
-            static let supportedKeys: Set<String> = ["showAssociatedWords"]
+            static let supportedKeys: Set<String> = ["enableAssociatedMode"]
 
             let key: String
             let defaultValue: Bool?

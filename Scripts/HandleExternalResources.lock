@@ -8,5 +8,5 @@
 # upstream and bumps the pinned SHA. Manual edits also work.
 #
 
-AssociatedPhrases.zh-Hant.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ GenerateAssociatedPhrases.swift
+AssociatedDictionary.zh-Hant.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ GenerateAssociatedDictionary.swift
 McBopomofo.LICENSE.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/LICENSE.txt -

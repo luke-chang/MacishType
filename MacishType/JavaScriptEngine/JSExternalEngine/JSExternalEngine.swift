@@ -81,7 +81,7 @@ class JSExternalEngine: JavaScriptEngine {
         for subKey in [
             InputEngine.directionSubKey,
             InputEngine.fontSizeSubKey,
-            InputEngine.showAssociatedWordsSubKey,
+            InputEngine.enableAssociatedModeSubKey,
         ] {
             defaults.removeObject(forKey: InputEngine.composedKey(
                 engineID: engineID, subKey: subKey))

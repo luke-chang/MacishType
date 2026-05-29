@@ -28,7 +28,7 @@ function navigationAction(event) {
 const validCompositionCharacters = new Set("abcdefghijklmnopqrstuvwxyz");
 
 // A-Z → common zh-Hant characters, for exercising the system-provided
-// associated-phrase flow.
+// associated mode.
 const keyMap = {
   A: '的', B: '是', C: '一', D: '不', E: '有',
   F: '在', G: '我', H: '人', I: '這', J: '了',

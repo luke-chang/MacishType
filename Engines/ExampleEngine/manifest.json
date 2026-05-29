@@ -5,7 +5,7 @@
       "title": { "en": "Typing", "zh-Hant": "輸入行為" },
       "fields": [
         {
-          "key": "showAssociatedWords",
+          "key": "enableAssociatedMode",
           "type": "system",
           "default": true
         }

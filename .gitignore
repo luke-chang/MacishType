@@ -8,5 +8,5 @@ xcuserdata/
 Engines/**/_storage/
 
 # Downloaded external resources (managed by Scripts/HandleExternalResources.sh).
-MacishType/Resources/AssociatedPhrases.*.txt
+MacishType/Resources/AssociatedDictionary.*.txt
 MacishType/Resources/**/*.LICENSE.txt

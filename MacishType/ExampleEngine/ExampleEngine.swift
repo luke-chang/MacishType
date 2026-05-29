@@ -8,11 +8,11 @@ class ExampleEngine: InputEngine {
 
     override var engineID: String { "Example" }
 
-    // Default to on so demo users see the associated-phrase feature
+    // Default to on so demo users see the associated mode feature
     // immediately after enabling Example, without having to open Settings.
-    override class var defaultShowAssociatedWords: Bool { true }
+    override class var defaultEnableAssociatedMode: Bool { true }
 
-    // A-Z → common zh-Hant characters, for demoing the AssociatedPhrases flow.
+    // A-Z → common zh-Hant characters, for demoing the AssociatedDictionary flow.
     private static let keyMap: [Character: Character] = [
         "A": "的", "B": "是", "C": "一", "D": "不", "E": "有",
         "F": "在", "G": "我", "H": "人", "I": "這", "J": "了",
@@ -22,14 +22,14 @@ class ExampleEngine: InputEngine {
         "Z": "也",
     ]
 
-    private var associatedPhrasesHandle: AssociatedPhrases.Handle?
+    private var associatedDictionaryHandle: AssociatedDictionary.Handle?
 
     override var settingsView: AnyView {
         AnyView(
             InputEngine.settingsForm {
                 InputEngine.CandidateWindowSection(engine: self)
                 Section("Typing") {
-                    InputEngine.ShowAssociatedWordsToggle(engine: self)
+                    InputEngine.EnableAssociatedModeToggle(engine: self)
                 }
             }
         )
@@ -37,16 +37,16 @@ class ExampleEngine: InputEngine {
 
     override func load() {
         super.load()
-        reconcileAssociatedPhrases(handle: &associatedPhrasesHandle)
+        reconcileAssociatedDictionary(handle: &associatedDictionaryHandle)
     }
 
     override func activate(context: InputEngineContext, clientIdentifier: String?) {
         super.activate(context: context, clientIdentifier: clientIdentifier)
-        reconcileAssociatedPhrases(handle: &associatedPhrasesHandle)
+        reconcileAssociatedDictionary(handle: &associatedDictionaryHandle)
     }
 
     override func unload() {
-        associatedPhrasesHandle = nil
+        associatedDictionaryHandle = nil
         super.unload()
     }
 
@@ -105,6 +105,6 @@ class ExampleEngine: InputEngine {
     }
 
     override func lookupAssociatedCandidates(for char: Character) -> [String] {
-        associatedPhrasesHandle?.phrases.lookup(char) ?? []
+        associatedDictionaryHandle?.lookup(char) ?? []
     }
 }

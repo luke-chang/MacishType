@@ -147,7 +147,7 @@ The schema is minimal — only `key`, `type`, and `default` are accepted;
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `key` | string | yes | System feature identifier. Currently the only supported value is `"showAssociatedWords"`. |
+| `key` | string | yes | System feature identifier. Currently the only supported value is `"enableAssociatedMode"`. |
 | `default` | boolean | | Initial value applied the first time this engine loads, before the user has made a choice. Omit and the host's own default is used. |
 
 ```jsonc
@@ -155,7 +155,7 @@ The schema is minimal — only `key`, `type`, and `default` are accepted;
   "title": { "en": "Typing", "zh-Hant": "輸入行為" },
   "fields": [
     {
-      "key": "showAssociatedWords",
+      "key": "enableAssociatedMode",
       "type": "system",
       "default": true
     }
@@ -163,8 +163,8 @@ The schema is minimal — only `key`, `type`, and `default` are accepted;
 }
 ```
 
-When `showAssociatedWords` is on, calling `event.enterAssociatedMode(heldChar)`
-without a second argument falls back to the host's `AssociatedPhrases`
+When `enableAssociatedMode` is on, calling `event.enterAssociatedMode(heldChar)`
+without a second argument falls back to the host's `AssociatedDictionary`
 dictionary keyed by this engine's `TISIntendedLanguage`.
 
 #### Localizable
@@ -310,8 +310,8 @@ The host **falls back** when ALL of the following hold:
 1. If `event.isAssociating` is true → flush the staged prefix together
    with this committed character, then exit associated mode.
 2. Else if `event.candidate.length === 1` AND
-   `manifest.settings.showAssociatedWords` is true AND the host's
-   `AssociatedPhrases` dictionary has follow-ups for that character →
+   `manifest.settings.enableAssociatedMode` is true AND the host's
+   `AssociatedDictionary` dictionary has follow-ups for that character →
    enter associated mode with those follow-ups.
 3. Otherwise → flush staged.
 
@@ -414,16 +414,16 @@ optionally append more text.
 
 #### `enterAssociatedMode(heldChar, candidates?)`
 
-Enter associated-phrase mode: `heldChar` becomes staged marked text and
+Enter associated mode: `heldChar` becomes staged marked text and
 `candidates` appear as suggested follow-ups. Picking a candidate commits
 `heldChar + chosen`; typing anything else commits `heldChar` alone and
 the new key is processed normally.
 
 - `heldChar` *(string, required)* — the just-committed character to keep as the staged prefix.
 - `candidates` *(string[], optional)* — follow-up suggestions. Omit to fall
-  back to the host's `AssociatedPhrases` dictionary keyed by `heldChar`'s
+  back to the host's `AssociatedDictionary` dictionary keyed by `heldChar`'s
   first character. The fallback requires the manifest to opt in via
-  `{ "key": "showAssociatedWords", "type": "system" }` and the toggle to
+  `{ "key": "enableAssociatedMode", "type": "system" }` and the toggle to
   be on; otherwise the lookup yields an empty list and associated mode
   is not entered.
 
@@ -434,7 +434,7 @@ the new key is processed normally.
 | `markedText` | Current composing text. |
 | `stagedText` | Prefix already staged for commit. |
 | `isComposing` | Whether marked text is non-empty. |
-| `isAssociating` | Whether the engine is in associated-phrase mode. |
+| `isAssociating` | Whether the engine is in associated mode. |
 | `candidateWindow` | Snapshot of the candidate window state at method entry. |
 
 `KeyEvent` field names and semantics track web
@@ -563,7 +563,7 @@ Read-only snapshot of the user's current settings, keyed by the manifest
 a `toggle` field's value is always a boolean, etc.
 
 ```js
-const showAssoc = manifest.settings.showAssociatedWords;
+const showAssoc = manifest.settings.enableAssociatedMode;
 ```
 
 Populated before engine module evaluation (read at module top level
@@ -599,7 +599,7 @@ Most code should just read `manifest.settings` at the point of use:
 ```js
 export default class MyEngine {
   handleKey(event) {
-    if (manifest.settings.showAssociatedWords) { ... }
+    if (manifest.settings.enableAssociatedMode) { ... }
   }
 }
 ```

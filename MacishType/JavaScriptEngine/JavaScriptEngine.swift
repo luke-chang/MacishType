@@ -111,14 +111,14 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     /// Backs `lookupAssociatedCandidates(for:)` and the single-arg
     /// `enterAssociatedMode` fallback while the manifest opts in.
-    private var associatedPhrasesHandle: AssociatedPhrases.Handle?
+    private var associatedDictionaryHandle: AssociatedDictionary.Handle?
 
     /// Maps a system feature identifier to the InputEngine subKey storing
     /// its value. When adding a new feature: also update
     /// `JSExternalEngine.clearStoredSettings` to clear on folder swap.
     private static func systemFeatureSubKey(_ feature: String) -> String? {
         switch feature {
-        case "showAssociatedWords": return InputEngine.showAssociatedWordsSubKey
+        case "enableAssociatedMode": return InputEngine.enableAssociatedModeSubKey
         default: return nil
         }
     }
@@ -931,7 +931,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         super.load()
         // After super.load() so a mid-load early return above doesn't acquire
         // a handle for an engine that isn't actually live.
-        reconcileAssociatedPhrases(handle: &associatedPhrasesHandle)
+        reconcileAssociatedDictionary(handle: &associatedDictionaryHandle)
     }
 
     /// Subclasses inspect this after `super.load()` to detect success vs
@@ -946,7 +946,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     override func unload() {
         // Drop the handle before teardown, mirroring load's acquire order.
-        associatedPhrasesHandle = nil
+        associatedDictionaryHandle = nil
         teardownContext()
         super.unload()
     }
@@ -973,7 +973,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     override func activate(context: InputEngineContext, clientIdentifier: String?) {
         super.activate(context: context, clientIdentifier: clientIdentifier)
         // Catches toggle changes from between sessions — load() runs only once.
-        reconcileAssociatedPhrases(handle: &associatedPhrasesHandle)
+        reconcileAssociatedDictionary(handle: &associatedDictionaryHandle)
         guard let instance = jsInstance(for: context) else { return }
         Self.invokeIfDefined(instance, "activate", withArguments: [])
     }
@@ -985,7 +985,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 
     override func lookupAssociatedCandidates(for char: Character) -> [String] {
-        associatedPhrasesHandle?.phrases.lookup(char) ?? []
+        associatedDictionaryHandle?.lookup(char) ?? []
     }
 
     // MARK: Event Handling
@@ -1370,7 +1370,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         }
         let enterAssociatedMode: @convention(block) (String, JSValue?) -> Void = { [weak self] heldChar, candidatesValue in
             // Two-arg form uses the JS-supplied array; one-arg falls back to
-            // the system AssociatedPhrases lookup.
+            // the system AssociatedDictionary lookup.
             let candidates: [String]
             if let resolved = Self.resolved(candidatesValue),
                resolved.isArray, let arr = resolved.toArray() as? [String] {

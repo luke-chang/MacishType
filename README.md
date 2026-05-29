@@ -121,7 +121,7 @@ Subclass [`InputEngine`](MacishType/InputEngine.swift), override `engineID` and 
 
 For menu and palette icons, [`Scripts/GenerateIcon.swift`](Scripts/GenerateIcon.swift) produces a system-style rounded-square TIFF with a character cut out — e.g. `./Scripts/GenerateIcon.swift 例 ExampleEngine/Resources/ExampleMenuIcon`.
 
-Reference: [`MacishType/ExampleEngine/`](MacishType/ExampleEngine/) — the bundled Swift engine, including associated-phrase mode, a Settings form, and the resources layout.
+Reference: [`MacishType/ExampleEngine/`](MacishType/ExampleEngine/) — the bundled Swift engine, including associated mode, a Settings form, and the resources layout.
 
 ## Writing your own candidate window
 

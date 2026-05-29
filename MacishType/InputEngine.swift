@@ -20,7 +20,7 @@ class InputEngineContext {
     // True between paired engine.activate/deactivate hooks (not derivable).
     var isActivated: Bool = false
 
-    // Controller-driven associated-phrase mode. Engines opt-in by emitting
+    // Controller-driven associated mode. Engines opt-in by emitting
     // .enterAssociatedMode; Controller manages the key flow while this is true.
     // Engines wanting full customization should NOT set this and implement
     // their own state machine.
@@ -65,7 +65,7 @@ enum EngineAction {
     // append string (both may be empty) via a single insertText call, then
     // hide window and reset context.
     case flushStaged(String = "")
-    // Enter associated-phrase mode: held char becomes staged marked text,
+    // Enter associated mode: held char becomes staged marked text,
     // candidates are displayed with anchorAt=1 initialHighlight=-1. Payload
     // carries pre-looked-up candidates so Controller doesn't re-query.
     case enterAssociatedMode(String, [String])
@@ -145,7 +145,7 @@ class InputEngine {
 
     nonisolated static let directionSubKey = "candidateWindowDirection"
     nonisolated static let fontSizeSubKey = "candidateWindowFontSize"
-    nonisolated static let showAssociatedWordsSubKey = "showAssociatedWords"
+    nonisolated static let enableAssociatedModeSubKey = "enableAssociatedMode"
     nonisolated static let manifestSettingsSubKey = "manifestSettings"
 
     /// Per-instance: same class may have multiple instances with distinct
@@ -173,7 +173,7 @@ class InputEngine {
     // given subclass, hence `class var`.
     class var defaultDirection: CandidateWindow.LayoutDirection { .horizontal }
     class var defaultFontSize: Int { 16 }
-    class var defaultShowAssociatedWords: Bool { false }
+    class var defaultEnableAssociatedMode: Bool { false }
 
     // MARK: Input Source Monitoring
 
@@ -240,7 +240,7 @@ class InputEngine {
     // up `Self.defaultX` overrides and any persisted UserDefaults value.
     var candidateWindowDirection: CandidateWindow.LayoutDirection = InputEngine.defaultDirection
     var candidateWindowFontSize: Int = InputEngine.defaultFontSize
-    var showAssociatedWords: Bool = InputEngine.defaultShowAssociatedWords
+    var enableAssociatedMode: Bool = InputEngine.defaultEnableAssociatedMode
 
     init() {
         reloadConfig()
@@ -250,7 +250,7 @@ class InputEngine {
     func reloadConfig() {
         candidateWindowDirection = defaultsValue(Self.directionSubKey, fallback: Self.defaultDirection)
         candidateWindowFontSize = defaultsValue(Self.fontSizeSubKey, fallback: Self.defaultFontSize)
-        showAssociatedWords = defaultsValue(Self.showAssociatedWordsSubKey, fallback: Self.defaultShowAssociatedWords)
+        enableAssociatedMode = defaultsValue(Self.enableAssociatedModeSubKey, fallback: Self.defaultEnableAssociatedMode)
     }
 
     private func defaultsValue<T>(_ subKey: String, fallback: T) -> T {
@@ -373,7 +373,7 @@ class InputEngine {
         if context.isAssociating {
             return [.flushStaged(candidate)]
         }
-        if showAssociatedWords,
+        if enableAssociatedMode,
            candidate.count == 1, let first = candidate.first {
             let related = lookupAssociatedCandidates(for: first)
             if !related.isEmpty {
@@ -535,15 +535,15 @@ extension InputEngine {
         }
     }
 
-    /// Toggle for the associated-phrase mode opt-in. Engines opting in to the
+    /// Toggle for the associated mode opt-in. Engines opting in to the
     /// feature include this in their `settingsView`.
-    struct ShowAssociatedWordsToggle: View {
+    struct EnableAssociatedModeToggle: View {
         @AppStorage private var value: Bool
 
         init(engine: InputEngine, defaultOverride: Bool? = nil) {
             self._value = AppStorage(
-                wrappedValue: defaultOverride ?? type(of: engine).defaultShowAssociatedWords,
-                InputEngine.composedKey(engineID: engine.engineID, subKey: InputEngine.showAssociatedWordsSubKey))
+                wrappedValue: defaultOverride ?? type(of: engine).defaultEnableAssociatedMode,
+                InputEngine.composedKey(engineID: engine.engineID, subKey: InputEngine.enableAssociatedModeSubKey))
         }
 
         var body: some View {

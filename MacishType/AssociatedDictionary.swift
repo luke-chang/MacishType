@@ -1,12 +1,12 @@
 import Foundation
 import OSLog
 
-/// Locale-keyed associated-phrase dictionary. Engines `acquire(for:)` a
-/// `Handle`; first acquire loads `AssociatedPhrases.<locale>.txt`, last
+/// Locale-keyed associated-mode dictionary. Engines `acquire(for:)` a
+/// `Handle`; first acquire loads `AssociatedDictionary.<locale>.txt`, last
 /// release unloads.
-final class AssociatedPhrases {
+final class AssociatedDictionary {
     private struct Slot {
-        let instance: AssociatedPhrases
+        let instance: AssociatedDictionary
         var count: Int
     }
 
@@ -25,60 +25,56 @@ final class AssociatedPhrases {
         self.entries = Self.load(locale: locale)
     }
 
-    func lookup(_ char: Character) -> [String] {
-        entries[char] ?? []
-    }
-
-    private static func incRef(_ locale: String) -> AssociatedPhrases {
+    private static func incRef(_ locale: String) -> AssociatedDictionary {
         if var slot = slots[locale] {
             slot.count += 1
             slots[locale] = slot
             #if DEBUG
-            Logger.associatedPhrases.debug("AssociatedPhrases.\(locale, privacy: .public) acquired (refcount=\(slot.count, privacy: .public))")
+            Logger.associatedDictionary.debug("AssociatedDictionary.\(locale, privacy: .public) acquired (refcount=\(slot.count, privacy: .public))")
             #endif
             return slot.instance
         }
-        let new = AssociatedPhrases(locale: locale)
+        let new = AssociatedDictionary(locale: locale)
         slots[locale] = Slot(instance: new, count: 1)
         #if DEBUG
-        Logger.associatedPhrases.debug("AssociatedPhrases.\(locale, privacy: .public) loaded (\(new.entries.count, privacy: .public) prefixes, refcount=1)")
+        Logger.associatedDictionary.debug("AssociatedDictionary.\(locale, privacy: .public) loaded (\(new.entries.count, privacy: .public) prefixes, refcount=1)")
         #endif
         return new
     }
 
     private static func decRef(_ locale: String) {
         guard var slot = slots[locale], slot.count > 0 else {
-            Logger.associatedPhrases.fault("AssociatedPhrases.\(locale, privacy: .public) released below zero")
+            Logger.associatedDictionary.fault("AssociatedDictionary.\(locale, privacy: .public) released below zero")
             return
         }
         slot.count -= 1
         if slot.count == 0 {
             slots.removeValue(forKey: locale)
             #if DEBUG
-            Logger.associatedPhrases.debug("AssociatedPhrases.\(locale, privacy: .public) unloaded")
+            Logger.associatedDictionary.debug("AssociatedDictionary.\(locale, privacy: .public) unloaded")
             #endif
         } else {
             slots[locale] = slot
             #if DEBUG
-            Logger.associatedPhrases.debug("AssociatedPhrases.\(locale, privacy: .public) released (refcount=\(slot.count, privacy: .public))")
+            Logger.associatedDictionary.debug("AssociatedDictionary.\(locale, privacy: .public) released (refcount=\(slot.count, privacy: .public))")
             #endif
         }
     }
 
     private static func load(locale: String) -> [Character: [String]] {
-        let resource = "AssociatedPhrases.\(locale)"
+        let resource = "AssociatedDictionary.\(locale)"
         guard let url = Bundle.main.url(forResource: resource, withExtension: "txt") else {
-            Logger.associatedPhrases.fault("\(resource, privacy: .public).txt not found in main bundle (run `make prepare`?)")
+            Logger.associatedDictionary.fault("\(resource, privacy: .public).txt not found in main bundle (run `make prepare`?)")
             return [:]
         }
         guard let content = try? String(contentsOf: url, encoding: .utf8) else {
-            Logger.associatedPhrases.fault("\(resource, privacy: .public).txt exists but could not be read")
+            Logger.associatedDictionary.fault("\(resource, privacy: .public).txt exists but could not be read")
             return [:]
         }
         var entries: [Character: [String]] = [:]
-        for line in content.split(separator: "\n", omittingEmptySubsequences: true) {
-            if line.hasPrefix("#") { continue }
-            let tokens = line.split(separator: " ", omittingEmptySubsequences: true)
+        for raw in content.split(separator: "\n", omittingEmptySubsequences: true) {
+            if raw.hasPrefix("#") { continue }
+            let tokens = raw.split(separator: " ", omittingEmptySubsequences: true)
             guard tokens.count >= 2,
                   tokens[0].count == 1, let key = tokens[0].first
             else { continue }
@@ -89,16 +85,20 @@ final class AssociatedPhrases {
 
     /// RAII handle: releasing it (nil-assign or dealloc) decrements the refcount.
     final class Handle {
-        let phrases: AssociatedPhrases
+        private let instance: AssociatedDictionary
         private let locale: String
 
         fileprivate init(locale: String) {
             self.locale = locale
-            self.phrases = AssociatedPhrases.incRef(locale)
+            self.instance = AssociatedDictionary.incRef(locale)
         }
 
         deinit {
-            AssociatedPhrases.decRef(locale)
+            AssociatedDictionary.decRef(locale)
+        }
+
+        func lookup(_ char: Character) -> [String] {
+            instance.entries[char] ?? []
         }
     }
 }
@@ -106,13 +106,13 @@ final class AssociatedPhrases {
 /// Reconcile a `Handle?` ivar against current toggle + locale. Engines call
 /// this from `load()` and `activate()`; idempotent.
 extension InputEngine {
-    func reconcileAssociatedPhrases(handle: inout AssociatedPhrases.Handle?) {
-        guard showAssociatedWords, let lang = intendedLanguage else {
+    func reconcileAssociatedDictionary(handle: inout AssociatedDictionary.Handle?) {
+        guard enableAssociatedMode, let lang = intendedLanguage else {
             handle = nil
             return
         }
         if handle == nil {
-            handle = AssociatedPhrases.acquire(for: lang)
+            handle = AssociatedDictionary.acquire(for: lang)
         }
     }
 }
