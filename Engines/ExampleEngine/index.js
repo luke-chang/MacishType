@@ -1,6 +1,7 @@
 // JS-port of Swift ExampleEngine — exercises the JavaScriptEngine bridge
-// surface end-to-end (handleKey rules, candidate window, fullwidth, nav,
-// associated mode).
+// surface end-to-end (handleKey rules, candidate window, fullwidth,
+// associated mode). Standard nav keys, Enter, and indexLabels keys are
+// handled by the host while the candidate window is visible.
 
 function toFullwidth(char) {
   if (char.length !== 1) return null;
@@ -8,21 +9,6 @@ function toFullwidth(char) {
   const code = char.charCodeAt(0);
   if (code < 0x21 || code > 0x7E) return null;
   return String.fromCharCode(code + 0xFEE0);
-}
-
-function navigationAction(event) {
-  switch (event.code) {
-    case "Tab": return { direction: event.shiftKey ? "itemBackward" : "itemForward", wrapping: true };
-    case "ArrowLeft": return { direction: "left" };
-    case "ArrowRight": return { direction: "right" };
-    case "ArrowDown": return { direction: "down" };
-    case "ArrowUp": return { direction: "up" };
-    case "PageUp": return { direction: "pageUp" };
-    case "PageDown": return { direction: "pageDown" };
-    case "Home": return { direction: "home" };
-    case "End": return { direction: "end" };
-    default: return null;
-  }
 }
 
 const validCompositionCharacters = new Set("abcdefghijklmnopqrstuvwxyz");
@@ -71,6 +57,11 @@ function lookupCandidates(key) {
   return [...key].map((c) => keyMap[c.toUpperCase()]).filter((c) => c !== undefined);
 }
 
+function applyComposition(event, marked) {
+  event.updateMarkedText(marked);
+  event.updateCandidates(lookupCandidates(marked));
+}
+
 // Bridge contract is duck-typed: engines export a default class with any
 // of `activate / deactivate / handleKey / candidateConfirmed /
 // candidateSelectionChanged`. Methods absent from the class are skipped.
@@ -83,114 +74,40 @@ function lookupCandidates(key) {
 export default class JSExternalEngine {
   /** @param {KeyEvent} event */
   handleKey(event) {
-    // Base rule 1: Cmd/Ctrl bypass — let modifier shortcuts pass through.
-    if (event.metaKey || event.ctrlKey) {
-      if (event.isComposing) return true;
-      return false;
-    }
-
-    // Base rule 2: indexLabels quick-commit while composing. `event.key`
-    // returns named-key strings (e.g. "Backspace") for non-character keys,
-    // so the `length === 1` guard is required before treating it as a
-    // candidate label character.
-    if (event.isComposing && !event.altKey
-        && event.key && event.key.length === 1) {
-      const idx = event.candidateWindow.candidateIndex(event.key);
-      if (idx !== null) {
-        event.commitCandidateAtIndex(idx);
-        return true;
+    if (event.isComposing) {
+      if (event.code === "Escape") {
+        event.flushStaged();
+      } else if (event.code === "Space") {
+        const first = lookupCandidates(event.markedText)[0];
+        first ? event.commit(first) : event.resetContext();
+      } else if (event.code === "Backspace") {
+        const newMarked = event.markedText.slice(0, -1);
+        newMarked ? applyComposition(event, newMarked) : event.resetContext();
+      } else if (!event.metaKey && !event.ctrlKey && !event.altKey
+                 && event.key.length === 1
+                 && validCompositionCharacters.has(event.key)) {
+        applyComposition(event, event.markedText + event.key.toUpperCase());
       }
-    }
-
-    // Base rule 3: Uppercase letter passthrough. Single-char guard, see rule 2.
-    if (!event.altKey && event.key
-        && event.key.length === 1
-        && event.key.toUpperCase() === event.key
-        && event.key.toLowerCase() !== event.key) {
-      if (event.isComposing) return true;
-      event.flushStaged(event.key);
+      // Anything not explicitly handled is eaten so composing stays intact.
       return true;
     }
 
-    // Base rule 4: Esc.
-    if (event.code === "Escape") {
-      if (!event.isComposing) return false;
-      event.flushStaged();
-      return true;
-    }
+    if (event.metaKey || event.ctrlKey) return false;
 
-    // Base rule 5: Navigation (arrows, Tab, Page, Home/End).
-    const nav = navigationAction(event);
-    if (nav) {
-      if (!event.isComposing) return false;
-      event.navigateCandidates(
-        nav.direction,
-        nav.wrapping ? { wrapping: true } : undefined
-      );
-      return true;
-    }
-
-    // Base rule 6: Enter.
-    if (event.code === "Enter") {
-      if (!event.isComposing) return false;
-      event.commitSelectedCandidate();
-      return true;
-    }
-
-    // Base rule 7: Option+key fullwidth via keyIgnoringModifiers so the
-    // mapping follows the active layout (Dvorak / AZERTY etc.).
+    // Option+printable: layout-aware fullwidth pass-through.
     if (event.altKey) {
       const fw = toFullwidth(event.keyIgnoringModifiers);
-      if (fw) {
-        if (event.isComposing) return true;
-        event.flushStaged(fw);
-        return true;
-      }
-    }
-
-    // Engine-specific Space / Backspace / letter handling.
-    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
-
-    // Named-key actions must run before the character path below: otherwise
-    // Space (`event.key === " "` passes length guard but isn't in
-    // validCompositionCharacters) and Backspace (length-9 name fails guard)
-    // would both hit the composing-default-true trap and silently no-op.
-    if (event.code === "Space") {
-      // commit first candidate (engine-driven, runs candidateConfirmed pipeline)
-      if (!event.isComposing) return false;
-      const first = lookupCandidates(event.markedText)[0];
-      if (first !== undefined) {
-        event.commit(first);
-      } else {
-        event.resetContext();
-      }
-      return true;
-    }
-    if (event.code === "Backspace") {
-      if (!event.isComposing) return false;
-      const newMarked = event.markedText.slice(0, -1);
-      if (newMarked.length === 0) {
-        event.resetContext();
-        return true;
-      }
-      event.updateMarkedText(newMarked);
-      event.updateCandidates(lookupCandidates(newMarked));
+      if (!fw) return false;
+      event.flushStaged(fw);
       return true;
     }
 
-    // Character composition path — letter keys produce a single-char key.
-    if (!event.key || event.key.length !== 1) {
-      if (event.isComposing) return true;
-      return false;
-    }
-    const char = event.key;
-    if (validCompositionCharacters.has(char)) {
-      const newMarked = event.markedText + char.toUpperCase();
-      event.updateMarkedText(newMarked);
-      event.updateCandidates(lookupCandidates(newMarked));
+    // Plain a-z starts a composing session.
+    if (event.key.length === 1
+        && validCompositionCharacters.has(event.key)) {
+      applyComposition(event, event.key.toUpperCase());
       return true;
     }
-    if (event.isComposing) return true;
     return false;
   }
 }

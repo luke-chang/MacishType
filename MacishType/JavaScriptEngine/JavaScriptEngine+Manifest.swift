@@ -82,11 +82,14 @@ extension JavaScriptEngine {
             var horizontalMaxVisibleRows: Int?
             var verticalMinVisibleRows: Int?
             var expandable: Bool?
+            var handleNavigationKeys: Bool?
+            var handleIndexLabelKeys: Bool?
 
             private enum CodingKeys: String, CodingKey {
                 case layoutDirection, fontSize, indexLabels, pageSize
                 case widerExpandedColumns, moveOnExpand
                 case horizontalMaxVisibleRows, verticalMinVisibleRows, expandable
+                case handleNavigationKeys, handleIndexLabelKeys
             }
 
             init(
@@ -98,7 +101,9 @@ extension JavaScriptEngine {
                 moveOnExpand: Bool? = nil,
                 horizontalMaxVisibleRows: Int? = nil,
                 verticalMinVisibleRows: Int? = nil,
-                expandable: Bool? = nil
+                expandable: Bool? = nil,
+                handleNavigationKeys: Bool? = nil,
+                handleIndexLabelKeys: Bool? = nil
             ) {
                 self.layoutDirection = layoutDirection
                 self.fontSize = fontSize
@@ -109,6 +114,8 @@ extension JavaScriptEngine {
                 self.horizontalMaxVisibleRows = horizontalMaxVisibleRows
                 self.verticalMinVisibleRows = verticalMinVisibleRows
                 self.expandable = expandable
+                self.handleNavigationKeys = handleNavigationKeys
+                self.handleIndexLabelKeys = handleIndexLabelKeys
             }
 
             init(from decoder: Decoder) throws {
@@ -120,6 +127,8 @@ extension JavaScriptEngine {
                 horizontalMaxVisibleRows = Self.tolerant(c, .horizontalMaxVisibleRows, as: Int.self)
                 verticalMinVisibleRows = Self.tolerant(c, .verticalMinVisibleRows, as: Int.self)
                 expandable = Self.tolerant(c, .expandable, as: Bool.self)
+                handleNavigationKeys = Self.tolerant(c, .handleNavigationKeys, as: Bool.self)
+                handleIndexLabelKeys = Self.tolerant(c, .handleIndexLabelKeys, as: Bool.self)
 
                 // CandidateWindowConfiguration has didSet preconditions on
                 // these two (always-on, not stripped in release). Validate

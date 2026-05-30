@@ -12,6 +12,12 @@ enum KeyboardEventMapping {
         macKeyCodeToWebCode[keyCode] ?? ""
     }
 
+    /// Reverse lookup: web `code` string back to Mac virtual keyCode.
+    /// nil for unknown codes (or `""`).
+    static func keyCode(forWebCode code: String) -> UInt16? {
+        webCodeToMacKeyCode[code]
+    }
+
     static func webKey(for keyCode: UInt16, characters: String?) -> String {
         if let namedKey = macKeyCodeToWebKey[keyCode] {
             return namedKey
@@ -92,6 +98,10 @@ enum KeyboardEventMapping {
         93: "IntlYen", 94: "IntlRo",
         102: "Lang2", 104: "Lang1",
     ]
+
+    private static let webCodeToMacKeyCode: [String: UInt16] = {
+        Dictionary(uniqueKeysWithValues: macKeyCodeToWebCode.map { ($0.value, $0.key) })
+    }()
 
     // Named-key key values. Character keys (letters / digits / symbols) and
     // numpad digit / operator keys aren't here — webKey() falls through to

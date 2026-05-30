@@ -72,6 +72,14 @@ struct CandidateWindowConfiguration: Equatable {
     var layoutDirection: CandidateWindow.LayoutDirection = .horizontal
     var fontSize: CGFloat = 16
 
+    /// Host handles standard nav keys (arrows / Tab / Page / Home / End)
+    /// and Enter while the window is visible. Set false to route them to
+    /// the engine.
+    var handleNavigationKeys: Bool = true
+    /// Host handles `indexLabels` keys while the window is visible. Set
+    /// false to route them to the engine.
+    var handleIndexLabelKeys: Bool = true
+
     /// Page-relative 0-based index for `char` if it maps to a labelled
     /// position within `pageSize`. Whitespace returns nil — engines
     /// decide what space (and other whitespace) keys do.
@@ -81,6 +89,27 @@ struct CandidateWindowConfiguration: Equatable {
             return index
         }
         return nil
+    }
+
+    /// Standard nav-key lookup: arrows / Tab / Page / Home / End. nil
+    /// if `keyCode` isn't a nav key. Cmd / Ctrl are filtered upstream
+    /// so they never reach here; `shift` drives Tab direction, `option`
+    /// is reserved for future Option+Arrow style mappings.
+    func navigationIntent(
+        keyCode: UInt16, shift: Bool, option: Bool
+    ) -> (direction: NavigationDirection, wrapping: Bool)? {
+        switch keyCode {
+        case 48:  return (shift ? .itemBackward : .itemForward, true)
+        case 123: return (.left, false)
+        case 124: return (.right, false)
+        case 125: return (.down, false)
+        case 126: return (.up, false)
+        case 116: return (.pageUp, false)
+        case 121: return (.pageDown, false)
+        case 115: return (.home, false)
+        case 119: return (.end, false)
+        default:  return nil
+        }
     }
 }
 
@@ -170,9 +199,11 @@ class CandidateWindow {
 
     private var engineConfiguration = CandidateWindowConfiguration()
 
-    /// Live configuration currently applied — used by `InputController` to
-    /// build `CandidateWindowState` for `handleKey` so engines see the
-    /// effective indexLabels / pageSize (including per-update overrides).
+    /// Live configuration currently applied. `InputController` reads it
+    /// to drive policy-gated key dispatch and to build the
+    /// `CandidateWindowState` snapshot passed to engine hooks, so
+    /// engines see the effective indexLabels / pageSize (including
+    /// per-update overrides).
     var currentConfiguration: CandidateWindowConfiguration { engineConfiguration }
 
     // MARK: - State

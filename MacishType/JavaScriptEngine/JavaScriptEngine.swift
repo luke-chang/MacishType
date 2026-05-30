@@ -381,6 +381,16 @@ class JavaScriptEngine: InputEngine, ObservableObject {
                 warnInvalidWrite(field, "must be boolean", jsValue); return
             }
             candidateWindowCache.expandable = jsValue.toBool()
+        case "handleNavigationKeys":
+            guard jsValue.isBoolean else {
+                warnInvalidWrite(field, "must be boolean", jsValue); return
+            }
+            candidateWindowCache.handleNavigationKeys = jsValue.toBool()
+        case "handleIndexLabelKeys":
+            guard jsValue.isBoolean else {
+                warnInvalidWrite(field, "must be boolean", jsValue); return
+            }
+            candidateWindowCache.handleIndexLabelKeys = jsValue.toBool()
         default:
             // Unknown field — typo or forward-compat (engine wrote a name
             // the host doesn't recognize, possibly because the field hasn't
@@ -411,6 +421,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         case "horizontalMaxVisibleRows": return Self.toAny(c.horizontalMaxVisibleRows)
         case "verticalMinVisibleRows":   return Self.toAny(c.verticalMinVisibleRows)
         case "expandable":               return Self.toAny(c.expandable)
+        case "handleNavigationKeys":     return Self.toAny(c.handleNavigationKeys)
+        case "handleIndexLabelKeys":     return Self.toAny(c.handleIndexLabelKeys)
         default: return nil
         }
     }
@@ -427,6 +439,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         if c.horizontalMaxVisibleRows != nil { fields.append("horizontalMaxVisibleRows") }
         if c.verticalMinVisibleRows != nil { fields.append("verticalMinVisibleRows") }
         if c.expandable != nil { fields.append("expandable") }
+        if c.handleNavigationKeys != nil { fields.append("handleNavigationKeys") }
+        if c.handleIndexLabelKeys != nil { fields.append("handleIndexLabelKeys") }
         return fields
     }
 
@@ -1012,6 +1026,30 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         return handled ? .handled(sink.actions) : .notHandled(sink.actions)
     }
 
+    override func handleAssociatedKey(
+        context: InputEngineContext,
+        keyEvent: KeyEventInput,
+        candidateWindow: CandidateWindowState
+    ) -> EngineHandleResult {
+        // No JS instance, or JS class doesn't define the hook → base default.
+        guard let instance = jsInstance(for: context),
+              let method = instance.objectForKeyedSubscript("handleAssociatedKey"),
+              !method.isUndefined else {
+            return super.handleAssociatedKey(
+                context: context, keyEvent: keyEvent, candidateWindow: candidateWindow)
+        }
+        let sink = ActionSink()
+        let event = makeEvent(
+            keyEvent: keyEvent,
+            context: context, candidateWindow: candidateWindow,
+            sink: sink
+        )
+        let handled = Self.invokeIfDefined(
+            instance, "handleAssociatedKey", withArguments: [event])?
+            .toBool() ?? false
+        return handled ? .handled(sink.actions) : .notHandled(sink.actions)
+    }
+
     override func candidateConfirmed(
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate?,
         candidateWindow: CandidateWindowState
@@ -1201,6 +1239,10 @@ class JavaScriptEngine: InputEngine, ObservableObject {
                      forKeyedSubscript: "pageSize" as NSString)
         cw.setObject(candidateWindow.configuration.layoutDirection.rawValue,
                      forKeyedSubscript: "layoutDirection" as NSString)
+        cw.setObject(candidateWindow.configuration.handleNavigationKeys,
+                     forKeyedSubscript: "handleNavigationKeys" as NSString)
+        cw.setObject(candidateWindow.configuration.handleIndexLabelKeys,
+                     forKeyedSubscript: "handleIndexLabelKeys" as NSString)
         let candidateIndex: @convention(block) (String) -> Any = { char in
             guard let firstChar = char.first,
                   let index = candidateWindow.configuration.candidateIndex(for: firstChar) else {
@@ -1209,6 +1251,25 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             return index
         }
         cw.setObject(candidateIndex, forKeyedSubscript: "candidateIndex" as NSString)
+        let navigationIntent: @convention(block) (JSValue) -> Any = { jsEvent in
+            let code = jsEvent.objectForKeyedSubscript("code")?.toString() ?? ""
+            let shift = jsEvent.objectForKeyedSubscript("shiftKey")?.toBool() ?? false
+            let option = jsEvent.objectForKeyedSubscript("altKey")?.toBool() ?? false
+            guard let keyCode = KeyboardEventMapping.keyCode(forWebCode: code),
+                  let intent = candidateWindow.configuration.navigationIntent(
+                    keyCode: keyCode, shift: shift, option: option
+                  ) else {
+                return NSNull()
+            }
+            var result: [String: Any] = [
+                "direction": Self.serializeNavigationDirection(intent.direction)
+            ]
+            if intent.wrapping {
+                result["options"] = ["wrapping": true]
+            }
+            return result
+        }
+        cw.setObject(navigationIntent, forKeyedSubscript: "navigationIntent" as NSString)
         event.setObject(cw, forKeyedSubscript: "candidateWindow" as NSString)
     }
 
@@ -1250,6 +1311,13 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         return Int(v.toInt32())
     }
 
+    /// Reads a Bool from `obj[key]`. Returns nil for missing / non-boolean
+    /// values (vs `toBool()` which silently coerces).
+    private static func optBool(_ obj: JSValue?, _ key: String) -> Bool? {
+        guard let v = resolved(obj?.objectForKeyedSubscript(key)), v.isBoolean else { return nil }
+        return v.toBool()
+    }
+
     /// Builds a `configure` closure for `EngineAction.updateCandidates` from
     /// flat JS options. Returns nil when no override fields are present so
     /// the engine default applies.
@@ -1261,14 +1329,19 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         let layoutDirection = layoutString.flatMap(CandidateWindow.LayoutDirection.init(rawValue:))
         let indexLabels = Self.resolved(opts.objectForKeyedSubscript("indexLabels"))?.toString()
         let pageSize = Self.optInt(opts, "pageSize")
+        let handleNavigationKeys = Self.optBool(opts, "handleNavigationKeys")
+        let handleIndexLabelKeys = Self.optBool(opts, "handleIndexLabelKeys")
 
-        if layoutDirection == nil && indexLabels == nil && pageSize == nil {
+        if layoutDirection == nil && indexLabels == nil && pageSize == nil
+            && handleNavigationKeys == nil && handleIndexLabelKeys == nil {
             return nil
         }
         return { config in
             if let layoutDirection { config.layoutDirection = layoutDirection }
             if let indexLabels { config.indexLabels = indexLabels }
             if let pageSize { config.pageSize = pageSize }
+            if let handleNavigationKeys { config.handleNavigationKeys = handleNavigationKeys }
+            if let handleIndexLabelKeys { config.handleIndexLabelKeys = handleIndexLabelKeys }
         }
     }
 
@@ -1407,6 +1480,23 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             return .down
         }
     }
+
+    fileprivate static func serializeNavigationDirection(_ dir: NavigationDirection) -> String {
+        switch dir {
+        case .up: return "up"
+        case .down: return "down"
+        case .left: return "left"
+        case .right: return "right"
+        case .home: return "home"
+        case .end: return "end"
+        case .pageUp: return "pageUp"
+        case .pageDown: return "pageDown"
+        case .pageForward: return "pageForward"
+        case .pageBackward: return "pageBackward"
+        case .itemForward: return "itemForward"
+        case .itemBackward: return "itemBackward"
+        }
+    }
 }
 
 // MARK: - Manifest overrides apply
@@ -1426,5 +1516,7 @@ extension CandidateWindowConfiguration {
         if let v = overrides.horizontalMaxVisibleRows { horizontalMaxVisibleRows = v }
         if let v = overrides.verticalMinVisibleRows { verticalMinVisibleRows = v }
         if let v = overrides.expandable { expandable = v }
+        if let v = overrides.handleNavigationKeys { handleNavigationKeys = v }
+        if let v = overrides.handleIndexLabelKeys { handleIndexLabelKeys = v }
     }
 }

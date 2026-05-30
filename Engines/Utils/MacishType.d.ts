@@ -43,12 +43,39 @@ export interface CandidateWindowState {
   /** Whether candidates are arranged horizontally or vertically. */
   readonly layoutDirection: LayoutDirection;
   /**
+   * When true, the host handles standard nav keys (arrows / Tab / Page /
+   * Home / End) and Enter while the window is visible — `handleKey` /
+   * `handleAssociatedKey` never see them. When false, the engine handles
+   * them.
+   */
+  readonly handleNavigationKeys: boolean;
+  /**
+   * When true, the host handles `indexLabels` keys while the window is
+   * visible — `handleKey` / `handleAssociatedKey` never see them.
+   * When false, the engine handles them.
+   */
+  readonly handleIndexLabelKeys: boolean;
+  /**
    * Maps an index-label character to its page-relative 0-based candidate
-   * position, or null if the character is not a valid label. Used to
-   * implement quick-commit by typing a label key, paired with
-   * `commitCandidateAtIndex`.
+   * position, or null if the character is not a valid label. Pair with
+   * `commitCandidateAtIndex` to commit by index label.
    */
   candidateIndex(char: string): number | null;
+  /**
+   * Standard nav-key lookup: returns the `direction` / `options` pair
+   * to pass straight to `navigateCandidates`, or null if the event
+   * isn't a nav key. Same mapping the host uses internally — for
+   * engines that opt out of `handleNavigationKeys` and want to emit
+   * the action themselves without reimplementing the keyCode table.
+   *
+   * @example
+   *   const intent = event.candidateWindow.navigationIntent(event);
+   *   if (intent) event.navigateCandidates(intent.direction, intent.options);
+   */
+  navigationIntent(event: KeyEvent): {
+    direction: NavigationDirection;
+    options?: NavigationOptions;
+  } | null;
 }
 
 /** Candidate emitted by the engine. */
@@ -125,6 +152,10 @@ export interface CandidateUpdateOptions {
   indexLabels?: string;
   /** Override the per-page candidate count for this update only. */
   pageSize?: number;
+  /** Override host nav-key handling for this update only. */
+  handleNavigationKeys?: boolean;
+  /** Override host index-label key handling for this update only. */
+  handleIndexLabelKeys?: boolean;
 }
 
 /** Options for `navigateCandidates`. */
@@ -154,7 +185,7 @@ export interface EventMutators {
   /**
    * Commit the candidate at the given page-relative index (0-based, within
    * the current `pageSize`). Pair with `candidateWindow.candidateIndex(char)`
-   * to implement label-based quick-commit.
+   * to commit by index label.
    */
   commitCandidateAtIndex(index: number): void;
   /** Move the candidate-window selection in the given direction. */
@@ -335,6 +366,23 @@ export interface InputEngine {
    */
   handleKey?(event: KeyEvent): boolean | void;
   /**
+   * Called in associated mode for keys that the candidate window didn't
+   * handle (keys outside its scope, or in-scope keys when
+   * `handleNavigationKeys` / `handleIndexLabelKeys` is off).
+   *
+   * Return `true` to mark the key consumed; queued mutators apply.
+   * Returning `false` / `undefined` (including omitting the method) makes
+   * the host dismiss associated mode (flush staged) and then process the
+   * key fresh via `handleKey`.
+   *
+   * Omitting the method falls back to host default (Escape dismisses,
+   * everything else triggers fall-through). Engines that define this
+   * method to override behavior should typically still handle Escape
+   * — JavaScript lacks `super`, so there's no automatic fallback to
+   * the host default.
+   */
+  handleAssociatedKey?(event: KeyEvent): boolean | void;
+  /**
    * Called after a candidate is committed (engine-driven or by the user).
    *
    * Return `true` to mark as handled. Returning `false` / `undefined`
@@ -388,6 +436,21 @@ export interface CandidateWindow {
   horizontalMaxVisibleRows?: number;
   verticalMinVisibleRows?: number;
   expandable?: boolean;
+  /**
+   * Host policy: when true (default), standard nav keys (arrows / Tab /
+   * Page / Home / End) and Enter are intercepted by the host while the
+   * candidate window is visible. Set to false to route them to the
+   * engine (`handleKey` in normal mode, `handleAssociatedKey` in
+   * associated mode).
+   */
+  handleNavigationKeys?: boolean;
+  /**
+   * Host policy: when true (default), `indexLabels` keys are
+   * intercepted by the host while the candidate window is visible.
+   * Set to false to route them to the engine (`handleKey` in normal
+   * mode, `handleAssociatedKey` in associated mode).
+   */
+  handleIndexLabelKeys?: boolean;
 }
 
 /**

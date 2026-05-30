@@ -218,16 +218,24 @@ class InputController: IMKInputController {
             modifiers: event.modifierFlags,
             isRepeat: event.isARepeat)
         if engineContext.isAssociating {
-            // Tier 1: candidate window / dismiss keys
-            if let action = engine.candidateWindowAction(
-                keyEvent: keyEvent,
-                candidateWindow: candidateWindowState
-            ) {
-                executeActions([action], client: client)
+            // Tier 1a: policy-gated candidate-window key handling
+            if dispatchCandidateWindowKey(keyEvent) {
                 return true
             }
-            // Tier 2: flush held, fall through to engine.handleKey
-            executeActions([.flushStaged()], client: client)
+            // Tier 1b: engine override point
+            switch engine.handleAssociatedKey(
+                context: engineContext, keyEvent: keyEvent,
+                candidateWindow: candidateWindowState
+            ) {
+            case .handled(let actions):
+                executeActions(actions, client: client)
+                return true
+            case .notHandled(let actions):
+                // Tier 2: dismiss + fall through to engine.handleKey
+                executeActions(actions + [.flushStaged()], client: client)
+            }
+        } else if dispatchCandidateWindowKey(keyEvent) {
+            return true
         }
         let result = engine.handleKey(
             context: engineContext,
@@ -425,5 +433,37 @@ private extension InputController {
         CandidateWindowState(
             isVisible: CandidateWindow.shared.isVisible,
             configuration: CandidateWindow.shared.currentConfiguration)
+    }
+
+    /// Policy-gated candidate-window dispatch. Returns true if the key
+    /// was consumed. No-op when the window is hidden.
+    func dispatchCandidateWindowKey(_ keyEvent: KeyEventInput) -> Bool {
+        guard CandidateWindow.shared.isVisible else { return false }
+        let cfg = CandidateWindow.shared.currentConfiguration
+        let pureMods = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
+        if !pureMods.intersection([.command, .control]).isEmpty { return false }
+
+        if cfg.handleIndexLabelKeys, !pureMods.contains(.option),
+           let text = keyEvent.characters, text.count == 1, let char = text.first,
+           let index = cfg.candidateIndex(for: char) {
+            CandidateWindow.shared.commitCandidate(at: index)
+            return true
+        }
+        if cfg.handleNavigationKeys {
+            if let intent = cfg.navigationIntent(
+                keyCode: keyEvent.keyCode,
+                shift: pureMods.contains(.shift),
+                option: pureMods.contains(.option)
+            ) {
+                CandidateWindow.shared.handleNavigation(
+                    direction: intent.direction, wrapping: intent.wrapping)
+                return true
+            }
+            if keyEvent.keyCode == 36 {  // Enter
+                CandidateWindow.shared.commitSelectedCandidate()
+                return true
+            }
+        }
+        return false
     }
 }

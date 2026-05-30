@@ -306,63 +306,48 @@ class InputEngine {
         keyEvent: KeyEventInput,
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
-        let pureModifiers = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
+        let pureMods = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
 
-        // 1. Command/Control
-        if !pureModifiers.intersection([.command, .control]).isEmpty {
+        // Cmd/Ctrl bypass: pass to OS when idle, eat when composing.
+        if !pureMods.intersection([.command, .control]).isEmpty {
             return context.isComposing ? .handled() : .notHandled()
         }
 
-        // 2. Quick-commit by indexLabels — placed before uppercase letter
-        //    so letter labels work; option reserved for fullwidth (section 7).
-        if context.isComposing,
-           !pureModifiers.contains(.option),
-           let text = keyEvent.characters, text.count == 1, let char = text.first,
-           let index = candidateWindow.configuration.candidateIndex(for: char) {
-            return .handled([.commitCandidateAtIndex(index)])
+        // Escape: dismiss composing; otherwise pass.
+        if keyEvent.keyCode == 53 {
+            return context.isComposing ? .handled([.flushStaged()]) : .notHandled()
         }
 
-        // 3. Uppercase letter (skip when Option is held; falls through to fullwidth)
-        if !pureModifiers.contains(.option),
+        // Uppercase letter (no Option): commit literally when idle, eat when composing.
+        if !pureMods.contains(.option),
            let text = keyEvent.characters, text.count == 1,
            let char = text.first, char.isUppercase, char.isLetter {
-            if context.isComposing {
-                return .handled()
-            }
-            return .handled([.flushStaged(text)])
+            return context.isComposing ? .handled() : .handled([.flushStaged(text)])
         }
 
-        // 4. Escape
-        if keyEvent.keyCode == 53 {
-            guard context.isComposing else { return .notHandled() }
-            return .handled([.flushStaged()])
-        }
-
-        // 5. Navigation (arrow keys, Tab, Home/End, engine-specific extensions)
-        if let action = navigationAction(keyEvent: keyEvent) {
-            guard context.isComposing else { return .notHandled() }
-            return .handled([action])
-        }
-
-        // 6. Enter
-        if keyEvent.keyCode == 36 {
-            guard context.isComposing else { return .notHandled() }
-            return .handled([.commitSelectedCandidate])
-        }
-
-        // 7. Option+key -> fullwidth. Use charactersIgnoringModifiers so the
-        // mapping follows the active layout (Dvorak / AZERTY etc.).
-        if pureModifiers.contains(.option),
+        // Option+printable → fullwidth: emit when idle, eat when composing.
+        // charactersIgnoringModifiers follows the active layout (Dvorak / AZERTY etc.).
+        if pureMods.contains(.option),
            let chars = keyEvent.charactersIgnoringModifiers,
            chars.count == 1, let char = chars.first,
            let fullwidth = Self.toFullwidth(char) {
-            if context.isComposing {
-                return .handled()
-            }
-            return .handled([.flushStaged(String(fullwidth))])
+            return context.isComposing ? .handled() : .handled([.flushStaged(String(fullwidth))])
         }
 
-        // 8. Not handled
+        return .notHandled()
+    }
+
+    /// Associated-mode key handler. `.notHandled` dismisses associated
+    /// mode (flushStaged) and re-dispatches the key via `handleKey`.
+    /// Default impl: Escape dismisses; everything else falls through.
+    func handleAssociatedKey(
+        context: InputEngineContext,
+        keyEvent: KeyEventInput,
+        candidateWindow: CandidateWindowState
+    ) -> EngineHandleResult {
+        if keyEvent.keyCode == 53 {
+            return .handled([.flushStaged()])
+        }
         return .notHandled()
     }
 
@@ -411,54 +396,6 @@ class InputEngine {
     // Associated-phrase lookup. Default returns empty (no associated mode).
     // Engines opt in by overriding with a dictionary query.
     func lookupAssociatedCandidates(for char: Character) -> [String] { [] }
-
-    // Maps a key event to a candidate-window navigation action, or nil if the
-    // key isn't a nav key. Default covers standard keyboard nav (Tab, arrows,
-    // Page Up/Down, Home, End); subclasses may add engine-specific keys.
-    func navigationAction(keyEvent: KeyEventInput) -> EngineAction? {
-        switch keyEvent.keyCode {
-        case 48: // Tab
-            let dir: NavigationDirection = keyEvent.modifiers.contains(.shift) ? .itemBackward : .itemForward
-            return .navigateCandidates(dir, wrapping: true)
-        case 123: return .navigateCandidates(.left)
-        case 124: return .navigateCandidates(.right)
-        case 125: return .navigateCandidates(.down)
-        case 126: return .navigateCandidates(.up)
-        case 116: return .navigateCandidates(.pageUp)
-        case 121: return .navigateCandidates(.pageDown)
-        case 115: return .navigateCandidates(.home)
-        case 119: return .navigateCandidates(.end)
-        default: return nil
-        }
-    }
-
-    // Composite helper (not for override): maps a key to the action that would
-    // apply it to the candidate window. Used by Controller's associated-mode
-    // intercept to reuse engine's composing-mode window key semantics.
-    // Returns nil when Command/Control are held (system shortcuts must pass).
-    final func candidateWindowAction(
-        keyEvent: KeyEventInput,
-        candidateWindow: CandidateWindowState
-    ) -> EngineAction? {
-        let pureModifiers = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
-        if !pureModifiers.intersection([.command, .control]).isEmpty { return nil }
-
-        if let nav = navigationAction(keyEvent: keyEvent) {
-            return nav
-        }
-        if keyEvent.keyCode == 36 { return .commitSelectedCandidate }
-        if keyEvent.keyCode == 53 { return .flushStaged() }
-
-        // Live config (not engine default) honors per-update closure
-        // overrides — controller intercept in associated mode must use
-        // the labels actually displayed.
-        if !pureModifiers.contains(.option),
-           let text = keyEvent.characters, text.count == 1, let char = text.first,
-           let index = candidateWindow.configuration.candidateIndex(for: char) {
-            return .commitCandidateAtIndex(index)
-        }
-        return nil
-    }
 
     // MARK: Utilities
 

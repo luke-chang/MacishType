@@ -57,6 +57,8 @@ default below applies.
 | `widerExpandedColumns` | boolean | `true` | Widen columns when the window is expanded. Requires `expandable: true`. |
 | `moveOnExpand` | boolean | `false` | When navigation expands the collapsed window, also move the selection highlight to the newly revealed row. Requires `expandable: true`. |
 | `verticalMinVisibleRows` | integer ≥ 1 | `pageSize` | Minimum visible rows. Vertical mode only. |
+| `handleNavigationKeys` | boolean | `true` | When true, the host intercepts standard nav keys (arrows / Tab / Page / Home / End) and Enter while the candidate window is visible — `handleKey` / `handleAssociatedKey` never see them. Set false to route those keys to the engine. |
+| `handleIndexLabelKeys` | boolean | `true` | When true, the host intercepts `indexLabels` keys while the candidate window is visible. Set false to route them to the engine. |
 
 `indexLabels` distinguishes two empty-looking values:
 
@@ -70,9 +72,9 @@ default below applies.
 
 Whitespace can also appear mid-string — e.g. `" 123"` is valid and
 makes position 0 blank while positions 1-3 render `"1"` / `"2"` / `"3"`.
-Whitespace characters anywhere in `indexLabels` never match quick-commit
-key input — `event.candidateWindow.candidateIndex(" ")` returns `null`,
-so the space key remains available for engine logic.
+Whitespace characters anywhere in `indexLabels` never match an
+index-label key input — `event.candidateWindow.candidateIndex(" ")`
+returns `null`, so the space key remains available for engine logic.
 
 ### `settings` (optional)
 
@@ -280,9 +282,40 @@ truth. Highlights:
   candidates, associated-mode state), but engine-private state on `this`
   (composition buffers, mode flags, lookup caches per session, etc.) is
   not touched — clear it here, otherwise it leaks into the next session.
-- `handleKey(event)` — return `true` to consume the key, `false` to let
-  the OS see it. Queued `event.xxx(...)` mutators apply regardless of the
+- `handleKey(event)` — return `true` to consume the key. Returning
+  `false` / `undefined` (including omitting the method) lets the OS
+  see it. Queued `event.xxx(...)` mutators apply regardless of the
   return value; the return value only governs OS passthrough.
+
+  While the candidate window is visible, the host intercepts standard
+  nav keys (arrows / Tab / Page / Home / End), Enter, and `indexLabels`
+  keys **before** `handleKey` runs — by default the engine
+  never sees them. Turn off `handleNavigationKeys` /
+  `handleIndexLabelKeys` (manifest or per-update options) to route
+  those keys to the engine instead.
+
+  For nav-key opt-out, `event.candidateWindow.navigationIntent(event)`
+  returns the same `{ direction, options }` pair the host would use,
+  or `null` for non-nav keys — pass it straight to `navigateCandidates`
+  instead of rebuilding the keyCode → direction table:
+
+  ```js
+  const intent = event.candidateWindow.navigationIntent(event);
+  if (intent) {
+    event.navigateCandidates(intent.direction, intent.options);
+    return true;
+  }
+  ```
+- `handleAssociatedKey(event)` — called in associated mode for keys
+  the candidate window didn't handle (keys outside its scope, or
+  in-scope keys when `handleNavigationKeys` / `handleIndexLabelKeys`
+  is off — see `handleKey` above). Return `true` to consume the key.
+  Returning `false` / `undefined` (including omitting the method)
+  makes the host dismiss associated mode and process the key fresh
+  via `handleKey`.
+
+  Omitting the method gives the host default: Escape calls
+  `flushStaged()` to dismiss; other keys fall through.
 - `candidateConfirmed(event)` — after the host commits a candidate
   (engine-driven or user-picked). See [Host fallback](#host-fallback) for
   the return-value contract.
@@ -353,6 +386,8 @@ Replace the candidate list shown in the candidate window.
 - `options.layoutDirection` *(`"horizontal"` \| `"vertical"`)* — override the candidate window's layout direction for this update only.
 - `options.indexLabels` *(string)* — override the index-label characters for this update only. Same `""`-collapses-vs-`" "`-blank-slot semantics as the manifest field.
 - `options.pageSize` *(integer)* — override the per-page candidate count for this update only.
+- `options.handleNavigationKeys` *(boolean)* — override host nav-key handling for this update only.
+- `options.handleIndexLabelKeys` *(boolean)* — override host index-label key handling for this update only.
 
 #### `commit(candidate)`
 
@@ -372,7 +407,7 @@ Commit the candidate at a page-relative position.
 
 - `index` *(integer, required)* — 0-based position within the current
   `pageSize`. Pair with `event.candidateWindow.candidateIndex(char)` to
-  implement label-based quick-commit:
+  commit by index label:
 
   ```js
   // event.key is the layout-aware character (or a named string like "Tab"

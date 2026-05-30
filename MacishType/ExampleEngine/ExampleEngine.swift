@@ -64,44 +64,36 @@ class ExampleEngine: InputEngine {
             candidateWindow: candidateWindow)
         if case .handled = base { return base }
 
-        if !keyEvent.modifiers.intersection(.deviceIndependentFlagsMask).isEmpty {
-            return .notHandled()
-        }
-
-        guard let text = keyEvent.characters, text.count == 1,
-              let char = text.first else {
-            return context.isComposing ? .handled() : .notHandled()
-        }
-
-        switch keyEvent.keyCode {
-        case 49: // Space
-            guard context.isComposing else { return .notHandled() }
-            if let first = lookupCandidates(context.markedText).first {
-                return .handled([.commit(first)])
-            }
-            return .handled([.resetContext])
-
-        case 51: // Backspace
-            guard context.isComposing else { return .notHandled() }
-            let newMarked = String(context.markedText.dropLast())
-            if newMarked.isEmpty {
+        if context.isComposing {
+            switch keyEvent.keyCode {
+            case 49:  // Space
+                if let first = lookupCandidates(context.markedText).first {
+                    return .handled([.commit(first)])
+                }
                 return .handled([.resetContext])
+            case 51:  // Backspace
+                let newMarked = String(context.markedText.dropLast())
+                if newMarked.isEmpty {
+                    return .handled([.resetContext])
+                }
+                return .handled(composingActions(for: newMarked))
+            default: break
             }
-            return .handled([
-                .updateMarkedText(newMarked),
-                .updateCandidates(lookupCandidates(newMarked)),
-            ])
-
-        default:
-            if validCompositionCharacters.contains(char) {
-                let newMarked = context.markedText + text.uppercased()
-                return .handled([
-                    .updateMarkedText(newMarked),
-                    .updateCandidates(lookupCandidates(newMarked)),
-                ])
-            }
-            return context.isComposing ? .handled() : .notHandled()
         }
+
+        // Plain a-z extends (composing) or starts (idle) a composing session.
+        // `markedText` is "" when idle, so a single path handles both.
+        if keyEvent.modifiers.intersection(.deviceIndependentFlagsMask).isEmpty,
+           let text = keyEvent.characters, text.count == 1,
+           let char = text.first, validCompositionCharacters.contains(char) {
+            return .handled(composingActions(for: context.markedText + text.uppercased()))
+        }
+        // Composing eats stray input; idle lets it pass to the OS.
+        return context.isComposing ? .handled() : .notHandled()
+    }
+
+    private func composingActions(for marked: String) -> [EngineAction] {
+        [.updateMarkedText(marked), .updateCandidates(lookupCandidates(marked))]
     }
 
     override func lookupAssociatedCandidates(for char: Character) -> [String] {
