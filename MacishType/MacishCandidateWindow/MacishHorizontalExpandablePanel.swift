@@ -646,8 +646,12 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
 
         let shouldMoveOnExpand = direction == .right || direction == .itemForward
             || ((direction == .itemBackward || direction == .left) && wrapping)
-            || direction == .pageForward
-            || (moveOnExpand && (direction == .down || direction == .pageDown))
+            || (moveOnExpand && (direction == .down || direction == .pageForward))
+
+        if displayMode == .expanded, direction == .pageDown || direction == .pageUp {
+            pageExpandedViewport(forward: direction == .pageDown)
+            return
+        }
 
         if displayMode == .collapsed, direction == .down || direction == .pageDown || direction == .pageForward {
             let collapsedCount = collapsedVisibleCount
@@ -755,6 +759,50 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         ) ?? targetRow.items.last?.candidateIndex
     }
 
+    // Page the highlight by one full viewport (`maxVisibleRows`), keeping it at
+    // its prior relative position within the viewport. Clamps to both ends; in
+    // the expanded mode pageDown/pageUp are not gated by `moveOnExpand`.
+    private func pageExpandedViewport(forward: Bool) {
+        let lastRow = gridRows.count - 1
+        guard lastRow >= 0,
+              let (highlightRow, item) = findGridPosition(of: max(selectedIndex, 0)) else { return }
+
+        let rowHeight = itemHeight + Self.separatorHeight
+        // Top visible row; +0.5 itemHeight biases toward the majority-visible row.
+        let topRow = Int(floor((max(0, scrollView.contentView.bounds.origin.y) + 0.5 * itemHeight) / rowHeight))
+
+        // pageUp from the very top collapses the window.
+        if !forward, topRow == 0, highlightRow == 0 {
+            collapseWindow(animated: true)
+            return
+        }
+
+        let offset = max(0, highlightRow - topRow)
+        let step = forward ? maxVisibleRows : -maxVisibleRows
+        let newHighlightRow = min(max(highlightRow + step, 0), lastRow)
+        let newTopRow = max(0, newHighlightRow - offset)
+
+        let targetRow = gridRows[newHighlightRow]
+        let target = findOverlappingItem(
+            in: targetRow,
+            columnStart: item.columnStart,
+            columnEnd: item.columnStart + item.columnSpan,
+            forward: forward
+        ) ?? targetRow.items.last!.candidateIndex
+
+        // Scroll first so moveSelection's ensureSelectionVisible stays a no-op.
+        scrollRowToTop(newTopRow)
+        moveSelection(to: target, animated: false)
+    }
+
+    private func scrollRowToTop(_ rowIndex: Int) {
+        let targetY = yForRow(max(0, rowIndex))
+        let maxScrollY = max(0, scrollView.documentView!.frame.height - scrollView.contentView.bounds.height)
+        let clampedY = min(targetY, maxScrollY)
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
     // `startIndex` normalizes the -1 no-selection sentinel to 0 for offset
     // arithmetic; bound/dedup comparisons further down keep raw `selectedIndex`
     // so -1 still triggers a move on the first navigation.
@@ -805,6 +853,8 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
             guard let (rowIdx, _) = findGridPosition(of: startIndex) else { return nil }
             let last = gridRows[rowIdx].items.last!.candidateIndex
             return selectedIndex != last ? last : nil
+        // Expanded mode intercepts pageUp/pageDown upstream; these only run while
+        // collapsed, where the single row leaves no vertical target.
         case .pageUp:
             return gridNavigateVertical(direction: -1, rowCount: maxVisibleRows - 1)
         case .pageDown:

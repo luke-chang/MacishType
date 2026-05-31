@@ -73,7 +73,7 @@ default below applies.
 | `expandable` | boolean | `true` | Pick the horizontal-mode panel style: `true` shows a single row that expands to reveal more, `false` uses paging instead. Horizontal mode only. |
 | `horizontalMaxVisibleRows` | integer ≥ 2 | `5` | Cap on visible rows. Requires `expandable: true`. |
 | `widerExpandedColumns` | boolean | `true` | Widen columns when the window is expanded. Requires `expandable: true`. |
-| `moveOnExpand` | boolean | `false` | When navigation expands the collapsed window, also move the selection highlight to the newly revealed row. Requires `expandable: true`. |
+| `moveOnExpand` | boolean | `false` | When a navigation key expands the collapsed window, also move the highlight onto the newly revealed row. Applies to `down` and `pageForward`; `pageDown` always just expands without moving. Pair with `widerExpandedColumns: false` so columns don't reflow on expand and the landing highlight is predictable. Requires `expandable: true`. |
 | `verticalMinVisibleRows` | integer ≥ 1 | `pageSize` | Minimum visible rows. Vertical mode only. |
 | `handleNavigationKeys` | boolean | `true` | When true, the host intercepts standard nav keys (arrows / Tab / Page / Home / End) and Enter while the candidate window is visible — `handleKey` / `handleAssociatedKey` never see them. Set false to route those keys to the engine. |
 | `handleIndexLabelKeys` | boolean | `true` | When true, the host intercepts `indexLabels` keys while the candidate window is visible. Set false to route them to the engine. |
@@ -453,7 +453,7 @@ Move the candidate-window selection.
 - `direction` *(string, required)* — physical-key directions are grouped first; the layout-independent ones below are typically used for engine logic rather than direct key binding.
   - `"up"` / `"down"` / `"left"` / `"right"` — single-step in that direction.
   - `"home"` / `"end"` — first / last candidate in the current scope. Scope varies by panel style: current page in horizontal paging mode, current row in horizontal expandable mode, entire list in vertical mode.
-  - `"pageUp"` / `"pageDown"` — keyboard PageUp / PageDown semantics (visual viewport scroll). Identical to `pageBackward` / `pageForward` in horizontal paging and vertical modes. In horizontal expandable mode, scrolls the viewport by `horizontalMaxVisibleRows − 1` rows (one row of overlap kept for context) — *not* the same as `pageForward` / `pageBackward`, which step a single row in that mode.
+  - `"pageUp"` / `"pageDown"` — keyboard PageUp / PageDown semantics. Identical to `pageBackward` / `pageForward` in horizontal paging and vertical modes. In horizontal expandable mode they page by a full `horizontalMaxVisibleRows` rows, keeping the highlight's relative position in the viewport and clamping to the first / last row (pageUp on the first row collapses the window) — unlike `pageForward` / `pageBackward`, which step a single row.
   - `"itemForward"` / `"itemBackward"` — next / previous candidate regardless of layout direction.
   - `"pageForward"` / `"pageBackward"` — advance / retreat one candidate page regardless of layout direction. In horizontal expandable mode, "one page" is one row.
 - `options.wrapping` *(boolean, default `false`)* — wrap around when navigating past the first / last candidate.
