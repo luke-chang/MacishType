@@ -113,6 +113,14 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// `enterAssociatedMode` fallback while the manifest opts in.
     private var associatedDictionaryHandle: AssociatedDictionary.Handle?
 
+    /// A manifest-declared `intendedLanguage` overrides the fixed plist value
+    /// (the engine slot's `TISIntendedLanguage` can't change at runtime, but a
+    /// loaded engine may target another language). Computed so a manifest
+    /// reload is reflected immediately.
+    override var intendedLanguage: String? {
+        manifest?.intendedLanguage ?? super.intendedLanguage
+    }
+
     /// Maps a system feature identifier to the InputEngine subKey storing
     /// its value. When adding a new feature: also update
     /// `JSExternalEngine.clearStoredSettings` to clear on folder swap.
@@ -123,13 +131,27 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         }
     }
 
+    /// Whether the host can actually back a system feature for this engine's
+    /// resolved language. A feature whose backing resource is missing is
+    /// treated as if the manifest never declared it: hidden in Settings, no
+    /// default written, not pushed to JS.
+    func systemFeatureAvailable(_ feature: String) -> Bool {
+        switch feature {
+        case "enableAssociatedMode":
+            return intendedLanguage.map(AssociatedDictionary.isAvailable(for:)) ?? false
+        default:
+            return true
+        }
+    }
+
     /// First-time default for each `"type": "system"` field with a
     /// `"default"` declared. Only writes when the standalone key has no
     /// stored value — subsequent calls (after the user toggled) are no-ops.
     private func applySystemFieldDefaults(_ manifest: Manifest) {
         guard let sections = manifest.settings else { return }
         for case .system(let sf) in sections.flatMap(\.fields) {
-            guard let defaultValue = sf.defaultValue,
+            guard systemFeatureAvailable(sf.key),
+                  let defaultValue = sf.defaultValue,
                   let subKey = Self.systemFeatureSubKey(sf.key) else { continue }
             let storageKey = InputEngine.composedKey(engineID: engineID, subKey: subKey)
             if UserDefaults.standard.object(forKey: storageKey) == nil {
@@ -237,7 +259,10 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             // applySystemFieldDefaults before sanitize). The `?? false` tail
             // only fires if there's no manifest default and no user choice.
             if case .system(let sf) = field {
-                if let subKey = Self.systemFeatureSubKey(sf.key) {
+                // A feature the host can't back for this locale is treated as
+                // undeclared: skip so the key isn't pushed to JS.
+                if systemFeatureAvailable(sf.key),
+                   let subKey = Self.systemFeatureSubKey(sf.key) {
                     let storageKey = InputEngine.composedKey(engineID: engineID, subKey: subKey)
                     let current = (UserDefaults.standard.object(forKey: storageKey) as? Bool)
                         ?? sf.defaultValue ?? false

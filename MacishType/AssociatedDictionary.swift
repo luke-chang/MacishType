@@ -61,8 +61,27 @@ final class AssociatedDictionary {
         }
     }
 
+    private static func resourceName(for locale: String) -> String {
+        "AssociatedDictionary.\(locale)"
+    }
+
+    // Bundle resource presence by locale; lookups are cheap but `isAvailable`
+    // runs on every Settings render, so cache the one-time probe. Entries
+    // never invalidate — bundled dictionaries don't change at runtime.
+    private static var availabilityCache: [String: Bool] = [:]
+
+    /// True when `AssociatedDictionary.<locale>.txt` is bundled. Lets callers
+    /// gate associated-mode UI / behavior without loading the dictionary.
+    static func isAvailable(for locale: String) -> Bool {
+        if let cached = availabilityCache[locale] { return cached }
+        let present = Bundle.main.url(
+            forResource: resourceName(for: locale), withExtension: "txt") != nil
+        availabilityCache[locale] = present
+        return present
+    }
+
     private static func load(locale: String) -> [Character: [String]] {
-        let resource = "AssociatedDictionary.\(locale)"
+        let resource = resourceName(for: locale)
         guard let url = Bundle.main.url(forResource: resource, withExtension: "txt") else {
             Logger.associatedDictionary.fault("\(resource, privacy: .public).txt not found in main bundle (run `make prepare`?)")
             return [:]
@@ -107,7 +126,8 @@ final class AssociatedDictionary {
 /// this from `load()` and `activate()`; idempotent.
 extension InputEngine {
     func reconcileAssociatedDictionary(handle: inout AssociatedDictionary.Handle?) {
-        guard enableAssociatedMode, let lang = intendedLanguage else {
+        guard enableAssociatedMode, let lang = intendedLanguage,
+              AssociatedDictionary.isAvailable(for: lang) else {
             handle = nil
             return
         }

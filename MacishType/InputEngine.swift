@@ -155,8 +155,8 @@ class InputEngine {
 
     /// BCP47 language tag from Info.plist's `ComponentInputModeDict` entry
     /// for this engine. nil if the entry or `TISIntendedLanguage` key is
-    /// missing (a misconfiguration; logged as .fault).
-    lazy var intendedLanguage: String? = {
+    /// missing (a misconfiguration; logged as .fault). Cached.
+    private lazy var plistIntendedLanguage: String? = {
         guard let bundleID = Bundle.main.bundleIdentifier,
               let comp = Bundle.main.infoDictionary?["ComponentInputModeDict"] as? [String: Any],
               let list = comp["tsInputModeListKey"] as? [String: [String: Any]],
@@ -168,6 +168,11 @@ class InputEngine {
         }
         return lang
     }()
+
+    /// Resolved BCP47 language tag for this engine. Base resolves from
+    /// Info.plist's `ComponentInputModeDict`; subclasses may override to
+    /// layer their own source (e.g. a manifest declaration) on top.
+    var intendedLanguage: String? { plistIntendedLanguage }
 
     // Defaults below are per-class — same value across all instances of a
     // given subclass, hence `class var`.

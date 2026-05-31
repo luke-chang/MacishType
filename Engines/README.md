@@ -22,8 +22,9 @@ importing file. Static `import` is supported; dynamic `import()` is not.
 ```jsonc
 {
   "entry": "index.js",
-  "candidateWindow": { … },   // optional appearance overrides
-  "settings": [ … ]           // optional Settings UI sections
+  "intendedLanguage": "zh-Hant", // optional language override
+  "candidateWindow": { … },      // optional appearance overrides
+  "settings": [ … ]              // optional Settings UI sections
 }
 ```
 
@@ -31,6 +32,23 @@ importing file. Static `import` is supported; dynamic `import()` is not.
 
 Path (relative to the manifest) to the engine's JavaScript module. The
 module's `export default` must be a class — see [The JS module](#the-js-module).
+
+### `intendedLanguage` (optional)
+
+BCP 47 language tag declaring the language this engine targets. Overrides the
+`TISIntendedLanguage` the host declares for the engine slot in Info.plist —
+useful because that slot value is fixed at install time and can't change at
+runtime, while a loaded engine may target a different language.
+
+Use the **Apple / in-bundle localization** convention — the same tags as your
+`Localizable` map keys and the host's `TISIntendedLanguage` (language + script,
+e.g. `zh-Hant`, `en`, `ja`). This is **not** the region style that
+`navigator.language` reports (`zh-TW`); the two describe different things
+(engine target vs. user preference) and the host matches this value exactly,
+so `zh-TW` would not resolve. Omitting the field keeps the plist value.
+
+Currently consumed by the associated-mode dictionary lookup (see
+[`system`](#system)); future host features may read it too.
 
 ### `candidateWindow` (optional)
 
@@ -149,7 +167,7 @@ The schema is minimal — only `key`, `type`, and `default` are accepted;
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `key` | string | yes | System feature identifier. Currently the only supported value is `"enableAssociatedMode"`. |
+| `key` | string | yes | System feature identifier. Currently the only supported value is `"enableAssociatedMode"`, which requires the host to bundle an associated-mode dictionary for the engine's resolved language (see below). |
 | `default` | boolean | | Initial value applied the first time this engine loads, before the user has made a choice. Omit and the host's own default is used. |
 
 ```jsonc
@@ -167,7 +185,16 @@ The schema is minimal — only `key`, `type`, and `default` are accepted;
 
 When `enableAssociatedMode` is on, calling `event.enterAssociatedMode(heldChar)`
 without a second argument falls back to the host's `AssociatedDictionary`
-dictionary keyed by this engine's `TISIntendedLanguage`.
+dictionary keyed by the engine's resolved language — the manifest
+[`intendedLanguage`](#intendedlanguage-optional) if declared, otherwise the
+plist `TISIntendedLanguage`.
+
+If the host bundles no `AssociatedDictionary.<locale>.txt` for that resolved
+language, the system field is treated as if it were never declared: the toggle
+doesn't appear in Settings, no default is written, and the value isn't pushed to
+`manifest.settings`. (Engines that supply their own `candidates` array to
+`enterAssociatedMode` are unaffected — that path never consults the host
+dictionary.)
 
 #### Localizable
 

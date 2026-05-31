@@ -143,10 +143,16 @@ extension JavaScriptEngine {
             let section: Manifest.SettingsSection
 
             /// Filter at section level (not inside FieldView body) so Form
-            /// doesn't reserve an empty row for hidden fields.
+            /// doesn't reserve an empty row for hidden fields. A system field
+            /// the host can't back for this engine's locale is dropped here,
+            /// so the toggle never appears (and its lone section collapses).
             private var visibleFields: [Manifest.SettingsField] {
-                section.fields.filter {
-                    !($0.hiddenWhen?.evaluate(store.values) ?? false)
+                section.fields.filter { field in
+                    if case .system(let sf) = field,
+                       !engine.systemFeatureAvailable(sf.key) {
+                        return false
+                    }
+                    return !(field.hiddenWhen?.evaluate(store.values) ?? false)
                 }
             }
 

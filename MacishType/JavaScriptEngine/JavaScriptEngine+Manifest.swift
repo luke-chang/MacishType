@@ -12,15 +12,28 @@ extension JavaScriptEngine {
 
     nonisolated struct Manifest: Decodable {
         let entry: String
+        // Overrides the plist `TISIntendedLanguage` as the engine's resolved
+        // language. Apple/in-bundle localization style (e.g. "zh-Hant"),
+        // matching Localizable map keys and dictionary filenames — NOT the
+        // navigator.language region style ("zh-TW"). Exact-matched downstream.
+        let intendedLanguage: String?
         let candidateWindow: CandidateWindowOverrides?
         let settings: [SettingsSection]?
 
-        private enum CodingKeys: String, CodingKey { case entry, candidateWindow, settings }
+        private enum CodingKeys: String, CodingKey {
+            case entry, intendedLanguage, candidateWindow, settings
+        }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             // entry is required: missing / type-mismatch fails the manifest.
             entry = try c.decode(String.self, forKey: .entry)
+            // Empty / whitespace-only normalizes to nil — treated as undeclared
+            // so the engine falls back to the plist value rather than ending up
+            // with an empty tag that silently disables locale-gated features.
+            let rawLanguage = try? c.decodeIfPresent(String.self, forKey: .intendedLanguage)
+            let trimmedLanguage = rawLanguage?.trimmingCharacters(in: .whitespacesAndNewlines)
+            intendedLanguage = (trimmedLanguage?.isEmpty == false) ? trimmedLanguage : nil
             // candidateWindow wrapper type-mismatch (e.g. user wrote a
             // string) drops the sub-tree but lets entry still load.
             do {
