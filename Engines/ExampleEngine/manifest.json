@@ -1,5 +1,6 @@
 {
   "entry": "index.js",
+  "intendedLanguage": "zh-Hant",
   "settings": [
     {
       "title": { "en": "Typing", "zh-Hant": "輸入行為" },
