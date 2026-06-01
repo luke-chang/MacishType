@@ -41,6 +41,11 @@ final class SettingsWindow: NSWindow {
         setContentSize(NSSize(width: 620, height: 420))
         contentMinSize = NSSize(width: 620, height: 420)
         toolbarStyle = .unified
+        // macOS 14's `.automatic` draws the separator permanently here; 15+
+        // shows it only on scroll. Suppress on 14 (loses the scroll-edge line).
+        if #unavailable(macOS 15) {
+            titlebarSeparatorStyle = .none
+        }
         isReleasedWhenClosed = false
         // Skip the default entrance animation; otherwise the Tahoe rounded
         // corners + sidebar vibrant material visibly settle on first display.
@@ -282,6 +287,9 @@ private struct EmptySettingsView: View {
                 ContentUnavailableView {
                     Label("No customizable settings.", systemImage: "slider.horizontal.3")
                         .font(.title3)  // default .title2 ~22pt; .title3 ~20pt
+                        // macOS 14 proposes a near-zero width to the title, so
+                        // CJK wraps one glyph per line; size to content instead.
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
     }
