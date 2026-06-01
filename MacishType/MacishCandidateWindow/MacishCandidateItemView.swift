@@ -41,6 +41,7 @@ class MacishCandidateItemView: NSView {
         defaultTrailingPadding = round(Base16Metrics.defaultTrailingPadding * scale)
         verticalPadding = round(Base16Metrics.verticalPadding * scale)
         templateView = nil
+        cachedBaseCandidateColumnWidth = nil
     }
 
     /// Toggle the index-column slot. Per-position label content is
@@ -219,7 +220,20 @@ class MacishCandidateItemView: NSView {
     }
 
     static var itemHeight: CGFloat { candidateFontSize + verticalPadding }
-    static var baseWidth: CGFloat { leadingPadding + indexWidth + effectiveGap + candidateFontSize + defaultTrailingPadding }
+    static var baseWidth: CGFloat { leadingPadding + indexWidth + effectiveGap + baseCandidateColumnWidth + defaultTrailingPadding }
+
+    /// Measured width of one full-width glyph. A full-width advance can round up
+    /// past `candidateFontSize` on some macOS versions; measuring keeps `baseWidth`
+    /// aligned with `measureWidth` so the packing budget doesn't drop a column.
+    /// Cached; invalidated with the template view on font-size change.
+    static var baseCandidateColumnWidth: CGFloat {
+        if let cached = cachedBaseCandidateColumnWidth { return cached }
+        let measured = max(candidateFontSize, measureCandidateLabelWidth("永"))
+        cachedBaseCandidateColumnWidth = measured
+        return measured
+    }
+
+    private static var cachedBaseCandidateColumnWidth: CGFloat?
 
     private static var templateView: MacishCandidateItemView?
 
