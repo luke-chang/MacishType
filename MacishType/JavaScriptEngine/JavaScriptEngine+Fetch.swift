@@ -323,6 +323,7 @@ extension JavaScriptEngine {
         let executor: @convention(block) (JSValue, JSValue) -> Void = { resolve, reject in
             work(resolve, reject)
         }
-        return ctx.objectForKeyedSubscript("Promise")!.construct(withArguments: [executor])!
+        return ctx.objectForKeyedSubscript("Promise")!
+            .construct(withArguments: [Self.jsFunction(executor, in: ctx)])!
     }
 }

@@ -726,6 +726,14 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         var settled = false
     }
 
+    /// Wrap a `@convention(block)` closure as a callable JS function before
+    /// passing it in `withArguments:` — older JSC (macOS 14) doesn't bridge a
+    /// raw block there, so `.then`/`Promise(...)` silently drop it. Mirrors the
+    /// conversion `setObject` already does.
+    static func jsFunction(_ block: Any, in context: JSContext) -> JSValue {
+        JSValue(object: block, in: context)!
+    }
+
     override func load() {
         guard jsContext == nil else { return }
 
@@ -956,7 +964,10 @@ class JavaScriptEngine: InputEngine, ObservableObject {
                 "module evaluation rejected:\n\(Self.describeJSException(reason), privacy: .public)"
             )
         }
-        promise.invokeMethod("then", withArguments: [captureBlock, rejectBlock])
+        promise.invokeMethod("then", withArguments: [
+            Self.jsFunction(captureBlock, in: context),
+            Self.jsFunction(rejectBlock, in: context),
+        ])
 
         guard settle.settled else {
             Logger.javaScriptEngine.fault(
