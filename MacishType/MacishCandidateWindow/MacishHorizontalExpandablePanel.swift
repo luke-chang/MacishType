@@ -413,8 +413,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         scrollView.contentView.scroll(to: .zero)
         scrollView.reflectScrolledClipView(scrollView.contentView)
 
-        // Update after layout so hidden state is correct
-        updateRowHighlightsAndIndices()
+        updateIndexVisibility()
         let targetWindowFrame = windowFrame(for: contentSize, reposition: true)
 
         if !animated {
@@ -874,8 +873,8 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
 
     override func updateItemHighlights() {
         super.updateItemHighlights()
+        updateIndexVisibility()
         if displayMode == .expanded {
-            updateRowHighlightsAndIndices()
             layoutHighlight()
         }
     }
@@ -904,22 +903,36 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         }
     }
 
-    private func updateRowHighlightsAndIndices() {
-        guard displayMode == .expanded else { return }
-        // selectedRowIdx == nil when no selection (-1 sentinel) — no row
-        // claims showIndex.
-        let selectedRowIdx = findGridPosition(of: selectedIndex)?.rowIndex
-
-        var rowForCandidate: [Int: Int] = [:]
-        for (rowIndex, row) in gridRows.enumerated() {
-            for gridItem in row.items {
-                rowForCandidate[gridItem.candidateIndex] = rowIndex
+    // Derive showIndex from logical state (displayMode + grid) rather than the
+    // isHidden layout transient, so it is correct regardless of call order.
+    private func updateIndexVisibility() {
+        switch displayMode {
+        case .collapsed:
+            // Single visible row: every row 0 item shows its index.
+            for item in row0ItemViews { item.showIndex = true }
+        case .expanded:
+            // Expanded mode normally has the grid built; bail safely if not.
+            guard !expandedGridRows.isEmpty else { return }
+            // selectedRowIdx is nil with no selection (-1 sentinel), so no row
+            // claims its index.
+            let selectedRowIdx = findGridPosition(of: selectedIndex, in: expandedGridRows)?.rowIndex
+            var rowForCandidate: [Int: Int] = [:]
+            for (rowIndex, row) in expandedGridRows.enumerated() {
+                for gridItem in row.items {
+                    rowForCandidate[gridItem.candidateIndex] = rowIndex
+                }
             }
-        }
-
-        for item in allItemViews where !item.isHidden {
-            if let rowIndex = rowForCandidate[item.absoluteIndex] {
-                item.showIndex = rowIndex == selectedRowIdx
+            // Only the selected row shows its index. The `== 0` test skips
+            // overflow row 0 views (they sit at row >= 1 here, owned by the
+            // collapsed branch); keeping their value lets them fade out with
+            // the view.
+            for item in row0ItemViews where rowForCandidate[item.absoluteIndex] == 0 {
+                item.showIndex = selectedRowIdx == 0
+            }
+            for item in expandedItemViews {
+                if let rowIndex = rowForCandidate[item.absoluteIndex] {
+                    item.showIndex = rowIndex == selectedRowIdx
+                }
             }
         }
     }
