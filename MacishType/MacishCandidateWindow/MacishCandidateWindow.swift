@@ -36,12 +36,14 @@ class MacishCandidateWindow: CandidateWindowImpl {
         oldPanel.hide()
         newPanel.apply(configuration)
         newPanel.syncTheme()
-        if !candidates.isEmpty {
-            newPanel.buildCandidateLayout()
-            // selectedIndex is shared via impl; -1 is preserved naturally.
-            newPanel.moveSelection(to: selectedIndex, animated: false)
-        }
+        // Skip migration when hidden: moveSelection can reach expandWindow,
+        // which orders the window front on its own, resurrecting stale candidates.
         if wasVisible {
+            if !candidates.isEmpty {
+                newPanel.buildCandidateLayout()
+                // selectedIndex is shared via impl; -1 is preserved naturally.
+                newPanel.moveSelection(to: selectedIndex, animated: false)
+            }
             newPanel.show(near: lastShowNearRect)
         }
     }
