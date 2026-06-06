@@ -10,13 +10,13 @@
 #
 # Env overrides (testing):
 #   LOCK           Path to lock file (default: $SCRIPT_DIR/HandleExternalResources.lock)
-#   RESOURCES_DIR  Where outputs land (default: $SCRIPT_DIR/../MacishType/Resources)
+#   REPO_ROOT      Root that output paths resolve from (default: $SCRIPT_DIR/..)
 
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOCK="${LOCK:-$SCRIPT_DIR/HandleExternalResources.lock}"
-RESOURCES_DIR="${RESOURCES_DIR:-$SCRIPT_DIR/../MacishType/Resources}"
+REPO_ROOT="${REPO_ROOT:-$SCRIPT_DIR/..}"
 
 if ! test -f "$LOCK"; then
     echo "✗ Lock file not found: $LOCK" >&2
@@ -27,7 +27,10 @@ filtered=$(mktemp)
 parents_file=$(mktemp)
 upstreams_file=$(mktemp)
 lock_before=$(mktemp)
-trap 'rm -f "$filtered" "$parents_file" "$upstreams_file" "$lock_before"' EXIT
+# Cache directory holds one download per unique source URL within a run, so
+# multiple outputs derived from the same upstream are fetched only once.
+download_cache=$(mktemp -d)
+trap 'rm -rf "$filtered" "$parents_file" "$upstreams_file" "$lock_before" "$download_cache"' EXIT
 
 print_help() {
     cat <<EOF
@@ -47,7 +50,7 @@ Commands:
 
 Env overrides (testing):
   LOCK=<path>           Override the lock file path.
-  RESOURCES_DIR=<path>  Override where outputs land.
+  REPO_ROOT=<path>      Override the root that output paths resolve from.
 EOF
 }
 
@@ -66,12 +69,12 @@ case "$mode" in
     --check|check)
         missing=0
         while read -r out _url _proc; do
-            if ! test -f "$RESOURCES_DIR/$out"; then
+            if ! test -f "$REPO_ROOT/$out"; then
                 if [ "$missing" -eq 0 ]; then
                     echo "✗ External resources are missing:" >&2
                     missing=1
                 fi
-                echo "    $RESOURCES_DIR/$out" >&2
+                echo "    $REPO_ROOT/$out" >&2
             fi
         done < "$filtered"
         if [ "$missing" -eq 1 ]; then
@@ -92,23 +95,31 @@ case "$mode" in
         done < "$filtered"
 
         while read -r out url proc; do
-            out_full="$RESOURCES_DIR/$out"
+            out_full="$REPO_ROOT/$out"
             mkdir -p "$(dirname "$out_full")"
-            # Tempfile next to target → same-fs atomic rename even when the repo
-            # lives on an external volume, disk image, or network mount.
-            tmp_in="$out_full.download.$$"
-            echo "  ↓ $out"
-            if ! curl -fsSL "$url" -o "$tmp_in"; then
-                rm -f "$tmp_in"
-                echo "✗ Failed to download $url" >&2
-                echo "  Check your network connection and retry \`make prepare\`." >&2
-                exit 1
+            # One cached download per unique URL, keyed by a hash of the URL.
+            url_hash=$(printf '%s' "$url" | shasum | cut -d' ' -f1)
+            cached="$download_cache/$url_hash"
+            if [ -f "$cached" ]; then
+                echo "  ↺ $out"
+            else
+                echo "  ↓ $out"
+                if ! curl -fsSL "$url" -o "$cached.tmp"; then
+                    rm -f "$cached.tmp"
+                    echo "✗ Failed to download $url" >&2
+                    echo "  Check your network connection and retry \`make prepare\`." >&2
+                    exit 1
+                fi
+                mv "$cached.tmp" "$cached"
             fi
             if [ "$proc" = "-" ]; then
-                mv "$tmp_in" "$out_full"
+                # Tempfile next to target → same-fs atomic rename even when the
+                # repo lives on an external volume, disk image, or network mount.
+                tmp_out="$out_full.download.$$"
+                cp "$cached" "$tmp_out"
+                mv "$tmp_out" "$out_full"
             else
-                "$SCRIPT_DIR/$proc" "$tmp_in" "$out_full" "$url"
-                rm -f "$tmp_in"
+                "$SCRIPT_DIR/$proc" "$cached" "$out_full" "$url"
             fi
         done < "$filtered"
         echo "✓ External resources ready"
@@ -158,9 +169,9 @@ case "$mode" in
 
     --clean)
         while read -r out _url _proc; do
-            rm -f "$RESOURCES_DIR/$out"
-            parent=$(dirname "$RESOURCES_DIR/$out")
-            if [ "$parent" != "$RESOURCES_DIR" ]; then
+            rm -f "$REPO_ROOT/$out"
+            parent=$(dirname "$REPO_ROOT/$out")
+            if [ "$parent" != "$REPO_ROOT" ]; then
                 echo "$parent" >> "$parents_file"
             fi
         done < "$filtered"

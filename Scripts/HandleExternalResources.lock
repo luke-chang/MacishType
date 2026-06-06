@@ -1,12 +1,11 @@
 # Pinned external resources—edit by hand to bump versions, or run `make update-resources`.
 #
-# Each line: <output-path-relative-to-Resources/> <source-url> <processor-or-dash>
+# Each line: <output-path-relative-to-repo-root> <source-url> <processor-or-dash>
 #   "<processor>"  Scripts/<processor> is invoked with (input, output, url).
 #   "-"            Verbatim copy, no processing.
 #
 # `make update-resources` queries the default-branch HEAD of each github.com
 # upstream and bumps the pinned SHA. Manual edits also work.
-#
 
-AssociatedDictionary.zh-Hant.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ GenerateAssociatedDictionary.swift
-McBopomofo.LICENSE.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/LICENSE.txt -
+MacishType/Resources/AssociatedDictionary.zh-Hant.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ GenerateAssociatedDictionary.swift
+MacishType/Resources/McBopomofo.LICENSE.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/LICENSE.txt -
