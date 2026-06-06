@@ -93,11 +93,16 @@ final class AssociatedDictionary {
         var entries: [Character: [String]] = [:]
         for raw in content.split(separator: "\n", omittingEmptySubsequences: true) {
             if raw.hasPrefix("#") { continue }
-            let tokens = raw.split(separator: " ", omittingEmptySubsequences: true)
-            guard tokens.count >= 2,
-                  tokens[0].count == 1, let key = tokens[0].first
-            else { continue }
-            entries[key] = tokens.dropFirst().map(String.init)
+            // Key and phrase list are TAB-separated; phrases within the list
+            // are space-separated.
+            guard let tab = raw.firstIndex(of: "\t") else { continue }
+            let key = raw[..<tab]
+            guard key.count == 1, let keyChar = key.first else { continue }
+            let phrases = raw[raw.index(after: tab)...]
+                .split(separator: " ", omittingEmptySubsequences: true)
+                .map(String.init)
+            guard !phrases.isEmpty else { continue }
+            entries[keyChar] = phrases
         }
         return entries
     }
