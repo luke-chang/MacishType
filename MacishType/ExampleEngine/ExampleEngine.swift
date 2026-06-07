@@ -22,8 +22,6 @@ class ExampleEngine: InputEngine {
         "Z": "也",
     ]
 
-    private var associatedDictionaryHandle: AssociatedDictionary.Handle?
-
     override var settingsView: AnyView {
         AnyView(
             InputEngine.settingsForm {
@@ -33,21 +31,6 @@ class ExampleEngine: InputEngine {
                 }
             }
         )
-    }
-
-    override func load() {
-        super.load()
-        reconcileAssociatedDictionary(handle: &associatedDictionaryHandle)
-    }
-
-    override func activate(context: InputEngineContext, clientIdentifier: String?) {
-        super.activate(context: context, clientIdentifier: clientIdentifier)
-        reconcileAssociatedDictionary(handle: &associatedDictionaryHandle)
-    }
-
-    override func unload() {
-        associatedDictionaryHandle = nil
-        super.unload()
     }
 
     private func lookupCandidates(_ key: String) -> [String] {
@@ -94,9 +77,5 @@ class ExampleEngine: InputEngine {
 
     private func composingActions(for marked: String) -> [EngineAction] {
         [.updateMarkedText(marked), .updateCandidates(lookupCandidates(marked))]
-    }
-
-    override func lookupAssociatedCandidates(for char: Character) -> [String] {
-        associatedDictionaryHandle?.lookup(char) ?? []
     }
 }

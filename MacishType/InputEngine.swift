@@ -247,6 +247,8 @@ class InputEngine {
     var candidateWindowFontSize: Int = InputEngine.defaultFontSize
     var enableAssociatedMode: Bool = InputEngine.defaultEnableAssociatedMode
 
+    private var associatedDictionaryHandle: AssociatedDictionary.Handle?
+
     init() {
         reloadConfig()
     }
@@ -279,14 +281,22 @@ class InputEngine {
     private(set) var isLoaded = false
 
     /// Subclass setup. Override to perform initialization, then call
-    /// `super.load()` to mark the engine loaded. Skipping `super.load()`
-    /// (e.g. on failure) keeps `isLoaded == false`, so the next `activate()`
+    /// `super.load()` to mark the engine loaded and acquire the associated
+    /// dictionary. Skipping `super.load()` (e.g. on failure) keeps
+    /// `isLoaded == false` and acquires no handle, so the next `activate()`
     /// retries.
-    func load() { isLoaded = true }
+    func load() {
+        isLoaded = true
+        reconcileAssociatedDictionary(handle: &associatedDictionaryHandle)
+    }
 
     /// Subclass cleanup. Override to release resources, then call
-    /// `super.unload()` to clear `isLoaded`.
-    func unload() { isLoaded = false }
+    /// `super.unload()` to release the associated dictionary and clear
+    /// `isLoaded`.
+    func unload() {
+        associatedDictionaryHandle = nil
+        isLoaded = false
+    }
 
     // Override for per-session setup. Loads engine on first call.
     func activate(context: InputEngineContext, clientIdentifier: String?) {
@@ -297,6 +307,8 @@ class InputEngine {
             #endif
             load()
         }
+        // Catches toggle changes from between sessions — load() runs only once.
+        reconcileAssociatedDictionary(handle: &associatedDictionaryHandle)
     }
 
     // Override for per-session cleanup (persist learning model, flush caches).
@@ -398,9 +410,12 @@ class InputEngine {
         )
     }
 
-    // Associated-phrase lookup. Default returns empty (no associated mode).
-    // Engines opt in by overriding with a dictionary query.
-    func lookupAssociatedCandidates(for char: Character) -> [String] { [] }
+    // Associated-phrase lookup backed by the locale-keyed associated
+    // dictionary. The handle is non-nil only when the engine has opted in
+    // (enableAssociatedMode) and a dictionary for its locale is bundled.
+    func lookupAssociatedCandidates(for char: Character) -> [String] {
+        associatedDictionaryHandle?.lookup(char) ?? []
+    }
 
     // MARK: Utilities
 

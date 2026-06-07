@@ -109,10 +109,6 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     // MARK: - System fields
 
-    /// Backs `lookupAssociatedCandidates(for:)` and the single-arg
-    /// `enterAssociatedMode` fallback while the manifest opts in.
-    private var associatedDictionaryHandle: AssociatedDictionary.Handle?
-
     /// A manifest-declared `intendedLanguage` overrides the fixed plist value
     /// (the engine slot's `TISIntendedLanguage` can't change at runtime, but a
     /// loaded engine may target another language). Computed so a manifest
@@ -980,9 +976,6 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         success = true
         Self.subscribeToLanguageChanges(self)
         super.load()
-        // After super.load() so a mid-load early return above doesn't acquire
-        // a handle for an engine that isn't actually live.
-        reconcileAssociatedDictionary(handle: &associatedDictionaryHandle)
     }
 
     /// Subclasses inspect this after `super.load()` to detect success vs
@@ -996,8 +989,6 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 
     override func unload() {
-        // Drop the handle before teardown, mirroring load's acquire order.
-        associatedDictionaryHandle = nil
         teardownContext()
         super.unload()
     }
@@ -1023,8 +1014,6 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     override func activate(context: InputEngineContext, clientIdentifier: String?) {
         super.activate(context: context, clientIdentifier: clientIdentifier)
-        // Catches toggle changes from between sessions — load() runs only once.
-        reconcileAssociatedDictionary(handle: &associatedDictionaryHandle)
         guard let instance = jsInstance(for: context) else { return }
         Self.invokeIfDefined(instance, "activate", withArguments: [])
     }
@@ -1033,10 +1022,6 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // Don't construct on deactivate — only call if instance already exists.
         guard let instance = jsInstances.object(forKey: context) else { return }
         Self.invokeIfDefined(instance, "deactivate", withArguments: [])
-    }
-
-    override func lookupAssociatedCandidates(for char: Character) -> [String] {
-        associatedDictionaryHandle?.lookup(char) ?? []
     }
 
     // MARK: Event Handling
