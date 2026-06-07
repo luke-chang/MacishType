@@ -131,7 +131,10 @@ Shared types (`Candidate`, `CandidateWindowConfiguration`, `CandidateWindowDeleg
 
 ## Acknowledgements
 
-Associated-phrase data, downloaded by `make prepare` from [McBopomofo](https://github.com/openvanilla/McBopomofo), is used under its [MIT License](https://github.com/openvanilla/McBopomofo/blob/master/LICENSE.txt) (bundled with the data).
+Data tables downloaded and bundled by `make prepare` (each upstream's license ships alongside its data):
+
+- **Associated-phrase** and **per-character frequency** tables — derived from the phrase corpus of [McBopomofo](https://github.com/openvanilla/McBopomofo), under its [MIT License](https://github.com/openvanilla/McBopomofo/blob/master/LICENSE.txt).
+- **Symbol-name** table — derived from [Unicode CLDR](https://github.com/unicode-org/cldr-json) annotations, under the [Unicode License](https://github.com/unicode-org/cldr-json/blob/main/LICENSE).
 
 ## License
 

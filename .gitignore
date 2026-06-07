@@ -9,4 +9,6 @@ Engines/**/_storage/
 
 # Downloaded external resources (managed by Scripts/HandleExternalResources.sh).
 MacishType/Resources/AssociatedDictionary.*.txt
-MacishType/Resources/**/*.LICENSE.txt
+MacishType/Resources/WordFrequency.*.txt
+MacishType/Resources/SymbolNames.*.txt
+MacishType/**/Resources/*.LICENSE.txt

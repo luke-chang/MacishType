@@ -11,6 +11,8 @@ extension Logger {
     nonisolated static let inputController = Logger(subsystem: subsystem, category: "InputController")
     nonisolated static let inputEngine = Logger(subsystem: subsystem, category: "InputEngine")
     nonisolated static let associatedDictionary = Logger(subsystem: subsystem, category: "AssociatedDictionary")
+    nonisolated static let wordFrequency = Logger(subsystem: subsystem, category: "WordFrequency")
+    nonisolated static let symbolName = Logger(subsystem: subsystem, category: "SymbolName")
     nonisolated static let javaScriptEngine = Logger(subsystem: subsystem, category: "JavaScriptEngine")
     /// JS-originated logs (engine `console.*`, uncaught exceptions, rejections),
     /// separate from `javaScriptEngine` so users can filter engine runtime
