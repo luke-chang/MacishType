@@ -49,12 +49,12 @@ class ExampleEngine: InputEngine {
 
         if context.isComposing {
             switch keyEvent.keyCode {
-            case 49:  // Space
+            case KeyCode.space:
                 if let first = lookupCandidates(context.markedText).first {
                     return .handled([.commit(first)])
                 }
                 return .handled([.resetContext])
-            case 51:  // Backspace
+            case KeyCode.backspace:
                 let newMarked = String(context.markedText.dropLast())
                 if newMarked.isEmpty {
                     return .handled([.resetContext])

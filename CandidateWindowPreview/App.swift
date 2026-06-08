@@ -329,23 +329,23 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
             self.syncPositionIfNeeded()
 
             switch event.keyCode {
-            case 36: // Enter
+            case KeyCode.return:
                 self.candidateWindow.commitSelectedCandidate()
                 return nil
-            case 48: // Tab
+            case KeyCode.tab:
                 let dir: NavigationDirection = event.modifierFlags.contains(.shift) ? .itemBackward : .itemForward
                 self.candidateWindow.handleNavigation(direction: dir, wrapping: true)
                 return nil
-            case 49: // Space
+            case KeyCode.space:
                 self.candidateWindow.handleNavigation(direction: .pageForward, wrapping: true); return nil
-            case 125: self.candidateWindow.handleNavigation(direction: .down); return nil
-            case 126: self.candidateWindow.handleNavigation(direction: .up); return nil
-            case 116: self.candidateWindow.handleNavigation(direction: .pageUp); return nil
-            case 121: self.candidateWindow.handleNavigation(direction: .pageDown); return nil
-            case 123: self.candidateWindow.handleNavigation(direction: .left); return nil
-            case 124: self.candidateWindow.handleNavigation(direction: .right); return nil
-            case 115: self.candidateWindow.handleNavigation(direction: .home); return nil
-            case 119: self.candidateWindow.handleNavigation(direction: .end); return nil
+            case KeyCode.downArrow: self.candidateWindow.handleNavigation(direction: .down); return nil
+            case KeyCode.upArrow: self.candidateWindow.handleNavigation(direction: .up); return nil
+            case KeyCode.pageUp: self.candidateWindow.handleNavigation(direction: .pageUp); return nil
+            case KeyCode.pageDown: self.candidateWindow.handleNavigation(direction: .pageDown); return nil
+            case KeyCode.leftArrow: self.candidateWindow.handleNavigation(direction: .left); return nil
+            case KeyCode.rightArrow: self.candidateWindow.handleNavigation(direction: .right); return nil
+            case KeyCode.home: self.candidateWindow.handleNavigation(direction: .home); return nil
+            case KeyCode.end: self.candidateWindow.handleNavigation(direction: .end); return nil
             default:
                 if let chars = event.characters {
                     if chars == ">" {

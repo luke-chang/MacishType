@@ -184,7 +184,7 @@ class JSExternalEngine: JavaScriptEngine {
             return context.isComposing ? .handled() : .notHandled()
         }
         // Esc / Backspace cancel the status prompt when composing.
-        if keyEvent.keyCode == 53 || keyEvent.keyCode == 51 {
+        if keyEvent.keyCode == KeyCode.escape || keyEvent.keyCode == KeyCode.backspace {
             return context.isComposing ? .handled([.resetContext]) : .notHandled()
         }
         // Non-printing keys (Return, Space, Tab, arrows, F-keys, etc.)

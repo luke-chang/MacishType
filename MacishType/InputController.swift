@@ -473,7 +473,7 @@ private extension InputController {
                     direction: intent.direction, wrapping: intent.wrapping)
                 return true
             }
-            if keyEvent.keyCode == 36 {  // Enter
+            if keyEvent.keyCode == KeyCode.return {
                 CandidateWindow.shared.commitSelectedCandidate()
                 return true
             }

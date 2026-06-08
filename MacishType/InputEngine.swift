@@ -331,7 +331,7 @@ class InputEngine {
         }
 
         // Escape: dismiss composing; otherwise pass.
-        if keyEvent.keyCode == 53 {
+        if keyEvent.keyCode == KeyCode.escape {
             return context.isComposing ? .handled([.flushStaged()]) : .notHandled()
         }
 
@@ -362,7 +362,7 @@ class InputEngine {
         keyEvent: KeyEventInput,
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
-        if keyEvent.keyCode == 53 {
+        if keyEvent.keyCode == KeyCode.escape {
             return .handled([.flushStaged()])
         }
         return .notHandled()

@@ -99,16 +99,16 @@ struct CandidateWindowConfiguration: Equatable {
         keyCode: UInt16, shift: Bool, option: Bool
     ) -> (direction: NavigationDirection, wrapping: Bool)? {
         switch keyCode {
-        case 48:  return (shift ? .itemBackward : .itemForward, true)
-        case 123: return (.left, false)
-        case 124: return (.right, false)
-        case 125: return (.down, false)
-        case 126: return (.up, false)
-        case 116: return (.pageUp, false)
-        case 121: return (.pageDown, false)
-        case 115: return (.home, false)
-        case 119: return (.end, false)
-        default:  return nil
+        case KeyCode.tab:        return (shift ? .itemBackward : .itemForward, true)
+        case KeyCode.leftArrow:  return (.left, false)
+        case KeyCode.rightArrow: return (.right, false)
+        case KeyCode.downArrow:  return (.down, false)
+        case KeyCode.upArrow:    return (.up, false)
+        case KeyCode.pageUp:     return (.pageUp, false)
+        case KeyCode.pageDown:   return (.pageDown, false)
+        case KeyCode.home:       return (.home, false)
+        case KeyCode.end:        return (.end, false)
+        default:                 return nil
         }
     }
 }
