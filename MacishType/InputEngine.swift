@@ -124,6 +124,7 @@ class InputEngine {
 
     private static let engines: [String: () -> InputEngine] = [
         "Example": { ExampleEngine.shared },
+        "Array": { ArrayEngine.shared },
         "JSExternal": { JSExternalEngine.shared },
     ]
 

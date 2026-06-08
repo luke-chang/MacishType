@@ -15,6 +15,7 @@
 		86174D562F78414200E6BA28 /* Exceptions for "MacishType" folder in "MacishType" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				ArrayEngine/Resources,
 				ExampleEngine/Resources,
 				Info.plist,
 				JavaScriptEngine/JSExternalEngine/Resources,
@@ -69,6 +70,7 @@
 				866258C42F8A547E003DEC1C /* Exceptions for "MacishType" folder in "CandidateWindowPreview" target */,
 			);
 			explicitFolders = (
+				ArrayEngine/Resources,
 				ExampleEngine/Resources,
 				JavaScriptEngine/JSExternalEngine/Resources,
 				JavaScriptEngine/Resources,

@@ -11,4 +11,8 @@ Engines/**/_storage/
 MacishType/Resources/AssociatedDictionary.*.txt
 MacishType/Resources/WordFrequency.*.txt
 MacishType/Resources/SymbolNames.*.txt
+MacishType/ArrayEngine/Resources/Array30.txt
+MacishType/ArrayEngine/Resources/ArraySymbol.txt
+MacishType/ArrayEngine/Resources/ArrayShortCode.txt
+MacishType/ArrayEngine/Resources/ArrayPhrase.txt
 MacishType/**/Resources/*.LICENSE.txt

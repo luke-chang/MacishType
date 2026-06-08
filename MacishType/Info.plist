@@ -31,6 +31,7 @@
 		<key>tsVisibleInputModeOrderedArrayKey</key>
 		<array>
 			<string>net.lukechang.inputmethod.MacishType.Example</string>
+			<string>net.lukechang.inputmethod.MacishType.Array</string>
 			<string>net.lukechang.inputmethod.MacishType.JSExternal</string>
 		</array>
 		<key>tsInputModeListKey</key>
@@ -57,6 +58,30 @@
 				<dict>
 					<key>Primary</key>
 					<string>範例</string>
+				</dict>
+			</dict>
+			<key>net.lukechang.inputmethod.MacishType.Array</key>
+			<dict>
+				<key>TISInputSourceID</key>
+				<string>net.lukechang.inputmethod.MacishType.Array</string>
+				<key>TISIntendedLanguage</key>
+				<string>zh-Hant</string>
+				<key>tsInputModeScriptKey</key>
+				<string>smUnicodeScript</string>
+				<key>tsInputModeCharacterRepertoireKey</key>
+				<array>
+					<string>Hant</string>
+				</array>
+				<key>tsInputModeIsVisibleKey</key>
+				<true/>
+				<key>tsInputModeMenuIconFileKey</key>
+				<string>Array/ArrayMenuIcon.tiff</string>
+				<key>tsInputModePaletteIconFileKey</key>
+				<string>Array/ArrayMenuIcon.tiff</string>
+				<key>TISIconLabels</key>
+				<dict>
+					<key>Primary</key>
+					<string>行列</string>
 				</dict>
 			</dict>
 			<key>net.lukechang.inputmethod.MacishType.JSExternal</key>

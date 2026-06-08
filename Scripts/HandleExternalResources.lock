@@ -1,8 +1,11 @@
 # Pinned external resources—edit by hand to bump versions, or run `make update-resources`.
 #
-# Each line: <output-path-relative-to-repo-root> <source-url> <processor-or-dash>
-#   "<processor>"  Scripts/<processor> is invoked with (input, output, url).
+# Each line: <output-path-relative-to-repo-root> <source-url> <processor-or-dash> [section]
+#   "<processor>"  Scripts/<processor> is invoked with (input, output, url, [section]).
 #   "-"            Verbatim copy, no processing.
+#   "[section]"    Optional 4th column passed to the processor as a 4th argument,
+#                  e.g. which section of a multi-section source to extract. Lines
+#                  sharing one source-url are downloaded once (cached per run).
 #
 # `make update-resources` queries the default-branch HEAD of each github.com
 # upstream and bumps the pinned SHA. Manual edits also work.
@@ -12,3 +15,7 @@ MacishType/Resources/WordFrequency.zh-Hant.txt https://raw.githubusercontent.com
 MacishType/Resources/McBopomofo.LICENSE.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/LICENSE.txt -
 MacishType/Resources/SymbolNames.zh-Hant.txt https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/cldr-json/cldr-annotations-full/annotations/zh-Hant/annotations.json GenerateSymbolNames.swift
 MacishType/Resources/CLDR.LICENSE.txt https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/LICENSE -
+MacishType/ArrayEngine/Resources/Array30.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 MarkRareByFontCoverage.swift chardef
+MacishType/ArrayEngine/Resources/ArraySymbol.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 MarkRareByFontCoverage.swift symboldef
+MacishType/ArrayEngine/Resources/ArrayShortCode.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 ExtractCodeTable.swift quick
+MacishType/ArrayEngine/Resources/ArrayPhrase.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 ExtractCodeTable.swift quickphrases

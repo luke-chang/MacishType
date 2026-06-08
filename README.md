@@ -114,6 +114,8 @@ Subclass [`InputEngine`](MacishType/InputEngine.swift), override `engineID` and 
 </dict>
 ```
 
+The name macOS shows for the input source — in the menu-bar input menu, System Settings → Input Sources, and elsewhere — comes from a separate localization in [`MacishType/InfoPlist.xcstrings`](MacishType/InfoPlist.xcstrings): add an entry keyed by the input mode ID (`net.lukechang.inputmethod.MacishType.YourEngineID`) with each locale's display name. Without it the raw mode ID shows instead. This is distinct from `TISIconLabels.Primary` above, which only labels the menu-bar / palette icon.
+
 **Engine resources** (icons, dictionaries, etc.) live in `MacishType/<engineID>Engine/Resources/` and are staged into `<bundle>/Resources/<engineID>/` at build time by the **Stage Engine Resources** run-script phase (the `Engine` suffix is stripped — e.g. `ExampleEngine/Resources/ExampleMenuIcon.tiff` → `Example/ExampleMenuIcon.tiff`). Because each engine's resources land in their own subfolder, file names don't need to be unique across engines.
 
 > [!IMPORTANT]
@@ -131,10 +133,11 @@ Shared types (`Candidate`, `CandidateWindowConfiguration`, `CandidateWindowDeleg
 
 ## Acknowledgements
 
-Data tables downloaded and bundled by `make prepare` (each upstream's license ships alongside its data):
+Data tables downloaded and bundled by `make prepare` (each upstream's license, if any, ships alongside its data):
 
 - **Associated-phrase** and **per-character frequency** tables — derived from the phrase corpus of [McBopomofo](https://github.com/openvanilla/McBopomofo), under its [MIT License](https://github.com/openvanilla/McBopomofo/blob/master/LICENSE.txt).
 - **Symbol-name** table — derived from [Unicode CLDR](https://github.com/unicode-org/cldr-json) annotations, under the [Unicode License](https://github.com/unicode-org/cldr-json/blob/main/LICENSE).
+- **Array30 code tables** — derived from [gontera/array30](https://github.com/gontera/array30), under its license for use by third-party input methods.
 
 ## License
 

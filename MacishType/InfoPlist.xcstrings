@@ -35,6 +35,23 @@
         }
       }
     },
+    "net.lukechang.inputmethod.MacishType.Array" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Array"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行列"
+          }
+        }
+      }
+    },
     "net.lukechang.inputmethod.MacishType.JSExternal" : {
       "extractionState" : "manual",
       "localizations" : {

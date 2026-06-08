@@ -68,7 +68,7 @@ case "$mode" in
 
     --check|check)
         missing=0
-        while read -r out _url _proc; do
+        while read -r out _url _proc _section; do
             if ! test -f "$REPO_ROOT/$out"; then
                 if [ "$missing" -eq 0 ]; then
                     echo "✗ External resources are missing:" >&2
@@ -85,7 +85,7 @@ case "$mode" in
 
     --prepare)
         # Early validation: every referenced processor must exist and be executable.
-        while read -r _out _url proc; do
+        while read -r _out _url proc _section; do
             [ "$proc" = "-" ] && continue
             if ! test -x "$SCRIPT_DIR/$proc"; then
                 echo "✗ Processor not executable: Scripts/$proc" >&2
@@ -94,7 +94,7 @@ case "$mode" in
             fi
         done < "$filtered"
 
-        while read -r out url proc; do
+        while read -r out url proc section; do
             out_full="$REPO_ROOT/$out"
             mkdir -p "$(dirname "$out_full")"
             # One cached download per unique URL, keyed by a hash of the URL.
@@ -118,6 +118,10 @@ case "$mode" in
                 tmp_out="$out_full.download.$$"
                 cp "$cached" "$tmp_out"
                 mv "$tmp_out" "$out_full"
+            elif [ -n "$section" ]; then
+                # A 4th lock column passes an extra argument to the processor
+                # (e.g. which section of a multi-section source to extract).
+                "$SCRIPT_DIR/$proc" "$cached" "$out_full" "$url" "$section"
             else
                 "$SCRIPT_DIR/$proc" "$cached" "$out_full" "$url"
             fi
@@ -168,7 +172,7 @@ case "$mode" in
         ;;
 
     --clean)
-        while read -r out _url _proc; do
+        while read -r out _url _proc _section; do
             rm -f "$REPO_ROOT/$out"
             parent=$(dirname "$REPO_ROOT/$out")
             if [ "$parent" != "$REPO_ROOT" ]; then
