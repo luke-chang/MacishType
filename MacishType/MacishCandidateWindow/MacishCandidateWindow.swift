@@ -110,16 +110,17 @@ class MacishCandidateWindow: CandidateWindowImpl {
     override func handleNavigation(direction: NavigationDirection, wrapping: Bool) {
         if !hasSelection {
             switch direction {
-            case .up, .down, .left, .right, .itemForward, .itemBackward:
+            case .up, .down, .left, .right, .itemForward, .itemBackward,
+                 .pageUp, .pageDown, .pageForward, .pageBackward:
                 activePanel.moveSelection(to: 0)
                 return
             default:
-                break   // jump keys fall through; panels handle -1 themselves
+                break   // home / end fall through; panels handle -1 themselves
             }
         }
         activePanel.handleNavigation(direction: direction, wrapping: wrapping)
         // Reveal at 0 when the panel's jump-key logic short-circuited
-        // (e.g. .pageUp from page 0 no-wrap) and left selection unchanged.
+        // (e.g. .home from page 0) and left selection unchanged.
         if !hasSelection {
             activePanel.moveSelection(to: 0)
         }
