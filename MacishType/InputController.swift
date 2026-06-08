@@ -234,13 +234,27 @@ class InputController: IMKInputController {
                 // Tier 2: dismiss + fall through to engine.handleKey
                 executeActions(actions + [.flushStaged()], client: client)
             }
-        } else if dispatchCandidateWindowKey(keyEvent) {
-            return true
+        } else {
+            // Tier 1a: policy-gated candidate-window key handling
+            if dispatchCandidateWindowKey(keyEvent) {
+                return true
+            }
+            // Tier 1b: while a composition is in progress, let the engine commit
+            // the staged text and re-dispatch this key on a fresh context.
+            if !engineContext.markedText.isEmpty,
+               engine.shouldFlushStagedBeforeHandling(
+                   context: engineContext, keyEvent: keyEvent,
+                   candidateWindow: candidateWindowState) {
+                executeActions([.flushStaged()], client: client)
+                // falls through to engine.handleKey on the reset context
+            }
         }
+        // A preceding tier may have flushed (hiding the window and resetting the
+        // context), so re-query the window state for handleKey.
         let result = engine.handleKey(
             context: engineContext,
             keyEvent: keyEvent,
-            candidateWindow: candidateWindowState)
+            candidateWindow: currentCandidateWindowState())
         switch result {
         case .handled(let actions):
             executeActions(actions, client: client)

@@ -368,6 +368,17 @@ class InputEngine {
         return .notHandled()
     }
 
+    /// While composing, asks whether this key should flush the staged text
+    /// first: returning true commits it (full teardown) and re-dispatches the
+    /// key to `handleKey` on a fresh context. Default: false.
+    func shouldFlushStagedBeforeHandling(
+        context: InputEngineContext,
+        keyEvent: KeyEventInput,
+        candidateWindow: CandidateWindowState
+    ) -> Bool {
+        false
+    }
+
     func candidateConfirmed(
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate?,
         candidateWindow: CandidateWindowState
