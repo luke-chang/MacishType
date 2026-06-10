@@ -91,15 +91,22 @@ struct CandidateWindowConfiguration: Equatable {
         return nil
     }
 
-    /// Standard nav-key lookup: arrows / Tab / Page / Home / End. nil
-    /// if `keyCode` isn't a nav key. Cmd / Ctrl are filtered upstream
-    /// so they never reach here; `shift` drives Tab direction, `option`
-    /// is reserved for future Option+Arrow style mappings.
+    /// Standard nav-key lookup: arrows / Tab / Page / Home / End. Returns nil
+    /// when `keyCode` isn't a nav key, or when a modifier disqualifies it.
+    /// Cmd / Ctrl are filtered upstream so they never reach here.
+    ///
+    /// Tab is the only nav key that reads a modifier (Shift, to reverse). Holding
+    /// Option — or Shift on any other key — means it's no longer a plain
+    /// navigation key, so leave it for the engine (e.g. an engine's paging binding).
     func navigationIntent(
         keyCode: UInt16, shift: Bool, option: Bool
     ) -> (direction: NavigationDirection, wrapping: Bool)? {
+        guard !option else { return nil }
+        if keyCode == KeyCode.tab {
+            return (shift ? .itemBackward : .itemForward, true)
+        }
+        guard !shift else { return nil }
         switch keyCode {
-        case KeyCode.tab:        return (shift ? .itemBackward : .itemForward, true)
         case KeyCode.leftArrow:  return (.left, false)
         case KeyCode.rightArrow: return (.right, false)
         case KeyCode.downArrow:  return (.down, false)

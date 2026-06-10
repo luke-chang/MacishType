@@ -116,6 +116,13 @@ struct KeyEventInput {
     let charactersIgnoringModifiers: String?
     let modifiers: NSEvent.ModifierFlags
     let isRepeat: Bool
+
+    /// Modifier flags with device-dependent bits stripped.
+    var pureModifiers: NSEvent.ModifierFlags { modifiers.intersection(.deviceIndependentFlagsMask) }
+
+    /// No Cmd/Ctrl/Option/Shift held — nothing that changes the key's meaning,
+    /// so a control key may perform its action. (CapsLock / Fn are ignored.)
+    var isBareKey: Bool { pureModifiers.isDisjoint(with: [.command, .control, .option, .shift]) }
 }
 
 class InputEngine {
@@ -324,32 +331,34 @@ class InputEngine {
         keyEvent: KeyEventInput,
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
-        let pureMods = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
+        let pureMods = keyEvent.pureModifiers
 
-        // Cmd/Ctrl bypass: pass to OS when idle, eat when composing.
         if !pureMods.intersection([.command, .control]).isEmpty {
             return context.isComposing ? .handled() : .notHandled()
         }
 
-        // Escape: dismiss composing; otherwise pass.
-        if keyEvent.keyCode == KeyCode.escape {
-            return context.isComposing ? .handled([.flushStaged()]) : .notHandled()
-        }
-
-        // Uppercase letter (no Option): commit literally when idle, eat when composing.
+        // Text-producing combos run before the modified-key rule below.
         if !pureMods.contains(.option),
            let text = keyEvent.characters, text.count == 1,
            let char = text.first, char.isUppercase, char.isLetter {
             return context.isComposing ? .handled() : .handled([.flushStaged(text)])
         }
 
-        // Option+printable → fullwidth: emit when idle, eat when composing.
-        // charactersIgnoringModifiers follows the active layout (Dvorak / AZERTY etc.).
+        // charactersIgnoringModifiers is layout-aware and carries Shift, so
+        // Option+Shift → fullwidth uppercase / symbols.
         if pureMods.contains(.option),
            let chars = keyEvent.charactersIgnoringModifiers,
            chars.count == 1, let char = chars.first,
            let fullwidth = Self.toFullwidth(char) {
             return context.isComposing ? .handled() : .handled([.flushStaged(String(fullwidth))])
+        }
+
+        if !keyEvent.isBareKey {
+            return context.isComposing ? .handled() : .notHandled()
+        }
+
+        if keyEvent.keyCode == KeyCode.escape {
+            return context.isComposing ? .handled([.flushStaged()]) : .notHandled()
         }
 
         return .notHandled()

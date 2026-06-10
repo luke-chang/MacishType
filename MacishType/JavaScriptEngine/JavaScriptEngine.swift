@@ -1195,7 +1195,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         candidateWindow: CandidateWindowState,
         sink: ActionSink
     ) -> JSValue {
-        let pure = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
+        let pure = keyEvent.pureModifiers
 
         let event = JSValue(newObjectIn: jsContext)!
         let key = KeyboardEventMapping.webKey(for: keyEvent.keyCode, characters: keyEvent.characters)

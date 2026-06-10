@@ -103,7 +103,7 @@ final class ArrayEngine: InputEngine {
             ctx.code = String(key)
             return .handled(renderWildcardActions(ctx, dictionary))
         }
-        let mods = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
+        let mods = keyEvent.pureModifiers
         if mods.contains(.option), mods.intersection([.command, .control]).isEmpty,
            let chars = keyEvent.charactersIgnoringModifiers, chars.count == 1,
            let char = chars.first, let fullwidth = Self.toFullwidth(char) {
@@ -136,45 +136,51 @@ final class ArrayEngine: InputEngine {
         _ window: CandidateWindowState, _ dictionary: ArrayDictionary
     ) -> EngineHandleResult {
         if let page = pageAction(event, window) { return .handled([page]) }
-        switch event.keyCode {
-        case KeyCode.escape:
-            return .handled([.resetContext])
-        case KeyCode.backspace:
-            ctx.code = String(ctx.code.dropLast())
-            return ctx.code.isEmpty ? .handled([.resetContext]) : .handled(renderActions(ctx, dictionary))
-        case KeyCode.space:
-            return .handled(enterSelecting(ctx, dictionary.main(ctx.code)))
-        case KeyCode.quote:
-            return .handled(enterSelecting(ctx, dictionary.phrase(ctx.code)))
-        default:
-            if let key = wildcardChar(event), canExtendWildcard(ctx) {
-                ctx.code.append(key)
-                return .handled(renderWildcardActions(ctx, dictionary))
+        if event.isBareKey {
+            switch event.keyCode {
+            case KeyCode.escape:
+                return .handled([.resetContext])
+            case KeyCode.backspace:
+                ctx.code = String(ctx.code.dropLast())
+                return ctx.code.isEmpty ? .handled([.resetContext]) : .handled(renderActions(ctx, dictionary))
+            case KeyCode.space:
+                return .handled(enterSelecting(ctx, dictionary.main(ctx.code)))
+            case KeyCode.quote:
+                return .handled(enterSelecting(ctx, dictionary.phrase(ctx.code)))
+            default:
+                break
             }
-            if let key = compositionChar(event), canExtend(ctx, key) {
-                ctx.code.append(key)
-                return .handled(renderActions(ctx, dictionary))
-            }
-            return .handled([])
         }
+        if let key = wildcardChar(event), canExtendWildcard(ctx) {
+            ctx.code.append(key)
+            return .handled(renderWildcardActions(ctx, dictionary))
+        }
+        if let key = compositionChar(event), canExtend(ctx, key) {
+            ctx.code.append(key)
+            return .handled(renderActions(ctx, dictionary))
+        }
+        return .handled([])
     }
 
     private func handleSelectingKey(
         _ ctx: ArrayEngineContext, _ event: KeyEventInput, _ window: CandidateWindowState
     ) -> EngineHandleResult {
         if let page = pageAction(event, window) { return .handled([page]) }
-        switch event.keyCode {
-        case KeyCode.escape, KeyCode.backspace:
-            return .handled([.resetContext])
-        case KeyCode.space:
-            return ctx.symbolGroup
-                ? .handled([.navigateCandidates(.pageForward, wrapping: true)])
-                : .handled([.commitSelectedCandidate])
-        default:
-            // Composition keys are handled by shouldFlushStagedBeforeHandling;
-            // anything else is swallowed while a composition is in progress.
-            return .handled([])
+        if event.isBareKey {
+            switch event.keyCode {
+            case KeyCode.escape, KeyCode.backspace:
+                return .handled([.resetContext])
+            case KeyCode.space:
+                return ctx.symbolGroup
+                    ? .handled([.navigateCandidates(.pageForward, wrapping: true)])
+                    : .handled([.commitSelectedCandidate])
+            default:
+                break
+            }
         }
+        // Composition keys are handled by shouldFlushStagedBeforeHandling;
+        // anything else is swallowed while composing.
+        return .handled([])
     }
 
     private func handleWildcardKey(
@@ -182,24 +188,27 @@ final class ArrayEngine: InputEngine {
         _ window: CandidateWindowState, _ dictionary: ArrayDictionary
     ) -> EngineHandleResult {
         if let page = pageAction(event, window) { return .handled([page]) }
-        switch event.keyCode {
-        case KeyCode.escape:
-            return .handled([.resetContext])
-        case KeyCode.backspace:
-            ctx.code = String(ctx.code.dropLast())
-            if ctx.code.isEmpty { return .handled([.resetContext]) }
-            return ArrayDictionary.hasWildcard(ctx.code)
-                ? .handled(renderWildcardActions(ctx, dictionary))
-                : .handled(renderActions(ctx, dictionary))
-        case KeyCode.space:
-            return .handled([.navigateCandidates(.pageForward, wrapping: true)])
-        default:
-            if let key = compositionChar(event) ?? wildcardChar(event), canExtendWildcard(ctx) {
-                ctx.code.append(key)
-                return .handled(renderWildcardActions(ctx, dictionary))
+        if event.isBareKey {
+            switch event.keyCode {
+            case KeyCode.escape:
+                return .handled([.resetContext])
+            case KeyCode.backspace:
+                ctx.code = String(ctx.code.dropLast())
+                if ctx.code.isEmpty { return .handled([.resetContext]) }
+                return ArrayDictionary.hasWildcard(ctx.code)
+                    ? .handled(renderWildcardActions(ctx, dictionary))
+                    : .handled(renderActions(ctx, dictionary))
+            case KeyCode.space:
+                return .handled([.navigateCandidates(.pageForward, wrapping: true)])
+            default:
+                break
             }
-            return .handled([])
         }
+        if let key = compositionChar(event) ?? wildcardChar(event), canExtendWildcard(ctx) {
+            ctx.code.append(key)
+            return .handled(renderWildcardActions(ctx, dictionary))
+        }
+        return .handled([])
     }
 
     override func candidateConfirmed(
@@ -317,7 +326,7 @@ final class ArrayEngine: InputEngine {
     /// Paging keys, active whenever the candidate window is visible: `=`/`]`
     /// page forward, `-`/`[` page back (no wrap).
     private func pageAction(_ event: KeyEventInput, _ window: CandidateWindowState) -> EngineAction? {
-        guard window.isVisible else { return nil }
+        guard window.isVisible, event.isBareKey else { return nil }
         switch event.keyCode {
         case KeyCode.equal, KeyCode.rightBracket: return .navigateCandidates(.pageForward)
         case KeyCode.minus, KeyCode.leftBracket: return .navigateCandidates(.pageBackward)
@@ -336,7 +345,7 @@ final class ArrayEngine: InputEngine {
     }
 
     private func modifierFreeChar(_ event: KeyEventInput) -> Character? {
-        let mods = event.modifiers.intersection(.deviceIndependentFlagsMask)
+        let mods = event.pureModifiers
         guard mods.intersection([.command, .control, .option]).isEmpty,
               let chars = event.charactersIgnoringModifiers, chars.count == 1 else { return nil }
         return chars.first

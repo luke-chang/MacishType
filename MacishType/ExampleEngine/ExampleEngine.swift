@@ -66,7 +66,7 @@ class ExampleEngine: InputEngine {
 
         // Plain a-z extends (composing) or starts (idle) a composing session.
         // `markedText` is "" when idle, so a single path handles both.
-        if keyEvent.modifiers.intersection(.deviceIndependentFlagsMask).isEmpty,
+        if keyEvent.pureModifiers.isEmpty,
            let text = keyEvent.characters, text.count == 1,
            let char = text.first, validCompositionCharacters.contains(char) {
             return .handled(composingActions(for: context.markedText + text.uppercased()))

@@ -178,7 +178,7 @@ class JSExternalEngine: JavaScriptEngine {
             )
         }
 
-        let pure = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
+        let pure = keyEvent.pureModifiers
 
         if !pure.intersection([.command, .control]).isEmpty {
             return context.isComposing ? .handled() : .notHandled()

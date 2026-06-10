@@ -454,7 +454,7 @@ private extension InputController {
     func dispatchCandidateWindowKey(_ keyEvent: KeyEventInput) -> Bool {
         guard CandidateWindow.shared.isVisible else { return false }
         let cfg = CandidateWindow.shared.currentConfiguration
-        let pureMods = keyEvent.modifiers.intersection(.deviceIndependentFlagsMask)
+        let pureMods = keyEvent.pureModifiers
         if !pureMods.intersection([.command, .control]).isEmpty { return false }
 
         if cfg.handleIndexLabelKeys, !pureMods.contains(.option),
@@ -473,7 +473,9 @@ private extension InputController {
                     direction: intent.direction, wrapping: intent.wrapping)
                 return true
             }
-            if keyEvent.keyCode == KeyCode.return {
+            // Only an unmodified Return commits (Cmd / Ctrl already filtered above).
+            if keyEvent.keyCode == KeyCode.return,
+               pureMods.intersection([.shift, .option]).isEmpty {
                 CandidateWindow.shared.commitSelectedCandidate()
                 return true
             }
