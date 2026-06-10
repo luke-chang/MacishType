@@ -151,15 +151,15 @@ final class ArrayDictionary {
     }
 
     /// Wildcard query against the main table. A leading `*` with no other
-    /// wildcard matches the radicals in any order; otherwise `?` matches one
-    /// key and `*` one or more. Results are deduped by character, ranked by
-    /// frequency (ties keep file order), capped at `wildcardLimit`, and
-    /// annotated with the matched code's radical readout.
+    /// wildcard matches any code containing those radicals (any order, extra
+    /// radicals allowed); otherwise `?` matches one key and `*` one or more.
+    /// Results are deduped by character, ranked by frequency (ties keep file
+    /// order), capped at `wildcardLimit`, and annotated with the radical readout.
     func wildcardMatches(_ pattern: String) -> [Candidate] {
         let matches: (String) -> Bool
         if pattern.hasPrefix("*") && !Self.hasWildcard(String(pattern.dropFirst())) {
-            let target = String(pattern.dropFirst().sorted())
-            matches = { String($0.sorted()) == target }
+            let required = Array(pattern.dropFirst())
+            matches = { code in required.allSatisfy { code.contains($0) } }
         } else {
             let pat = Array(pattern)
             matches = { Self.positionalMatch(pat, Array($0)) }

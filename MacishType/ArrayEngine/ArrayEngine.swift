@@ -89,7 +89,7 @@ final class ArrayEngine: InputEngine {
                 return handleWildcardKey(ctx, keyEvent, candidateWindow, dictionary)
             }
             return ctx.selecting
-                ? handleSelectingKey(ctx, keyEvent, candidateWindow)
+                ? handleSelectingKey(ctx, keyEvent, candidateWindow, dictionary)
                 : handleComposingKey(ctx, keyEvent, candidateWindow, dictionary)
         }
 
@@ -163,13 +163,23 @@ final class ArrayEngine: InputEngine {
     }
 
     private func handleSelectingKey(
-        _ ctx: ArrayEngineContext, _ event: KeyEventInput, _ window: CandidateWindowState
+        _ ctx: ArrayEngineContext, _ event: KeyEventInput,
+        _ window: CandidateWindowState, _ dictionary: ArrayDictionary
     ) -> EngineHandleResult {
         if let page = pageAction(event, window) { return .handled([page]) }
         if event.isBareKey {
             switch event.keyCode {
-            case KeyCode.escape, KeyCode.backspace:
+            case KeyCode.escape:
                 return .handled([.resetContext])
+            case KeyCode.backspace:
+                // Step back one stage: a symbol group returns to its prefix menu,
+                // a candidate list returns to the composing preview of the code.
+                if ctx.symbolGroup { ctx.code = String(ctx.code.dropLast()) }
+                ctx.selecting = false
+                ctx.symbolGroup = false
+                return ctx.code.isEmpty
+                    ? .handled([.resetContext])
+                    : .handled(renderActions(ctx, dictionary))
             case KeyCode.space:
                 return ctx.symbolGroup
                     ? .handled([.navigateCandidates(.pageForward, wrapping: true)])
@@ -323,14 +333,19 @@ final class ArrayEngine: InputEngine {
 
     // MARK: - Helpers
 
-    /// Paging keys, active whenever the candidate window is visible: `=`/`]`
-    /// page forward, `-`/`[` page back (no wrap).
+    /// Paging keys, active whenever the candidate window is visible: `=`/`]` or
+    /// Shift+→ page forward, `-`/`[` or Shift+← page back (no wrap).
     private func pageAction(_ event: KeyEventInput, _ window: CandidateWindowState) -> EngineAction? {
-        guard window.isVisible, event.isBareKey else { return nil }
-        switch event.keyCode {
-        case KeyCode.equal, KeyCode.rightBracket: return .navigateCandidates(.pageForward)
-        case KeyCode.minus, KeyCode.leftBracket: return .navigateCandidates(.pageBackward)
-        default: return nil
+        guard window.isVisible,
+              event.pureModifiers.isDisjoint(with: [.command, .control, .option]) else { return nil }
+        let shift = event.pureModifiers.contains(.shift)
+        switch (event.keyCode, shift) {
+        case (KeyCode.equal, false), (KeyCode.rightBracket, false), (KeyCode.rightArrow, true):
+            return .navigateCandidates(.pageForward)
+        case (KeyCode.minus, false), (KeyCode.leftBracket, false), (KeyCode.leftArrow, true):
+            return .navigateCandidates(.pageBackward)
+        default:
+            return nil
         }
     }
 
