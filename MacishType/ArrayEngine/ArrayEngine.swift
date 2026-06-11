@@ -349,21 +349,20 @@ final class ArrayEngine: InputEngine {
         }
     }
 
-    /// The layout-aware character if `event` is an unmodified composition key.
+    /// The Array key at `event`'s physical position; layout-independent. Routes
+    /// the keyCode through the shared keyCode → W3C-position map.
     private func compositionChar(_ event: KeyEventInput) -> Character? {
-        modifierFreeChar(event).flatMap { ArrayDictionary.compositionKeys.contains($0) ? $0 : nil }
+        guard event.isBareKey else { return nil }
+        return ArrayDictionary.arrayKey(forWebCode: KeyboardEventMapping.webCode(for: event.keyCode))
     }
 
-    /// The character if `event` is an unmodified wildcard key (`?` / `*`).
+    /// The typed wildcard symbol (`?` / `*`) — by character, not position, so it
+    /// follows the layout. Shift is allowed (both are shifted on US QWERTY).
     private func wildcardChar(_ event: KeyEventInput) -> Character? {
-        modifierFreeChar(event).flatMap { $0 == "?" || $0 == "*" ? $0 : nil }
-    }
-
-    private func modifierFreeChar(_ event: KeyEventInput) -> Character? {
-        let mods = event.pureModifiers
-        guard mods.intersection([.command, .control, .option]).isEmpty,
-              let chars = event.charactersIgnoringModifiers, chars.count == 1 else { return nil }
-        return chars.first
+        guard event.pureModifiers.intersection([.command, .control, .option]).isEmpty,
+              let chars = event.charactersIgnoringModifiers, chars.count == 1,
+              let char = chars.first, char == "?" || char == "*" else { return nil }
+        return char
     }
 
     /// Whether `key` may extend the code: capped at `maxCodeLength`, and the 5th

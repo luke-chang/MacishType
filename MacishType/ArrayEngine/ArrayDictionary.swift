@@ -24,9 +24,22 @@ final class ArrayDictionary {
         "?": "？", "*": "＊",
     ]
 
-    /// Keys that build a composition: every `keyName` key except the wildcards.
-    static let compositionKeys: Set<Character> =
-        Set(ArrayDictionary.keyName.keys).subtracting(["?", "*"])
+    /// Array key character for a W3C `code` (US-QWERTY physical position), so
+    /// composition is keyboard-layout-independent. `"KeyA"` → `a`, plus the four
+    /// punctuation codes; nil for non-Array keys. The values are exactly
+    /// `keyName`'s keys minus `?`/`*` by construction.
+    static func arrayKey(forWebCode code: String) -> Character? {
+        switch code {
+        case "Comma": return ","
+        case "Period": return "."
+        case "Slash": return "/"
+        case "Semicolon": return ";"
+        default:
+            guard code.count == 4, code.hasPrefix("Key"),
+                  let last = code.last, ("A"..."Z").contains(last) else { return nil }
+            return Character(last.lowercased())
+        }
+    }
 
     /// Names for the symbol groups, shown in the group menu at a symbol prefix.
     static let groupNames: [String: String] = [
