@@ -27,7 +27,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				CandidateWindow.swift,
-				KeyCode.swift,
+				Keyboard.swift,
 				Logger.swift,
 				MacishCandidateWindow/MacishBasePanel.swift,
 				MacishCandidateWindow/MacishCandidateItemView.swift,
