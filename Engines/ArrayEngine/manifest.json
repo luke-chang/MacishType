@@ -1,0 +1,31 @@
+{
+  "entry": "index.js",
+  "intendedLanguage": "zh-Hant",
+  "candidateWindow": {
+    "expandable": false,
+    "pageSize": 10,
+    "indexLabels": "1234567890"
+  },
+  "settings": [
+    {
+      "title": { "en": "Typing", "zh-Hant": "輸入行為" },
+      "fields": [
+        {
+          "key": "enableAssociatedMode",
+          "type": "system",
+          "default": true
+        },
+        {
+          "key": "showRareCharacters",
+          "type": "toggle",
+          "label": { "en": "Show rare characters", "zh-Hant": "顯示罕見字" },
+          "description": {
+            "en": "Requires the matching font installed to display correctly.",
+            "zh-Hant": "需安裝對應字型才能正確顯示。"
+          },
+          "default": false
+        }
+      ]
+    }
+  ]
+}

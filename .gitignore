@@ -16,3 +16,12 @@ MacishType/ArrayEngine/Resources/ArraySymbol.txt
 MacishType/ArrayEngine/Resources/ArrayShortCode.txt
 MacishType/ArrayEngine/Resources/ArrayPhrase.txt
 MacishType/**/Resources/*.LICENSE.txt
+
+# Array JS engine tables (copied by Engines/ArrayEngine/setup.sh).
+Engines/ArrayEngine/Array30.txt
+Engines/ArrayEngine/ArrayShortCode.txt
+Engines/ArrayEngine/ArrayPhrase.txt
+Engines/ArrayEngine/ArraySymbol.txt
+Engines/ArrayEngine/WordFrequency.zh-Hant.txt
+Engines/ArrayEngine/SymbolNames.zh-Hant.txt
+Engines/ArrayEngine/CLDR.LICENSE.txt
