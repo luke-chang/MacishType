@@ -254,7 +254,7 @@ struct SettingsDetailContent: View {
     var body: some View {
         Group {
             if selection == "general" {
-                EmptySettingsView()
+                GeneralSettingsView()
             } else if let id = selection,
                       let engine = InputEngine.engine(forSuffix: id) {
                 engine.settingsView

@@ -135,6 +135,21 @@ class InputController: IMKInputController {
         super.activateServer(sender)
         appearanceStale = true
         hideCandidateWindow()
+        applyKeyboardLayoutOverride(sender)
+    }
+
+    private static let overrideKeyboardSel = NSSelectorFromString("overrideKeyboardWithKeyboardNamed:")
+
+    /// Pin the layout the IM reads keys with, per the General setting (empty =
+    /// follow the system). Re-applied each activation since the override is
+    /// per-session. Sent by selector as `overrideKeyboardWithKeyboardNamed:`
+    /// isn't surfaced in Swift; a stale (uninstalled) ID silently no-ops.
+    private func applyKeyboardLayoutOverride(_ sender: Any!) {
+        let layoutID = UserDefaults.standard.string(forKey: KeyboardLayouts.overrideDefaultsKey) ?? ""
+        guard !layoutID.isEmpty,
+              let client = sender as AnyObject?,
+              client.responds(to: Self.overrideKeyboardSel) else { return }
+        _ = client.perform(Self.overrideKeyboardSel, with: layoutID)
     }
 
     override func deactivateServer(_ sender: Any!) {

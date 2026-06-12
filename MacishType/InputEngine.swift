@@ -219,10 +219,7 @@ class InputEngine {
         ] as CFDictionary
         guard let sources = TISCreateInputSourceList(conditions, false)?
             .takeRetainedValue() as? [TISInputSource] else { return [] }
-        let ids = sources.compactMap { source in
-            TISGetInputSourceProperty(source, kTISPropertyInputSourceID)
-                .map { Unmanaged<CFString>.fromOpaque($0).takeUnretainedValue() as String }
-        }
+        let ids = sources.compactMap { $0.string(kTISPropertyInputSourceID) }
         let prefix = bundleID + "."
         guard ids.contains(bundleID) else { return [] }
         return Set(ids.compactMap { $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil })
