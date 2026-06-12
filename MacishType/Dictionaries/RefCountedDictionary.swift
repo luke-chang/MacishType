@@ -33,6 +33,14 @@ final class RefCountedDictionary<Value> {
         self.parse = parse
     }
 
+    // Workaround for an open swiftc bug (swiftlang/swift#88173): under -O with
+    // -default-isolation MainActor, the performance inliner crashes in
+    // isCallerAndCalleeLayoutConstraintsCompatible during whole-module optimization.
+    // It happens to manifest on this class's synthesized deallocating deinit;
+    // opting the deinit out sidesteps it while keeping -O for the rest of the module.
+    @_optimize(none)
+    deinit {}
+
     private func resourceName(for locale: String) -> String {
         "\(resourceBaseName).\(locale)"
     }
