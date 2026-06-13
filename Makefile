@@ -2,6 +2,7 @@
 
 APP_NAME = MacishType
 BUNDLE_ID = net.lukechang.inputmethod.$(APP_NAME)
+BUILD_NUMBER := $(shell date +%Y%m%d%H%M)
 LOG_SHOW_LAST = 1h
 
 # Catch CLT-only or unset developer dir before xcodebuild's cryptic error.
@@ -74,7 +75,7 @@ help:
 build:
 	@$(XCODE_CHECK)
 	@echo "Building Debug version..."
-	xcodebuild -target $(APP_NAME) -configuration Debug ARCHS=$(shell uname -m)
+	xcodebuild -target $(APP_NAME) -configuration Debug ARCHS=$(shell uname -m) CURRENT_PROJECT_VERSION=$(BUILD_NUMBER)
 
 debug: build
 	@$(call INSTALL_APP,Debug)
@@ -87,12 +88,12 @@ reload:
 release:
 	@$(XCODE_CHECK)
 	@echo "Building Release version..."
-	xcodebuild -target $(APP_NAME) -configuration Release ARCHS=$(shell uname -m)
+	xcodebuild -target $(APP_NAME) -configuration Release ARCHS=$(shell uname -m) CURRENT_PROJECT_VERSION=$(BUILD_NUMBER)
 
 release-universal:
 	@$(XCODE_CHECK)
 	@echo "Building Release universal version..."
-	xcodebuild -target $(APP_NAME) -configuration Release ARCHS="arm64 x86_64"
+	xcodebuild -target $(APP_NAME) -configuration Release ARCHS="arm64 x86_64" CURRENT_PROJECT_VERSION=$(BUILD_NUMBER)
 
 install: release
 	@$(call INSTALL_APP,Release)

@@ -10,7 +10,12 @@ struct AboutView: View {
 
     init() {
         let info = Bundle.main.infoDictionary
-        version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let shortVersion = info?["CFBundleShortVersionString"] as? String ?? "?"
+        #if DEBUG
+        version = "\(shortVersion)d"
+        #else
+        version = shortVersion
+        #endif
         gitHash = info?["GitCommitHash"] as? String ?? "?"
         buildNumber = info?["CFBundleVersion"] as? String ?? "?"
         copyright = info?["NSHumanReadableCopyright"] as? String ?? ""

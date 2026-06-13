@@ -10,6 +10,8 @@
 	<string>$(PRODUCT_MODULE_NAME).InputController</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
+	<key>GitCommitHash</key>
+	<string>GIT_COMMIT_HASH</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>TICapsLockLanguageSwitchCapable</key>

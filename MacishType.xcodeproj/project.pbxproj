@@ -146,11 +146,11 @@
 			buildConfigurationList = 86A0E7FB2F77ED5000722BF2 /* Build configuration list for PBXNativeTarget "MacishType" */;
 			buildPhases = (
 				86478FE92FC9466A00BC34DF /* Check External Resources */,
+				8692748D2FDD085400F3F9D4 /* Generate Build Info Header */,
 				86A0E7EC2F77ED4F00722BF2 /* Sources */,
 				86A0E7ED2F77ED4F00722BF2 /* Frameworks */,
 				86A0E7EE2F77ED4F00722BF2 /* Resources */,
 				8648E1062FACEBD100465485 /* Stage Engine Resources */,
-				86DDFF572F784E7800118E4C /* Set Build Info */,
 			);
 			buildRules = (
 			);
@@ -261,7 +261,7 @@
 			shellPath = /bin/sh;
 			shellScript = "# Stage <EngineID>Engine/Resources/ → bundle/Resources/<EngineID>/\n#\n# Naming convention: source folder name MUST end in exactly one \"Engine\"\n# suffix; bundle subdir = folder name with that suffix stripped.\n# (e.g. ExampleEngine → Example, JavaScriptEngine → JavaScript).\n#\n# Ownership: rsync only owns each engine's subdir (Resources/<EngineID>/);\n# it never touches root-level files like MenuIcon.tiff or AppIcon.icns.\n# If a sync exception is missing for some engine's Resources/, the default\n# Copy Resources phase will leave a stale flat-root copy that rsync\n# won't clean up — sync exceptions and rsync are coupled and must agree.\n\nset -eu\nDEST_ROOT=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n\nfind \"${SRCROOT}/MacishType\" -type d -name \"Resources\" -path \"*Engine/Resources\" -print0 | \\\n    while IFS= read -r -d '' resources_dir; do\n        engine_dir=$(dirname \"$resources_dir\")\n        engine_name=$(basename \"$engine_dir\")\n        bundle_subdir=\"${engine_name%Engine}\"\n        mkdir -p \"$DEST_ROOT/$bundle_subdir\"\n        rsync -a --delete \"$resources_dir/\" \"$DEST_ROOT/$bundle_subdir/\"\n    done\n";
 		};
-		86DDFF572F784E7800118E4C /* Set Build Info */ = {
+		8692748D2FDD085400F3F9D4 /* Generate Build Info Header */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -271,14 +271,15 @@
 			);
 			inputPaths = (
 			);
-			name = "Set Build Info";
+			name = "Generate Build Info Header";
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(DERIVED_FILE_DIR)/BuildInfo.h",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "PLIST=\"${BUILT_PRODUCTS_DIR}/${INFOPLIST_PATH}\"\nBUILD_NUMBER=$(date +\"%Y%m%d%H%M\")\nGIT_HASH=$(git -C \"${PROJECT_DIR}\" describe --always --dirty)\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion ${BUILD_NUMBER}\" \"${PLIST}\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommitHash ${GIT_HASH}\" \"${PLIST}\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommitHash string ${GIT_HASH}\" \"${PLIST}\"\n";
+			shellScript = "\"${PROJECT_DIR}/Scripts/GenerateBuildInfoHeader.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -506,6 +507,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MacishType/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Luke Chang";
+				INFOPLIST_PREFIX_HEADER = "$(DERIVED_FILE_DIR)/BuildInfo.h";
+				INFOPLIST_PREPROCESS = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -537,6 +540,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MacishType/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Luke Chang";
+				INFOPLIST_PREFIX_HEADER = "$(DERIVED_FILE_DIR)/BuildInfo.h";
+				INFOPLIST_PREPROCESS = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
