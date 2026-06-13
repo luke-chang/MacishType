@@ -55,7 +55,7 @@ endef
 help:
 	@echo "$(APP_NAME) - Available Commands:"
 	@echo ""
-	@echo "  make prepare            - Download external resources (run after clone or lock bump)"
+	@echo "  make prepare            - Sync external resources to lock state (incremental; auto-run by builds)"
 	@echo "  make update-resources   - Bump pinned upstream SHAs in lock and re-prepare"
 	@echo "  make build              - Build Debug version"
 	@echo "  make debug              - Build Debug, deploy, and reload"
@@ -66,7 +66,7 @@ help:
 	@echo "  make uninstall          - Remove installed input method"
 	@echo "  make pkg                - Build universal installer"
 	@echo "  make clean              - Clean build artifacts"
-	@echo "  make clean-resources    - Remove downloaded external resources"
+	@echo "  make clean-resources    - Remove downloaded external resources and cache/stamp"
 	@echo "  make log                - Stream live OSLog output"
 	@echo "  make log-js             - Stream JS-originated logs (engine console.*, uncaught exceptions, rejections)"
 	@echo "  make log-history        - Show recent log history (default $(LOG_SHOW_LAST), use LOG_SHOW_LAST=24h to override)"
@@ -76,7 +76,7 @@ help:
 	@echo "  make debug"
 	@echo "  Then go to System Settings → Keyboard → Input Sources to add $(APP_NAME)"
 
-build:
+build: prepare
 	@$(XCODE_CHECK)
 	@echo "Building Debug version..."
 	xcodebuild -target $(APP_NAME) -configuration Debug ARCHS=$(shell uname -m) CURRENT_PROJECT_VERSION=$(BUILD_NUMBER)
@@ -89,12 +89,12 @@ reload:
 	@killall $(APP_NAME) 2>/dev/null || true
 	@echo "✓ Services restarted"
 
-release:
+release: prepare
 	@$(XCODE_CHECK)
 	@echo "Building Release version..."
 	xcodebuild -target $(APP_NAME) -configuration Release ARCHS=$(shell uname -m) CURRENT_PROJECT_VERSION=$(BUILD_NUMBER)
 
-release-universal:
+release-universal: prepare
 	@$(XCODE_CHECK)
 	@echo "Building Release universal version..."
 	xcodebuild -target $(APP_NAME) -configuration Release ARCHS="arm64 x86_64" CURRENT_PROJECT_VERSION=$(BUILD_NUMBER)
@@ -242,7 +242,7 @@ log-history:
 	@echo "Showing log history for $(APP_NAME) ($(BUNDLE_ID)) for the last $(LOG_SHOW_LAST)..."
 	log show --predicate 'subsystem == "$(BUNDLE_ID)"' --debug --style compact --last $(LOG_SHOW_LAST)
 
-preview:
+preview: prepare
 	@$(XCODE_CHECK)
 	@echo "Building CandidateWindow preview app..."
 	xcodebuild -target CandidateWindowPreview -configuration Debug ARCHS=$(shell uname -m)

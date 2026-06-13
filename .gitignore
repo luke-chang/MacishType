@@ -8,7 +8,10 @@ xcuserdata/
 /MacishType*.pkg
 Engines/**/_storage/
 
-# Downloaded external resources (managed by Scripts/HandleExternalResources.sh).
+# Download cache + provenance stamp (managed by Scripts/HandleExternalResources.sh).
+/.HandleExternalResources/
+
+# External resource files (managed by Scripts/HandleExternalResources.sh).
 MacishType/Resources/AssociatedDictionary.*.txt
 MacishType/Resources/WordFrequency.*.txt
 MacishType/Resources/SymbolNames.*.txt

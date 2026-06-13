@@ -26,22 +26,18 @@ Requires Xcode (used by `make install` to build the Release binary).
 
 ### First install
 
-1. `make prepare`
-   - Downloads external data files and licenses pinned in [`Scripts/HandleExternalResources.lock`](Scripts/HandleExternalResources.lock). Required after a fresh clone (and again any time the lock is bumped). Subsequent builds verify these files exist; if missing, the build halts with a reminder to re-run this.
-2. `make install`
-   - Builds Release, copies the app to `~/Library/Input Methods/`, and kills any running input method process.
-3. **Log out and back in.**
+1. `make install`
+   - Builds Release, copies the app to `~/Library/Input Methods/`, and kills any running input method process. The build first downloads the external data files and licenses pinned in [`Scripts/HandleExternalResources.lock`](Scripts/HandleExternalResources.lock); this is incremental, so later builds re-download only when the lock changes.
+2. **Log out and back in.**
    - On first install, MacishType won't show up in the input source picker until you log back in.
-4. Open **System Settings → Keyboard → Input Sources → +** and pick the input sources you want from the MacishType section.
+3. Open **System Settings → Keyboard → Input Sources → +** and pick the input sources you want from the MacishType section.
 
 ### Upgrade
 
 1. `git pull` (or however you pull latest).
-2. `make prepare`
-   - Re-downloads external resources to whatever the lock currently pins. Safe to run after every pull; if the lock didn't change, the result is the same content.
-3. `make install`
-   - The Makefile removes the old version, kills the running process, and installs the new one.
-4. **Log out and back in** *(only if needed).*
+2. `make install`
+   - The Makefile removes the old version, kills the running process, and installs the new one. External resources are refreshed automatically as part of the build (only re-downloaded if the lock changed).
+3. **Log out and back in** *(only if needed).*
    - Updates usually take effect immediately. But if a change doesn't seem to apply — or a newly added input source doesn't show up in the picker — logging out and back in is worth trying.
 
 ### Uninstall
@@ -72,11 +68,11 @@ After a code change:
 - `make build` — build Debug without installing.
 - `make release` / `make release-universal` — build Release (current architecture or universal binary).
 - `make pkg` — build a distributable universal `.pkg` installer.
-- `make prepare` — re-download external resources to current lock state (run after a lock bump).
+- `make prepare` — sync external resources to the lock state (incremental; auto-run by builds).
 - `make update-resources` — bump pinned upstream SHAs to their current default-branch HEAD and re-prepare.
 - `make clean` — clean build artifacts.
-- `make clean-resources` — remove downloaded external resources.
-- `make reload` — restart the input method without rebuilding (e.g. after editing installed bundle resources in place).
+- `make clean-resources` — remove downloaded external resources and the cache/stamp.
+- `make reload` — force restart the input method by killing its process.
 
 ## Writing an engine
 
