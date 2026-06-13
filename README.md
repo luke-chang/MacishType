@@ -71,6 +71,7 @@ After a code change:
 
 - `make build` — build Debug without installing.
 - `make release` / `make release-universal` — build Release (current architecture or universal binary).
+- `make pkg` — build a distributable universal `.pkg` installer.
 - `make prepare` — re-download external resources to current lock state (run after a lock bump).
 - `make update-resources` — bump pinned upstream SHAs to their current default-branch HEAD and re-prepare.
 - `make clean` — clean build artifacts.

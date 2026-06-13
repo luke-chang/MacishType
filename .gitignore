@@ -5,6 +5,7 @@ xcuserdata/
 *.hmap
 *.dSYM.zip
 *.dSYM
+/MacishType*.pkg
 Engines/**/_storage/
 
 # Downloaded external resources (managed by Scripts/HandleExternalResources.sh).

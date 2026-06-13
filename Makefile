@@ -1,9 +1,12 @@
-.PHONY: help build debug reload release release-universal install uninstall prepare update-resources clean-resources clean log log-js log-history preview
+.PHONY: help build debug reload release release-universal install uninstall pkg prepare update-resources clean-resources clean log log-js log-history preview
 
 APP_NAME = MacishType
 BUNDLE_ID = net.lukechang.inputmethod.$(APP_NAME)
 BUILD_NUMBER := $(shell date +%Y%m%d%H%M)
 LOG_SHOW_LAST = 1h
+# Component install destination; rebased under the user home by the installer's
+# currentUserHome domain, so this resolves to ~/Library/Input Methods.
+PKG_INSTALL_LOCATION = /Library/Input Methods
 
 # Catch CLT-only or unset developer dir before xcodebuild's cryptic error.
 define XCODE_CHECK
@@ -61,6 +64,7 @@ help:
 	@echo "  make release-universal  - Build Release version (universal binary)"
 	@echo "  make install            - Build Release, deploy, and reload"
 	@echo "  make uninstall          - Remove installed input method"
+	@echo "  make pkg                - Build universal installer"
 	@echo "  make clean              - Clean build artifacts"
 	@echo "  make clean-resources    - Remove downloaded external resources"
 	@echo "  make log                - Stream live OSLog output"
@@ -97,6 +101,80 @@ release-universal:
 
 install: release
 	@$(call INSTALL_APP,Release)
+
+# Build a double-clickable installer. enable_currentUserHome installs into
+# ~/Library/Input Methods without admin rights. A postinstall script kills any
+# running process so the system relaunches the freshly installed binary.
+# onConclusionScript runs Installer JavaScript that forces a re-login only when
+# the declared input mode set changed (first install, or the installed
+# ComponentInputModeDict differs), so the system re-reads the input source list.
+pkg: release-universal
+	@set -e; \
+	APP_DIR="./build/Release/$(APP_NAME).app"; \
+	if [ ! -d "$$APP_DIR" ]; then echo "✗ Error: $$APP_DIR not found"; exit 1; fi; \
+	PLIST="$$APP_DIR/Contents/Info.plist"; \
+	VERSION=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$$PLIST"); \
+	BUILD_DATE=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$$PLIST" | cut -c1-8); \
+	GIT_HASH=$$(/usr/libexec/PlistBuddy -c "Print :GitCommitHash" "$$PLIST"); \
+	WORK_DIR="./build/pkg"; \
+	rm -rf "$$WORK_DIR"; mkdir -p "$$WORK_DIR"; \
+	COMPONENT_PKG="$$WORK_DIR/component.pkg"; \
+	DIST_XML="$$WORK_DIR/distribution.xml"; \
+	OUTPUT_PKG="$(APP_NAME)-v$$VERSION-$$BUILD_DATE-$$GIT_HASH-Universal.pkg"; \
+	SCRIPTS_DIR="$$WORK_DIR/scripts"; \
+	mkdir -p "$$SCRIPTS_DIR"; \
+	printf '%s\n' '#!/bin/sh' 'killall $(APP_NAME) 2>/dev/null || true' 'exit 0' > "$$SCRIPTS_DIR/postinstall"; \
+	chmod +x "$$SCRIPTS_DIR/postinstall"; \
+	STAGE_DIR="$$WORK_DIR/root"; \
+	mkdir -p "$$STAGE_DIR"; \
+	cp -R "$$APP_DIR" "$$STAGE_DIR/"; \
+	COMPONENT_PLIST="$$WORK_DIR/component.plist"; \
+	pkgbuild --analyze --root "$$STAGE_DIR" "$$COMPONENT_PLIST" >/dev/null; \
+	plutil -replace 0.BundleIsRelocatable -bool NO "$$COMPONENT_PLIST"; \
+	echo "Building component package (universal)..."; \
+	pkgbuild \
+		--root "$$STAGE_DIR" \
+		--component-plist "$$COMPONENT_PLIST" \
+		--install-location "$(PKG_INSTALL_LOCATION)" \
+		--scripts "$$SCRIPTS_DIR" \
+		--identifier "$(BUNDLE_ID)" \
+		--version "$$VERSION" \
+		"$$COMPONENT_PKG"; \
+	echo "Writing distribution definition..."; \
+	MODE_DICT=$$(plutil -extract ComponentInputModeDict json -o - "$$PLIST"); \
+	{ \
+		printf '%s\n' \
+			'<?xml version="1.0" encoding="utf-8"?>' \
+			'<installer-gui-script minSpecVersion="2">' \
+			'    <title>$(APP_NAME)</title>' \
+			'    <license file="LICENSE"/>' \
+			'    <options customize="never" hostArchitectures="arm64,x86_64"/>' \
+			'    <domains enable_currentUserHome="true" enable_localSystem="false" enable_anywhere="false"/>' \
+			'    <script><![CDATA['; \
+		printf 'var macishNew = %s;\n' "$$MODE_DICT"; \
+		cat Distribution/ConclusionDecision.js; \
+		printf '%s\n' \
+			']]></script>' \
+			'    <choices-outline>' \
+			'        <line choice="install"/>' \
+			'    </choices-outline>' \
+			'    <choice id="install" visible="false">' \
+			'        <pkg-ref id="$(BUNDLE_ID)"/>' \
+			'    </choice>' \
+			"    <pkg-ref id=\"$(BUNDLE_ID)\" version=\"$$VERSION\" onConclusionScript=\"macishConclusion()\">component.pkg</pkg-ref>" \
+			'</installer-gui-script>'; \
+	} > "$$DIST_XML"; \
+	awk 'BEGIN { RS = ""; ORS = "" } { gsub(/\n/, " "); printf "%s%s", separator, $$0; separator = "\n\n" }' LICENSE > "$$WORK_DIR/LICENSE"; \
+	echo "Building product archive..."; \
+	productbuild \
+		--distribution "$$DIST_XML" \
+		--package-path "$$WORK_DIR" \
+		--resources "$$WORK_DIR" \
+		"$$OUTPUT_PKG"; \
+	rm -rf "$$WORK_DIR"; \
+	echo ""; \
+	echo "✓ Installer package created: $$OUTPUT_PKG"; \
+	echo "  Installs to ~/Library/Input Methods and recommends a restart when finished."
 
 # Container metadata is owned by containermanagerd via a kernel sandbox profile
 # and cannot be removed from user space — Data/ is wiped, shell is left in place.
