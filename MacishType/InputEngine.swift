@@ -154,7 +154,15 @@ class InputEngine {
     nonisolated static let directionSubKey = "candidateWindowDirection"
     nonisolated static let fontSizeSubKey = "candidateWindowFontSize"
     nonisolated static let enableAssociatedModeSubKey = "enableAssociatedMode"
+    nonisolated static let outputToSimplifiedSubKey = "outputToSimplified"
     nonisolated static let manifestSettingsSubKey = "manifestSettings"
+
+    /// Base per-engine setting sub-keys. Engines that reset on a context swap
+    /// (e.g. folder change) clear these — extend this list when adding a base
+    /// setting instead of keeping a separate copy.
+    nonisolated static let resettableBaseSubKeys = [
+        directionSubKey, fontSizeSubKey, enableAssociatedModeSubKey, outputToSimplifiedSubKey,
+    ]
 
     /// Per-instance: same class may have multiple instances with distinct
     /// IDs (e.g. multi-slot subclasses). Subclass override required;
@@ -187,6 +195,7 @@ class InputEngine {
     class var defaultDirection: CandidateWindow.LayoutDirection { .horizontal }
     class var defaultFontSize: Int { 16 }
     class var defaultEnableAssociatedMode: Bool { false }
+    class var defaultOutputToSimplified: Bool { false }
 
     // MARK: Input Source Monitoring
 
@@ -251,6 +260,7 @@ class InputEngine {
     var candidateWindowDirection: CandidateWindow.LayoutDirection = InputEngine.defaultDirection
     var candidateWindowFontSize: Int = InputEngine.defaultFontSize
     var enableAssociatedMode: Bool = InputEngine.defaultEnableAssociatedMode
+    var outputToSimplified: Bool = InputEngine.defaultOutputToSimplified
 
     private var associatedDictionaryHandle: AssociatedDictionary.Handle?
 
@@ -263,6 +273,7 @@ class InputEngine {
         candidateWindowDirection = defaultsValue(Self.directionSubKey, fallback: Self.defaultDirection)
         candidateWindowFontSize = defaultsValue(Self.fontSizeSubKey, fallback: Self.defaultFontSize)
         enableAssociatedMode = defaultsValue(Self.enableAssociatedModeSubKey, fallback: Self.defaultEnableAssociatedMode)
+        outputToSimplified = defaultsValue(Self.outputToSimplifiedSubKey, fallback: Self.defaultOutputToSimplified)
     }
 
     private func defaultsValue<T>(_ subKey: String, fallback: T) -> T {
@@ -441,6 +452,39 @@ class InputEngine {
         if char == " " { return "\u{3000}" }
         guard let ascii = char.asciiValue, ascii >= 0x21, ascii <= 0x7E else { return nil }
         return Character(UnicodeScalar(UInt32(ascii) + 0xFEE0)!)
+    }
+
+    // MARK: - Output Conversion
+
+    /// Whether the Traditional -> Simplified output toggle applies. Reads the
+    /// overridable `intendedLanguage`, so manifest-driven engines resolve too.
+    var supportsSimplifiedConversion: Bool {
+        intendedLanguage?.hasPrefix("zh-Hant") == true
+    }
+
+    /// Character-level Traditional -> Simplified transform applied to committed
+    /// output only; marked text and candidates stay Traditional. Not phrase-aware.
+    func transformCommittedText(_ text: String) -> String {
+        guard outputToSimplified, supportsSimplifiedConversion else { return text }
+        let mutable = NSMutableString(string: text)
+        var range = CFRangeMake(0, mutable.length)
+        guard CFStringTransform(mutable as CFMutableString, &range, "Hant-Hans" as CFString, false) else {
+            return text
+        }
+        return mutable as String
+    }
+
+    /// Persists `enabled` and updates the live ivar so changes take effect
+    /// mid-session without waiting for reactivation.
+    func setOutputToSimplified(_ enabled: Bool) {
+        outputToSimplified = enabled
+        UserDefaults.standard.set(
+            enabled,
+            forKey: Self.composedKey(engineID: engineID, subKey: Self.outputToSimplifiedSubKey))
+    }
+
+    func toggleOutputToSimplified() {
+        setOutputToSimplified(!outputToSimplified)
     }
 
 }

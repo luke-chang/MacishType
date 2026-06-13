@@ -71,18 +71,14 @@ class JSExternalEngine: JavaScriptEngine {
     }
 
     /// Folder swap → previous manifest's storage no longer applies. Clear
-    /// the manifest-settings blob and the base candidate-window / associated
+    /// the manifest-settings blob and the base candidate-window / typing
     /// sub-keys; the bookmark key is preserved so folder-picker persistence
     /// survives.
     private func clearStoredSettings() {
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: InputEngine.composedKey(
             engineID: engineID, subKey: InputEngine.manifestSettingsSubKey))
-        for subKey in [
-            InputEngine.directionSubKey,
-            InputEngine.fontSizeSubKey,
-            InputEngine.enableAssociatedModeSubKey,
-        ] {
+        for subKey in InputEngine.resettableBaseSubKeys {
             defaults.removeObject(forKey: InputEngine.composedKey(
                 engineID: engineID, subKey: subKey))
         }

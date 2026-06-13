@@ -12,17 +12,33 @@ class InputController: IMKInputController {
     private var engineContext: InputEngineContext!
     private var appearanceStale = true
 
-    private lazy var inputMethodMenu: NSMenu = {
+    // Built fresh each call so per-engine items and their checkmark state
+    // reflect the active engine.
+    override func menu() -> NSMenu! {
         let menu = NSMenu()
+
+        if engine?.supportsSimplifiedConversion == true {
+            let convertItem = NSMenuItem(
+                title: String(localized: "Convert to Simplified Chinese"),
+                action: #selector(toggleOutputToSimplified(_:)),
+                keyEquivalent: "g"
+            )
+            convertItem.keyEquivalentModifierMask = [.command, .control]
+            convertItem.target = self
+            convertItem.state = engine?.outputToSimplified == true ? .on : .off
+            menu.addItem(convertItem)
+            menu.addItem(.separator())
+        }
+
         let settingsItem = NSMenuItem(
             title: String(localized: "Settings…"),
             action: #selector(showPreferences(_:)),
-            keyEquivalent: ""
+            keyEquivalent: ","
         )
         settingsItem.target = self
         settingsItem.keyEquivalentModifierMask = [.command]
-        settingsItem.keyEquivalent = ","
         menu.addItem(settingsItem)
+
         let aboutItem = NSMenuItem(
             title: String(localized: "About MacishType"),
             action: #selector(showAboutWindow(_:)),
@@ -30,10 +46,13 @@ class InputController: IMKInputController {
         )
         aboutItem.target = self
         menu.addItem(aboutItem)
-        return menu
-    }()
 
-    override func menu() -> NSMenu! { inputMethodMenu }
+        return menu
+    }
+
+    @objc private func toggleOutputToSimplified(_ sender: Any?) {
+        engine?.toggleOutputToSimplified()
+    }
 
     @MainActor override func showPreferences(_ sender: Any!) {
         let initialID = engine?.engineID
@@ -113,7 +132,8 @@ class InputController: IMKInputController {
         guard let engineContext else { return }
         if let client {
             if let insertion, !insertion.isEmpty {
-                client.insertText(insertion, replacementRange: .notFound)
+                let output = engine?.transformCommittedText(insertion) ?? insertion
+                client.insertText(output, replacementRange: .notFound)
             } else {
                 setMarkedText("", client: client)
             }
