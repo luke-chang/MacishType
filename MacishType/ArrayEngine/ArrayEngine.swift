@@ -235,9 +235,11 @@ final class ArrayEngine: InputEngine {
             }
             return []
         }
-        // Clear the staged preview so the host commits exactly this candidate;
-        // in associated mode keep the staged held char for the follow-up.
-        let prefix: [EngineAction] = context.isAssociating ? [] : [.updateMarkedText("")]
+        // Clear staged so the host commits exactly this candidate, but set marked
+        // text to the candidate, not empty: an empty value tears down the
+        // composition, resetting IMKBaseline and drifting the associated window.
+        // In associated mode keep the staged held char for the follow-up.
+        let prefix: [EngineAction] = context.isAssociating ? [] : [.updateMarkedText(candidate, staged: 0)]
         return prefix + super.candidateConfirmed(
             context: context, candidate, absoluteIndex: absoluteIndex,
             raw: raw, candidateWindow: candidateWindow)

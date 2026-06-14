@@ -559,9 +559,11 @@ export default class ArrayEngine {
     // Enter with no highlight: in associated mode the host commits the held
     // char (fall through); otherwise it's a no-op.
     if (!event.candidate) return !event.isAssociating;
-    // Outside associated mode, clear the staged preview so the host commits
-    // exactly this candidate; in associated mode keep it for the follow-up.
-    if (!event.isAssociating) event.updateMarkedText("");
+    // Clear staged so the host commits exactly this candidate, but set marked
+    // text to the candidate, not empty: an empty value tears down the
+    // composition, resetting IMKBaseline and drifting the associated window.
+    // In associated mode keep it for the follow-up.
+    if (!event.isAssociating) event.updateMarkedText(event.candidate, { staged: 0 });
     this.reset();
     // Host commits the candidate and may enter associated mode for a single char.
     return false;
