@@ -332,6 +332,13 @@ class InputEngine {
     func deactivate(context: InputEngineContext, clientIdentifier: String?) {
     }
 
+    // Notification that the client ended composition in-app (click elsewhere,
+    // Cmd+A); app switch / focus loss goes through deactivate instead. The
+    // context is already reset — engines holding composing state outside
+    // `context` (e.g. on instance fields) should clear it here. Default: no-op.
+    func compositionCommitted(context: InputEngineContext) {
+    }
+
     // MARK: Event Handling
 
     func handleKey(

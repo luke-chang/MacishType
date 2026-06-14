@@ -358,6 +358,13 @@ export interface InputEngine {
   /** Per-session teardown. Fires when focus leaves the text field. */
   deactivate?(): void;
   /**
+   * Fires when the host ends composition — in-app commit (mouse click
+   * elsewhere, Cmd+A) or session deactivate (app switch, focus loss). Clear
+   * any composing state held on `this` here. The deactivate path can fire it
+   * with nothing composing (e.g. switching apps), so keep it idempotent.
+   */
+  compositionEnded?(): void;
+  /**
    * Called for every keystroke.
    *
    * Return `true` to mark the key consumed. Returning `false` / `undefined`

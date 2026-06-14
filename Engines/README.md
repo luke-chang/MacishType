@@ -293,6 +293,8 @@ export default class MyEngine {
 
   /** @param {ConfirmEvent} event */
   candidateSelectionChanged(event) { /* highlight moved */ }
+
+  compositionEnded() { /* composition ended — clear this-state */ }
 }
 ```
 
@@ -307,8 +309,9 @@ truth. Highlights:
 - `deactivate()` — fires when focus leaves. The host automatically calls
   `resetContext()` on its side (clearing marked text, staged text,
   candidates, associated-mode state), but engine-private state on `this`
-  (composition buffers, mode flags, lookup caches per session, etc.) is
-  not touched — clear it here, otherwise it leaks into the next session.
+  (mode flags, lookup caches per session, etc.) is not touched. Use this
+  for session-level teardown; for composition state held on `this`, prefer
+  `compositionEnded()` (below), which also fires on this path.
 - `handleKey(event)` — return `true` to consume the key. Returning
   `false` / `undefined` (including omitting the method) lets the OS
   see it. Queued `event.xxx(...)` mutators apply regardless of the
@@ -348,6 +351,11 @@ truth. Highlights:
   the return-value contract.
 - `candidateSelectionChanged(event)` — after the highlight moves (e.g.
   arrow keys). Same return-value contract as `candidateConfirmed`.
+- `compositionEnded()` — fires when the host ends composition: an in-app
+  commit (mouse click elsewhere, Cmd+A) or session `deactivate()` (app
+  switch, focus loss). Clear any composing state held on `this` here. The
+  `deactivate` path can fire it with nothing composing (e.g. switching
+  apps), so keep it idempotent.
 
 #### Host fallback
 

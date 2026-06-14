@@ -1021,7 +1021,15 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     override func deactivate(context: InputEngineContext, clientIdentifier: String?) {
         // Don't construct on deactivate — only call if instance already exists.
         guard let instance = jsInstances.object(forKey: context) else { return }
+        // Composition ends with the session: clear buffer before session cleanup.
+        Self.invokeIfDefined(instance, "compositionEnded", withArguments: [])
         Self.invokeIfDefined(instance, "deactivate", withArguments: [])
+    }
+
+    override func compositionCommitted(context: InputEngineContext) {
+        // Don't construct here — only call if instance already exists.
+        guard let instance = jsInstances.object(forKey: context) else { return }
+        Self.invokeIfDefined(instance, "compositionEnded", withArguments: [])
     }
 
     // MARK: Event Handling
@@ -1123,7 +1131,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// the method. JSC's `invokeMethod` throws TypeError on undefined, but
     /// the bridge contract is duck-typed: engines may opt out of any of
     /// `activate / deactivate / handleKey / candidateConfirmed /
-    /// candidateSelectionChanged`.
+    /// candidateSelectionChanged / compositionEnded`.
     ///
     /// JSC's context `exceptionHandler` only fires for top-level evaluation
     /// (`evaluateScript` etc.); a throw inside `invokeMethod` is recorded on

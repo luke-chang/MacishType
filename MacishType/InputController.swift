@@ -210,6 +210,7 @@ class InputController: IMKInputController {
         Logger.inputController.debug("commitComposition ctrl=\("\(ObjectIdentifier(self))", privacy: .public) client=\(clientID, privacy: .public) staged=\(self.engineContext?.stagedText ?? "", privacy: .public)")
         #endif
         endComposition(client: sender as? IMKTextInput, insert: engineContext?.stagedText)
+        if let engineContext { engine?.compositionCommitted(context: engineContext) }
     }
 
     // MARK: - Event Handling
