@@ -46,10 +46,9 @@ const GROUP_NAMES = {
   hg8: "表意描述符組", hg9: "筆畫組",
 };
 
-// Main table: code -> [char, ...]; rare chars are excluded unless the setting
-// enables them.
+// Main table: code -> [char, ...]; filtered by the character-set scope setting.
 let mainTable = new Map();
-// Symbol groups: group code -> [symbol, ...]; rare-filtered like the main table.
+// Symbol groups: group code -> [symbol, ...]; scope-filtered like the main table.
 let symbolTable = new Map();
 // Short codes: code -> [{ label, value }, ...]; label is the fixed selection key.
 let shortTable = new Map();
@@ -71,11 +70,41 @@ function forEachRow(text, fn) {
   }
 }
 
-// Load code -> [value, ...] in file order; a non-empty third column marks a rare
-// value, skipped unless includeRare.
-function loadTable(text, table, includeRare = true) {
+// macOS major version, parsed from the host userAgent
+// ("MacishType/x (macOS 26.5.1) JavaScriptCore/y"); 0 if unparseable, which
+// conservatively hides every version-tagged value when rare chars are off.
+const osMajor = (() => {
+  const match = /\(macOS (\d+)/.exec(navigator.userAgent);
+  return match ? Number(match[1]) : 0;
+})();
+
+// Whether the running OS can render a value given its optional minimum-version
+// tag (the table's third column): blank = renderable since the deployment
+// baseline; a major number ("15"/"26") = that major or newer; anything else
+// (e.g. "-") = not renderable on any tested version.
+function renderableOnCurrentOS(tag) {
+  if (!tag) return true;
+  const minMajor = Number(tag);
+  return Number.isInteger(minMajor) ? osMajor >= minMajor : false;
+}
+
+// Whether every scalar of a value lies in the Basic Multilingual Plane.
+function isBMP(value) {
+  for (const ch of value) if (ch.codePointAt(0) > 0xffff) return false;
+  return true;
+}
+
+// Load code -> [value, ...] in file order; the optional third column is a
+// minimum-version tag. `scope` decides which rows to keep: "standard" keeps
+// current-OS-renderable BMP values, "extended" keeps current-OS-renderable
+// values (any plane), "full" keeps everything.
+function loadTable(text, table, scope = "full") {
   forEachRow(text, ([code, value, flag]) => {
-    if (flag && !includeRare) return;
+    switch (scope) {
+      case "full": break;
+      case "extended": if (!renderableOnCurrentOS(flag)) return; break;
+      case "standard": if (!renderableOnCurrentOS(flag) || !isBMP(value)) return; break;
+    }
     const list = table.get(code);
     if (list) list.push(value);
     else table.set(code, [value]);
@@ -90,30 +119,27 @@ function loadFile(filename, onText) {
     .catch((error) => console.error(filename, "load failed:", error.message));
 }
 
-// (Re)load the main and symbol tables when the rare-characters setting changes.
-let tablesIncludeRare = null;
-function syncRareTables() {
-  const includeRare = manifest.settings.showRareCharacters === true;
-  if (includeRare === tablesIncludeRare) return;
-  tablesIncludeRare = includeRare;
+// (Re)load the main and symbol tables when the character-set scope changes.
+let tablesScope = null;
+function syncTables() {
+  const scope = manifest.settings.characterSetScope ?? "extended";
+  if (scope === tablesScope) return;
+  tablesScope = scope;
   loadFile("./Array30.txt", (text) => {
     const next = new Map();
-    loadTable(text, next, includeRare);
+    loadTable(text, next, scope);
     mainTable = next;
-    console.info(
-      "Array30.txt loaded:", mainTable.size, "codes",
-      includeRare ? "(incl. rare)" : "(common only)"
-    );
+    console.info("Array30.txt loaded:", mainTable.size, "codes", `(${scope})`);
   });
   loadFile("./ArraySymbol.txt", (text) => {
     const next = new Map();
-    loadTable(text, next, includeRare);
+    loadTable(text, next, scope);
     symbolTable = next;
     console.info("ArraySymbol.txt loaded:", symbolTable.size, "groups");
   });
 }
-syncRareTables();
-addEventListener("settingschange", syncRareTables);
+syncTables();
+addEventListener("settingschange", syncTables);
 
 loadFile("./ArrayShortCode.txt", (text) => {
   const next = new Map();

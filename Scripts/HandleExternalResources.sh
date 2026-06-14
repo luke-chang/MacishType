@@ -17,8 +17,10 @@
 #   stamp                     "<output-path><TAB><key-hash>" per produced output.
 # key-hash keys the skip decision on the INPUT SPEC, never on output bytes (some
 # processors emit machine-dependent output). For a processor entry it folds in the
-# processor script's own content hash, so editing a processor regenerates its
-# outputs; for a verbatim entry it is just the URL (which embeds the upstream SHA).
+# processor script's own content hash AND, if a sidecar "<proc>.inputs" lists
+# dependency globs, the content of every matching file — so editing a processor or
+# any declared input (e.g. a coverage table) regenerates its outputs. For a
+# verbatim entry it is just the URL (which embeds the upstream SHA).
 #
 # Env overrides (testing):
 #   LOCK                 Path to lock file (default: $SCRIPT_DIR/HandleExternalResources.lock)
@@ -86,17 +88,44 @@ sha1_file() {
     shasum "$1" | cut -d' ' -f1
 }
 
+# Content hash of a processor "version": the script itself, plus — if a sidecar
+# "<proc>.inputs" lists dependency globs (one per line, relative to SCRIPT_DIR;
+# blank / #-comment lines ignored) — the sidecar itself and the path + content of
+# every matching file, in sorted order for stability. So editing the processor OR
+# any declared input (e.g. a coverage table) changes the hash.
+proc_version_hash() {
+    proc="$1"
+    inputs="$SCRIPT_DIR/$proc.inputs"
+    {
+        cat "$SCRIPT_DIR/$proc"
+        if [ -f "$inputs" ]; then
+            cat "$inputs"
+            # Resolve declared globs to a sorted, de-duplicated file list, then
+            # fold each file's path and content.
+            grep -v '^[[:space:]]*#' "$inputs" | grep -v '^[[:space:]]*$' \
+                | while IFS= read -r pattern; do
+                    for dep in "$SCRIPT_DIR"/$pattern; do
+                        [ -f "$dep" ] && printf '%s\n' "$dep"
+                    done
+                  done | sort -u | while IFS= read -r dep; do
+                    printf '%s\n' "$dep"
+                    cat "$dep"
+                  done
+        fi
+    } | sha1_stdin
+}
+
 # Per-entry key-hash. The skip decision keys on this, never on output bytes.
 #   verbatim ("-"): sha1(url) — url embeds the upstream SHA, i.e. its version.
-#   processor:      sha1(url <US> proc <US> section <US> sha1(processor script)).
+#   processor:      sha1(url <US> proc <US> section <US> proc_version_hash).
 # The 0x1f Unit Separator can't appear in a URL, filename, or section token, so
-# it prevents field-boundary collisions; folding in the processor's content hash
-# makes "edit a processor -> regenerate its outputs" automatic.
+# it prevents field-boundary collisions; folding in the processor's version hash
+# makes "edit a processor or its declared inputs -> regenerate its outputs" automatic.
 key_hash() {
     if [ "$2" = "-" ]; then
         printf '%s' "$1" | sha1_stdin
     else
-        proc_hash=$(sha1_file "$SCRIPT_DIR/$2")
+        proc_hash=$(proc_version_hash "$2")
         printf '%s\037%s\037%s\037%s' "$1" "$2" "$3" "$proc_hash" | sha1_stdin
     fi
 }

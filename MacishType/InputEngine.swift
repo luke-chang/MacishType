@@ -276,12 +276,12 @@ class InputEngine {
         outputToSimplified = defaultsValue(Self.outputToSimplifiedSubKey, fallback: Self.defaultOutputToSimplified)
     }
 
-    private func defaultsValue<T>(_ subKey: String, fallback: T) -> T {
+    func defaultsValue<T>(_ subKey: String, fallback: T) -> T {
         let key = Self.composedKey(engineID: self.engineID, subKey: subKey)
         return (UserDefaults.standard.object(forKey: key) as? T) ?? fallback
     }
 
-    private func defaultsValue<T: RawRepresentable>(_ subKey: String, fallback: T) -> T
+    func defaultsValue<T: RawRepresentable>(_ subKey: String, fallback: T) -> T
         where T.RawValue == String
     {
         let key = Self.composedKey(engineID: self.engineID, subKey: subKey)

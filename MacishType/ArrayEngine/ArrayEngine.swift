@@ -27,26 +27,27 @@ final class ArrayEngine: InputEngine {
     static let shared = ArrayEngine()
     override var engineID: String { "Array" }
 
-    static let showRareCharactersSubKey = "showRareCharacters"
-    private var showRareCharacters = false
+    static let characterSetScopeSubKey = "characterSetScope"
+    static let defaultScope: ArrayDictionary.CharacterSetScope = .extended
+    private var characterSetScope = ArrayEngine.defaultScope
     private var dictionary: ArrayDictionary?
 
     override func createContext() -> InputEngineContext { ArrayEngineContext() }
 
     override func reloadConfig() {
         super.reloadConfig()
-        let key = Self.composedKey(engineID: engineID, subKey: Self.showRareCharactersSubKey)
-        let value = (UserDefaults.standard.object(forKey: key) as? Bool) ?? false
-        if value != showRareCharacters {
-            showRareCharacters = value
-            dictionary?.reloadRareTables(includeRare: value)
+        let value: ArrayDictionary.CharacterSetScope =
+            defaultsValue(Self.characterSetScopeSubKey, fallback: Self.defaultScope)
+        if value != characterSetScope {
+            characterSetScope = value
+            dictionary?.reloadTables(scope: value)
         }
     }
 
     override func load() {
         if dictionary == nil {
             dictionary = ArrayDictionary(
-                locale: intendedLanguage ?? "zh-Hant", includeRare: showRareCharacters)
+                locale: intendedLanguage ?? "zh-Hant", scope: characterSetScope)
         }
         super.load()
     }
@@ -70,7 +71,7 @@ final class ArrayEngine: InputEngine {
                 InputEngine.CandidateWindowSection(engine: self)
                 Section("Typing") {
                     InputEngine.EnableAssociatedModeToggle(engine: self)
-                    ArrayRareToggle(engine: self)
+                    ArrayCharacterSetScopePicker(engine: self)
                 }
             }
         )
@@ -379,25 +380,29 @@ final class ArrayEngine: InputEngine {
     }
 }
 
-/// Toggle for showing rare characters (those without a bundled-font glyph).
-private struct ArrayRareToggle: View {
-    @AppStorage private var value: Bool
+/// Picker for how much of the character set to show: standard (BMP, common),
+/// extended (also what this Mac can display), or full (everything).
+private struct ArrayCharacterSetScopePicker: View {
+    @AppStorage private var scope: ArrayDictionary.CharacterSetScope
 
     init(engine: InputEngine) {
-        self._value = AppStorage(
-            wrappedValue: false,
+        self._scope = AppStorage(
+            wrappedValue: ArrayEngine.defaultScope,
             InputEngine.composedKey(
-                engineID: engine.engineID, subKey: ArrayEngine.showRareCharactersSubKey))
+                engineID: engine.engineID, subKey: ArrayEngine.characterSetScopeSubKey))
     }
 
     var body: some View {
-        Toggle(isOn: $value) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Show rare characters")
-                Text("Requires the matching font installed to display correctly.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 2) {
+            Picker("Character set", selection: $scope) {
+                Text("Standard").tag(ArrayDictionary.CharacterSetScope.standard)
+                Text("Extended").tag(ArrayDictionary.CharacterSetScope.extended)
+                Text("Full").tag(ArrayDictionary.CharacterSetScope.full)
             }
+            .pickerStyle(.menu)
+            Text("Extended adds characters this Mac can display; Full also includes ones that need an extra font installed.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

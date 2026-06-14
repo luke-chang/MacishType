@@ -353,34 +353,82 @@
         }
       }
     },
-    "Requires the matching font installed to display correctly." : {
+    "Character set" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Requires the matching font installed to display correctly."
+            "value" : "Character set"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "需安裝對應字型才能正確顯示。"
+            "value" : "候選字集"
           }
         }
       }
     },
-    "Show rare characters" : {
+    "Extended" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Show rare characters"
+            "value" : "Extended"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "顯示罕見字"
+            "value" : "延伸字集"
+          }
+        }
+      }
+    },
+    "Extended adds characters this Mac can display; Full also includes ones that need an extra font installed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extended adds characters this Mac can display; Full also includes ones that need an extra font installed."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "延伸字集加上本機可顯示的字；完整字集另含需安裝字型才能顯示的字。"
+          }
+        }
+      }
+    },
+    "Full" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Full"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完整字集"
+          }
+        }
+      }
+    },
+    "Standard" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標準字集"
           }
         }
       }

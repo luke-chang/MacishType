@@ -1,0 +1,5 @@
+# Build-dependency globs for FontCoverageTagger.swift, one per line,
+# relative to Scripts/. HandleExternalResources folds each matching file's
+# content into the processor's version hash, so updating any of them
+# regenerates the processor's outputs. Blank lines and #-comments are ignored.
+FontCoverageMacOS*.txt
