@@ -76,7 +76,6 @@ function compose(engine, keys) {
 async function settle() {
   for (let attempt = 0; attempt < 200; attempt++) {
     const engine = new ArrayEngine();
-    engine.activate();
     compose(engine, ["t"]);
     const space = makeEvent({ isComposing: true, code: "Space" });
     engine.handleKey(space);
@@ -88,9 +87,7 @@ async function settle() {
 await settle();
 
 function freshEngine() {
-  const engine = new ArrayEngine();
-  engine.activate();
-  return engine;
+  return new ArrayEngine();
 }
 
 test("composing a key shows its radical readout and a candidate list", () => {
@@ -143,6 +140,25 @@ test("Escape clears the composition", () => {
   assert.ok(escape.last("resetContext"));
 });
 
+test("a fresh engine starts with cleared fields", () => {
+  const engine = new ArrayEngine();
+  assert.equal(engine.code, "");
+  assert.equal(engine.selecting, false);
+  assert.equal(engine.symbolGroup, false);
+  assert.equal(engine.groupMenu, false);
+});
+
+test("compositionEnded clears in-progress composition state", () => {
+  const engine = freshEngine();
+  compose(engine, ["a", "b"]);
+  assert.equal(engine.code, "ab");
+  engine.compositionEnded();
+  assert.equal(engine.code, "");
+  assert.equal(engine.selecting, false);
+  assert.equal(engine.symbolGroup, false);
+  assert.equal(engine.groupMenu, false);
+});
+
 test("a modified control key is inert while composing (bare-key gate)", () => {
   const engine = freshEngine();
   compose(engine, ["t"]);
@@ -180,6 +196,19 @@ test("confirming a group opens its symbols", () => {
   assert.equal(engine.symbolGroup, true);
   assert.equal(confirm.last("updateCandidates").args[0][0].candidate, "ㄅ");
   assert.equal(confirm.last("updateMarkedText").args[0], "ㄅ");
+});
+
+test("empty confirm flushes the held char only in associated mode", () => {
+  const engine = freshEngine();
+  // Associated mode, Enter with no highlight: fall through so the host commits
+  // the held char.
+  assert.equal(
+    engine.candidateConfirmed(makeEvent({ candidate: "", isAssociating: true })),
+    false);
+  // Otherwise it's a no-op the engine reports as handled.
+  assert.equal(
+    engine.candidateConfirmed(makeEvent({ candidate: "", isAssociating: false })),
+    true);
 });
 
 test("Backspace in a symbol group steps back to the group menu", () => {

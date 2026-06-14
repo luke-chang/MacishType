@@ -242,14 +242,16 @@ function wildcardMatches(pattern) {
 
 /** @implements {InputEngine} */
 export default class ArrayEngine {
-  activate() {
+  constructor() {
     this.reset();
   }
 
-  deactivate() {
+  // Host-facing notification: composition ended (in-app commit or deactivate).
+  compositionEnded() {
     this.reset();
   }
 
+  // Internal helper, also called throughout handleKey / enterSelecting.
   reset() {
     this.code = "";
     // false = composing, true = candidate-selection (entered by Space).
@@ -528,7 +530,9 @@ export default class ArrayEngine {
       }
       return true;
     }
-    if (!event.candidate) return true;
+    // Enter with no highlight: in associated mode the host commits the held
+    // char (fall through); otherwise it's a no-op.
+    if (!event.candidate) return !event.isAssociating;
     // Outside associated mode, clear the staged preview so the host commits
     // exactly this candidate; in associated mode keep it for the follow-up.
     if (!event.isAssociating) event.updateMarkedText("");
