@@ -1,5 +1,6 @@
 {
   "entry": "index.js",
+  "name": { "en": "Example", "zh-Hant": "範例" },
   "intendedLanguage": "zh-Hant",
   "settings": [
     {

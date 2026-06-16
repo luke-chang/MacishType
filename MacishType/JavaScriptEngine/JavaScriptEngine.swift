@@ -786,6 +786,14 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         }
         context.setObject(listCWFields, forKeyedSubscript: "__MacishType_candidateWindowFields" as NSString)
 
+        // manifest.name bridge — authored name, or NSNull (→ JS undefined)
+        // when `name` is absent. Read lazily by the runtime.js getter.
+        let manifestName: @convention(block) () -> Any = { [weak self] in
+            guard let name = self?.manifest?.name?.resolved() else { return NSNull() }
+            return name
+        }
+        context.setObject(manifestName, forKeyedSubscript: "__MacishType_manifestName" as NSString)
+
         // localStorage bridges — must register before runtime.js eval.
         let storageGetItem: @convention(block) (String) -> Any = { [weak self] key in
             guard let storage = self?.storage else {

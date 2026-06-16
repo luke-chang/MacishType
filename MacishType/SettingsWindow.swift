@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 // AppKit shell + SwiftUI detail content for the Settings window. We use
@@ -14,6 +15,7 @@ import SwiftUI
 @MainActor
 final class SettingsWindow: NSWindow {
     private let sidebar = SettingsSidebarViewController()
+    private var titleObserver: AnyCancellable?
 
     init(initialEngineID: String? = nil) {
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
@@ -61,7 +63,7 @@ final class SettingsWindow: NSWindow {
 
         sidebar.onSelect = { [weak self] item in
             detailHost.rootView = SettingsDetailContent(selection: item?.id)
-            self?.title = item?.title ?? ""
+            self?.bindTitle(to: item)
         }
         sidebar.select(id: initialEngineID)
     }
@@ -70,6 +72,38 @@ final class SettingsWindow: NSWindow {
 
     func selectEngine(id: String?) {
         sidebar.select(id: id)
+    }
+
+    /// Binds the window title to the selected item. For the externally-loaded
+    /// engine the title reflects `manifest.name` reactively — picking a folder
+    /// or editing the manifest updates it without reopening Settings.
+    private func bindTitle(to item: SettingsSidebarItem?) {
+        titleObserver = nil
+        guard let item else { title = ""; return }
+        // Scoped to the externally-loaded engine. Bundled engines (incl. any
+        // future JavaScriptEngine subclass) carry their own slot label and
+        // must not have it overwritten by a manifest name.
+        guard let engine = InputEngine.engine(forSuffix: item.id) as? JSExternalEngine else {
+            title = item.title
+            return
+        }
+        // `$manifest` emits its current value synchronously on subscribe, so
+        // this seeds the initial title and tracks every later reload.
+        let baseTitle = item.title
+        titleObserver = engine.$manifest
+            .sink { [weak self] manifest in
+                self?.title = Self.composedTitle(base: baseTitle, manifest: manifest)
+            }
+    }
+
+    private static func composedTitle(base: String,
+                                      manifest: JavaScriptEngine.Manifest?) -> String {
+        // Blank/missing name → no parens. Title-presentation only; JS still
+        // reads the literal value via `manifest.name`.
+        let trimmed = manifest?.name?.resolved()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let name = trimmed, !name.isEmpty else { return base }
+        return "\(base) (\(name))"
     }
 }
 

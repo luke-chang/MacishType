@@ -12,6 +12,7 @@ extension JavaScriptEngine {
 
     nonisolated struct Manifest: Decodable {
         let entry: String
+        let name: Localizable?
         // Overrides the plist `TISIntendedLanguage` as the engine's resolved
         // language. Apple/in-bundle localization style (e.g. "zh-Hant"),
         // matching Localizable map keys and dictionary filenames — NOT the
@@ -21,13 +22,15 @@ extension JavaScriptEngine {
         let settings: [SettingsSection]?
 
         private enum CodingKeys: String, CodingKey {
-            case entry, intendedLanguage, candidateWindow, settings
+            case entry, name, intendedLanguage, candidateWindow, settings
         }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             // entry is required: missing / type-mismatch fails the manifest.
             entry = try c.decode(String.self, forKey: .entry)
+            // name type-mismatch (e.g. a number) drops to nil but keeps entry.
+            name = try? c.decodeIfPresent(Localizable.self, forKey: .name)
             // Empty / whitespace-only normalizes to nil — treated as undeclared
             // so the engine falls back to the plist value rather than ending up
             // with an empty tag that silently disables locale-gated features.

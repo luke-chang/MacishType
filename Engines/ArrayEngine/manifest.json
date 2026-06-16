@@ -1,5 +1,6 @@
 {
   "entry": "index.js",
+  "name": { "en": "Array", "zh-Hant": "行列" },
   "intendedLanguage": "zh-Hant",
   "candidateWindow": {
     "expandable": false,

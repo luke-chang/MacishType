@@ -465,6 +465,15 @@ export interface CandidateWindow {
  */
 export interface Manifest {
   /**
+   * Engine display name from manifest.json `name`, resolved for the active
+   * locale. `undefined` only when the manifest omits `name`; a present-but-
+   * empty value resolves to `""`. The Settings window title appends it to the
+   * host's slot label (e.g. "JS" becomes "JS (<name>)"), skipping the parens
+   * when the value is blank.
+   */
+  readonly name?: string;
+
+  /**
    * User settings keyed by manifest field `key`. Deeply read-only —
    * writes throw `TypeError`. The reference is stable across updates;
    * `const { settings } = manifest` is safe and reads always see the

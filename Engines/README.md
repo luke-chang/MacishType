@@ -22,6 +22,7 @@ importing file. Static `import` is supported; dynamic `import()` is not.
 ```jsonc
 {
   "entry": "index.js",
+  "name": "My Engine",           // optional display name, Localizable
   "intendedLanguage": "zh-Hant", // optional language override
   "candidateWindow": { … },      // optional appearance overrides
   "settings": [ … ]              // optional Settings UI sections
@@ -32,6 +33,23 @@ importing file. Static `import` is supported; dynamic `import()` is not.
 
 Path (relative to the manifest) to the engine's JavaScript module. The
 module's `export default` must be a class — see [The JS module](#the-js-module).
+
+### `name` (optional)
+
+Display name for the engine, shown in the Settings window title appended to
+the host's slot label — e.g. with a `name` of `"行列"` the title reads
+`"JS (行列)"`. Omitting it (or a value that resolves empty) leaves just the
+slot label.
+
+Accepts a literal string or a [Localizable](#localizable) locale map:
+
+```jsonc
+"name": "Array"
+"name": { "en": "Array", "zh-Hant": "行列" }
+```
+
+Also readable at runtime as `manifest.name` (already resolved to the active
+locale, or `undefined` when undeclared).
 
 ### `intendedLanguage` (optional)
 

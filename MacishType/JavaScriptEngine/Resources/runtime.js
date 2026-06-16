@@ -168,6 +168,11 @@ function __MacishType_dispatchGlobal(event) {
   });
 
   globalThis.manifest = {
+    // null (name absent) → undefined, mirroring candidateWindow below.
+    get name() {
+      const value = __MacishType_manifestName();
+      return value === null ? undefined : value;
+    },
     get settings() { return settingsProxy; },
   };
 
