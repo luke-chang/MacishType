@@ -146,6 +146,20 @@ default:
     }
 }
 
+// chardef / quickphrases feed a byte-range table that binary-searches by code;
+// emitting them code-sorted (stable, so a code's candidates keep source order)
+// lets the runtime skip its own sort. Byte order matches the runtime's UTF-8
+// comparison. Other sections keep source order (their consumers depend on it —
+// e.g. quick's slot order is the selection-key order).
+if section == "chardef" || section == "quickphrases" {
+    entries = entries.enumerated().sorted { lhs, rhs in
+        let lc = Array(lhs.element.prefix { $0 != "\t" }.utf8)
+        let rc = Array(rhs.element.prefix { $0 != "\t" }.utf8)
+        if lc != rc { return lc.lexicographicallyPrecedes(rc) }
+        return lhs.offset < rhs.offset
+    }.map(\.element)
+}
+
 var outputLines: [String] = [
     "# Code-to-value lookup table.",
     "# format: code<TAB>value",

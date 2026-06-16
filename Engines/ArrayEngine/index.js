@@ -192,6 +192,12 @@ function wildcardRegex(pattern) {
 // allowed); otherwise ?/* match by position. Deduped by char, ranked by
 // frequency, capped, and annotated with the matched code's radical readout.
 function wildcardMatches(pattern) {
+  // A "*" with no radical matches the whole table — a meaningless flood and a
+  // full scan; require at least one radical alongside any "*". A "?"-only
+  // pattern (e.g. every single-key code) is bounded and allowed.
+  if (pattern.includes("*") && ![...pattern].some((c) => c !== "*" && c !== "?")) {
+    return [];
+  }
   let matches;
   if (pattern.startsWith("*") && !hasWildcard(pattern.slice(1))) {
     const required = [...pattern.slice(1)];

@@ -56,11 +56,16 @@ final class ArrayDictionary {
 
     // MARK: - Tables
 
-    private var mainTable: [String: [String]] = [:]
-    private var mainCodesInOrder: [String] = []       // file order, for wildcard ranking ties
-    private var symbolTable: [String: [String]] = [:] // symbol groups (w0…/hg…)
-    private var shortTable: [String: [(label: Character, value: String)]] = [:]
-    private var phraseTable: [String: [String]] = [:]
+    /// `code → candidates`, byte-range backed. Filtered to the current scope at
+    /// load and rebuilt on scope/coverage change, so the per-keystroke path —
+    /// including the wildcard's whole-table scan — only ever walks displayable
+    /// candidates rather than classifying each one per query.
+    private var mainTable: ArrayByteTable
+    private let phraseTable: ArrayByteTable
+    /// Symbol groups (w0…/hg…); small map, filtered to the current scope.
+    private var symbolTable: [String: [String]]
+    private let shortTable: [String: [(label: Character, value: String)]]
+    /// Current scope; `reloadTables` rebuilds the filtered tables when it changes.
     private var scope: InputEngine.CharacterSetScope
     private let frequency: WordFrequencyDictionary.Handle?
     private let symbolNames: SymbolNameDictionary.Handle?
@@ -71,56 +76,81 @@ final class ArrayDictionary {
         symbolNames = SymbolNameDictionary.isAvailable(for: locale)
             ? SymbolNameDictionary.acquire(for: locale) : nil
         self.scope = scope
-        (mainTable, mainCodesInOrder) = Self.loadTable("Array30", scope: scope, trackOrder: true)
-        symbolTable = Self.loadTable("ArraySymbol", scope: scope).table
+        mainTable = ArrayByteTable(bytes: Self.filteredBytes("Array30", scope: scope))
+        phraseTable = ArrayByteTable(bytes: Self.bundledTableBytes("ArrayPhrase"))
+        symbolTable = Self.loadSymbolTable("ArraySymbol", scope: scope)
         shortTable = Self.loadShortCode()
-        phraseTable = Self.loadTable("ArrayPhrase", scope: .full).table
     }
 
-    /// Reload the scope-filtered tables (main and symbols). `force` re-filters
+    /// Rebuild the scope-filtered tables (main + symbols). `force` re-filters
     /// even when the scope is unchanged — used when font coverage changed.
     func reloadTables(scope newScope: InputEngine.CharacterSetScope, force: Bool = false) {
         guard force || newScope != scope else { return }
         scope = newScope
-        (mainTable, mainCodesInOrder) = Self.loadTable("Array30", scope: newScope, trackOrder: true)
-        symbolTable = Self.loadTable("ArraySymbol", scope: newScope).table
+        mainTable = ArrayByteTable(bytes: Self.filteredBytes("Array30", scope: newScope))
+        symbolTable = Self.loadSymbolTable("ArraySymbol", scope: newScope)
     }
 
-    /// Read a bundled `Array/<base>.txt`, faulting if it isn't staged.
-    private static func bundledTable(_ base: String) -> String? {
+    /// Locate a bundled `Array/<base>.txt`, faulting if it isn't staged.
+    private static func bundledTableURL(_ base: String) -> URL? {
         guard let url = Bundle.main.url(
-                forResource: base, withExtension: "txt", subdirectory: "Array"),
-              let content = try? String(contentsOf: url, encoding: .utf8) else {
+                forResource: base, withExtension: "txt", subdirectory: "Array") else {
             Logger.inputEngine.fault(
                 "Array/\(base, privacy: .public).txt not bundled (run `make prepare` and stage Array/Resources)")
             return nil
         }
+        return url
+    }
+
+    private static func bundledTable(_ base: String) -> String? {
+        guard let url = bundledTableURL(base),
+              let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
         return content
     }
 
-    /// Load a `code<TAB>value` table from the bundle `Array/` subdirectory into
-    /// `code -> [value, ...]` (appended in file order). `scope` decides which
-    /// rows to keep by classifying each value's font coverage; `.full` keeps
-    /// everything and skips classification (so it never builds the coverage
-    /// union). `order` (first-appearance code order, for wildcard ranking) is
-    /// built only when `trackOrder` is set; other tables skip that work.
-    private static func loadTable(
-        _ base: String, scope: InputEngine.CharacterSetScope, trackOrder: Bool = false
-    ) -> (table: [String: [String]], order: [String]) {
-        guard let content = bundledTable(base) else { return ([:], []) }
-        var table: [String: [String]] = [:]
-        var order: [String] = []
+    /// Read a bundled `Array/<base>.txt` as raw UTF-8 bytes for `ArrayByteTable`.
+    private static func bundledTableBytes(_ base: String) -> [UInt8] {
+        guard let url = bundledTableURL(base),
+              let data = try? Data(contentsOf: url) else { return [] }
+        return [UInt8](data)
+    }
+
+    /// Iterate the data rows of a `code<TAB>value…` table, skipping comment (`#`)
+    /// lines. `fields` is the tab-split row; callers validate arity and content.
+    private static func forEachDataRow(in content: String, _ body: ([Substring]) -> Void) {
         for raw in content.split(separator: "\n", omittingEmptySubsequences: true) {
             if raw.hasPrefix("#") { continue }
-            let fields = raw.split(separator: "\t", omittingEmptySubsequences: false)
-            guard fields.count >= 2, !fields[0].isEmpty, !fields[1].isEmpty else { continue }
-            if scope != .full,
-               !scope.accepts(FontCoverage.shared.classify(String(fields[1]))) { continue }
-            let code = String(fields[0])
-            if trackOrder && table[code] == nil { order.append(code) }
-            table[code, default: []].append(String(fields[1]))
+            body(raw.split(separator: "\t", omittingEmptySubsequences: false))
         }
-        return (table, order)
+    }
+
+    /// Read a bundled `code<TAB>value` table as bytes, keeping only lines whose
+    /// value passes `scope` (file/sorted order preserved) so the byte-range table
+    /// is pre-filtered. `.full` keeps everything and skips classification.
+    private static func filteredBytes(_ base: String, scope: InputEngine.CharacterSetScope) -> [UInt8] {
+        guard scope != .full else { return bundledTableBytes(base) }
+        guard let content = bundledTable(base) else { return [] }
+        var out = ""
+        out.reserveCapacity(content.utf8.count)
+        forEachDataRow(in: content) { fields in
+            guard fields.count >= 2, !fields[0].isEmpty, !fields[1].isEmpty else { return }
+            guard scope.accepts(FontCoverage.shared.classify(String(fields[1]))) else { return }
+            out += fields[0]; out += "\t"; out += fields[1]; out += "\n"
+        }
+        return Array(out.utf8)
+    }
+
+    /// Load a `code<TAB>value` table (symbol groups) into `code -> [value]`,
+    /// keeping only values that pass `scope` (file order preserved).
+    private static func loadSymbolTable(_ base: String, scope: InputEngine.CharacterSetScope) -> [String: [String]] {
+        guard let content = bundledTable(base) else { return [:] }
+        var table: [String: [String]] = [:]
+        forEachDataRow(in: content) { fields in
+            guard fields.count >= 2, !fields[0].isEmpty, !fields[1].isEmpty else { return }
+            guard scope == .full || scope.accepts(FontCoverage.shared.classify(String(fields[1]))) else { return }
+            table[String(fields[0]), default: []].append(String(fields[1]))
+        }
+        return table
     }
 
     /// Load `code+slotKey<TAB>value` into `code -> [(label, value)]`. The trailing
@@ -128,11 +158,9 @@ final class ArrayDictionary {
     private static func loadShortCode() -> [String: [(label: Character, value: String)]] {
         guard let content = bundledTable("ArrayShortCode") else { return [:] }
         var table: [String: [(label: Character, value: String)]] = [:]
-        for raw in content.split(separator: "\n", omittingEmptySubsequences: true) {
-            if raw.hasPrefix("#") { continue }
-            let fields = raw.split(separator: "\t", omittingEmptySubsequences: false)
+        forEachDataRow(in: content) { fields in
             guard fields.count >= 2, fields[0].count >= 2, !fields[1].isEmpty,
-                  let label = fields[0].last else { continue }
+                  let label = fields[0].last else { return }
             let code = String(fields[0].dropLast())
             table[code, default: []].append((label, String(fields[1])))
         }
@@ -141,8 +169,8 @@ final class ArrayDictionary {
 
     // MARK: - Lookups
 
-    func main(_ code: String) -> [String] { mainTable[code] ?? [] }
-    func phrase(_ code: String) -> [String] { phraseTable[code] ?? [] }
+    func main(_ code: String) -> [String] { mainTable.lookup(code) }
+    func phrase(_ code: String) -> [String] { phraseTable.lookup(code) }
     func symbolGroup(_ code: String) -> [String] { symbolTable[code] ?? [] }
     func hasSymbolGroup(_ code: String) -> Bool { symbolTable[code] != nil }
     func symbolName(_ symbol: String) -> String? { symbolNames?.name(symbol) }
@@ -171,24 +199,42 @@ final class ArrayDictionary {
     /// Results are deduped by character, ranked by frequency (ties keep file
     /// order), capped at `wildcardLimit`, and annotated with the radical readout.
     func wildcardMatches(_ pattern: String) -> [Candidate] {
-        let matches: (String) -> Bool
-        if pattern.hasPrefix("*") && !Self.hasWildcard(String(pattern.dropFirst())) {
-            let required = Array(pattern.dropFirst())
-            matches = { code in required.allSatisfy { code.contains($0) } }
+        // A `*` with no radical matches the whole table — a meaningless flood
+        // and a full-table scan; require at least one radical alongside any `*`.
+        // A `?`-only pattern (e.g. every single-key code) is bounded and allowed.
+        if pattern.contains("*"), !pattern.contains(where: { $0 != "*" && $0 != "?" }) {
+            return []
+        }
+        let patternBytes = Array(pattern.utf8)
+        let matches: (UnsafeBufferPointer<UInt8>, Range<Int>) -> Bool
+        if patternBytes.first == star && !Self.hasWildcard(String(pattern.dropFirst())) {
+            let required = Array(patternBytes.dropFirst())
+            matches = { buffer, range in
+                // Plain loops, not `allSatisfy`/`contains(where:)`: this runs per
+                // code over the whole table, and the closure forms don't inline
+                // under `-Onone` (each element pays a closure call).
+                for req in required {
+                    var found = false
+                    var i = range.lowerBound
+                    while i < range.upperBound { if buffer[i] == req { found = true; break }; i += 1 }
+                    if !found { return false }
+                }
+                return true
+            }
         } else {
-            let pat = Array(pattern)
-            matches = { Self.positionalMatch(pat, Array($0)) }
+            matches = { buffer, range in Self.positionalMatch(patternBytes, buffer, range) }
         }
 
+        // Codes are visited in code order, so equal-frequency ties resolve
+        // deterministically by code (where each char first appears).
         var seen = Set<String>()
         var found: [(char: String, code: String, order: Int, freq: Int)] = []
-        for code in mainCodesInOrder {
-            guard matches(code) else { continue }
-            for char in mainTable[code] ?? [] where seen.insert(char).inserted {
+        mainTable.forEachMatchingCode(where: matches) { code, values in
+            for char in values where seen.insert(char).inserted {
                 found.append((char, code, found.count, frequency?.frequency(char) ?? 0))
             }
         }
-        // Rank by frequency desc, ties keep file order. Frequency is looked up
+        // Rank by frequency desc, ties keep code order. Frequency is looked up
         // once per candidate above, not inside the comparator.
         found.sort { $0.freq != $1.freq ? $0.freq > $1.freq : $0.order < $1.order }
         return found.prefix(Self.wildcardLimit).map {
@@ -196,20 +242,29 @@ final class ArrayDictionary {
         }
     }
 
-    /// Positional wildcard match: `?` = one key, `*` = one or more keys.
-    private static func positionalMatch(_ pattern: [Character], _ code: [Character]) -> Bool {
+    /// Positional wildcard match over a code's bytes: `?` = one key, `*` = one
+    /// or more keys. Codes and patterns are ASCII, so byte comparison suffices.
+    private static func positionalMatch(
+        _ pattern: [UInt8], _ buffer: UnsafeBufferPointer<UInt8>, _ range: Range<Int>
+    ) -> Bool {
         func match(_ pi: Int, _ ci: Int) -> Bool {
-            if pi == pattern.count { return ci == code.count }
+            if pi == pattern.count { return ci == range.upperBound }
             switch pattern[pi] {
-            case "*":
-                guard ci < code.count else { return false }  // one or more
-                return (ci + 1...code.count).contains { match(pi + 1, $0) }
-            case "?":
-                return ci < code.count && match(pi + 1, ci + 1)
+            case star:
+                guard ci < range.upperBound else { return false }  // one or more
+                var next = ci + 1
+                while next <= range.upperBound { if match(pi + 1, next) { return true }; next += 1 }
+                return false
+            case question:
+                return ci < range.upperBound && match(pi + 1, ci + 1)
             case let expected:
-                return ci < code.count && code[ci] == expected && match(pi + 1, ci + 1)
+                return ci < range.upperBound && buffer[ci] == expected && match(pi + 1, ci + 1)
             }
         }
-        return match(0, 0)
+        return match(0, range.lowerBound)
     }
 }
+
+// MARK: - ASCII wildcard byte constants
+
+nonisolated private let star = UInt8(ascii: "*"), question = UInt8(ascii: "?")
