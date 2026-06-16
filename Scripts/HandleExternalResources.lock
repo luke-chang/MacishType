@@ -15,7 +15,7 @@ MacishType/Resources/WordFrequency.zh-Hant.txt https://raw.githubusercontent.com
 MacishType/Resources/McBopomofo.LICENSE.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/LICENSE.txt -
 MacishType/Resources/SymbolNames.zh-Hant.txt https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/cldr-json/cldr-annotations-full/annotations/zh-Hant/annotations.json GenerateSymbolNames.swift
 MacishType/Resources/CLDR.LICENSE.txt https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/LICENSE -
-MacishType/ArrayEngine/Resources/Array30.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 FontCoverageTagger.swift chardef
-MacishType/ArrayEngine/Resources/ArraySymbol.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 FontCoverageTagger.swift symboldef
+MacishType/ArrayEngine/Resources/Array30.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 ExtractCodeTable.swift chardef
+MacishType/ArrayEngine/Resources/ArraySymbol.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 ExtractCodeTable.swift symboldef
 MacishType/ArrayEngine/Resources/ArrayShortCode.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 ExtractCodeTable.swift quick
 MacishType/ArrayEngine/Resources/ArrayPhrase.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 ExtractCodeTable.swift quickphrases

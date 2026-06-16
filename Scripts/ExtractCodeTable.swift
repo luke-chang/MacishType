@@ -8,11 +8,17 @@
 //   ./ExtractCodeTable.swift <input> <output.txt> <source-url> [section]
 //
 // "section" scopes extraction to one named cin2 block (%<section> begin..end):
+//   chardef      — the outer %chardef entries, excluding any nested %symboldef
+//                  block, and dropping pure-digit codes (unreachable as
+//                  compositions).
+//   symboldef    — only the nested %symboldef block (symbol groups).
 //   quickphrases — emit each `code<TAB>value` verbatim.
 //   quick        — each row packs N positional candidates; emit one sparse line
 //                  `code+slotKey<TAB>value` per non-empty slot (skipping the
 //                  %nullcandidate placeholder), where slot keys are 1234567890.
-// With no section, the legacy behavior applies: a .cin emits its %chardef
+// The section walker is nesting-aware: it matches `%<name> begin..end` exactly and
+// suppresses any nested sub-block, so chardef doesn't leak symboldef and vice
+// versa. With no section, the legacy behavior applies: a .cin emits its %chardef
 // entries, a raw TSV passes through.
 
 import Foundation
@@ -21,15 +27,17 @@ let args = CommandLine.arguments
 guard args.count == 4 || args.count == 5 else {
     let name = (args[0] as NSString).lastPathComponent
     FileHandle.standardError.write(
-        Data("Usage: \(name) <input> <output.txt> <source-url> [quick|quickphrases]\n".utf8))
+        Data("Usage: \(name) <input> <output.txt> <source-url> [chardef|symboldef|quick|quickphrases]\n".utf8))
     exit(2)
 }
 let inputPath = args[1]
 let outputPath = args[2]
 let sourceURL = args[3]
 let section = args.count == 5 ? args[4] : nil
-guard section == nil || section == "quick" || section == "quickphrases" else {
-    FileHandle.standardError.write(Data("✗ Unknown section '\(section!)' (quick|quickphrases)\n".utf8))
+let knownSections: Set<String> = ["chardef", "symboldef", "quick", "quickphrases"]
+guard section == nil || knownSections.contains(section!) else {
+    FileHandle.standardError.write(
+        Data("✗ Unknown section '\(section!)' (chardef|symboldef|quick|quickphrases)\n".utf8))
     exit(2)
 }
 
@@ -44,16 +52,29 @@ do {
 let lines = input.components(separatedBy: "\n")
 
 // Data lines of one named cin2 block (%<name> begin .. %<name> end), matching
-// the markers exactly so `quick` doesn't also capture `quickphrases`.
+// the markers exactly so `quick` doesn't also capture `quickphrases`. Nesting-
+// aware: while inside the target block, any nested `%<x> begin..end` (e.g.
+// %symboldef inside %chardef) is suppressed, so the target's data lines don't
+// leak the nested block and the nested `%<x> end` doesn't prematurely close the
+// target.
 func sectionLines(_ name: String) -> [String] {
     var result: [String] = []
     var inSection = false
+    var nestedDepth = 0
     for rawLine in lines {
         let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : rawLine
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        if trimmed == "%\(name) begin" { inSection = true; continue }
-        if trimmed == "%\(name) end" { inSection = false; continue }
-        if !inSection || trimmed.isEmpty || trimmed.hasPrefix("#") || trimmed.hasPrefix("%") { continue }
+        if !inSection {
+            if trimmed == "%\(name) begin" { inSection = true }
+            continue
+        }
+        if nestedDepth == 0 && trimmed == "%\(name) end" { inSection = false; continue }
+        if trimmed.hasPrefix("%") {
+            if trimmed.hasSuffix(" begin") { nestedDepth += 1 }
+            else if trimmed.hasSuffix(" end") && nestedDepth > 0 { nestedDepth -= 1 }
+            continue
+        }
+        if nestedDepth > 0 || trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
         result.append(line)
     }
     return result
@@ -79,13 +100,23 @@ func directive(_ name: String) -> String? {
     return nil
 }
 
+// Emit `code<TAB>value` for each row of a section, optionally skipping some.
+func emitPairs(_ name: String, skip: (Substring) -> Bool = { _ in false }) -> [String] {
+    sectionLines(name).compactMap { line in
+        guard let (code, value) = codeValue(line), !skip(code) else { return nil }
+        return "\(code)\t\(value)"
+    }
+}
+
 var entries: [String] = []
 switch section {
+case "chardef":
+    // Pure-digit codes (e.g. `1` → `1`) aren't reachable as compositions; drop.
+    entries = emitPairs("chardef") { $0.allSatisfy(\.isNumber) }
+case "symboldef":
+    entries = emitPairs("symboldef")
 case "quickphrases":
-    for line in sectionLines("quickphrases") {
-        guard let (code, value) = codeValue(line) else { continue }
-        entries.append("\(code)\t\(value)")
-    }
+    entries = emitPairs("quickphrases")
 case "quick":
     let nullCandidate = directive("nullcandidate") ?? "□"
     let slotKeys = Array("1234567890")

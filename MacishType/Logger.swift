@@ -19,4 +19,5 @@ extension Logger {
     /// errors without the Swift bridge noise.
     nonisolated static let javaScript = Logger(subsystem: subsystem, category: "JavaScript")
     nonisolated static let securityScopedBookmark = Logger(subsystem: subsystem, category: "SecurityScopedBookmark")
+    nonisolated static let fontCoverage = Logger(subsystem: subsystem, category: "FontCoverage")
 }

@@ -156,12 +156,14 @@ class InputEngine {
     nonisolated static let enableAssociatedModeSubKey = "enableAssociatedMode"
     nonisolated static let outputToSimplifiedSubKey = "outputToSimplified"
     nonisolated static let manifestSettingsSubKey = "manifestSettings"
+    nonisolated static let characterSetScopeSubKey = "characterSetScope"
 
     /// Base per-engine setting sub-keys. Engines that reset on a context swap
     /// (e.g. folder change) clear these — extend this list when adding a base
     /// setting instead of keeping a separate copy.
     nonisolated static let resettableBaseSubKeys = [
         directionSubKey, fontSizeSubKey, enableAssociatedModeSubKey, outputToSimplifiedSubKey,
+        characterSetScopeSubKey,
     ]
 
     /// Per-instance: same class may have multiple instances with distinct
@@ -196,6 +198,26 @@ class InputEngine {
     class var defaultFontSize: Int { 16 }
     class var defaultEnableAssociatedMode: Bool { false }
     class var defaultOutputToSimplified: Bool { false }
+    class var defaultCharacterSetScope: CharacterSetScope { .displayable }
+
+    /// How much of a coverage-filtered table to keep: standard (BMP only),
+    /// displayable (everything this Mac can render), or full (everything,
+    /// including characters needing a font that isn't installed). The policy
+    /// that maps a `FontCoverage.CoverageClass` to keep/drop; engines that
+    /// filter by font coverage store this via `CharacterSetScopePicker`.
+    enum CharacterSetScope: String {
+        case standard
+        case displayable
+        case full
+
+        func accepts(_ coverage: FontCoverage.CoverageClass) -> Bool {
+            switch self {
+            case .full: return true
+            case .displayable: return coverage != .none
+            case .standard: return coverage == .basic
+            }
+        }
+    }
 
     // MARK: Input Source Monitoring
 
@@ -574,6 +596,33 @@ extension InputEngine {
 
         var body: some View {
             Toggle("Show predictive completions", isOn: $value)
+        }
+    }
+
+    /// Picker for the character-set scope. Engines that filter candidates by
+    /// font coverage include this in their `settingsView`. Always shows the
+    /// three scopes; filtering uses the stored value regardless.
+    struct CharacterSetScopePicker: View {
+        @AppStorage private var scope: CharacterSetScope
+
+        init(engine: InputEngine) {
+            self._scope = AppStorage(
+                wrappedValue: type(of: engine).defaultCharacterSetScope,
+                InputEngine.composedKey(engineID: engine.engineID, subKey: InputEngine.characterSetScopeSubKey))
+        }
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 2) {
+                Picker("Character set", selection: $scope) {
+                    Text("Standard").tag(CharacterSetScope.standard)
+                    Text("All displayable").tag(CharacterSetScope.displayable)
+                    Text("Full").tag(CharacterSetScope.full)
+                }
+                .pickerStyle(.menu)
+                Text("All displayable covers every character this Mac can display; Full keeps the entire table, which may include characters that need an extra font installed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

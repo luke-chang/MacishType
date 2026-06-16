@@ -3,10 +3,10 @@
 // FontCoverageRanges.swift — enumerate every Unicode scalar and report which
 // ones the macOS-bundled fonts can render, compressed into contiguous ranges.
 //
-// The FontCoverageMacOS<major>.txt outputs feed FontCoverageTagger.swift,
-// which tags each dictionary char with the minimum macOS version that can render
-// it. Run once per OS version — the result reflects that machine's bundled fonts
-// — then commit the output; the generator re-derives tags from it.
+// The FontCoverageMacOS<major>.txt outputs are committed per-OS snapshots of
+// bundled-font coverage. Run once per OS version — the result reflects that
+// machine's bundled fonts — then commit the output; coverage tooling reads the
+// snapshots to judge which macOS version can display a given character.
 //
 //   ./FontCoverageRanges.swift [output.txt]
 //

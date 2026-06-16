@@ -15,22 +15,6 @@
           "key": "enableAssociatedMode",
           "type": "system",
           "default": true
-        },
-        {
-          "key": "characterSetScope",
-          "type": "picker",
-          "style": "menu",
-          "label": { "en": "Character set", "zh-Hant": "候選字集" },
-          "description": {
-            "en": "Extended adds characters this Mac can display; Full also includes ones that need an extra font installed.",
-            "zh-Hant": "延伸字集加上本機可顯示的字；完整字集另含需安裝字型才能顯示的字。"
-          },
-          "options": [
-            { "text": { "en": "Standard", "zh-Hant": "標準字集" }, "value": "standard", "tag": "standard" },
-            { "text": { "en": "Extended", "zh-Hant": "延伸字集" }, "value": "extended", "tag": "extended" },
-            { "text": { "en": "Full", "zh-Hant": "完整字集" }, "value": "full", "tag": "full" }
-          ],
-          "default": "extended"
         }
       ]
     }

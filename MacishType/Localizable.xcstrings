@@ -369,34 +369,34 @@
         }
       }
     },
-    "Extended" : {
+    "All displayable" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Extended"
+            "value" : "All displayable"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "延伸字集"
+            "value" : "全部可顯示字集"
           }
         }
       }
     },
-    "Extended adds characters this Mac can display; Full also includes ones that need an extra font installed." : {
+    "All displayable covers every character this Mac can display; Full keeps the entire table, which may include characters that need an extra font installed." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Extended adds characters this Mac can display; Full also includes ones that need an extra font installed."
+            "value" : "All displayable covers every character this Mac can display; Full keeps the entire table, which may include characters that need an extra font installed."
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "延伸字集加上本機可顯示的字；完整字集另含需安裝字型才能顯示的字。"
+            "value" : "全部可顯示字集涵蓋這台 Mac 能顯示的所有字；完整字集保留整張表格，可能含需另裝字型才能顯示的字。"
           }
         }
       }
@@ -428,7 +428,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "標準字集"
+            "value" : "僅標準字集"
           }
         }
       }

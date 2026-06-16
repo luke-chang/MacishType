@@ -61,18 +61,11 @@ final class ArrayDictionary {
     private var symbolTable: [String: [String]] = [:] // symbol groups (w0…/hg…)
     private var shortTable: [String: [(label: Character, value: String)]] = [:]
     private var phraseTable: [String: [String]] = [:]
-    private var scope: CharacterSetScope
-
-    /// How much of the dictionary to load, set by the character-set scope picker.
-    enum CharacterSetScope: String {
-        case standard   // current-OS-renderable and in the BMP
-        case extended   // current-OS-renderable, any plane
-        case full       // everything, including chars no tested OS can render
-    }
+    private var scope: InputEngine.CharacterSetScope
     private let frequency: WordFrequencyDictionary.Handle?
     private let symbolNames: SymbolNameDictionary.Handle?
 
-    init(locale: String, scope: CharacterSetScope) {
+    init(locale: String, scope: InputEngine.CharacterSetScope) {
         frequency = WordFrequencyDictionary.isAvailable(for: locale)
             ? WordFrequencyDictionary.acquire(for: locale) : nil
         symbolNames = SymbolNameDictionary.isAvailable(for: locale)
@@ -84,9 +77,10 @@ final class ArrayDictionary {
         phraseTable = Self.loadTable("ArrayPhrase", scope: .full).table
     }
 
-    /// Reload the scope-filtered tables (main and symbols) when the setting changes.
-    func reloadTables(scope newScope: CharacterSetScope) {
-        guard newScope != scope else { return }
+    /// Reload the scope-filtered tables (main and symbols). `force` re-filters
+    /// even when the scope is unchanged — used when font coverage changed.
+    func reloadTables(scope newScope: InputEngine.CharacterSetScope, force: Bool = false) {
+        guard force || newScope != scope else { return }
         scope = newScope
         (mainTable, mainCodesInOrder) = Self.loadTable("Array30", scope: newScope, trackOrder: true)
         symbolTable = Self.loadTable("ArraySymbol", scope: newScope).table
@@ -104,32 +98,14 @@ final class ArrayDictionary {
         return content
     }
 
-    /// The running OS major version, resolved once for visibility filtering.
-    private static let currentOSMajor = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
-
-    /// Whether the running OS can render a value, given its optional minimum-version
-    /// tag (the table's third column): blank = renderable since the deployment
-    /// baseline; a major number ("15"/"26") = that major or newer; anything else
-    /// (e.g. "-") = not renderable on any tested version.
-    private static func renderableOnCurrentOS(_ tag: Substring) -> Bool {
-        if tag.isEmpty { return true }
-        guard let minMajor = Int(tag) else { return false }
-        return currentOSMajor >= minMajor
-    }
-
-    /// Whether every scalar of a value lies in the Basic Multilingual Plane.
-    private static func isBMP(_ value: Substring) -> Bool {
-        value.unicodeScalars.allSatisfy { $0.value <= 0xFFFF }
-    }
-
-    /// Load a `code<TAB>value[<TAB>tag]` table from the bundle `Array/`
-    /// subdirectory into `code -> [value, ...]` (appended in file order). The
-    /// optional third column is a minimum-version tag; `scope` decides which rows
-    /// to keep (see CharacterSetScope).
-    /// `order` (first-appearance code order, for wildcard ranking) is built only
-    /// when `trackOrder` is set; other tables skip that work.
+    /// Load a `code<TAB>value` table from the bundle `Array/` subdirectory into
+    /// `code -> [value, ...]` (appended in file order). `scope` decides which
+    /// rows to keep by classifying each value's font coverage; `.full` keeps
+    /// everything and skips classification (so it never builds the coverage
+    /// union). `order` (first-appearance code order, for wildcard ranking) is
+    /// built only when `trackOrder` is set; other tables skip that work.
     private static func loadTable(
-        _ base: String, scope: CharacterSetScope, trackOrder: Bool = false
+        _ base: String, scope: InputEngine.CharacterSetScope, trackOrder: Bool = false
     ) -> (table: [String: [String]], order: [String]) {
         guard let content = bundledTable(base) else { return ([:], []) }
         var table: [String: [String]] = [:]
@@ -138,12 +114,8 @@ final class ArrayDictionary {
             if raw.hasPrefix("#") { continue }
             let fields = raw.split(separator: "\t", omittingEmptySubsequences: false)
             guard fields.count >= 2, !fields[0].isEmpty, !fields[1].isEmpty else { continue }
-            let renderable = fields.count < 3 || renderableOnCurrentOS(fields[2])
-            switch scope {
-            case .full: break
-            case .extended: if !renderable { continue }
-            case .standard: if !renderable || !isBMP(fields[1]) { continue }
-            }
+            if scope != .full,
+               !scope.accepts(FontCoverage.shared.classify(String(fields[1]))) { continue }
             let code = String(fields[0])
             if trackOrder && table[code] == nil { order.append(code) }
             table[code, default: []].append(String(fields[1]))

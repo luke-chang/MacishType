@@ -27,21 +27,25 @@ final class ArrayEngine: InputEngine {
     static let shared = ArrayEngine()
     override var engineID: String { "Array" }
 
-    static let characterSetScopeSubKey = "characterSetScope"
-    static let defaultScope: ArrayDictionary.CharacterSetScope = .extended
-    private var characterSetScope = ArrayEngine.defaultScope
+    private var characterSetScope = ArrayEngine.defaultCharacterSetScope
     private var dictionary: ArrayDictionary?
+    private var coverageObserver: (any NSObjectProtocol)?
+    private var coverageDirty = false
 
     override func createContext() -> InputEngineContext { ArrayEngineContext() }
 
     override func reloadConfig() {
         super.reloadConfig()
-        let value: ArrayDictionary.CharacterSetScope =
-            defaultsValue(Self.characterSetScopeSubKey, fallback: Self.defaultScope)
+        let value: InputEngine.CharacterSetScope =
+            defaultsValue(Self.characterSetScopeSubKey, fallback: Self.defaultCharacterSetScope)
         if value != characterSetScope {
             characterSetScope = value
             dictionary?.reloadTables(scope: value)
+        } else if coverageDirty {
+            // Font coverage changed while loaded; re-filter with the same scope.
+            dictionary?.reloadTables(scope: value, force: true)
         }
+        coverageDirty = false
     }
 
     override func load() {
@@ -49,10 +53,20 @@ final class ArrayEngine: InputEngine {
             dictionary = ArrayDictionary(
                 locale: intendedLanguage ?? "zh-Hant", scope: characterSetScope)
         }
+        if coverageObserver == nil {
+            coverageObserver = NotificationCenter.default.addObserver(
+                forName: FontCoverage.coverageDidChange, object: nil, queue: .main
+            ) { [weak self] _ in self?.coverageDirty = true }
+        }
         super.load()
     }
 
     override func unload() {
+        if let observer = coverageObserver {
+            NotificationCenter.default.removeObserver(observer)
+            coverageObserver = nil
+        }
+        coverageDirty = false
         dictionary = nil
         super.unload()
     }
@@ -71,7 +85,7 @@ final class ArrayEngine: InputEngine {
                 InputEngine.CandidateWindowSection(engine: self)
                 Section("Typing") {
                     InputEngine.EnableAssociatedModeToggle(engine: self)
-                    ArrayCharacterSetScopePicker(engine: self)
+                    InputEngine.CharacterSetScopePicker(engine: self)
                 }
             }
         )
@@ -379,32 +393,5 @@ final class ArrayEngine: InputEngine {
 
     private func canExtendWildcard(_ ctx: ArrayEngineContext) -> Bool {
         ctx.code.count < ArrayDictionary.maxCodeLength
-    }
-}
-
-/// Picker for how much of the character set to show: standard (BMP, common),
-/// extended (also what this Mac can display), or full (everything).
-private struct ArrayCharacterSetScopePicker: View {
-    @AppStorage private var scope: ArrayDictionary.CharacterSetScope
-
-    init(engine: InputEngine) {
-        self._scope = AppStorage(
-            wrappedValue: ArrayEngine.defaultScope,
-            InputEngine.composedKey(
-                engineID: engine.engineID, subKey: ArrayEngine.characterSetScopeSubKey))
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Picker("Character set", selection: $scope) {
-                Text("Standard").tag(ArrayDictionary.CharacterSetScope.standard)
-                Text("Extended").tag(ArrayDictionary.CharacterSetScope.extended)
-                Text("Full").tag(ArrayDictionary.CharacterSetScope.full)
-            }
-            .pickerStyle(.menu)
-            Text("Extended adds characters this Mac can display; Full also includes ones that need an extra font installed.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
     }
 }
