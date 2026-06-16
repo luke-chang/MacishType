@@ -200,8 +200,18 @@ function wildcardMatches(pattern) {
   }
   let matches;
   if (pattern.startsWith("*") && !hasWildcard(pattern.slice(1))) {
-    const required = [...pattern.slice(1)];
-    matches = (code) => required.every((radical) => code.includes(radical));
+    const requiredCounts = new Map();
+    for (const radical of pattern.slice(1)) {
+      requiredCounts.set(radical, (requiredCounts.get(radical) ?? 0) + 1);
+    }
+    matches = (code) => {
+      for (const [radical, count] of requiredCounts) {
+        let seen = 0;
+        for (const char of code) if (char === radical) seen += 1;
+        if (seen < count) return false;
+      }
+      return true;
+    };
   } else {
     const regex = wildcardRegex(pattern);
     matches = (code) => regex.test(code);

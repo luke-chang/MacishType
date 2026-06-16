@@ -208,16 +208,23 @@ final class ArrayDictionary {
         let patternBytes = Array(pattern.utf8)
         let matches: (UnsafeBufferPointer<UInt8>, Range<Int>) -> Bool
         if patternBytes.first == star && !Self.hasWildcard(String(pattern.dropFirst())) {
-            let required = Array(patternBytes.dropFirst())
+            var requiredCounts: [(byte: UInt8, count: Int)] = []
+            for byte in patternBytes.dropFirst() {
+                if let existing = requiredCounts.firstIndex(where: { $0.byte == byte }) {
+                    requiredCounts[existing].count += 1
+                } else {
+                    requiredCounts.append((byte, 1))
+                }
+            }
             matches = { buffer, range in
                 // Plain loops, not `allSatisfy`/`contains(where:)`: this runs per
                 // code over the whole table, and the closure forms don't inline
                 // under `-Onone` (each element pays a closure call).
-                for req in required {
-                    var found = false
+                for required in requiredCounts {
+                    var seen = 0
                     var i = range.lowerBound
-                    while i < range.upperBound { if buffer[i] == req { found = true; break }; i += 1 }
-                    if !found { return false }
+                    while i < range.upperBound { if buffer[i] == required.byte { seen += 1 }; i += 1 }
+                    if seen < required.count { return false }
                 }
                 return true
             }
