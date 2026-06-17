@@ -26,29 +26,55 @@ case "$$(xcode-select -p 2>/dev/null)" in \
 esac
 endef
 
+# Extract and key-sort a plist's ComponentInputModeDict to JSON for a stable
+# comparison. Prints empty string when the file or key is absent. $(1) = path.
+EXTRACT_MODE_DICT = plutil -extract ComponentInputModeDict json -o - "$(1)" 2>/dev/null | python3 -c 'import json,sys; raw=sys.stdin.read().strip(); print(json.dumps(json.loads(raw), sort_keys=True) if raw else "")' 2>/dev/null
+
 # $(call INSTALL_APP,<Debug|Release>): deploy ./build/<config>/$(APP_NAME).app.
-# First-install heuristic for the logout hint: Settings input source picker has
-# a per-login cache that no observable plist or service restart can flush.
+# Logout hint mirrors the pkg's onConclusionScript: the Settings input source
+# picker has a per-login cache that no observable plist or service restart can
+# flush, so prompt a re-login only when the declared input mode set changed
+# (first install, or the installed ComponentInputModeDict differs from the new
+# build's). A plain upgrade that keeps the same modes installs silently.
 define INSTALL_APP
 echo "Installing input method..."; \
-if [ ! -d "./build/$(1)/$(APP_NAME).app" ]; then \
+NEW_APP="./build/$(1)/$(APP_NAME).app"; \
+if [ ! -d "$$NEW_APP" ]; then \
 	echo "✗ Error: No .app file found"; \
 	exit 1; \
 fi; \
-first_install=true; \
-if [ -d ~/Library/Input\ Methods/$(APP_NAME).app ]; then \
-	first_install=false; \
+OLD_APP=~/Library/Input\ Methods/$(APP_NAME).app; \
+relogin=true; \
+if [ -d "$$OLD_APP" ]; then \
+	old_modes=$$($(call EXTRACT_MODE_DICT,$$OLD_APP/Contents/Info.plist)); \
+	new_modes=$$($(call EXTRACT_MODE_DICT,$$NEW_APP/Contents/Info.plist)); \
+	[ "$$old_modes" = "$$new_modes" ] && relogin=false; \
 	echo "Removing old version..."; \
-	rm -rf ~/Library/Input\ Methods/$(APP_NAME).app; \
+	rm -rf "$$OLD_APP"; \
 fi; \
 echo "Killing input method processes..."; \
 killall $(APP_NAME) 2>/dev/null || true; \
-cp -r ./build/$(1)/$(APP_NAME).app ~/Library/Input\ Methods/; \
+cp -r "$$NEW_APP" ~/Library/Input\ Methods/; \
 echo "✓ Installed $(1) version"; \
-if $$first_install; then \
+if $$relogin; then \
 	echo ""; \
-	echo "ℹ First install on this account. If $(APP_NAME) doesn't appear in"; \
-	echo "  System Settings → Keyboard → Input Sources → +, log out and back in."; \
+	echo "ℹ Input mode set changed (or first install). $(APP_NAME) may not appear"; \
+	echo "  or update in System Settings → Keyboard → Input Sources until you log"; \
+	echo "  out and back in."; \
+	if [ -t 0 ]; then \
+		echo ""; \
+		printf "  Log out now? [y/N] "; \
+		read answer; \
+		case "$$answer" in \
+			[Yy]*) \
+				echo "  Logging out (save your work — apps may prompt)..."; \
+				osascript -e 'tell application "System Events" to log out'; \
+				;; \
+			*) \
+				echo "  Skipped. Log out manually when convenient."; \
+				;; \
+		esac; \
+	fi; \
 fi
 endef
 
