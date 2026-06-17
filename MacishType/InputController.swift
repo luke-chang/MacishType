@@ -348,19 +348,21 @@ class InputController: IMKInputController {
     private func setMarkedText(
         _ text: String, cursor: Int? = nil, emphasis: Range<Int>? = nil, client: IMKTextInput
     ) {
-        engineContext.markedText = text
-        let charIndex = cursor ?? text.count
-        let cursorPosition = text.prefix(charIndex).utf16.count
+        // Substitution is 1-for-1, so character-based cursor/emphasis stay valid.
+        let display = Self.displayableMarkedText(text)
+        engineContext.markedText = display
+        let charIndex = cursor ?? display.count
+        let cursorPosition = display.prefix(charIndex).utf16.count
         let attr = NSMutableAttributedString(
-            string: text,
+            string: display,
             attributes: [
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
                 .markedClauseSegment: 0
             ]
         )
         if let emphasis, !emphasis.isEmpty {
-            let utf16Start = text.prefix(emphasis.lowerBound).utf16.count
-            let utf16End = text.prefix(emphasis.upperBound).utf16.count
+            let utf16Start = display.prefix(emphasis.lowerBound).utf16.count
+            let utf16End = display.prefix(emphasis.upperBound).utf16.count
             attr.addAttribute(
                 .underlineStyle, value: NSUnderlineStyle.thick.rawValue,
                 range: NSRange(location: utf16Start, length: utf16End - utf16Start)
@@ -371,6 +373,25 @@ class InputController: IMKInputController {
             selectionRange: NSRange(location: cursorPosition, length: 0),
             replacementRange: .notFound
         )
+    }
+
+    /// Substitute characters this Mac can't render with a placeholder: some
+    /// clients freeze their marked-text layout once they draw a LastResort
+    /// glyph. The real character still reaches the candidate window and the
+    /// committed text. Coverage matches the candidate filter (`FontCoverage`).
+    private static func displayableMarkedText(_ text: String) -> String {
+        guard !text.isEmpty else { return text }
+        var result = ""
+        var substituted = false
+        for character in text {
+            if FontCoverage.shared.classify(String(character)) == .none {
+                result.append("\u{FFFD}")
+                substituted = true
+            } else {
+                result.append(character)
+            }
+        }
+        return substituted ? result : text
     }
 
 
