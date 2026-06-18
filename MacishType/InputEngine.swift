@@ -132,6 +132,7 @@ class InputEngine {
     private static let engines: [String: () -> InputEngine] = [
         "Example": { ExampleEngine.shared },
         "Array": { ArrayEngine.shared },
+        "CINExternal": { CINExternalEngine.shared },
         "JSExternal": { JSExternalEngine.shared },
     ]
 
@@ -217,6 +218,20 @@ class InputEngine {
             case .standard: return coverage == .basic
             }
         }
+    }
+
+    /// Which optional scopes a table meaningfully offers, by classifying its
+    /// candidates against the current coverage. Standard is always available;
+    /// `displayable` differs from it only with supplementary characters, `full`
+    /// only with characters no installed font can render.
+    struct ScopeAvailability {
+        var displayable: Bool
+        var full: Bool
+
+        var showsPicker: Bool { displayable || full }
+
+        static let all = ScopeAvailability(displayable: true, full: true)
+        static let standardOnly = ScopeAvailability(displayable: false, full: false)
     }
 
     // MARK: Input Source Monitoring
@@ -600,29 +615,52 @@ extension InputEngine {
     }
 
     /// Picker for the character-set scope. Engines that filter candidates by
-    /// font coverage include this in their `settingsView`. Always shows the
-    /// three scopes; filtering uses the stored value regardless.
+    /// font coverage include this in their `settingsView`. `availability` hides
+    /// scopes a table doesn't meaningfully offer; standard is always shown.
     struct CharacterSetScopePicker: View {
         @AppStorage private var scope: CharacterSetScope
+        private let availability: ScopeAvailability
 
-        init(engine: InputEngine) {
+        init(engine: InputEngine, availability: ScopeAvailability = .all) {
             self._scope = AppStorage(
                 wrappedValue: type(of: engine).defaultCharacterSetScope,
                 InputEngine.composedKey(engineID: engine.engineID, subKey: InputEngine.characterSetScopeSubKey))
+            self.availability = availability
         }
 
         var body: some View {
             VStack(alignment: .leading, spacing: 2) {
-                Picker("Character set", selection: $scope) {
+                Picker("Character set", selection: shownScope) {
                     Text("Standard").tag(CharacterSetScope.standard)
-                    Text("All displayable").tag(CharacterSetScope.displayable)
-                    Text("Full").tag(CharacterSetScope.full)
+                    if availability.displayable {
+                        Text("All displayable").tag(CharacterSetScope.displayable)
+                    }
+                    if availability.full {
+                        Text("Full").tag(CharacterSetScope.full)
+                    }
                 }
                 .pickerStyle(.menu)
-                Text("All displayable covers every character this Mac can display; Full keeps the entire table, which may include characters that need an extra font installed.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if availability.full {
+                    Text("Full keeps the entire table, which may include characters that need an extra font installed to display.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
+        }
+
+        /// A hidden scope can't be a Picker tag, so map a stored-but-hidden value
+        /// down to its nearest shown one (it degrades to the same filtering).
+        private var shownScope: Binding<CharacterSetScope> {
+            Binding(
+                get: {
+                    switch scope {
+                    case .displayable where !availability.displayable: return .standard
+                    case .full where !availability.full: return availability.displayable ? .displayable : .standard
+                    default: return scope
+                    }
+                },
+                set: { scope = $0 }
+            )
         }
     }
 }

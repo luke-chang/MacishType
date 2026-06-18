@@ -192,6 +192,11 @@ class JSExternalEngine: JavaScriptEngine {
         return .handled([.updateMarkedText(statusMessage)])
     }
 
+    /// No Traditional→Simplified menu item until an engine is actually loaded.
+    override var supportsSimplifiedConversion: Bool {
+        (loadStatus == .loaded || loadStatus == .stale) && super.supportsSimplifiedConversion
+    }
+
     override var settingsView: AnyView {
         AnyView(JSExternalSettingsView(engine: self))
     }

@@ -34,6 +34,7 @@
 		<array>
 			<string>net.lukechang.inputmethod.MacishType.Example</string>
 			<string>net.lukechang.inputmethod.MacishType.Array</string>
+			<string>net.lukechang.inputmethod.MacishType.CINExternal</string>
 			<string>net.lukechang.inputmethod.MacishType.JSExternal</string>
 		</array>
 		<key>tsInputModeListKey</key>
@@ -84,6 +85,30 @@
 				<dict>
 					<key>Primary</key>
 					<string>行列</string>
+				</dict>
+			</dict>
+			<key>net.lukechang.inputmethod.MacishType.CINExternal</key>
+			<dict>
+				<key>TISInputSourceID</key>
+				<string>net.lukechang.inputmethod.MacishType.CINExternal</string>
+				<key>TISIntendedLanguage</key>
+				<string>zh-Hant</string>
+				<key>tsInputModeScriptKey</key>
+				<string>smUnicodeScript</string>
+				<key>tsInputModeCharacterRepertoireKey</key>
+				<array>
+					<string>Hant</string>
+				</array>
+				<key>tsInputModeIsVisibleKey</key>
+				<true/>
+				<key>tsInputModeMenuIconFileKey</key>
+				<string>CINExternal/CINMenuIcon.tiff</string>
+				<key>tsInputModePaletteIconFileKey</key>
+				<string>CINExternal/CINMenuIcon.tiff</string>
+				<key>TISIconLabels</key>
+				<dict>
+					<key>Primary</key>
+					<string>CIN</string>
 				</dict>
 			</dict>
 			<key>net.lukechang.inputmethod.MacishType.JSExternal</key>

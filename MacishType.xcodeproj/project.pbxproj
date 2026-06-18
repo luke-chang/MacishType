@@ -16,6 +16,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				ArrayEngine/Resources,
+				CINEngine/CINExternalEngine/Resources,
 				ExampleEngine/Resources,
 				Info.plist,
 				JavaScriptEngine/JSExternalEngine/Resources,
@@ -71,6 +72,7 @@
 			);
 			explicitFolders = (
 				ArrayEngine/Resources,
+				CINEngine/CINExternalEngine/Resources,
 				ExampleEngine/Resources,
 				JavaScriptEngine/JSExternalEngine/Resources,
 				JavaScriptEngine/Resources,

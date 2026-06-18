@@ -305,6 +305,38 @@
         }
       }
     },
+    "Select a CIN table" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select a CIN table"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請選擇表格檔"
+          }
+        }
+      }
+    },
+    "CIN table load failed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CIN table load failed"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表格載入失敗"
+          }
+        }
+      }
+    },
     "Selected folder must contain manifest.json" : {
       "localizations" : {
         "en" : {
@@ -385,18 +417,18 @@
         }
       }
     },
-    "All displayable covers every character this Mac can display; Full keeps the entire table, which may include characters that need an extra font installed." : {
+    "Full keeps the entire table, which may include characters that need an extra font installed to display." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "All displayable covers every character this Mac can display; Full keeps the entire table, which may include characters that need an extra font installed."
+            "value" : "Full keeps the entire table, which may include characters that need an extra font installed to display."
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "全部可顯示字集涵蓋這台 Mac 能顯示的所有字；完整字集保留整張表格，可能含需另裝字型才能顯示的字。"
+            "value" : "完整字集保留整張表格，可能包含需要額外安裝字型才能顯示的字。"
           }
         }
       }
@@ -477,6 +509,102 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "垂直"
+          }
+        }
+      }
+    },
+    "No match" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No match"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無此字"
+          }
+        }
+      }
+    },
+    "Preview candidates while typing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preview candidates while typing"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "即時預覽候選字"
+          }
+        }
+      }
+    },
+    "Choose File…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose File…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇檔案…"
+          }
+        }
+      }
+    },
+    "CIN table" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CIN table"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CIN 表格"
+          }
+        }
+      }
+    },
+    "Invalid CIN table" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invalid CIN table"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無效的 CIN 表格"
+          }
+        }
+      }
+    },
+    "The selected file is not a valid .cin table." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The selected file is not a valid .cin table."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所選檔案不是有效的 .cin 表格。"
           }
         }
       }

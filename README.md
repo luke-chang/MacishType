@@ -6,6 +6,7 @@ A macOS input method that replicates the system look and feel, extensible via ex
 
 - Native-looking candidate window — horizontal / vertical / expandable layouts, with accent color matching the foreground app
 - Write engines in JavaScript — hot-reloaded from a picked folder, with a native Settings UI auto-generated from `manifest.json`
+- Drop-in `.cin` tables — load any external `.cin` file and type with it instantly
 - Built-in input methods — currently Array (行列)
 
 ## Environment

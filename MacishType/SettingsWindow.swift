@@ -80,28 +80,28 @@ final class SettingsWindow: NSWindow {
     private func bindTitle(to item: SettingsSidebarItem?) {
         titleObserver = nil
         guard let item else { title = ""; return }
-        // Scoped to the externally-loaded engine. Bundled engines (incl. any
-        // future JavaScriptEngine subclass) carry their own slot label and
-        // must not have it overwritten by a manifest name.
-        guard let engine = InputEngine.engine(forSuffix: item.id) as? JSExternalEngine else {
-            title = item.title
-            return
-        }
-        // `$manifest` emits its current value synchronously on subscribe, so
-        // this seeds the initial title and tracks every later reload.
         let baseTitle = item.title
-        titleObserver = engine.$manifest
-            .sink { [weak self] manifest in
-                self?.title = Self.composedTitle(base: baseTitle, manifest: manifest)
+        // Externally-loaded engines append the loaded resource's name to the
+        // title, reactively. Bundled engines (incl. future subclasses) keep
+        // their own slot label. The publisher emits synchronously on subscribe,
+        // seeding the initial title and tracking every later reload.
+        switch InputEngine.engine(forSuffix: item.id) {
+        case let engine as JSExternalEngine:
+            titleObserver = engine.$manifest.sink { [weak self] manifest in
+                self?.title = Self.composedTitle(base: baseTitle, name: manifest?.name?.resolved())
             }
+        case let engine as CINExternalEngine:
+            titleObserver = engine.$displayName.sink { [weak self] name in
+                self?.title = Self.composedTitle(base: baseTitle, name: name)
+            }
+        default:
+            title = item.title
+        }
     }
 
-    private static func composedTitle(base: String,
-                                      manifest: JavaScriptEngine.Manifest?) -> String {
-        // Blank/missing name → no parens. Title-presentation only; JS still
-        // reads the literal value via `manifest.name`.
-        let trimmed = manifest?.name?.resolved()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    private static func composedTitle(base: String, name: String?) -> String {
+        // Blank/missing name → no parens.
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let name = trimmed, !name.isEmpty else { return base }
         return "\(base) (\(name))"
     }
