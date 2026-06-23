@@ -460,6 +460,30 @@ export interface CandidateWindow {
   handleIndexLabelKeys?: boolean;
 }
 
+/** A frozen, read-only host-provided table. `query(key)` returns the value
+ *  mapped to `key`. */
+export interface LookupModule<V> {
+  query(key: string): V;
+}
+
+/**
+ * Host-provided data tables enabled via manifest.json `modules`. A module
+ * enabled there is always present here — a table with no data for the engine's
+ * resolved language is an empty view (every query returns the miss value),
+ * never a missing property, so reads need no guarding. Reading a module you
+ * didn't enable is `undefined` at runtime.
+ */
+export interface Modules {
+  /** Whether a value is renderable by an installed font, e.g. "的" → true. Absent → false.
+   *  Live: query reflects current coverage and updates when fonts change (see
+   *  `fontcoveragechange`). */
+  readonly fontCoverage: LookupModule<boolean>;
+  /** Symbol → human-readable name, e.g. "！" → "驚嘆號". Absent → undefined. */
+  readonly symbolNames: LookupModule<string | undefined>;
+  /** Character → frequency count, e.g. "的" → 615175; higher is more common. Absent → 0. */
+  readonly wordFrequency: LookupModule<number>;
+}
+
 /**
  * Engine-wide info injected by the host.
  */
@@ -485,6 +509,12 @@ export interface Manifest {
    * Candidate-window override cache. See `CandidateWindow` for details.
    */
   readonly candidateWindow: CandidateWindow;
+
+  /**
+   * Host-provided data tables enabled via manifest.json `modules`.
+   * See `Modules`.
+   */
+  readonly modules: Modules;
 }
 
 /**
@@ -570,6 +600,11 @@ declare global {
     callback: EventListenerOrObject<LanguageChangeEvent>,
     options?: { once?: boolean }
   ): void;
+  function addEventListener(
+    type: "fontcoveragechange",
+    callback: EventListenerOrObject<FontCoverageChangeEvent>,
+    options?: { once?: boolean }
+  ): void;
   function removeEventListener(
     type: "storage",
     callback: EventListenerOrObject<StorageEvent>
@@ -581,6 +616,10 @@ declare global {
   function removeEventListener(
     type: "languagechange",
     callback: EventListenerOrObject<LanguageChangeEvent>
+  ): void;
+  function removeEventListener(
+    type: "fontcoveragechange",
+    callback: EventListenerOrObject<FontCoverageChangeEvent>
   ): void;
 
   /**
@@ -601,6 +640,16 @@ declare global {
    */
   interface LanguageChangeEvent {
     readonly type: "languagechange";
+  }
+
+  /**
+   * Fired on `globalThis` when the set of font-renderable characters changes
+   * (a font installed/removed). `manifest.modules.fontCoverage` already
+   * reflects the new coverage; only engines that cache coverage-derived results
+   * need to react.
+   */
+  interface FontCoverageChangeEvent {
+    readonly type: "fontcoveragechange";
   }
 
   // eslint-disable-next-line no-var

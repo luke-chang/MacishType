@@ -14,7 +14,40 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-globalThis.manifest = { settings: { showRareCharacters: false } };
+// A frozen lookup view mirroring runtime.js's module facade: query(key)
+// returns the mapped value, or `miss` when absent.
+function makeModule(entries, miss) {
+  const inner = new Map(Object.entries(entries));
+  return Object.freeze({ query: (key) => (inner.has(key) ? inner.get(key) : miss) });
+}
+
+// A frozen coverage view: query(value) is true iff `covered(scalar)` holds for
+// every scalar. Mirrors runtime.js's fontCoverage facade.
+function makeCoverage(covered) {
+  return Object.freeze({
+    query(value) {
+      for (const ch of value) if (!covered(ch.codePointAt(0))) return false;
+      return true;
+    },
+  });
+}
+
+// manifest must be set BEFORE the import below: index.js destructures
+// manifest.modules at module top-level and reads manifest.settings, so they
+// have to exist first. The engine captures the fontCoverage *object* once, so
+// scope tests vary coverage through this swappable predicate (and set
+// manifest.settings.characterSetScope, which the engine reads live). Defaults —
+// "displayable" + everything covered — make the character-set filter a no-op,
+// so the existing tests' candidate counts are unchanged.
+let coverageOf = () => true;   // codePoint -> renderable?
+globalThis.manifest = {
+  settings: { characterSetScope: "displayable" },
+  modules: {
+    fontCoverage: makeCoverage((codePoint) => coverageOf(codePoint)),
+    symbolNames: makeModule({ "！": "驚嘆號" }, undefined),
+    wordFrequency: makeModule({ "的": 100 }, 0),
+  },
+};
 globalThis.addEventListener = () => {};
 // Silence the engine's load-progress logs; keep errors visible.
 globalThis.console = { ...console, info: () => {}, debug: () => {} };
@@ -256,4 +289,34 @@ test("paging keys navigate only with the right modifiers", () => {
   const shiftEqual = makeEvent({ ...visible, code: "Equal", shiftKey: true });
   engine.handleKey(shiftEqual);
   assert.equal(shiftEqual.last("navigateCandidates"), undefined);
+});
+
+test("displayable scope drops candidates no installed font can render", () => {
+  const engine = freshEngine();
+  coverageOf = () => false; // nothing renderable
+  try {
+    compose(engine, ["t"]); // "t" → 的 in the main table
+    const space = makeEvent({ isComposing: true, code: "Space" });
+    engine.handleKey(space);
+    // 的 filtered out → empty list → composition resets, nothing committed.
+    assert.equal(space.last("commit"), undefined);
+    assert.ok(space.last("resetContext"));
+  } finally {
+    coverageOf = () => true;
+  }
+});
+
+test("full scope keeps candidates even when no font renders them", () => {
+  const engine = freshEngine();
+  coverageOf = () => false;
+  manifest.settings.characterSetScope = "full";
+  try {
+    compose(engine, ["t"]);
+    const space = makeEvent({ isComposing: true, code: "Space" });
+    engine.handleKey(space);
+    assert.equal(space.last("commit").args[0], "的");
+  } finally {
+    coverageOf = () => true;
+    manifest.settings.characterSetScope = "displayable";
+  }
 });

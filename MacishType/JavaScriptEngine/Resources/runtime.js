@@ -167,6 +167,12 @@ function __MacishType_dispatchGlobal(event) {
     defineProperty() { throw new TypeError("manifest.settings is read-only"); },
   });
 
+  // Host-injected data tables, populated by __MacishType_setModuleData before
+  // engine code runs. Stable container so engines can destructure
+  // `const { ... } = manifest.modules`; engines treat it as read-only (the
+  // injected values are frozen, the container itself is left plain).
+  const modules = {};
+
   globalThis.manifest = {
     // null (name absent) → undefined, mirroring candidateWindow below.
     get name() {
@@ -174,6 +180,7 @@ function __MacishType_dispatchGlobal(event) {
       return value === null ? undefined : value;
     },
     get settings() { return settingsProxy; },
+    get modules() { return modules; },
   };
 
   // manifest.candidateWindow — Proxy-backed cache the engine can read/write.
@@ -229,6 +236,93 @@ function __MacishType_dispatchGlobal(event) {
     // can't mutate them either — full deep read-only as seen by JS.
     for (const k of Object.keys(settings)) deepFreeze(settings[k]);
     __MacishType_dispatchGlobal({ type: "settingschange" });
+  };
+
+  // Private updater — Swift bridge entrypoint. `data` is a plain object the
+  // host built from a whole table; `miss` is the value query() returns for an
+  // absent key (host-chosen per table, e.g. undefined for names, 0 for
+  // counts). The frozen facade is what makes it read-only — a raw Map can't be
+  // meaningfully frozen (Object.freeze leaves set/delete working). `has`
+  // distinguishes a stored falsy value from a genuine miss.
+  globalThis.__MacishType_setModuleData = function (name, data, miss) {
+    const inner = new Map(Object.entries(data));
+    modules[name] = Object.freeze({
+      query: (key) => (inner.has(key) ? inner.get(key) : miss),
+    });
+  };
+
+  // Base64 → Uint8Array. Pure JSC has no atob, so decode by hand. Skips any
+  // non-alphabet byte (whitespace/newlines) and ignores '=' padding.
+  const B64_CHARS =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const B64_LOOKUP = (() => {
+    const table = new Int16Array(128).fill(-1);
+    for (let i = 0; i < B64_CHARS.length; i++) table[B64_CHARS.charCodeAt(i)] = i;
+    return table;
+  })();
+  function decodeBase64(b64) {
+    let len = b64.length;
+    while (len > 0 && b64[len - 1] === "=") len--;
+    const out = new Uint8Array((len * 3) >> 2);
+    let acc = 0, bits = 0, oi = 0;
+    for (let i = 0; i < len; i++) {
+      const code = b64.charCodeAt(i);
+      const value = code < 128 ? B64_LOOKUP[code] : -1;
+      if (value < 0) continue;
+      acc = (acc << 6) | value;
+      bits += 6;
+      if (bits >= 8) { bits -= 8; out[oi++] = (acc >> bits) & 0xff; }
+    }
+    return out;
+  }
+
+  // Parse a base64 CharacterSet bitmap into plane number → 8192-byte slice.
+  // bitmapRepresentation: plane 0 = first 8192 bytes; then each non-empty plane
+  // is 1 byte plane-number + 8192 bytes. Scalar n present iff byte (n>>3) bit
+  // (n&7) is set (LSB-first). NOTE: assumes the first 8192 bytes are plane 0 —
+  // always true for a font-coverage union (BMP is never empty), but NOT a
+  // general CharacterSet invariant; don't reuse this as a generic decoder.
+  function parseCoverageBitmap(base64) {
+    const bytes = decodeBase64(base64);
+    const planes = new Map();
+    planes.set(0, bytes.subarray(0, 8192));
+    let offset = 8192;
+    while (offset < bytes.length) {
+      planes.set(bytes[offset], bytes.subarray(offset + 1, offset + 1 + 8192));
+      offset += 1 + 8192;
+    }
+    return planes;
+  }
+
+  // Backing store per coverage module, swappable in place so the frozen view's
+  // identity stays stable across updates (engines may destructure it once).
+  const coverageHolders = new Map();   // name -> { planes }
+
+  // Swift bridge entrypoint — build the holder-backed query view at load.
+  globalThis.__MacishType_setCoverageModule = function (name, base64) {
+    const holder = { planes: parseCoverageBitmap(base64) };
+    coverageHolders.set(name, holder);
+    const covers = (codePoint) => {
+      const plane = holder.planes.get(codePoint >> 16);
+      if (!plane) return false;
+      const within = codePoint & 0xffff;
+      return (plane[within >> 3] & (1 << (within & 7))) !== 0;
+    };
+    modules[name] = Object.freeze({
+      query(value) {
+        for (const ch of value) if (!covers(ch.codePointAt(0))) return false;
+        return true;
+      },
+    });
+  };
+
+  // Swift bridge — swap the holder's bitmap, then notify. The host only calls
+  // this on a real change, so no JS-side compare. No-op if never injected.
+  globalThis.__MacishType_updateCoverageModule = function (name, base64) {
+    const holder = coverageHolders.get(name);
+    if (!holder) return;
+    holder.planes = parseCoverageBitmap(base64);
+    __MacishType_dispatchGlobal({ type: "fontcoveragechange" });
   };
 })();
 

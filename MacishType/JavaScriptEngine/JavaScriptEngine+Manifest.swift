@@ -19,10 +19,11 @@ extension JavaScriptEngine {
         // navigator.language region style ("zh-TW"). Exact-matched downstream.
         let intendedLanguage: String?
         let candidateWindow: CandidateWindowOverrides?
+        let modules: Modules?
         let settings: [SettingsSection]?
 
         private enum CodingKeys: String, CodingKey {
-            case entry, name, intendedLanguage, candidateWindow, settings
+            case entry, name, intendedLanguage, candidateWindow, modules, settings
         }
 
         init(from decoder: Decoder) throws {
@@ -47,6 +48,15 @@ extension JavaScriptEngine {
                     "manifest candidateWindow ignored: \(String(describing: error), privacy: .public)"
                 )
                 candidateWindow = nil
+            }
+            // modules wrapper type-mismatch drops the sub-tree but keeps entry.
+            do {
+                modules = try c.decodeIfPresent(Modules.self, forKey: .modules)
+            } catch {
+                Logger.javaScriptEngine.error(
+                    "manifest modules ignored: \(String(describing: error), privacy: .public)"
+                )
+                modules = nil
             }
             settings = Self.decodeTolerantSettings(from: c)
         }
@@ -185,6 +195,58 @@ extension JavaScriptEngine {
                     "manifest pageSize out of range \(CandidateWindowConfiguration.validPageSizeRange, privacy: .public): \(v, privacy: .public)"
                 )
                 return nil
+            }
+        }
+
+        // MARK: Modules
+
+        /// Opt-in host-provided data tables, injected whole into the JS
+        /// runtime at load (before the entry module evaluates) so engine code
+        /// reads them via `manifest.modules.<name>` without any per-access
+        /// host round-trip. Each flag is a Bool; `true` requests injection.
+        ///
+        /// Known-keys only: a misspelled flag in the manifest is silently
+        /// dropped here at decode (no warning). Adding a module means touching
+        /// two places — list it in `enabledNames` AND wire its dictionary in
+        /// the host's injection switch; a name returned here but missing from
+        /// that switch is logged there, not silently skipped.
+        struct Modules: Decodable {
+            var fontCoverage: Bool?
+            var symbolNames: Bool?
+            var wordFrequency: Bool?
+
+            private enum CodingKeys: String, CodingKey {
+                case fontCoverage, symbolNames, wordFrequency
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                fontCoverage = Self.tolerant(c, .fontCoverage)
+                symbolNames = Self.tolerant(c, .symbolNames)
+                wordFrequency = Self.tolerant(c, .wordFrequency)
+            }
+
+            private static func tolerant(
+                _ container: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys
+            ) -> Bool? {
+                do {
+                    return try container.decodeIfPresent(Bool.self, forKey: key)
+                } catch {
+                    Logger.javaScriptEngine.error(
+                        "manifest modules.\(key.stringValue, privacy: .public) ignored: \(String(describing: error), privacy: .public)"
+                    )
+                    return nil
+                }
+            }
+
+            /// Names of the modules requested (`true`). The host dispatches
+            /// each through its injection switch.
+            var enabledNames: [String] {
+                var names: [String] = []
+                if fontCoverage == true { names.append("fontCoverage") }
+                if symbolNames == true { names.append("symbolNames") }
+                if wordFrequency == true { names.append("wordFrequency") }
+                return names
             }
         }
 

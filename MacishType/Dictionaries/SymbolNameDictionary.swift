@@ -40,5 +40,8 @@ final class SymbolNameDictionary {
         func name(_ symbol: String) -> String? {
             inner.value[symbol]
         }
+
+        /// The whole table, for callers that marshal it elsewhere in one shot.
+        var entries: [String: String] { inner.value }
     }
 }

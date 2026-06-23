@@ -112,6 +112,54 @@ Whitespace characters anywhere in `indexLabels` never match an
 index-label key input — `event.candidateWindow.candidateIndex(" ")`
 returns `null`, so the space key remains available for engine logic.
 
+### `modules` (optional)
+
+Opt-in host-provided data, injected into the runtime at load — before your
+entry module evaluates — so you read it synchronously without shipping or
+parsing the data yourself. Each field is a boolean; `true` requests that module.
+
+| Field | Type | Provides | `query(key)` returns |
+|---|---|---|---|
+| `fontCoverage` | boolean | Whether a value is renderable by an installed font (e.g. `"的"` → `true`). | `true` / `false` |
+| `symbolNames` | boolean | Symbol → human-readable name (e.g. `"！"` → `"驚嘆號"`). | name, or `undefined` |
+| `wordFrequency` | boolean | Character → frequency count (e.g. `"的"` → `615175`), higher is more common. | count, or `0` |
+
+`symbolNames` / `wordFrequency` are static tables picked by the engine's
+*resolved* [`intendedLanguage`](#intendedlanguage) — the manifest field if
+declared, otherwise the host's plist `TISIntendedLanguage`. `fontCoverage` is
+computed live from installed fonts (locale-independent) and stays current: when
+fonts are installed/removed `query` reflects the new coverage with no reload,
+and a [`fontcoveragechange`](#event-fontcoveragechange) event fires.
+
+```jsonc
+"modules": {
+  "fontCoverage": true,
+  "symbolNames": true,
+  "wordFrequency": true
+}
+```
+
+At runtime each enabled module is exposed on `manifest.modules.<name>` as a
+**frozen, read-only view exposing `query(key)`**:
+
+```js
+const { fontCoverage, symbolNames, wordFrequency } = manifest.modules;
+fontCoverage.query("的");    // true       (absent → false)
+symbolNames.query("！");     // "驚嘆號"   (absent → undefined)
+wordFrequency.query("的");   // 615175     (absent → 0)
+```
+
+The absent-key result is per module (see the table above). For `fontCoverage`,
+`query` checks that **every** scalar of the argument is renderable (so a
+multi-scalar value — phrase, IVS/emoji sequence — is `true` only if all of it
+renders). A module you enabled is **always present** — a lookup table with no
+data for the resolved language is an empty view (every `query` returns its miss
+value) rather than a missing property, so engine code never has to guard for
+absence. The view *references* are stable — injected once and never replaced —
+so reading or destructuring them at module top level is safe; note that
+`fontCoverage`'s `query` *results* still change as fonts change (the object is
+the same, its backing data updates).
+
 ### `settings` (optional)
 
 Array of sections rendered in the engine's Settings tab. Each section:
@@ -590,8 +638,8 @@ for engine-folder resources, not network access.
 
 #### Global events
 
-Host-emitted events (`storage`, `settingschange`, `languagechange`)
-follow DOM conventions on `globalThis`:
+Host-emitted events (`storage`, `settingschange`, `languagechange`,
+`fontcoveragechange`) follow DOM conventions on `globalThis`:
 
 ```js
 addEventListener(type, callback, options?);
@@ -754,6 +802,13 @@ engine intends to manage these itself, declare a placeholder value in
 `manifest.json`'s `candidateWindow` to hide the corresponding Settings
 UI control, then drive the actual value through this object.
 
+##### `manifest.modules`
+
+Frozen, read-only views (each exposing `query(key)`) for the modules enabled
+via the manifest [`modules`](#modules-optional) field — see there for the
+available modules, their data, and the runtime API. Injected before module
+evaluation (top-level reads and destructuring work).
+
 #### `navigator`
 
 Web-aligned host info and locale preferences.
@@ -794,6 +849,17 @@ the new list.
 
 Deduplicated — unrelated locale changes (calendar / currency /
 numbering system) don't fire this event.
+
+##### Event: `fontcoveragechange`
+
+Fired when the set of font-renderable characters changes (a font
+installed or removed), if the engine enabled the `fontCoverage`
+[module](#modules-optional). The callback receives
+`{ type: 'fontcoveragechange' }`. `manifest.modules.fontCoverage`
+already reflects the new coverage, so most engines (which query it live
+per render) need not listen — attach only to invalidate caches derived
+from coverage. Deduplicated: a font change that leaves coverage
+identical doesn't fire.
 
 #### `fetch(path)`
 

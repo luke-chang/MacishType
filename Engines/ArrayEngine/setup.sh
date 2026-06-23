@@ -18,9 +18,6 @@ MacishType/ArrayEngine/Resources/Array30.txt
 MacishType/ArrayEngine/Resources/ArrayShortCode.txt
 MacishType/ArrayEngine/Resources/ArrayPhrase.txt
 MacishType/ArrayEngine/Resources/ArraySymbol.txt
-MacishType/Resources/WordFrequency.zh-Hant.txt
-MacishType/Resources/SymbolNames.zh-Hant.txt
-MacishType/Resources/CLDR.LICENSE.txt
 "
 
 missing=0

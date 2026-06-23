@@ -36,6 +36,11 @@ final class FontCoverage {
     private var bitmap: Data
     private var pendingRebuild: DispatchWorkItem?
 
+    /// The current renderable-coverage bitmap (`CharacterSet.bitmapRepresentation`),
+    /// for callers that ship a snapshot elsewhere (e.g. into a JS runtime).
+    /// Main-thread access, like `classify`.
+    var coverageBitmap: Data { bitmap }
+
     private init() {
         let set = Self.buildUnion()
         renderableSet = set

@@ -40,5 +40,8 @@ final class WordFrequencyDictionary {
         func frequency(_ char: String) -> Int {
             inner.value[char] ?? 0
         }
+
+        /// The whole table, for callers that marshal it elsewhere in one shot.
+        var entries: [String: Int] { inner.value }
     }
 }

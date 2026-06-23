@@ -54,10 +54,8 @@ let symbolTable = new Map();
 let shortTable = new Map();
 // Phrases: code -> [phrase, ...], looked up by the "'" key.
 let phraseTable = new Map();
-// Character frequency, used to rank wildcard results.
-let frequencyTable = new Map();
-// Symbol -> name, for symbol-group annotations.
-let symbolNames = new Map();
+
+const { fontCoverage, symbolNames, wordFrequency } = manifest.modules;
 
 // Iterate the data rows of a tab-separated table, skipping comment and blank
 // lines and rows without a non-empty code and value.
@@ -122,28 +120,33 @@ loadFile("./ArrayPhrase.txt", (text) => {
   console.info("ArrayPhrase.txt loaded:", phraseTable.size, "codes");
 });
 
-loadFile("./WordFrequency.zh-Hant.txt", (text) => {
-  const next = new Map();
-  forEachRow(text, ([char, count]) => {
-    const freq = Number(count);
-    if (!Number.isNaN(freq)) next.set(char, freq);
-  });
-  frequencyTable = next;
-  console.info("WordFrequency.zh-Hant.txt loaded:", frequencyTable.size, "chars");
-});
-
-// Parsed directly, not via forEachRow: a symbol key can itself be "#".
-loadFile("./SymbolNames.zh-Hant.txt", (text) => {
-  for (const line of text.split(/\r?\n/)) {
-    const tab = line.indexOf("\t");
-    if (tab < 0) continue;
-    symbolNames.set(line.slice(0, tab), line.slice(tab + 1));
-  }
-  console.info("SymbolNames.zh-Hant.txt loaded:", symbolNames.size, "names");
-});
-
 function radicalReadout(code) {
   return [...code].map((char) => KEYNAME.get(char) ?? char).join("");
+}
+
+// Whether `value` fits the character-set scope:
+//   full        keep everything
+//   displayable keep what an installed font can render
+//   standard    additionally drop characters outside the BMP
+function coverageAllows(value, scope) {
+  if (scope === "full") return true;
+  if (!fontCoverage.query(value)) return false;
+  if (scope === "standard") {
+    for (const ch of value) if (ch.codePointAt(0) > 0xffff) return false;
+  }
+  return true;
+}
+
+function coverageFilter(values) {
+  const scope = manifest.settings.characterSetScope;
+  if (scope === "full") return values;
+  return values.filter((value) => coverageAllows(value, scope));
+}
+
+// Main-table candidates for `code`, filtered to the active character set.
+// Short codes and phrases are intentionally left unfiltered.
+function mainCandidates(code) {
+  return coverageFilter(mainTable.get(code) ?? []);
 }
 
 // Convert an ASCII printable char to its full-width form (space -> U+3000).
@@ -219,18 +222,21 @@ function wildcardMatches(pattern) {
 
   const found = [];
   const seen = new Set();
+  const scope = manifest.settings.characterSetScope;
   for (const [code, chars] of mainTable) {
     if (!matches(code)) continue;
     for (const char of chars) {
       if (seen.has(char)) continue;
       seen.add(char);
+      // Filter before the WILDCARD_LIMIT slice so the cap fills with kept chars.
+      if (!coverageAllows(char, scope)) continue;
       found.push({ char, code });
     }
   }
 
   // Stable sort by frequency keeps common chars above the WILDCARD_LIMIT cap.
   found.sort(
-    (a, b) => (frequencyTable.get(b.char) ?? 0) - (frequencyTable.get(a.char) ?? 0)
+    (a, b) => wordFrequency.query(b.char) - wordFrequency.query(a.char)
   );
   return found.slice(0, WILDCARD_LIMIT).map(({ char, code }) => ({
     candidate: char,
@@ -347,7 +353,7 @@ export default class ArrayEngine {
           }
           return true;
         case "Space":
-          this.enterSelecting(event, mainTable.get(this.code) ?? []);
+          this.enterSelecting(event, mainCandidates(this.code));
           return true;
         case "Quote":
           // The "'" key resolves against the phrase table instead.
@@ -397,8 +403,9 @@ export default class ArrayEngine {
   // Candidate-selection over a symbol group's symbols, annotated and vertical.
   /** @param {KeyEvent} event */
   enterSymbolGroup(event, symbols) {
+    symbols = coverageFilter(symbols);
     if (symbols.length === 0) {
-      // Every symbol in this group is rare and hidden.
+      // Every symbol in this group is rare/unrenderable and hidden.
       this.reset();
       event.resetContext();
       return;
@@ -410,7 +417,7 @@ export default class ArrayEngine {
     event.updateCandidates(
       symbols.map((symbol) => ({
         candidate: symbol,
-        annotation: symbolNames.get(symbol) ?? "",
+        annotation: symbolNames.query(symbol) ?? "",
       })),
       { initialHighlight: 0, layoutDirection: "vertical" }
     );
@@ -593,16 +600,17 @@ export default class ArrayEngine {
         this.showGroupMenu(event);
         return;
       }
-      // Short codes; highlight the Space target's slot (-1 suspends if absent).
+      // Short codes; highlight the Space target's slot (-1 suspends if absent —
+      // including when the scope filter drops the target).
       const { candidates, indexLabels } = shortCodeView(this.code);
-      const spaceTarget = (mainTable.get(this.code) ?? [])[0];
+      const spaceTarget = mainCandidates(this.code)[0];
       event.updateCandidates(candidates, {
         indexLabels,
         initialHighlight: candidates.indexOf(spaceTarget),
       });
     } else {
       // Main candidates; an empty list (prefix en route) hides the window.
-      event.updateCandidates(mainTable.get(this.code) ?? []);
+      event.updateCandidates(mainCandidates(this.code));
     }
   }
 }

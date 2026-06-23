@@ -7,6 +7,11 @@
     "pageSize": 10,
     "indexLabels": "1234567890"
   },
+  "modules": {
+    "fontCoverage": true,
+    "symbolNames": true,
+    "wordFrequency": true
+  },
   "settings": [
     {
       "title": { "en": "Typing", "zh-Hant": "輸入行為" },
@@ -15,6 +20,22 @@
           "key": "enableAssociatedMode",
           "type": "system",
           "default": true
+        },
+        {
+          "key": "characterSetScope",
+          "type": "picker",
+          "label": { "en": "Character set", "zh-Hant": "候選字集" },
+          "description": {
+            "en": "Full keeps the entire table, which may include characters that need an extra font installed to display.",
+            "zh-Hant": "完整字集保留整張表格，可能包含需要額外安裝字型才能顯示的字。"
+          },
+          "style": "menu",
+          "default": "displayable",
+          "options": [
+            { "text": { "en": "Standard", "zh-Hant": "僅標準字集" }, "tag": "standard", "value": "standard" },
+            { "text": { "en": "All displayable", "zh-Hant": "全部可顯示字集" }, "tag": "displayable", "value": "displayable" },
+            { "text": { "en": "Full", "zh-Hant": "完整字集" }, "tag": "full", "value": "full" }
+          ]
         }
       ]
     }

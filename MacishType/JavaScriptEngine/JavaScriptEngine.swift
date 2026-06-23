@@ -327,6 +327,103 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// since a fresh JSContext starts with an empty JS-side dict.
     private var lastPushedSettings: [String: JSONValue]?
 
+    // MARK: Modules → JS bridge
+
+    /// Inject each enabled module's table wholesale into the JS runtime. Runs
+    /// once per `load()`, before the entry module evaluates, so engine code
+    /// reads `manifest.modules.<name>` synchronously from construction onward.
+    /// Acquired handles release at end of scope: the data is copied into JS,
+    /// so keeping a Swift copy alive would only duplicate it.
+    ///
+    /// Initial injection only: the language-keyed lookup tables aren't re-pushed
+    /// on a live `languagechange`, just on a reload. `fontCoverage` is the
+    /// exception — it's updated in place via `dispatchCoverageChange` when font
+    /// coverage changes, no reload needed.
+    private func pushModulesToJS() {
+        guard let modules = manifest?.modules else { return }
+        let names = modules.enabledNames
+        guard !names.isEmpty else { return }
+        guard let context = jsContext,
+              let updater = context.objectForKeyedSubscript("__MacishType_setModuleData"),
+              updater.isObject else {
+            Logger.javaScriptEngine.fault(
+                "__MacishType_setModuleData missing — runtime.js not loaded?"
+            )
+            return
+        }
+        // Resolved language may be nil (no manifest field and no plist value);
+        // a declared module still gets a view below, just an empty one.
+        let language = intendedLanguage
+        for name in names {
+            switch name {
+            case "fontCoverage":
+                injectCoverageModule(name)
+            case "symbolNames":
+                updater.call(withArguments: [name, moduleData(name, language) {
+                    SymbolNameDictionary.isAvailable(for: $0)
+                        ? SymbolNameDictionary.acquire(for: $0).entries : nil
+                }])
+            case "wordFrequency":
+                // miss = 0: an absent char has frequency 0 (matches
+                // WordFrequencyDictionary.frequency's `?? 0`).
+                updater.call(withArguments: [name, moduleData(name, language) {
+                    WordFrequencyDictionary.isAvailable(for: $0)
+                        ? WordFrequencyDictionary.acquire(for: $0).entries : nil
+                }, 0])
+            default:
+                // `enabledNames` listed it but no case handles it: a new flag
+                // was added to Modules without wiring its dictionary here. No
+                // view is injected — a host bug, not a runtime condition
+                // engine code should have to mask.
+                Logger.javaScriptEngine.fault(
+                    "module '\(name, privacy: .public)' enabled but not wired in pushModulesToJS"
+                )
+            }
+        }
+    }
+
+    /// Resolve one module's table. A declared module always yields a dictionary
+    /// so its `manifest.modules.<name>` view is always present — engine code
+    /// needn't guard for absence. An unresolvable language, or a missing table
+    /// for that language, yields an empty one (logged). The dictionary bridges
+    /// to a JS object consumed by `__MacishType_setModuleData`; acquired
+    /// handles release at end of scope since the data is copied into JS.
+    private func moduleData<Value>(
+        _ name: String, _ language: String?, _ load: (String) -> [String: Value]?
+    ) -> [String: Value] {
+        guard let language else {
+            Logger.javaScriptEngine.error(
+                "module '\(name, privacy: .public)' enabled but no resolved language — empty view"
+            )
+            return [:]
+        }
+        guard let data = load(language) else {
+            Logger.javaScriptEngine.error(
+                "module '\(name, privacy: .public)' has no table for '\(language, privacy: .public)' — empty view"
+            )
+            return [:]
+        }
+        return data
+    }
+
+    /// Inject the renderable-coverage set. Unlike the lookup modules it isn't a
+    /// locale-keyed table but the current `FontCoverage.shared` coverage
+    /// (touching `shared` builds the union on first use), shipped as the compact
+    /// CharacterSet bitmap (base64) and reconstructed JS-side. Always available
+    /// (every machine has fonts), so no language / availability gating. Kept
+    /// current after load by `dispatchCoverageChange` (live, no reload).
+    private func injectCoverageModule(_ name: String) {
+        guard let context = jsContext,
+              let updater = context.objectForKeyedSubscript("__MacishType_setCoverageModule"),
+              updater.isObject else {
+            Logger.javaScriptEngine.fault(
+                "__MacishType_setCoverageModule missing — runtime.js not loaded?"
+            )
+            return
+        }
+        updater.call(withArguments: [name, FontCoverage.shared.coverageBitmap.base64EncodedString()])
+    }
+
     // MARK: candidateWindow cache → JS bridge
 
     /// Unwraps `Optional<T>` to `Any?` without the double-wrap trap that
@@ -604,6 +701,39 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         }
     }
 
+    // MARK: Font coverage (shared across all engine instances)
+
+    private static var sharedCoverageObserver: NSObjectProtocol?
+    private static let coverageSubscribers = NSHashTable<JavaScriptEngine>.weakObjects()
+
+    /// Only engines that opted into the `fontCoverage` module subscribe. First
+    /// subscriber installs the observer; on a coverage change the new bitmap is
+    /// encoded once and pushed into every live subscriber's context, so its
+    /// `manifest.modules.fontCoverage` reflects the change without a reload.
+    private static func subscribeToCoverageChanges(_ engine: JavaScriptEngine) {
+        coverageSubscribers.add(engine)
+        if sharedCoverageObserver != nil { return }
+        sharedCoverageObserver = NotificationCenter.default.addObserver(
+            forName: FontCoverage.coverageDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            let base64 = FontCoverage.shared.coverageBitmap.base64EncodedString()
+            for engine in coverageSubscribers.allObjects {
+                engine.dispatchCoverageChange(base64: base64)
+            }
+        }
+    }
+
+    /// Idempotent — mirrors `unsubscribeFromLanguageChanges`.
+    private static func unsubscribeFromCoverageChanges(_ engine: JavaScriptEngine) {
+        coverageSubscribers.remove(engine)
+        if coverageSubscribers.count == 0, let token = sharedCoverageObserver {
+            NotificationCenter.default.removeObserver(token)
+            sharedCoverageObserver = nil
+        }
+    }
+
     /// Web-style BCP 47: drops script subtag when redundant.
     /// `zh-Hant-TW` → `zh-TW` (3-segment),
     /// `zh-Hant` → `zh` (2-segment with script),
@@ -668,6 +798,13 @@ class JavaScriptEngine: InputEngine, ObservableObject {
               let fn = context.objectForKeyedSubscript("__MacishType_dispatchLanguageChange"),
               fn.isObject else { return }
         fn.call(withArguments: [])
+    }
+
+    private func dispatchCoverageChange(base64: String) {
+        guard let context = jsContext,
+              let fn = context.objectForKeyedSubscript("__MacishType_updateCoverageModule"),
+              fn.isObject else { return }
+        fn.call(withArguments: ["fontCoverage", base64])
     }
 
     /// Cached canonical path of `engineFolderURL`. Same realpath-syscall
@@ -912,6 +1049,9 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // the same disk snapshot (avoid stale-cache vs new-disk mismatch).
         reloadManifest()
         guard let manifest = self.manifest else { return }
+        // Inject host-provided modules before the entry module evaluates so
+        // `manifest.modules.<name>` is ready in engine construction.
+        pushModulesToJS()
         let entryRealURL = folder.appending(path: manifest.entry)
         guard let entry = Self.loadJSSource(
             entryRealURL, label: "entry script for '\(self.engineID)'"
@@ -983,6 +1123,9 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
         success = true
         Self.subscribeToLanguageChanges(self)
+        if manifest.modules?.fontCoverage == true {
+            Self.subscribeToCoverageChanges(self)
+        }
         super.load()
     }
 
@@ -1007,6 +1150,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // state on the main runloop.
         stopBundleStorageWatcher()
         Self.unsubscribeFromLanguageChanges(self)
+        Self.unsubscribeFromCoverageChanges(self)
         recentSelfWrites.removeAll()
         jsContext = nil
         virtualMachine = nil

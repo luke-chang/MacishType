@@ -36,7 +36,8 @@ Mirrors the Swift engine:
 - **Symbol groups** via `w` / `hg` + digit, shown as a group menu and then a
   named symbol list.
 - **Full-width** punctuation via Option + key.
-- **Show rare characters** toggle in Settings.
+- **Character set** picker in Settings (standard / all displayable / full) that
+  filters candidates by installed-font coverage.
 
 ## Tests
 
