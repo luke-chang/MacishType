@@ -98,12 +98,22 @@ final class FontCoverage {
     // MARK: Font-change tracking
 
     private func observeFontChanges() {
-        // User/admin font installs are session/persistent scope, delivered on
-        // the distributed center (the local center only sees this process's own
-        // registrations). See CTFontManager.h.
+        // CTFontManager.h says to observe the distributed center for user/
+        // session-scope changes and the local center for process scope. But on
+        // macOS 14, 15 & 26, user-scope installs (Font Book, ~/Library/Fonts)
+        // were observed firing only on the local center — matching
+        // Apple's own sample (WWDC19 session 227 @12:10), which uses
+        // NotificationCenter.default and predates the doc's pre-10.15 wording.
+        // Observe both to cover the documented contract and the observed
+        // behavior; scheduleRebuild() coalesces duplicates.
+        let name = Notification.Name(kCTFontManagerRegisteredFontsChangedNotification as String)
+        NotificationCenter.default.addObserver(
+            forName: name, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.scheduleRebuild()
+        }
         DistributedNotificationCenter.default().addObserver(
-            forName: .init(kCTFontManagerRegisteredFontsChangedNotification as String),
-            object: nil, queue: .main
+            forName: name, object: nil, queue: .main
         ) { [weak self] _ in
             self?.scheduleRebuild()
         }
