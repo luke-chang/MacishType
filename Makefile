@@ -199,8 +199,7 @@ pkg: release-universal
 		"$$OUTPUT_PKG"; \
 	rm -rf "$$WORK_DIR"; \
 	echo ""; \
-	echo "✓ Installer package created: $$OUTPUT_PKG"; \
-	echo "  Installs to ~/Library/Input Methods and recommends a restart when finished."
+	echo "✓ Installer package created: $$OUTPUT_PKG"
 
 # Container metadata is owned by containermanagerd via a kernel sandbox profile
 # and cannot be removed from user space — Data/ is wiped, shell is left in place.
@@ -242,8 +241,22 @@ uninstall:
 		if [ $$failed -gt 0 ]; then echo "⚠ $$failed item(s) could not be removed (see above)"; fi; \
 		if $$removed_app; then \
 			echo ""; \
-			echo "ℹ If $(APP_NAME) still appears in System Settings → Keyboard → Input Sources,"; \
-			echo "  log out and back in to fully unregister it."; \
+			echo "ℹ $(APP_NAME) will still appear in System Settings → Keyboard → Input Sources"; \
+			echo "  until you log out and back in to fully unregister it."; \
+			if [ -t 0 ]; then \
+				echo ""; \
+				printf "  Log out now? [y/N] "; \
+				read answer; \
+				case "$$answer" in \
+					[Yy]*) \
+						echo "  Logging out (save your work — apps may prompt)..."; \
+						osascript -e 'tell application "System Events" to log out'; \
+						;; \
+					*) \
+						echo "  Skipped. Log out manually when convenient."; \
+						;; \
+				esac; \
+			fi; \
 		fi; \
 	fi
 
