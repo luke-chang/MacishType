@@ -1056,6 +1056,15 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // `manifest.modules.<name>` is ready in engine construction.
         pushModulesToJS()
         let entryRealURL = folder.appending(path: manifest.entry)
+        // Same boundary as import and fetch, in real-path space so neither
+        // `..` nor a symlink can point the entry outside the engine folder.
+        guard let rootPath = engineFolderRootPath(),
+              Self.isContained(url: entryRealURL, in: rootPath) else {
+            Logger.javaScriptEngine.fault(
+                "entry '\(manifest.entry, privacy: .public)' escapes the engine folder of '\(self.engineID, privacy: .public)'"
+            )
+            return
+        }
         guard let entry = Self.loadJSSource(
             entryRealURL, label: "entry script for '\(self.engineID)'"
         ) else { return }

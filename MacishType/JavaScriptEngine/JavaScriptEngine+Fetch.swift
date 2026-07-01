@@ -42,7 +42,7 @@ extension JavaScriptEngine {
         var consumed = false
     }
 
-    private func engineFolderRootPath() -> String? {
+    func engineFolderRootPath() -> String? {
         if let cached = cachedEngineFolderRoot { return cached }
         guard let folder = engineFolderURL else { return nil }
         let resolved = Self.canonicalPath(for: folder)
