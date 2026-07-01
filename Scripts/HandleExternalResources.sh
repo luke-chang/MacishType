@@ -2,7 +2,8 @@
 # HandleExternalResources.sh — manage external resources pinned in HandleExternalResources.lock.
 #
 # Modes:
-#   --check    Verify every output listed in lock exists on disk (default; used by Xcode).
+#   --check    Verify every output listed in lock exists on disk and is current
+#              per the stamp (used by Xcode).
 #   --prepare  Incrementally download every entry; skip ones already produced
 #              from the same source URL + processor + processor-version, otherwise
 #              verbatim copy or invoke the processor. Offline-capable once a prior
@@ -58,8 +59,9 @@ print_help() {
 Usage: $(basename "$0") <command>
 
 Commands:
-  --check       Verify every output listed in lock exists on disk.
-                Exit 0 if all present; exit 1 with reminder if any missing.
+  --check       Verify every output listed in lock exists on disk and is
+                current per the stamp. Exit 0 if all fresh; exit 1 if any is
+                missing or out of date.
                 (This is what the Xcode build phase runs.)
   --prepare     Incrementally download every entry; verbatim copy or invoke its
                 processor. Skips outputs already produced from the same source
@@ -178,18 +180,27 @@ case "$mode" in
         ;;
 
     --check|check)
-        missing=0
-        while read -r out _url _proc _section; do
+        # Same freshness test as --prepare's skip decision: the output exists
+        # and the stamp records it was produced from the current key-hash.
+        stale=0
+        while read -r out url proc section; do
+            reason=""
             if ! test -f "$REPO_ROOT/$out"; then
-                if [ "$missing" -eq 0 ]; then
-                    echo "✗ External resources are missing:" >&2
-                    missing=1
+                reason="missing"
+            elif ! { recorded=$(stamp_lookup "$out") \
+                     && [ "$recorded" = "$(key_hash "$url" "$proc" "$section")" ]; }; then
+                reason="out of date"
+            fi
+            if [ -n "$reason" ]; then
+                if [ "$stale" -eq 0 ]; then
+                    echo "✗ External resources are missing or out of date:" >&2
+                    stale=1
                 fi
-                echo "    $REPO_ROOT/$out" >&2
+                echo "    $out ($reason)" >&2
             fi
         done < "$filtered"
-        if [ "$missing" -eq 1 ]; then
-            echo "  Run \`make prepare\` to download them." >&2
+        if [ "$stale" -eq 1 ]; then
+            echo "  Run \`make prepare\` to sync them." >&2
             exit 1
         fi
         ;;
