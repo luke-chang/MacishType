@@ -187,13 +187,15 @@ extension NSOpenPanel {
 
 // MARK: - Settings UI
 
-struct BookmarkPickerSection: View {
+struct BookmarkPickerSection<StatusRow: View>: View {
     let title: LocalizedStringKey
     let placeholder: LocalizedStringKey
     let buttonTitle: LocalizedStringKey
     @ObservedObject var bookmark: SecurityScopedBookmark
     let validatePick: ((URL) -> (title: String, message: String)?)?
     let configurePanel: (NSOpenPanel) -> Void
+    /// Extra rows in the same section, below the picker (e.g. a status row).
+    @ViewBuilder let statusRow: () -> StatusRow
 
     var body: some View {
         Section(title) {
@@ -231,6 +233,24 @@ struct BookmarkPickerSection: View {
                     }
                 }
             }
+            statusRow()
         }
+    }
+}
+
+extension BookmarkPickerSection where StatusRow == EmptyView {
+    init(
+        title: LocalizedStringKey,
+        placeholder: LocalizedStringKey,
+        buttonTitle: LocalizedStringKey,
+        bookmark: SecurityScopedBookmark,
+        validatePick: ((URL) -> (title: String, message: String)?)?,
+        configurePanel: @escaping (NSOpenPanel) -> Void
+    ) {
+        self.init(
+            title: title, placeholder: placeholder, buttonTitle: buttonTitle,
+            bookmark: bookmark, validatePick: validatePick,
+            configurePanel: configurePanel
+        ) { EmptyView() }
     }
 }

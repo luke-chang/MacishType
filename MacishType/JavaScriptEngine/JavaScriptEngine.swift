@@ -51,6 +51,10 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         return JavaScriptStorage(rootURL: url)
     }
 
+    /// Author-facing reason from the static manifest/entry checks, written
+    /// only by `reloadManifest`; JS-level load failures stay log-only.
+    @Published private(set) var lastLoadError: String?
+
     /// True when a subclass-provided FSEvent watcher already covers
     /// `storageURL`. Bundle-resource engines have no folder watcher
     /// of their own, so they need a lazy dedicated stream — see
@@ -157,38 +161,87 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         }
     }
 
-    /// nil on missing / malformed manifest (already logged).
-    nonisolated private static func parseManifest(in folder: URL) -> Manifest? {
+    /// `failure` is the author-facing reason (already logged).
+    nonisolated private static func parseManifest(
+        in folder: URL
+    ) -> (manifest: Manifest?, failure: String?) {
         let manifestURL = folder.appending(path: manifestFileName)
         guard let data = try? Data(contentsOf: manifestURL) else {
             Logger.javaScriptEngine.error(
                 "manifest.json missing at \(manifestURL.path, privacy: .public)"
             )
-            return nil
+            return (nil, "manifest.json missing or unreadable")
         }
         #if DEBUG
         Logger.javaScriptEngine.debug(
             "loaded manifest: \(manifestURL.path, privacy: .public)"
         )
         #endif
-        guard let manifest = try? JSONDecoder().decode(Manifest.self, from: data) else {
+        do {
+            return (try JSONDecoder().decode(Manifest.self, from: data), nil)
+        } catch {
+            let reason = describeDecodingError(error)
             Logger.javaScriptEngine.error(
-                "manifest.json malformed at \(manifestURL.path, privacy: .public)"
+                "manifest.json malformed at \(manifestURL.path, privacy: .public): \(reason, privacy: .public)"
             )
-            return nil
+            return (nil, "manifest.json malformed: \(reason)")
         }
-        return manifest
+    }
+
+    /// Short author-facing description; surfaces the line/column detail
+    /// hidden in JSONDecoder's underlying error.
+    nonisolated private static func describeDecodingError(_ error: Error) -> String {
+        guard let decodingError = error as? DecodingError else {
+            return String(describing: error)
+        }
+        func path(_ context: DecodingError.Context) -> String {
+            context.codingPath.map(\.stringValue).joined(separator: ".")
+        }
+        switch decodingError {
+        case .dataCorrupted(let context):
+            if let underlying = context.underlyingError as NSError?,
+               let detail = underlying.userInfo[NSDebugDescriptionErrorKey] as? String {
+                return detail
+            }
+            return context.debugDescription
+        case .keyNotFound(let key, _):
+            return "missing '\(key.stringValue)'"
+        case .typeMismatch(_, let context), .valueNotFound(_, let context):
+            let at = path(context)
+            return at.isEmpty ? context.debugDescription : "\(at): \(context.debugDescription)"
+        @unknown default:
+            return String(describing: decodingError)
+        }
     }
 
     /// Subclass override point for pre-read setup (e.g. sandbox scope
-    /// acquire). nil return → `reloadManifest` sets `self.manifest = nil`.
-    func readManifestFromDisk() -> Manifest? {
-        guard let folder = engineFolderURL else { return nil }
-        let result = Self.parseManifest(in: folder)
-        if result != nil {
-            recordLoadedFile(folder.appending(path: Self.manifestFileName))
+    /// acquire). `(nil, nil)` reads as "not configured"; `reloadManifest`
+    /// owns writing `manifest` and `lastLoadError` from the result.
+    func readManifestFromDisk() -> (manifest: Manifest?, failure: String?) {
+        guard let folder = engineFolderURL else { return (nil, nil) }
+        let (manifest, failure) = Self.parseManifest(in: folder)
+        guard let manifest else { return (nil, failure) }
+        recordLoadedFile(folder.appending(path: Self.manifestFileName))
+        // Entry problems are checked statically so the settings page can
+        // surface them without a full load.
+        return (manifest, Self.validateEntry(manifest.entry, in: folder))
+    }
+
+    /// Author-facing failure reason, nil when the entry is valid. Same
+    /// containment semantics as the full load.
+    nonisolated private static func validateEntry(
+        _ entry: String, in folder: URL
+    ) -> String? {
+        let entryURL = folder.appending(path: entry)
+        guard isContained(url: entryURL, in: canonicalPath(for: folder)) else {
+            return "entry '\(entry)' escapes the engine folder"
         }
-        return result
+        guard let values = try? entryURL.resourceValues(
+                  forKeys: [.isRegularFileKey, .isReadableKey]),
+              values.isRegularFile == true, values.isReadable == true else {
+            return "entry '\(entry)' missing or unreadable"
+        }
+        return nil
     }
 
     // MARK: Settings storage
@@ -196,7 +249,9 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// Reloads manifest from disk, then aligns the settings cache and blob
     /// against it.
     final func reloadManifest() {
-        manifest = readManifestFromDisk()
+        let (manifest, failure) = readManifestFromDisk()
+        self.manifest = manifest
+        if lastLoadError != failure { lastLoadError = failure }
         // Re-seed the engine-side cache from the freshly parsed manifest.
         // Engine writes via `manifest.candidateWindow.x = y` from JS only
         // mutate this cache, not the parsed manifest — so reloading is the

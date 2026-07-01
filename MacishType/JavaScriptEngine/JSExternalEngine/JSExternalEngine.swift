@@ -135,8 +135,8 @@ class JSExternalEngine: JavaScriptEngine {
     /// (stale / revoked bookmark) short-circuits to nil so base
     /// reloadManifest sets manifest = nil without a misleading
     /// "manifest.json missing" log.
-    override func readManifestFromDisk() -> Manifest? {
-        guard folderBookmark.acquire() != nil else { return nil }
+    override func readManifestFromDisk() -> (manifest: Manifest?, failure: String?) {
+        guard folderBookmark.acquire() != nil else { return (nil, nil) }
         defer { folderBookmark.release() }
         return super.readManifestFromDisk()
     }
@@ -201,6 +201,26 @@ class JSExternalEngine: JavaScriptEngine {
         AnyView(JSExternalSettingsView(engine: self))
     }
 
+    private struct LoadFailureRow: View {
+        let message: String
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 4) {
+                Label {
+                    Text("Engine load failed")
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                }
+                Text(verbatim: message)
+                    .font(.callout.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .padding(.leading, 24)
+            }
+        }
+    }
+
     private struct JSExternalSettingsView: View {
         @ObservedObject var engine: JSExternalEngine
 
@@ -211,28 +231,35 @@ class JSExternalEngine: JavaScriptEngine {
                     placeholder: "Not selected",
                     buttonTitle: "Choose Folder…",
                     bookmark: engine.folderBookmark,
-                    validatePick: JSExternalEngine.manifestValidationError
-                ) { panel in
-                    panel.canChooseDirectories = true
-                    panel.canChooseFiles = false
-                }
-                if let overrides = engine.manifest?.candidateWindow {
-                    let showDirection = overrides.layoutDirection == nil
-                    let showFontSize = overrides.fontSize == nil
-                    if showDirection || showFontSize {
-                        InputEngine.CandidateWindowSection(
-                            engine: engine,
-                            includeDirection: showDirection,
-                            includeFontSize: showFontSize
-                        )
+                    validatePick: JSExternalEngine.manifestValidationError,
+                    configurePanel: { panel in
+                        panel.canChooseDirectories = true
+                        panel.canChooseFiles = false
                     }
-                } else if engine.manifest != nil {
-                    InputEngine.CandidateWindowSection(engine: engine)
+                ) {
+                    if let error = engine.lastLoadError {
+                        LoadFailureRow(message: error)
+                    }
                 }
-                JavaScriptEngine.EngineSettingsRenderer(
-                    engine: engine,
-                    sections: engine.manifest?.settings
-                )
+                if engine.lastLoadError == nil {
+                    if let overrides = engine.manifest?.candidateWindow {
+                        let showDirection = overrides.layoutDirection == nil
+                        let showFontSize = overrides.fontSize == nil
+                        if showDirection || showFontSize {
+                            InputEngine.CandidateWindowSection(
+                                engine: engine,
+                                includeDirection: showDirection,
+                                includeFontSize: showFontSize
+                            )
+                        }
+                    } else if engine.manifest != nil {
+                        InputEngine.CandidateWindowSection(engine: engine)
+                    }
+                    JavaScriptEngine.EngineSettingsRenderer(
+                        engine: engine,
+                        sections: engine.manifest?.settings
+                    )
+                }
             }
             .onAppear {
                 // Inactive engine: re-read disk on every tab entry (FSEvents
