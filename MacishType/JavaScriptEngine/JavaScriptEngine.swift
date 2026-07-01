@@ -241,8 +241,11 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// Each drop / replace is logged.
     private func sanitizedSettings(from raw: [String: JSONValue]) -> [String: JSONValue] {
         guard let sections = manifest?.settings else { return [:] }
-        let declared = Dictionary(uniqueKeysWithValues:
-            sections.flatMap { $0.fields }.map { ($0.key, $0) })
+        // Keys are unique after decode-time dedupe; still prefer keeping
+        // the first over trapping if a duplicate ever slips through.
+        let declared = Dictionary(
+            sections.flatMap { $0.fields }.map { ($0.key, $0) }
+        ) { first, _ in first }
 
         for key in raw.keys where declared[key] == nil {
             Logger.javaScriptEngine.notice(

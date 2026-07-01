@@ -91,7 +91,20 @@ extension JavaScriptEngine {
                     )
                 }
             }
-            return collected
+            // Cross-section key dedupe: keep the first declaration so the
+            // UI, the settings store, and JS all see one field per key.
+            var seenKeys = Set<String>()
+            return collected.map { section in
+                var section = section
+                section.fields = section.fields.filter { field in
+                    if seenKeys.insert(field.key).inserted { return true }
+                    Logger.javaScriptEngine.error(
+                        "manifest settings field '\(field.key, privacy: .public)' duplicated — keeping the first declaration"
+                    )
+                    return false
+                }
+                return section
+            }
         }
 
         /// Per-field defensive decode: type mismatches AND value-level
@@ -255,7 +268,7 @@ extension JavaScriptEngine {
         struct SettingsSection: Decodable {
             let title: Localizable
             let description: Localizable?
-            let fields: [SettingsField]
+            var fields: [SettingsField]
 
             private enum CodingKeys: String, CodingKey { case title, description, fields }
 
