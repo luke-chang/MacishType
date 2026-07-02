@@ -31,3 +31,9 @@ typedef NS_ENUM(int32_t, JSScriptType) {
 - (JSValue *)evaluateJSScript:(JSScript *)script;
 @property (nonatomic, weak, nullable) id<JSModuleLoaderDelegate> moduleLoaderDelegate;
 @end
+
+// Calls `function` with (promise, reason) when a rejection still has no
+// handler once the microtask queue drains.
+// Source: https://github.com/WebKit/WebKit/blob/main/Source/JavaScriptCore/API/JSContextRefPrivate.h
+JS_EXPORT void JSGlobalContextSetUnhandledRejectionCallback(
+    JSGlobalContextRef ctx, JSObjectRef function, JSValueRef *exception);

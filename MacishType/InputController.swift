@@ -115,7 +115,7 @@ class InputController: IMKInputController {
     private func deactivateEngine() {
         guard let engine, let engineContext else { return }
         #if DEBUG
-        Logger.inputController.debug("deactivateEngine ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\("\(type(of: engine))", privacy: .public) activated=\(engineContext.isActivated, privacy: .public) staged=\(engineContext.stagedText, privacy: .public)")
+        Logger.inputController.debug("deactivateEngine ctrl=\("\(ObjectIdentifier(self))", privacy: .public) engine=\("\(type(of: engine))", privacy: .public) activated=\(engineContext.isActivated, privacy: .public)")
         #endif
         let currentClient = client()
         endComposition(client: currentClient, insert: engineContext.stagedText)
@@ -207,7 +207,7 @@ class InputController: IMKInputController {
     override func commitComposition(_ sender: Any!) {
         #if DEBUG
         let clientID = (sender as? IMKTextInput)?.bundleIdentifier() ?? "unknown"
-        Logger.inputController.debug("commitComposition ctrl=\("\(ObjectIdentifier(self))", privacy: .public) client=\(clientID, privacy: .public) staged=\(self.engineContext?.stagedText ?? "", privacy: .public)")
+        Logger.inputController.debug("commitComposition ctrl=\("\(ObjectIdentifier(self))", privacy: .public) client=\(clientID, privacy: .public)")
         #endif
         endComposition(client: sender as? IMKTextInput, insert: engineContext?.stagedText)
         if let engineContext { engine?.compositionCommitted(context: engineContext) }

@@ -933,11 +933,25 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         let vm = JSVirtualMachine()!
         let context = JSContext(virtualMachine: vm)!
 
+        // Fires for every uncaught throw, including inside `invokeMethod`;
+        // installing it replaces the default store-to-`context.exception`.
         context.exceptionHandler = { _, exception in
             Logger.javaScript.fault(
                 "uncaught exception:\n\(Self.describeJSException(exception), privacy: .public)"
             )
         }
+
+        // Rejections that never get a handler (e.g. a data-load fetch chain
+        // missing `.catch`) are otherwise swallowed by JSC.
+        let rejectionBlock: @convention(block) (JSValue, JSValue) -> Void = { _, reason in
+            Logger.javaScript.fault(
+                "unhandled promise rejection:\n\(Self.describeJSException(reason), privacy: .public)"
+            )
+        }
+        JSGlobalContextSetUnhandledRejectionCallback(
+            context.jsGlobalContextRef,
+            Self.jsFunction(rejectionBlock, in: context).jsValueRef,
+            nil)
 
         context.moduleLoaderDelegate = moduleLoader
 
@@ -1366,10 +1380,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// `activate / deactivate / handleKey / candidateConfirmed /
     /// candidateSelectionChanged / compositionEnded`.
     ///
-    /// JSC's context `exceptionHandler` only fires for top-level evaluation
-    /// (`evaluateScript` etc.); a throw inside `invokeMethod` is recorded on
-    /// `context.exception` but does NOT trigger the handler. Check and log
-    /// explicitly so engine bugs aren't silently swallowed.
+    /// A throw inside `invokeMethod` fires the context `exceptionHandler`,
+    /// which logs it with a stack trace — no explicit check needed here.
     @discardableResult
     private static func invokeIfDefined(
         _ instance: JSValue, _ method: String, withArguments args: [Any]
@@ -1377,15 +1389,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         guard let fn = instance.objectForKeyedSubscript(method), !fn.isUndefined else {
             return nil
         }
-        let result = instance.invokeMethod(method, withArguments: args)
-        if let context = instance.context, let exception = context.exception {
-            Logger.javaScript.fault(
-                "uncaught exception in \(method, privacy: .public):\n\(Self.describeJSException(exception), privacy: .public)"
-            )
-            // Clear so the next invocation isn't blamed for this throw.
-            context.exception = nil
-        }
-        return result
+        return instance.invokeMethod(method, withArguments: args)
     }
 
     func recordLoadedFile(_ url: URL) {
