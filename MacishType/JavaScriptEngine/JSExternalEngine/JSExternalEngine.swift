@@ -374,9 +374,9 @@ class JSExternalEngine: JavaScriptEngine {
                 handleStorageEvent(path: path)
                 continue
             }
-            if loadedFilePaths.contains(canonical) {
+            // Keep scanning — the batch may still carry storage events.
+            if trackedHit == nil, loadedFilePaths.contains(canonical) {
                 trackedHit = path
-                break
             }
         }
         if let trackedHit { markStale(reason: "tracked file changed: \(trackedHit)") }
