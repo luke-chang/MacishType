@@ -1166,7 +1166,21 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         let settle = SyncSettleFlag()
         let captureBlock: @convention(block) (JSValue) -> Void = { [weak self] namespace in
             settle.settled = true
-            self?.engineClass = namespace.objectForKeyedSubscript("default")
+            guard let self else { return }
+            // A missing default export reads back as a non-nil `undefined`
+            // JSValue, and constructing it yields `undefined` rather than
+            // nil — the engine would report loaded while every hook call
+            // silently fails. Require a constructible export up front.
+            let defaultExport = namespace.objectForKeyedSubscript("default")
+            guard let defaultExport, defaultExport.isObject,
+                  JSObjectIsConstructor(namespace.context.jsGlobalContextRef, defaultExport.jsValueRef)
+            else {
+                Logger.javaScriptEngine.fault(
+                    "entry module of '\(self.engineID, privacy: .public)' must `export default` a class — got \(defaultExport?.toString() ?? "nil", privacy: .public)"
+                )
+                return
+            }
+            self.engineClass = defaultExport
             Logger.javaScriptEngine.info("module loaded, engineClass captured")
         }
         let rejectBlock: @convention(block) (JSValue) -> Void = { reason in
