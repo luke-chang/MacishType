@@ -36,9 +36,12 @@ struct JavaScriptStorage {
 
     static let filenamePrefix = "localStorage_"
 
+    /// No uppercase: keys are case-sensitive but the default APFS volume
+    /// is not, so uppercase must percent-encode to keep case-distinct
+    /// keys on distinct files.
     private static let safeKeyCharacters: CharacterSet = {
         var s = CharacterSet()
-        s.insert(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+        s.insert(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789_-")
         return s
     }()
 
