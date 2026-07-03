@@ -108,6 +108,8 @@ class MacishCandidateWindow: CandidateWindowImpl {
     }
 
     override func handleNavigation(direction: NavigationDirection, wrapping: Bool) {
+        // A hidden panel still holds stale candidates; don't navigate them.
+        guard activePanel.isVisible else { return }
         if !hasSelection {
             switch direction {
             case .up, .down, .left, .right, .itemForward, .itemBackward,
