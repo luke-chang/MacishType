@@ -98,6 +98,10 @@ globalThis.addEventListener = function (type, callback, options) {
   if (isObject && typeof callback.handleEvent !== "function") {
     console.warn(`addEventListener('${type}'): listener object has no callable handleEvent (typo?)`);
   }
+  // Spec: re-registering the same (type, callback) is a no-op, whatever
+  // the options.
+  if (__MacishType_globalListeners.get(type)?.has(callback)
+      || __MacishType_globalOnceWrappers.get(type)?.has(callback)) return;
   const { once } = __MacishType_parseListenerOptions(options);
   let effective = callback;
   if (once) {
