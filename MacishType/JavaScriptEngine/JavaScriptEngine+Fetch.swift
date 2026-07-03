@@ -88,11 +88,19 @@ extension JavaScriptEngine {
             return
         }
 
+        guard let token = registerFetchReject(reject) else {
+            Self.rejectWith(reject, message: "fetch aborted by engine teardown")
+            return
+        }
+
         // Stat on background — engine folder may sit on network volume /
         // sleeping disk / iCloud stub; can't block the main thread.
         // resolve/reject retain their JSContext, so they're callable even if
         // engine teardown happens before the read completes.
         Self.statFile(url: target) { [weak self] result in
+            // Engine gone (theoretical): settle as before. Claim lost:
+            // teardown already rejected; drop the result.
+            if let self, !self.claimFetchReject(token) { return }
             switch result {
             case .success(let type):
                 guard type == .regular else {
@@ -104,7 +112,8 @@ extension JavaScriptEngine {
                     ?? Self.syntheticURL(forRelativePath: String(path.dropFirst(2)))
                 guard let ctx = resolve.context else { return }
                 resolve.call(withArguments: [
-                    Self.makeFetchResponse(in: ctx, realURL: target, displayURL: displayURL)
+                    Self.makeFetchResponse(
+                        in: ctx, engine: self, realURL: target, displayURL: displayURL)
                 ])
             case .failure(let error):
                 Self.rejectWith(
@@ -120,7 +129,9 @@ extension JavaScriptEngine {
     /// to JS via `Response.url` (keeps the user's filesystem path private).
     /// Body-consumed flag uses lock-on-entry semantics (sync mark before
     /// dispatch) with unmark on recoverable failure for fallback / retry.
-    private static func makeFetchResponse(in ctx: JSContext, realURL: URL, displayURL: URL) -> JSValue {
+    private static func makeFetchResponse(
+        in ctx: JSContext, engine: JavaScriptEngine?, realURL: URL, displayURL: URL
+    ) -> JSValue {
         let response = JSValue(newObjectIn: ctx)!
         response.setObject(true, forKeyedSubscript: "ok" as NSString)
         response.setObject(200, forKeyedSubscript: "status" as NSString)
@@ -128,15 +139,15 @@ extension JavaScriptEngine {
 
         let state = FetchBodyState()
 
-        let textFn: @convention(block) () -> JSValue = {
-            Self.textBody(state: state, url: realURL) { text, resolve, _ in
+        let textFn: @convention(block) () -> JSValue = { [weak engine] in
+            Self.textBody(state: state, engine: engine, url: realURL) { text, resolve, _ in
                 resolve.call(withArguments: [text])
             }
         }
         response.setObject(textFn, forKeyedSubscript: "text" as NSString)
 
-        let jsonFn: @convention(block) () -> JSValue = {
-            Self.textBody(state: state, url: realURL) { text, resolve, _ in
+        let jsonFn: @convention(block) () -> JSValue = { [weak engine] in
+            Self.textBody(state: state, engine: engine, url: realURL) { text, resolve, _ in
                 // Promise.resolve(text).then(JSON.parse) — outer adopts inner
                 // so SyntaxError surfaces as rejection, web-aligned.
                 guard let ctx = resolve.context else { return }
@@ -149,14 +160,23 @@ extension JavaScriptEngine {
         }
         response.setObject(jsonFn, forKeyedSubscript: "json" as NSString)
 
-        let arrayBufferFn: @convention(block) () -> JSValue = {
+        let arrayBufferFn: @convention(block) () -> JSValue = { [weak engine] in
             let ctx = JSContext.current()!
             if state.consumed {
                 return Self.rejectedPromise(in: ctx, message: "Body has already been consumed")
             }
             state.consumed = true
             return Self.deferredPromise(in: ctx) { resolve, reject in
+                var token: UUID?
+                if let engine {
+                    guard let registered = engine.registerFetchReject(reject) else {
+                        Self.rejectWith(reject, message: "fetch aborted by engine teardown")
+                        return
+                    }
+                    token = registered
+                }
                 Self.readRaw(url: realURL) { result in
+                    if let engine, let token, !engine.claimFetchReject(token) { return }
                     switch result {
                     case .success(let data):
                         guard let ctx = resolve.context else { return }
@@ -192,9 +212,10 @@ extension JavaScriptEngine {
         return promiseClass.invokeMethod("reject", withArguments: [error])
     }
 
-    /// Build an Error and invoke a Promise-style reject callback.
-    /// Used both by handleFetch sync rejects and body-method async rejects.
-    private static func rejectWith(_ reject: JSValue, message: String) {
+    /// Build an Error and invoke a Promise-style reject callback. Used by
+    /// handleFetch sync rejects, body-method async rejects, and the
+    /// teardown abort in the main file.
+    static func rejectWith(_ reject: JSValue, message: String) {
         guard let ctx = reject.context else { return }
         let errorClass = ctx.objectForKeyedSubscript("Error")!
         let error = errorClass.construct(withArguments: [message])!
@@ -242,6 +263,7 @@ extension JavaScriptEngine {
     /// decoded text to the caller for per-method post-processing on success.
     private static func textBody(
         state: FetchBodyState,
+        engine: JavaScriptEngine?,
         url: URL,
         onText: @escaping (String, JSValue, JSValue) -> Void
     ) -> JSValue {
@@ -251,7 +273,16 @@ extension JavaScriptEngine {
         }
         state.consumed = true
         return Self.deferredPromise(in: ctx) { resolve, reject in
+            var token: UUID?
+            if let engine {
+                guard let registered = engine.registerFetchReject(reject) else {
+                    Self.rejectWith(reject, message: "fetch aborted by engine teardown")
+                    return
+                }
+                token = registered
+            }
             Self.readAndDecode(url: url) { result in
+                if let engine, let token, !engine.claimFetchReject(token) { return }
                 switch result {
                 case .success(let text):
                     onText(text, resolve, reject)

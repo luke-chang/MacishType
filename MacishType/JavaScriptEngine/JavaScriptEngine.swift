@@ -871,6 +871,36 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// narrower). Invalidated alongside other JS state in `teardownContext`.
     var cachedEngineFolderRoot: String?
 
+    /// Pending fetch settlements, keyed by token; rejected wholesale at
+    /// teardown so in-flight reads never surface post-teardown sandbox
+    /// errors. Main-thread only, like all JS settlement.
+    private var pendingFetchRejects: [UUID: JSValue] = [:]
+
+    /// nil when the context is already torn down — caller rejects
+    /// immediately instead of registering.
+    func registerFetchReject(_ reject: JSValue) -> UUID? {
+        guard jsContext != nil else { return nil }
+        let token = UUID()
+        pendingFetchRejects[token] = reject
+        return token
+    }
+
+    /// True when the settlement is still the caller's to perform; false
+    /// when teardown already rejected it and the result must be dropped.
+    func claimFetchReject(_ token: UUID) -> Bool {
+        pendingFetchRejects.removeValue(forKey: token) != nil
+    }
+
+    private func abortPendingFetches() {
+        // Clear before rejecting: a `.catch` handler may run in the
+        // microtask drain of reject() and register a new fetch.
+        let pending = pendingFetchRejects
+        pendingFetchRejects.removeAll()
+        for reject in pending.values {
+            Self.rejectWith(reject, message: "fetch aborted by engine teardown")
+        }
+    }
+
     // MARK: JSContext state (set up in load())
 
     var virtualMachine: JSVirtualMachine!
@@ -1240,6 +1270,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 
     private func teardownContext() {
+        abortPendingFetches()
         // Stop watcher and clear self-write tracking before nil'ing
         // context so any in-flight FSEvent callbacks find a clean
         // state on the main runloop.
