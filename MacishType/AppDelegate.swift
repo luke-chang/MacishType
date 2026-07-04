@@ -21,6 +21,15 @@ class App: NSApplication {
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var server: IMKServer?
 
+    static func main() {
+        // Inside the App Sandbox, JSC's default signal-based VM traps
+        // cannot interrupt JIT'd code, leaving the JS watchdog unable
+        // to stop runaway loops. Polling traps embed the check in the
+        // code instead; must be set before JSC first reads its options.
+        setenv("JSC_usePollingTraps", "1", 1)
+        _ = NSApplicationMain(CommandLine.argc, CommandLine.unsafeArgv)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Connect to the input method server
         let info = Bundle.main.infoDictionary

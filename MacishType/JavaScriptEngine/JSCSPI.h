@@ -37,3 +37,12 @@ typedef NS_ENUM(int32_t, JSScriptType) {
 // Source: https://github.com/WebKit/WebKit/blob/main/Source/JavaScriptCore/API/JSContextRefPrivate.h
 JS_EXPORT void JSGlobalContextSetUnhandledRejectionCallback(
     JSGlobalContextRef ctx, JSObjectRef function, JSValueRef *exception);
+
+// Interrupts a synchronous JS execution slice that exceeds `limit`
+// seconds: when `callback` (nullable) returns true, the slice unwinds
+// with an uncatchable termination exception.
+// Source: https://github.com/WebKit/WebKit/blob/main/Source/JavaScriptCore/API/JSContextRefPrivate.h
+typedef bool (*JSShouldTerminateCallback)(JSContextRef ctx, void *context);
+JS_EXPORT void JSContextGroupSetExecutionTimeLimit(
+    JSContextGroupRef group, double limit,
+    JSShouldTerminateCallback callback, void *context);

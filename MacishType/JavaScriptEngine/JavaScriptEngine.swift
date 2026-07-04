@@ -947,10 +947,21 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         JSValue(object: block, in: context)!
     }
 
+    /// Per synchronous JS slice, not wall-clock across awaits.
+    /// Generous versus normal work (a full dictionary parse is tens
+    /// of ms) so only runaway loops trip it.
+    private static let jsExecutionTimeLimit: Double = 3.0
+
+    /// Set by the watchdog when it terminates a slice during this load;
+    /// subclasses read it after `super.load()` to distinguish a runaway
+    /// init loop from an ordinary load failure. Reset at each load start.
+    private(set) var executionWasTerminated = false
+
     override func load() {
         guard jsContext == nil else { return }
 
         Logger.javaScriptEngine.info("load() invoked for engine '\(self.engineID, privacy: .public)'")
+        executionWasTerminated = false
 
         let vm = JSVirtualMachine()!
         let context = JSContext(virtualMachine: vm)!
@@ -974,6 +985,26 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             context.jsGlobalContextRef,
             Self.jsFunction(rejectionBlock, in: context).jsValueRef,
             nil)
+
+        // Watchdog for runaway loops that would otherwise hang the whole
+        // IME process. A @convention(c) callback can't capture Swift state,
+        // so the engine is routed in via the timer's void* context to flag
+        // the termination on it; the log line stays engine-agnostic.
+        let watchdog: JSShouldTerminateCallback = { _, info in
+            Logger.javaScript.fault(
+                "execution time limit exceeded, terminating current JS execution"
+            )
+            if let info {
+                MainActor.assumeIsolated {
+                    Unmanaged<JavaScriptEngine>.fromOpaque(info).takeUnretainedValue()
+                        .executionWasTerminated = true
+                }
+            }
+            return true
+        }
+        JSContextGroupSetExecutionTimeLimit(
+            JSContextGetGroup(context.jsGlobalContextRef),
+            Self.jsExecutionTimeLimit, watchdog, Unmanaged.passUnretained(self).toOpaque())
 
         context.moduleLoaderDelegate = moduleLoader
 
@@ -1230,9 +1261,13 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         ])
 
         guard settle.settled else {
-            Logger.javaScriptEngine.fault(
-                "entry module of '\(self.engineID, privacy: .public)' did not settle synchronously — top-level `await` is not supported; use `.then(...)` chains instead"
-            )
+            // A watchdog termination also leaves the promise unsettled, but
+            // that's already logged accurately — don't blame top-level await.
+            if !executionWasTerminated {
+                Logger.javaScriptEngine.fault(
+                    "entry module of '\(self.engineID, privacy: .public)' did not settle synchronously — top-level `await` is not supported; use `.then(...)` chains instead"
+                )
+            }
             return
         }
         guard engineClass != nil else { return }

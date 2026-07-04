@@ -131,6 +131,14 @@ class JSExternalEngine: JavaScriptEngine {
                     "FSEvents stream creation failed for \(folder.path, privacy: .public)"
                 )
             }
+        } else if executionWasTerminated {
+            // Runaway init loop: drop the folder so we don't re-hang on
+            // every activate. The author fixes the loop and re-selects it.
+            Logger.javaScriptEngine.fault(
+                "engine '\(self.engineID, privacy: .public)' load timed out — clearing engine folder; fix the runaway loop and re-select it"
+            )
+            loadStatus = .notConfigured
+            folderBookmark.clear()
         } else {
             loadStatus = .failed
             folderBookmark.release()
