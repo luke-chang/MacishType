@@ -61,15 +61,39 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// `updateStorageWatcher`. `JSExternalEngine` overrides to true.
     var hasExternalStorageWatcher: Bool { false }
 
-    /// Canonical paths of storage files our own setItem/removeItem/
-    /// clear just wrote, mapped to write time. FSEvent callback
-    /// within `selfWriteWindow` of a timestamp is treated as a
-    /// self-write and not redispatched. Touched only on main.
-    private var recentSelfWrites: [String: Date] = [:]
-    private static let selfWriteWindow: TimeInterval = 2.0
+    /// Last on-disk state our own setItem/removeItem/clear produced,
+    /// keyed by canonical path. An FSEvent whose stat matches the
+    /// record is our own echo and is not redispatched; a mismatch
+    /// means an external write took over. Records are never consumed
+    /// by a match, so any number of coalesced echoes stay silent.
+    /// Touched only on main.
+    private enum SelfWriteState: Equatable {
+        case written(mtime: Date, size: Int, fileNumber: Int)
+        case removed
+    }
+    private var recentSelfWrites: [String: SelfWriteState] = [:]
 
-    private func recordSelfWrite(_ url: URL, at time: Date = Date()) {
-        recentSelfWrites[Self.canonicalPath(for: url)] = time
+    /// Any stat failure (missing file, unreadable volume) maps to
+    /// `.removed`: a `.written` record then mismatches and the event
+    /// dispatches (fail open), while a `.removed` record swallows it.
+    nonisolated private static func statState(_ path: String) -> SelfWriteState {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+              let mtime = attributes[.modificationDate] as? Date,
+              let size = attributes[.size] as? Int,
+              let fileNumber = attributes[.systemFileNumber] as? Int
+        else { return .removed }
+        return .written(mtime: mtime, size: size, fileNumber: fileNumber)
+    }
+
+    private func recordSelfWrite(_ url: URL) {
+        let state = Self.statState(url.path)
+        // A failed stat records nothing; that echo may dispatch once.
+        guard state != .removed else { return }
+        recentSelfWrites[Self.canonicalPath(for: url)] = state
+    }
+
+    private func recordSelfRemoval(_ url: URL) {
+        recentSelfWrites[Self.canonicalPath(for: url)] = .removed
     }
 
     nonisolated private static let manifestFileName = "manifest.json"
@@ -642,11 +666,10 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// files) are skipped via decodeFilename returning nil.
     func handleStorageEvent(path: String) {
         let canonical = Self.canonicalPath(for: URL(fileURLWithPath: path))
-        if let last = recentSelfWrites[canonical],
-           Date().timeIntervalSince(last) < Self.selfWriteWindow {
-            return
+        if let expected = recentSelfWrites[canonical] {
+            if Self.statState(path) == expected { return }  // our own echo
+            recentSelfWrites[canonical] = nil  // external write took over
         }
-        recentSelfWrites[canonical] = nil  // lazy GC stale entry
         let filename = (path as NSString).lastPathComponent
         guard let key = JavaScriptStorage.decodeFilename(filename) else {
             return
@@ -1070,7 +1093,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             }
             do {
                 if let url = try storage.removeItem(key) {
-                    self.recordSelfWrite(url)
+                    self.recordSelfRemoval(url)
                 }
             } catch {
                 Self.throwJSError(error.localizedDescription)
@@ -1083,9 +1106,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
                 Self.logStorageUnavailable("clear")
                 return
             }
-            let now = Date()
             for url in storage.clear() {
-                self.recordSelfWrite(url, at: now)
+                self.recordSelfRemoval(url)
             }
         }
         context.setObject(storageClear, forKeyedSubscript: "__MacishType_storageClear" as NSString)
