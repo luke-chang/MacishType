@@ -20,7 +20,7 @@ final class CINExternalEngine: CINEngine, ObservableObject {
 
     private var fileObserver: AnyCancellable?
     private var coverageObserver: (any NSObjectProtocol)?
-    private var watchStream: FSEventStreamRef?
+    private var watchStream: FSEventsWatcher?
     private var watchedCanonicalPath: String?
 
     /// Set when the watched file changes mid-session; the reload is deferred
@@ -191,42 +191,15 @@ final class CINExternalEngine: CINEngine, ObservableObject {
     private func startWatching(fileURL: URL) {
         let directory = fileURL.deletingLastPathComponent()
         watchedCanonicalPath = Self.canonicalPath(for: fileURL)
-        var context = FSEventStreamContext(
-            version: 0,
-            info: Unmanaged.passUnretained(self).toOpaque(),
-            retain: nil, release: nil, copyDescription: nil
-        )
-        let callback: FSEventStreamCallback = { _, info, count, eventPaths, _, _ in
-            guard let info, count > 0 else { return }
-            let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] ?? []
-            let engine = Unmanaged<CINExternalEngine>.fromOpaque(info).takeUnretainedValue()
-            MainActor.assumeIsolated { engine.handleFSEvents(paths: paths) }
+        watchStream = FSEventsWatcher(paths: [directory.path], latency: 0.3) { [weak self] paths in
+            self?.handleFSEvents(paths: paths)
         }
-        guard let stream = FSEventStreamCreate(
-            nil, callback, &context,
-            [directory.path] as CFArray,
-            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
-            0.3,
-            FSEventStreamCreateFlags(
-                kFSEventStreamCreateFlagFileEvents
-                | kFSEventStreamCreateFlagNoDefer
-                | kFSEventStreamCreateFlagUseCFTypes
-            )
-        ) else {
+        if watchStream == nil {
             Logger.inputEngine.error("CINExternal FSEvents creation failed for \(directory.path, privacy: .public)")
-            return
         }
-        FSEventStreamSetDispatchQueue(stream, DispatchQueue.main)
-        FSEventStreamStart(stream)
-        watchStream = stream
     }
 
     private func stopWatching() {
-        if let stream = watchStream {
-            FSEventStreamStop(stream)
-            FSEventStreamInvalidate(stream)
-            FSEventStreamRelease(stream)
-        }
         watchStream = nil
         watchedCanonicalPath = nil
     }

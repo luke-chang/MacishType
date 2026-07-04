@@ -686,7 +686,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     // MARK: Bundle storage watcher (lazy, listener-driven)
 
-    private var bundleStorageWatcher: FSEventStreamRef?
+    private var bundleStorageWatcher: FSEventsWatcher?
 
     /// Toggled by JS `__MacishType_setStorageListening` when the
     /// listener count crosses 0↔1. No-op for engines with their own
@@ -697,7 +697,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         if active {
             if bundleStorageWatcher == nil { startBundleStorageWatcher() }
         } else {
-            stopBundleStorageWatcher()
+            bundleStorageWatcher = nil
         }
     }
 
@@ -707,46 +707,15 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // ancestor changes we don't care about.
         try? FileManager.default.createDirectory(
             at: url, withIntermediateDirectories: true)
-        var context = FSEventStreamContext(
-            version: 0,
-            info: Unmanaged.passUnretained(self).toOpaque(),
-            retain: nil, release: nil, copyDescription: nil
-        )
-        let callback: FSEventStreamCallback = { _, info, count, eventPaths, _, _ in
-            guard let info, count > 0 else { return }
-            let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] ?? []
-            let engine = Unmanaged<JavaScriptEngine>.fromOpaque(info).takeUnretainedValue()
-            MainActor.assumeIsolated {
-                for path in paths { engine.handleStorageEvent(path: path) }
-            }
+        bundleStorageWatcher = FSEventsWatcher(paths: [url.path], latency: 0.5) { [weak self] paths in
+            guard let self else { return }
+            for path in paths { self.handleStorageEvent(path: path) }
         }
-        guard let stream = FSEventStreamCreate(
-            nil, callback, &context,
-            [url.path] as CFArray,
-            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
-            0.5,
-            FSEventStreamCreateFlags(
-                kFSEventStreamCreateFlagFileEvents
-                | kFSEventStreamCreateFlagNoDefer
-                | kFSEventStreamCreateFlagUseCFTypes
-            )
-        ) else {
+        if bundleStorageWatcher == nil {
             Logger.javaScriptEngine.error(
                 "bundle storage FSEvents stream creation failed for \(url.path, privacy: .public)"
             )
-            return
         }
-        FSEventStreamSetDispatchQueue(stream, DispatchQueue.main)
-        FSEventStreamStart(stream)
-        bundleStorageWatcher = stream
-    }
-
-    private func stopBundleStorageWatcher() {
-        guard let stream = bundleStorageWatcher else { return }
-        FSEventStreamStop(stream)
-        FSEventStreamInvalidate(stream)
-        FSEventStreamRelease(stream)
-        bundleStorageWatcher = nil
     }
 
     // MARK: Locale + user agent (shared across all engine instances)
@@ -1293,10 +1262,10 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     private func teardownContext() {
         abortPendingFetches()
-        // Stop watcher and clear self-write tracking before nil'ing
+        // Drop watcher and clear self-write tracking before nil'ing
         // context so any in-flight FSEvent callbacks find a clean
         // state on the main runloop.
-        stopBundleStorageWatcher()
+        bundleStorageWatcher = nil
         Self.unsubscribeFromLanguageChanges(self)
         Self.unsubscribeFromCoverageChanges(self)
         recentSelfWrites.removeAll()

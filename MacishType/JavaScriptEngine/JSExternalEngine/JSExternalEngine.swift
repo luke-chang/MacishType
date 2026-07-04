@@ -15,7 +15,7 @@ class JSExternalEngine: JavaScriptEngine {
     private(set) var loadStatus: LoadStatus = .notConfigured
 
     private var folderObserver: AnyCancellable?
-    private var watchStream: FSEventStreamRef?
+    private var watchStream: FSEventsWatcher?
 
     override var engineFolderURL: URL? { folderBookmark.url }
 
@@ -123,7 +123,14 @@ class JSExternalEngine: JavaScriptEngine {
         super.load()
         if isModuleLoaded {
             loadStatus = .loaded
-            startWatching(folder: folder)
+            watchStream = FSEventsWatcher(paths: [folder.path], latency: 0.5) { [weak self] paths in
+                self?.handleFSEvents(paths: paths)
+            }
+            if watchStream == nil {
+                Logger.javaScriptEngine.error(
+                    "FSEvents stream creation failed for \(folder.path, privacy: .public)"
+                )
+            }
         } else {
             loadStatus = .failed
             folderBookmark.release()
@@ -142,7 +149,7 @@ class JSExternalEngine: JavaScriptEngine {
     }
 
     override func unload() {
-        stopWatching()
+        watchStream = nil
         super.unload()
         folderBookmark.release()
         cachedStoragePathPrefix = nil
@@ -284,54 +291,6 @@ class JSExternalEngine: JavaScriptEngine {
         case .loaded, .stale:
             return ""
         }
-    }
-
-    // MARK: - FSEvents watcher
-
-    private func startWatching(folder: URL) {
-        var context = FSEventStreamContext(
-            version: 0,
-            info: Unmanaged.passUnretained(self).toOpaque(),
-            retain: nil, release: nil, copyDescription: nil
-        )
-        // UseCFTypes: eventPaths arrives as CFArray<CFString> instead of a
-        // C-string vector — far easier to bridge into Swift.
-        // Stream is queued to .main below, so the callback runs on main —
-        // `assumeIsolated` is safe.
-        let callback: FSEventStreamCallback = { _, info, count, eventPaths, _, _ in
-            guard let info, count > 0 else { return }
-            let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] ?? []
-            let engine = Unmanaged<JSExternalEngine>.fromOpaque(info).takeUnretainedValue()
-            MainActor.assumeIsolated { engine.handleFSEvents(paths: paths) }
-        }
-        guard let stream = FSEventStreamCreate(
-            nil, callback, &context,
-            [folder.path] as CFArray,
-            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
-            0.5,
-            FSEventStreamCreateFlags(
-                kFSEventStreamCreateFlagFileEvents
-                | kFSEventStreamCreateFlagNoDefer
-                | kFSEventStreamCreateFlagUseCFTypes
-            )
-        ) else {
-            Logger.javaScriptEngine.error(
-                "FSEvents stream creation failed for \(folder.path, privacy: .public)"
-            )
-            return
-        }
-        FSEventStreamSetDispatchQueue(stream, DispatchQueue.main)
-        FSEventStreamStart(stream)
-        watchStream = stream
-    }
-
-    private func stopWatching() {
-        if let stream = watchStream {
-            FSEventStreamStop(stream)
-            FSEventStreamInvalidate(stream)
-            FSEventStreamRelease(stream)
-        }
-        watchStream = nil
     }
 
     /// True for keys that produce visible text — anything outside control
