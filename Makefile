@@ -1,4 +1,4 @@
-.PHONY: help build debug reload release release-universal install uninstall pkg prepare update-resources clean-resources clean log log-js log-history preview
+.PHONY: help build test debug reload release release-universal install uninstall pkg prepare update-resources clean-resources clean log log-js log-history preview
 
 APP_NAME = MacishType
 BUNDLE_ID = net.lukechang.inputmethod.$(APP_NAME)
@@ -84,6 +84,7 @@ help:
 	@echo "  make prepare            - Sync external resources to lock state (incremental; auto-run by builds)"
 	@echo "  make update-resources   - Bump pinned upstream SHAs in lock and re-prepare"
 	@echo "  make build              - Build Debug version"
+	@echo "  make test               - Run unit tests"
 	@echo "  make debug              - Build Debug, deploy, and reload"
 	@echo "  make reload             - Force restart input method by killing its process"
 	@echo "  make release            - Build Release version (current architecture)"
@@ -106,6 +107,13 @@ build: prepare
 	@$(XCODE_CHECK)
 	@echo "Building Debug version..."
 	xcodebuild -target $(APP_NAME) -configuration Debug ARCHS=$(shell uname -m) CURRENT_PROJECT_VERSION=$(BUILD_NUMBER)
+
+# No `prepare` dependency: the test bundle compiles sources only and
+# never stages engine resources.
+test:
+	@$(XCODE_CHECK)
+	@echo "Running unit tests..."
+	xcodebuild test -scheme $(APP_NAME)Tests -destination "platform=macOS,arch=$(shell uname -m)"
 
 debug: build
 	@$(call INSTALL_APP,Debug)
