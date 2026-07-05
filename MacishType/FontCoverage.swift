@@ -12,8 +12,9 @@ import OSLog
 /// `CoverageClass` to keep/drop under a scope policy is the consumer's job
 /// (see `InputEngine.CharacterSetScope`).
 ///
-/// Main-thread access: `classify` reads — and the font-change handler swaps —
-/// the cached union on the main thread; union (re)builds run off-main.
+/// Main-actor isolated; state is main-confined. The union is built off-main
+/// (preheat at launch, or rebuild on font change) and installed on main; a
+/// query before the preheat finishes builds it synchronously (`ensureBuilt`).
 final class FontCoverage {
     static let shared = FontCoverage()
 
@@ -36,16 +37,21 @@ final class FontCoverage {
     private var bitmap: Data
     private var pendingRebuild: DispatchWorkItem?
 
+    /// True once the union is built. Main-confined; guards the one-time
+    /// build across `ensureBuilt` / `preheat` / `rebuild`.
+    private var isReady = false
+
     /// The current renderable-coverage bitmap (`CharacterSet.bitmapRepresentation`),
     /// for callers that ship a snapshot elsewhere (e.g. into a JS runtime).
-    /// Main-thread access, like `classify`.
-    var coverageBitmap: Data { bitmap }
+    /// Not a pure read: triggers a synchronous build on first access if the
+    /// preheat hasn't finished (see `ensureBuilt`).
+    var coverageBitmap: Data { ensureBuilt(); return bitmap }
 
     private init() {
-        let set = Self.buildUnion()
-        renderableSet = set
-        bitmap = set.bitmapRepresentation
-        Logger.fontCoverage.info("Built font coverage union (\(self.bitmap.count, privacy: .public) bitmap bytes)")
+        // Built lazily off-main (preheat / ensureBuilt), not here, so
+        // touching `.shared` never blocks.
+        renderableSet = CharacterSet()
+        bitmap = Data()
         observeFontChanges()
     }
 
@@ -53,12 +59,58 @@ final class FontCoverage {
     /// IVS/emoji sequence) against the current coverage. `.none` if any scalar
     /// is unrenderable; else `.basic`/`.supplementary` by widest plane.
     func classify(_ value: String) -> CoverageClass {
+        ensureBuilt()
         var sawSupplementary = false
         for scalar in value.unicodeScalars {
             if !renderableSet.contains(scalar) { return .none }
             if scalar.value > 0xFFFF { sawSupplementary = true }
         }
         return sawSupplementary ? .supplementary : .basic
+    }
+
+    // MARK: Build lifecycle
+
+    /// Build synchronously on the calling thread if the preheat hasn't
+    /// installed a union yet, so callers never read empty coverage. No-op once ready.
+    private func ensureBuilt() {
+        guard !isReady else { return }
+        let start = Date()
+        let set = Self.buildUnion()
+        let bitmap = set.bitmapRepresentation
+        let ms = Int(Date().timeIntervalSince(start) * 1000)
+        install(set, bitmap)
+        logBuilt(bytes: bitmap.count, ms: ms)
+    }
+
+    /// Warm the union off-main at launch so the first query doesn't pay the
+    /// build inline. Best-effort — dropped if a query builds it first.
+    func preheat() {
+        guard !isReady else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let start = Date()
+            let set = Self.buildUnion()
+            let bitmap = set.bitmapRepresentation
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.isReady else { return }
+                self.install(set, bitmap)
+                self.logBuilt(bytes: bitmap.count, ms: ms)
+            }
+        }
+    }
+
+    /// Install a built union (main only). Does not post `coverageDidChange`
+    /// — initial-build consumers block until ready; only `rebuild` notifies.
+    private func install(_ set: CharacterSet, _ bitmap: Data) {
+        renderableSet = set
+        self.bitmap = bitmap
+        isReady = true
+    }
+
+    private func logBuilt(bytes: Int, ms: Int) {
+        Logger.fontCoverage.info(
+            "Built font coverage union (\(bytes, privacy: .public) bitmap bytes, \(ms, privacy: .public) ms)"
+        )
     }
 
     // MARK: Union build
@@ -128,18 +180,17 @@ final class FontCoverage {
     }
 
     private func rebuild() {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard self != nil else { return }
+        DispatchQueue.global(qos: .utility).async {
             let newSet = Self.buildUnion()
             let newBitmap = newSet.bitmapRepresentation
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                // Compare before install() — it overwrites self.bitmap.
                 guard newBitmap != self.bitmap else {
                     Logger.fontCoverage.info("Font change left coverage unchanged; no notification")
                     return
                 }
-                self.renderableSet = newSet
-                self.bitmap = newBitmap
+                self.install(newSet, newBitmap)
                 Logger.fontCoverage.info("Font coverage changed; posting coverageDidChange")
                 NotificationCenter.default.post(name: Self.coverageDidChange, object: nil)
             }

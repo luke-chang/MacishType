@@ -50,6 +50,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         InputEngine.observeEnabledEngines()
 
+        // Warm the font-coverage union off-main so the first query doesn't stall.
+        FontCoverage.shared.preheat()
+
         setupMainMenu()
     }
 
