@@ -136,35 +136,48 @@ final class SecurityScopedBookmark: ObservableObject {
     private func resolveBookmark() -> URL? {
         guard let data = UserDefaults.standard.data(forKey: bookmarkKey) else { return nil }
         var isStale = false
-        do {
-            let resolved = try URL(
-                resolvingBookmarkData: data,
-                options: .withSecurityScope,
-                bookmarkDataIsStale: &isStale
-            )
-            if isStale {
-                // Refresh while still in implicit-access window. Don't call
-                // stop... before bookmarkData(): the new bookmark needs the
-                // URL to currently have access.
-                if let fresh = try? resolved.bookmarkData(
-                    options: .withSecurityScope,
-                    includingResourceValuesForKeys: nil,
-                    relativeTo: nil
-                ) {
-                    UserDefaults.standard.set(fresh, forKey: bookmarkKey)
-                } else {
-                    Logger.securityScopedBookmark.error(
-                        "bookmark refresh failed for \(self.identifier, privacy: .public)"
-                    )
-                }
-            }
-            return resolved
-        } catch {
-            Logger.securityScopedBookmark.error(
-                "bookmark resolve failed for \(self.identifier, privacy: .public): \(String(describing: error), privacy: .public)"
-            )
+        guard let resolved = try? URL(
+            resolvingBookmarkData: data,
+            options: .withSecurityScope,
+            bookmarkDataIsStale: &isStale
+        ) else {
+            // Corrupt / unresolvable — drop it so we stop retrying every launch;
+            // the engine falls back to not-configured until the user re-picks.
+            dropBookmark(reason: "unresolvable")
             return nil
         }
+        guard isStale else { return resolved }
+        return refreshStaleBookmark(resolved)
+    }
+
+    /// Re-create a stale bookmark. Creating a security-scoped bookmark needs
+    /// the URL under an active scope, so access it across `bookmarkData`. If
+    /// the target is gone/inaccessible, drop the stored bookmark and return
+    /// nil so the engine falls back to not-configured rather than log-erroring
+    /// every launch. Trade-off: a bookmark to a temporarily-unmounted volume
+    /// is also dropped, requiring a re-pick.
+    private func refreshStaleBookmark(_ resolved: URL) -> URL? {
+        let accessed = resolved.startAccessingSecurityScopedResource()
+        defer { if accessed { resolved.stopAccessingSecurityScopedResource() } }
+        guard accessed, FileManager.default.fileExists(atPath: resolved.path) else {
+            dropBookmark(reason: "target unavailable")
+            return nil
+        }
+        if let fresh = try? resolved.bookmarkData(
+            options: .withSecurityScope,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ) {
+            UserDefaults.standard.set(fresh, forKey: bookmarkKey)
+        }
+        return resolved
+    }
+
+    private func dropBookmark(reason: String) {
+        UserDefaults.standard.removeObject(forKey: bookmarkKey)
+        Logger.securityScopedBookmark.notice(
+            "cleared bookmark for \(self.identifier, privacy: .public): \(reason, privacy: .public)"
+        )
     }
 }
 
