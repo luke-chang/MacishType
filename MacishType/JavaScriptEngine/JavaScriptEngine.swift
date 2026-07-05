@@ -952,6 +952,21 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// of ms) so only runaway loops trip it.
     private static let jsExecutionTimeLimit: Double = 3.0
 
+    /// `JSScript` / `evaluateJSScript:` / `moduleLoaderDelegate` are private
+    /// SPI (see JSCSPI.h) a future macOS could drop; probe once so `load()`
+    /// disables the engine cleanly instead of crashing on their absence.
+    private static let moduleSPIAvailable: Bool = {
+        let available = NSClassFromString("JSScript") != nil
+            && JSContext.instancesRespond(to: NSSelectorFromString("evaluateJSScript:"))
+            && JSContext.instancesRespond(to: NSSelectorFromString("setModuleLoaderDelegate:"))
+        if !available {
+            Logger.javaScriptEngine.fault(
+                "JavaScriptCore module SPI unavailable on this macOS — JS engines disabled"
+            )
+        }
+        return available
+    }()
+
     /// Set by the watchdog when it terminates a slice during this load;
     /// subclasses read it after `super.load()` to distinguish a runaway
     /// init loop from an ordinary load failure. Reset at each load start.
@@ -959,6 +974,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     override func load() {
         guard jsContext == nil else { return }
+        guard Self.moduleSPIAvailable else { return }
 
         Logger.javaScriptEngine.info("load() invoked for engine '\(self.engineID, privacy: .public)'")
         executionWasTerminated = false
