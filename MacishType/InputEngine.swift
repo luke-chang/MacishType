@@ -157,6 +157,7 @@ class InputEngine {
     nonisolated static let enableAssociatedModeSubKey = "enableAssociatedMode"
     nonisolated static let outputToSimplifiedSubKey = "outputToSimplified"
     nonisolated static let manifestSettingsSubKey = "manifestSettings"
+    nonisolated static let manifestMenuSubKey = "manifestMenu"
     nonisolated static let characterSetScopeSubKey = "characterSetScope"
 
     /// Base per-engine setting sub-keys. Engines that reset on a context swap
@@ -529,6 +530,71 @@ class InputEngine {
 
     func toggleOutputToSimplified() {
         setOutputToSimplified(!outputToSimplified)
+    }
+
+    // MARK: - Menu Items
+
+    /// One engine-contributed entry in the IME menu.
+    enum MenuItemDescriptor {
+        case toggle(MenuToggleDescriptor)
+        case divider
+    }
+
+    /// Rendering data for a toggle menu entry; empty `keyEquivalent` =
+    /// no shortcut.
+    struct MenuToggleDescriptor {
+        let key: String
+        let title: String
+        let isOn: Bool
+        var isEnabled: Bool = true
+        var keyEquivalent: String = ""
+        var modifiers: NSEvent.ModifierFlags = []
+    }
+
+    /// A host-provided menu feature, central so every engine type renders
+    /// the same title and shortcut.
+    struct SystemMenuFeature {
+        let title: String
+        let keyEquivalent: String
+        let modifiers: NSEvent.ModifierFlags
+    }
+
+    static func systemMenuFeature(_ key: String) -> SystemMenuFeature? {
+        switch key {
+        case outputToSimplifiedSubKey:
+            return SystemMenuFeature(
+                title: String(localized: "Convert to Simplified Chinese"),
+                keyEquivalent: "g",
+                modifiers: [.command, .control])
+        default:
+            return nil
+        }
+    }
+
+    /// IME-menu entries, queried on every menu open. Base contributes the
+    /// host default items; subclasses override to take full control.
+    func menuItems() -> [MenuItemDescriptor] {
+        guard supportsSimplifiedConversion,
+              let feature = Self.systemMenuFeature(Self.outputToSimplifiedSubKey) else { return [] }
+        return [.toggle(MenuToggleDescriptor(
+            key: Self.outputToSimplifiedSubKey,
+            title: feature.title,
+            isOn: outputToSimplified,
+            keyEquivalent: feature.keyEquivalent,
+            modifiers: feature.modifiers))]
+    }
+
+    /// Flips the menu entry for `key` (IME-menu click). Base handles
+    /// host-provided keys; subclasses extend for their own.
+    func toggleMenuItem(key: String) {
+        switch key {
+        case Self.outputToSimplifiedSubKey:
+            toggleOutputToSimplified()
+        default:
+            Logger.inputEngine.error(
+                "no menu entry for key '\(key, privacy: .public)'"
+            )
+        }
     }
 
 }

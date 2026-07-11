@@ -25,7 +25,9 @@ importing file. Static `import` is supported; dynamic `import()` is not.
   "name": "My Engine",           // optional display name, Localizable
   "intendedLanguage": "zh-Hant", // optional language override
   "candidateWindow": { … },      // optional appearance overrides
-  "settings": [ … ]              // optional Settings UI sections
+  "modules": { … },              // optional host-provided data tables
+  "settings": [ … ],             // optional Settings UI sections
+  "menu": [ … ]                  // optional IME-menu items
 }
 ```
 
@@ -331,6 +333,87 @@ current settings snapshot:
 `value`, with deep equality for objects and arrays). Missing keys
 evaluate to `null`, so `notEquals` / `notIn` against a typo'd key flip
 to permanently true — diff-check key references when renaming a field.
+
+### `menu` (optional)
+
+Items for the engine's section of the IME menu (the input-source menu in
+the menu bar). A flat array — no sections. Declaring it is an
+all-or-nothing takeover:
+
+- **absent** — the host contributes its default items. For engines whose
+  resolved language is `zh-Hant` that's the Traditional→Simplified
+  conversion toggle; other languages get no items.
+- **`[]`** — no items at all, including the host defaults.
+- **non-empty** — exactly the declared items, in order. A `zh-Hant`
+  engine that declares a non-empty `menu` must list `outputToSimplified`
+  itself or the conversion toggle disappears.
+
+```jsonc
+"menu": [
+  { "key": "outputToSimplified", "type": "system" },
+  { "type": "divider" },
+  {
+    "key": "strictMode",
+    "type": "toggle",
+    "label": { "en": "Strict matching", "zh-Hant": "嚴格比對" },
+    "default": false,
+    "disabledWhen": { "key": "outputToSimplified", "equals": true }
+  }
+]
+```
+
+Item values are readable and writable at runtime via
+[`manifest.menu`](#manifestmenu); the user flips them from the IME menu.
+Broken items are dropped + logged; duplicate keys keep the first
+declaration.
+
+#### Item types
+
+##### `toggle`
+
+An engine-defined boolean, rendered as a check-markable menu item. Same
+schema as the settings [`toggle`](#toggle) minus `description`
+(`default` is required):
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `key` | string | yes | Value key. Unique within `menu`; must not start with `settings.` (reserved for condition references). May collide with a `settings` key — the two are separate namespaces with separate storage. |
+| `label` | Localizable | yes | Menu item title. |
+| `default` | boolean | yes | Initial value. |
+| `disabledWhen` / `hiddenWhen` | Condition | | See [conditions](#menu-conditions) below. |
+
+##### `system`
+
+Borrows a host-provided menu feature — the host supplies the title, the
+keyboard shortcut, and the storage:
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `key` | string | yes | Feature identifier. Currently the only supported value is `"outputToSimplified"` — the Traditional→Simplified commit transform. |
+| `label` | Localizable | | Overrides the host title. Providing it means taking over the presentation: the host keyboard shortcut is dropped too. Omit to keep the host title and shortcut. |
+| `default` | boolean | | Initial value applied the first time this engine loads, before the user has made a choice. |
+| `disabledWhen` / `hiddenWhen` | Condition | | See [conditions](#menu-conditions) below. |
+
+Declaring `outputToSimplified` also lifts its language gate: the feature
+works regardless of the engine's resolved language (without a declared
+`menu` it only applies to `zh-Hant`).
+
+##### `divider`
+
+A separator line. No key, no value. Accepts an optional `hiddenWhen` so
+a divider can disappear together with the group it separates.
+
+#### Menu conditions
+
+`disabledWhen` / `hiddenWhen` use the same [Condition](#condition)
+grammar as settings fields, evaluated each time the menu opens. Leaf
+`key` references resolve against:
+
+- **bare key** — another `menu` item's current value;
+- **`settings.<key>`** — a settings field's current value.
+
+Settings conditions cannot reference menu items — the dependency only
+goes one way.
 
 ## The JS module
 
@@ -688,64 +771,6 @@ View engine logs:
 
 Engine-wide info injected by the host.
 
-##### `manifest.settings`
-
-Read-only snapshot of the user's current settings, keyed by the manifest
-`key`. Values match the field's declared schema after host sanitize —
-a `toggle` field's value is always a boolean, etc.
-
-```js
-const showAssoc = manifest.settings.enableAssociatedMode;
-```
-
-Populated before engine module evaluation (read at module top level
-works). Refreshes at two boundaries: any host-driven manifest reload
-(folder change, FSEvents in import graph) and the start of each new
-text-field session (the host re-reads UserDefaults on activate). UI
-edits made between sessions are visible to the engine on the next
-session boundary; mid-composition edits aren't pushed in real time.
-`settingschange` fires whenever the values actually change.
-
-The reference is stable across updates; destructuring is fine:
-
-```js
-const { settings } = manifest;
-// keep using `settings` — content stays in sync with host pushes
-```
-
-Deeply read-only — writes throw `TypeError`.
-
-##### Event: `settingschange`
-
-Fired when `manifest.settings` content changes (deep-equal dirty check;
-no spurious events). The callback receives `{ type: 'settingschange' }`
-— read `manifest.settings` for the current values.
-
-Attach at module scope, not on an instance — settings are engine-wide
-and the listener registry only resets on engine reload (folder change,
-file edit), so per-instance attach both confuses ownership and leaks
-`this` across text-field sessions.
-
-Most code should just read `manifest.settings` at the point of use:
-
-```js
-export default class MyEngine {
-  handleKey(event) {
-    if (manifest.settings.enableAssociatedMode) { ... }
-  }
-}
-```
-
-Attach a listener only when a settings change should trigger expensive
-work — reloading a dictionary, rebuilding a trie, recompiling a regex:
-
-```js
-let dictionary = loadDictionary(manifest.settings.dictionaryPath);
-addEventListener('settingschange', () => {
-  dictionary = loadDictionary(manifest.settings.dictionaryPath);
-});
-```
-
 ##### `manifest.candidateWindow`
 
 Live candidate-window configuration. Reads return what engine code wrote
@@ -808,6 +833,96 @@ Frozen, read-only views (each exposing `query(key)`) for the modules enabled
 via the manifest [`modules`](#modules-optional) field — see there for the
 available modules, their data, and the runtime API. Injected before module
 evaluation (top-level reads and destructuring work).
+
+##### `manifest.settings`
+
+Read-only snapshot of the user's current settings, keyed by the manifest
+`key`. Values match the field's declared schema after host sanitize —
+a `toggle` field's value is always a boolean, etc.
+
+```js
+const showAssoc = manifest.settings.enableAssociatedMode;
+```
+
+Populated before engine module evaluation (read at module top level
+works). Refreshes at two boundaries: any host-driven manifest reload
+(folder change, FSEvents in import graph) and the start of each new
+text-field session (the host re-reads UserDefaults on activate). UI
+edits made between sessions are visible to the engine on the next
+session boundary; mid-composition edits aren't pushed in real time.
+`settingschange` fires whenever the values actually change.
+
+The reference is stable across updates; destructuring is fine:
+
+```js
+const { settings } = manifest;
+// keep using `settings` — content stays in sync with host pushes
+```
+
+Deeply read-only — writes throw `TypeError`.
+
+##### Event: `settingschange`
+
+Fired when `manifest.settings` content changes (deep-equal dirty check;
+no spurious events). The callback receives `{ type: 'settingschange' }`
+— read `manifest.settings` for the current values.
+
+Attach at module scope, not on an instance — settings are engine-wide
+and the listener registry only resets on engine reload (folder change,
+file edit), so per-instance attach both confuses ownership and leaks
+`this` across text-field sessions.
+
+Most code should just read `manifest.settings` at the point of use:
+
+```js
+export default class MyEngine {
+  handleKey(event) {
+    if (manifest.settings.enableAssociatedMode) { ... }
+  }
+}
+```
+
+Attach a listener only when a settings change should trigger expensive
+work — reloading a dictionary, rebuilding a trie, recompiling a regex:
+
+```js
+let dictionary = loadDictionary(manifest.settings.dictionaryPath);
+addEventListener('settingschange', () => {
+  dictionary = loadDictionary(manifest.settings.dictionaryPath);
+});
+```
+
+##### `manifest.menu`
+
+Live values of the manifest-declared [`menu`](#menu-optional) items,
+keyed by item key (dividers carry no value). Read/write:
+
+```js
+manifest.menu.outputToSimplified;         // current value
+manifest.menu.outputToSimplified = true;  // flip it
+```
+
+**Writes act immediately** — the very next commit reflects them — and
+persist across sessions. This is the opposite of
+`manifest.candidateWindow`'s next-activate semantics: menu values are
+engine-global state shared with the IME menu's checkmarks, not
+per-session configuration.
+
+Keys are the declared items only. Reads of anything else return
+`undefined`; writes to them (or non-boolean writes) are logged via OSLog
+and silently ignored, same policy as `manifest.candidateWindow`.
+
+##### Event: `menuchange`
+
+Fired when the **user** flips a menu item from the IME menu. Read
+`manifest.menu` for the new values. The engine's own writes to
+`manifest.menu` do not fire it — engines never hear their own echo.
+
+```js
+addEventListener('menuchange', () => {
+  applyMode(manifest.menu.strictMode);
+});
+```
 
 #### `navigator`
 

@@ -12,21 +12,41 @@ class InputController: IMKInputController {
     private var engineContext: InputEngineContext!
     private var appearanceStale = true
 
+    // Toggle keys for the menu items built by the latest `menu()`, indexed
+    // by the item's tag. The tag (a plain Int) survives whatever marshaling
+    // IMKit applies to menu items, which `representedObject` does not
+    // guarantee, so the key rides in this side table instead.
+    private var menuToggleKeys: [String] = []
+
     // Built fresh each call so per-engine items and their checkmark state
     // reflect the active engine.
     override func menu() -> NSMenu! {
         let menu = NSMenu()
+        // Auto-enablement would override engine items' explicit isEnabled.
+        menu.autoenablesItems = false
 
-        if engine?.supportsSimplifiedConversion == true {
-            let convertItem = NSMenuItem(
-                title: String(localized: "Convert to Simplified Chinese"),
-                action: #selector(toggleOutputToSimplified(_:)),
-                keyEquivalent: "g"
-            )
-            convertItem.keyEquivalentModifierMask = [.command, .control]
-            convertItem.target = self
-            convertItem.state = engine?.outputToSimplified == true ? .on : .off
-            menu.addItem(convertItem)
+        let engineItems = engine?.menuItems() ?? []
+        menuToggleKeys.removeAll()
+        for descriptor in engineItems {
+            switch descriptor {
+            case .divider:
+                menu.addItem(.separator())
+            case .toggle(let toggle):
+                let item = NSMenuItem(
+                    title: toggle.title,
+                    action: #selector(toggleMenuItem(_:)),
+                    keyEquivalent: toggle.keyEquivalent
+                )
+                item.keyEquivalentModifierMask = toggle.modifiers
+                item.target = self
+                item.state = toggle.isOn ? .on : .off
+                item.isEnabled = toggle.isEnabled
+                item.tag = menuToggleKeys.count
+                menuToggleKeys.append(toggle.key)
+                menu.addItem(item)
+            }
+        }
+        if !engineItems.isEmpty {
             menu.addItem(.separator())
         }
 
@@ -50,8 +70,18 @@ class InputController: IMKInputController {
         return menu
     }
 
-    @objc private func toggleOutputToSimplified(_ sender: Any?) {
-        engine?.toggleOutputToSimplified()
+    @objc private func toggleMenuItem(_ sender: Any?) {
+        guard let item = Self.commandMenuItem(from: sender),
+              menuToggleKeys.indices.contains(item.tag) else { return }
+        engine?.toggleMenuItem(key: menuToggleKeys[item.tag])
+    }
+
+    /// IMKit dispatches menu-item actions with the command infoDictionary as
+    /// the sender — {kIMKCommandMenuItemName: the selected NSMenuItem,
+    /// kIMKCommandClientName: the client} — not the NSMenuItem itself.
+    private static func commandMenuItem(from sender: Any?) -> NSMenuItem? {
+        if let item = sender as? NSMenuItem { return item }
+        return (sender as? NSDictionary)?[kIMKCommandMenuItemName] as? NSMenuItem
     }
 
     @MainActor override func showPreferences(_ sender: Any!) {

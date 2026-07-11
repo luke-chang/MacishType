@@ -21,9 +21,12 @@ extension JavaScriptEngine {
         let candidateWindow: CandidateWindowOverrides?
         let modules: Modules?
         let settings: [SettingsSection]?
+        // nil = undeclared (host default items apply); non-nil takes full
+        // control of the IME-menu items, [] included ("no items").
+        let menu: [MenuItem]?
 
         private enum CodingKeys: String, CodingKey {
-            case entry, name, intendedLanguage, candidateWindow, modules, settings
+            case entry, name, intendedLanguage, candidateWindow, modules, settings, menu
         }
 
         init(from decoder: Decoder) throws {
@@ -59,6 +62,7 @@ extension JavaScriptEngine {
                 modules = nil
             }
             settings = Self.decodeTolerantSettings(from: c)
+            menu = Self.decodeTolerantMenu(from: c)
         }
 
         /// Per-element tolerant decode for `settings`. Wrapper type-mismatch
@@ -105,6 +109,54 @@ extension JavaScriptEngine {
                 }
                 return section
             }
+        }
+
+        /// Per-element tolerant decode for `menu`: wrapper mismatch → nil +
+        /// log, broken item → drop + log, duplicate keys keep the first.
+        /// Menu and settings keys are separate namespaces — conditions
+        /// reach settings via the `settings.` prefix, hence the reserved-
+        /// prefix rejection.
+        private static func decodeTolerantMenu(
+            from c: KeyedDecodingContainer<CodingKeys>
+        ) -> [MenuItem]? {
+            guard c.contains(.menu) else { return nil }
+            var arr: UnkeyedDecodingContainer
+            do {
+                arr = try c.nestedUnkeyedContainer(forKey: .menu)
+            } catch {
+                Logger.javaScriptEngine.error(
+                    "manifest menu ignored: \(String(describing: error), privacy: .public)"
+                )
+                return nil
+            }
+            var collected: [MenuItem] = []
+            var seenKeys = Set<String>()
+            while !arr.isAtEnd {
+                do {
+                    let item = try arr.decode(MenuItem.self)
+                    if let key = item.key {
+                        guard !key.hasPrefix("settings.") else {
+                            Logger.javaScriptEngine.error(
+                                "manifest menu item '\(key, privacy: .public)' dropped — 'settings.' prefix is reserved for condition references"
+                            )
+                            continue
+                        }
+                        guard seenKeys.insert(key).inserted else {
+                            Logger.javaScriptEngine.error(
+                                "manifest menu item '\(key, privacy: .public)' duplicated — keeping the first declaration"
+                            )
+                            continue
+                        }
+                    }
+                    collected.append(item)
+                } catch {
+                    _ = try? arr.decode(AnyDecodable.self)
+                    Logger.javaScriptEngine.error(
+                        "manifest menu item dropped: \(String(describing: error), privacy: .public)"
+                    )
+                }
+            }
+            return collected
         }
 
         /// Per-field defensive decode: type mismatches AND value-level
@@ -557,6 +609,98 @@ extension JavaScriptEngine {
                     debugDescription: "leaf condition needs one of: equals, notEquals, in, notIn"
                 )
             }
+        }
+
+        // MARK: Menu schema
+
+        /// One manifest-declared IME-menu entry.
+        enum MenuItem: Decodable {
+            case system(SystemMenuItem)
+            case toggle(ToggleField)
+            case divider(DividerMenuItem)
+
+            /// nil for dividers — they carry no value.
+            var key: String? {
+                switch self {
+                case .system(let item):  return item.key
+                case .toggle(let field): return field.key
+                case .divider:           return nil
+                }
+            }
+
+            var hiddenWhen: Condition? {
+                switch self {
+                case .system(let item):  return item.hiddenWhen
+                case .toggle(let field): return field.hiddenWhen
+                case .divider(let item): return item.hiddenWhen
+                }
+            }
+
+            var disabledWhen: Condition? {
+                switch self {
+                case .system(let item):  return item.disabledWhen
+                case .toggle(let field): return field.disabledWhen
+                case .divider:           return nil
+                }
+            }
+
+            private enum TypeKey: String, CodingKey { case type }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: TypeKey.self)
+                let type = try c.decode(String.self, forKey: .type)
+                switch type {
+                case "system":  self = .system(try SystemMenuItem(from: decoder))
+                case "toggle":  self = .toggle(try ToggleField(from: decoder))
+                case "divider": self = .divider(try DividerMenuItem(from: decoder))
+                default:
+                    throw DecodingError.dataCorruptedError(
+                        forKey: TypeKey.type, in: c,
+                        debugDescription: "unknown menu item type: \(type)"
+                    )
+                }
+            }
+        }
+
+        /// Borrows a host-provided menu feature; unknown keys throw at
+        /// decode. Key set deliberately separate from `SystemField`'s so
+        /// the two surfaces can't leak into each other. A `label` override
+        /// takes over the presentation, dropping the host shortcut too.
+        struct SystemMenuItem: Decodable {
+            static let supportedKeys: Set<String> = [
+                InputEngine.outputToSimplifiedSubKey,
+            ]
+
+            let key: String
+            let label: Localizable?
+            let defaultValue: Bool?
+            let disabledWhen: Condition?
+            let hiddenWhen: Condition?
+
+            private enum CodingKeys: String, CodingKey {
+                case key, label, defaultValue = "default", disabledWhen, hiddenWhen
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                let parsedKey = try c.decode(String.self, forKey: .key)
+                guard Self.supportedKeys.contains(parsedKey) else {
+                    throw DecodingError.dataCorruptedError(
+                        forKey: CodingKeys.key, in: c,
+                        debugDescription: "unknown system menu item key: \(parsedKey)"
+                    )
+                }
+                key = parsedKey
+                label = try c.decodeIfPresent(Localizable.self, forKey: .label)
+                defaultValue = try c.decodeIfPresent(Bool.self, forKey: .defaultValue)
+                disabledWhen = try c.decodeIfPresent(Condition.self, forKey: .disabledWhen)
+                hiddenWhen = try c.decodeIfPresent(Condition.self, forKey: .hiddenWhen)
+            }
+        }
+
+        /// Separator. `hiddenWhen` lets it disappear with its group.
+        struct DividerMenuItem: Decodable {
+            let hiddenWhen: Condition?
         }
     }
 

@@ -423,6 +423,32 @@ export interface SettingsChangeEvent {
 }
 
 /**
+ * Fired on `globalThis` when the user flips a menu item from the host's
+ * IME menu. Read `manifest.menu` for the new values. The engine's own
+ * writes do NOT fire it — engines never hear their own echo.
+ */
+export interface MenuChangeEvent {
+  readonly type: "menuchange";
+}
+
+/**
+ * Live values of the manifest-declared `menu` items, keyed by item
+ * `key` (dividers carry no value). Engine-global: persisted host-side
+ * and shared with the IME menu's checkmarks.
+ *
+ * Unlike `manifest.candidateWindow`, writes act immediately — the very
+ * next commit reflects them. Undeclared / unavailable keys read
+ * `undefined`; writes to them are logged via OSLog and ignored.
+ *
+ * `outputToSimplified` (the Traditional→Simplified commit transform)
+ * is language-gated only while the manifest declares no `menu`;
+ * declaring the item lifts the gate.
+ */
+export interface Menu {
+  [key: string]: boolean | undefined;
+}
+
+/**
  * Live candidate-window configuration. Reads return engine writes (if
  * any), else manifest declarations, else `undefined`. Writes take effect
  * at the next session activate.
@@ -498,14 +524,6 @@ export interface Manifest {
   readonly name?: string;
 
   /**
-   * User settings keyed by manifest field `key`. Deeply read-only —
-   * writes throw `TypeError`. The reference is stable across updates;
-   * `const { settings } = manifest` is safe and reads always see the
-   * latest values.
-   */
-  readonly settings: Settings;
-
-  /**
    * Candidate-window override cache. See `CandidateWindow` for details.
    */
   readonly candidateWindow: CandidateWindow;
@@ -515,6 +533,19 @@ export interface Manifest {
    * See `Modules`.
    */
   readonly modules: Modules;
+
+  /**
+   * User settings keyed by manifest field `key`. Deeply read-only —
+   * writes throw `TypeError`. The reference is stable across updates;
+   * `const { settings } = manifest` is safe and reads always see the
+   * latest values.
+   */
+  readonly settings: Settings;
+
+  /**
+   * Live menu-item values, read/write. See `Menu` for details.
+   */
+  readonly menu: Menu;
 }
 
 /**
@@ -596,6 +627,11 @@ declare global {
     options?: { once?: boolean }
   ): void;
   function addEventListener(
+    type: "menuchange",
+    callback: EventListenerOrObject<MenuChangeEvent>,
+    options?: { once?: boolean }
+  ): void;
+  function addEventListener(
     type: "languagechange",
     callback: EventListenerOrObject<LanguageChangeEvent>,
     options?: { once?: boolean }
@@ -612,6 +648,10 @@ declare global {
   function removeEventListener(
     type: "settingschange",
     callback: EventListenerOrObject<SettingsChangeEvent>
+  ): void;
+  function removeEventListener(
+    type: "menuchange",
+    callback: EventListenerOrObject<MenuChangeEvent>
   ): void;
   function removeEventListener(
     type: "languagechange",

@@ -78,6 +78,8 @@ class JSExternalEngine: JavaScriptEngine {
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: InputEngine.composedKey(
             engineID: engineID, subKey: InputEngine.manifestSettingsSubKey))
+        defaults.removeObject(forKey: InputEngine.composedKey(
+            engineID: engineID, subKey: InputEngine.manifestMenuSubKey))
         for subKey in InputEngine.resettableBaseSubKeys {
             defaults.removeObject(forKey: InputEngine.composedKey(
                 engineID: engineID, subKey: subKey))

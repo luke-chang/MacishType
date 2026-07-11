@@ -224,6 +224,41 @@ function __MacishType_dispatchGlobal(event) {
     configurable: false,
   });
 
+  // manifest.menu — Proxy-backed live menu-item values, read/write. Same
+  // forwarding model as candidateWindow above, but writes act immediately
+  // (and persist host-side) rather than at next activate.
+  const menuProxy = new Proxy({}, {
+    get(_, prop) {
+      if (typeof prop !== "string") return undefined;
+      const value = __MacishType_getMenuValue(prop);
+      return value === null ? undefined : value;
+    },
+    set(_, prop, value) {
+      if (typeof prop === "string") {
+        __MacishType_setMenuValue(prop, value);
+      }
+      return true;
+    },
+    has(_, prop) {
+      if (typeof prop !== "string") return false;
+      return __MacishType_getMenuValue(prop) !== null;
+    },
+    ownKeys() {
+      return __MacishType_menuKeys();
+    },
+    getOwnPropertyDescriptor(_, prop) {
+      if (typeof prop !== "string") return undefined;
+      const value = __MacishType_getMenuValue(prop);
+      if (value === null) return undefined;
+      return { value, writable: true, enumerable: true, configurable: true };
+    },
+  });
+  Object.defineProperty(globalThis.manifest, "menu", {
+    get() { return menuProxy; },
+    enumerable: true,
+    configurable: false,
+  });
+
   function deepFreeze(v) {
     if (v === null || typeof v !== "object" || Object.isFrozen(v)) return v;
     for (const k of Object.keys(v)) deepFreeze(v[k]);
