@@ -657,21 +657,17 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         }
     }
 
+    /// Order defines the JS-side key order of the candidateWindow proxy —
+    /// keep in sync with readCandidateWindowField's cases.
+    private static let candidateWindowFieldNames = [
+        "layoutDirection", "fontSize", "indexLabels", "pageSize",
+        "widerExpandedColumns", "moveOnExpand", "horizontalMaxVisibleRows",
+        "verticalMinVisibleRows", "expandable", "handleNavigationKeys",
+        "handleIndexLabelKeys",
+    ]
+
     private func listCandidateWindowFields() -> [String] {
-        var fields: [String] = []
-        let c = candidateWindowCache
-        if c.layoutDirection != nil { fields.append("layoutDirection") }
-        if c.fontSize != nil { fields.append("fontSize") }
-        if c.indexLabels != nil { fields.append("indexLabels") }
-        if c.pageSize != nil { fields.append("pageSize") }
-        if c.widerExpandedColumns != nil { fields.append("widerExpandedColumns") }
-        if c.moveOnExpand != nil { fields.append("moveOnExpand") }
-        if c.horizontalMaxVisibleRows != nil { fields.append("horizontalMaxVisibleRows") }
-        if c.verticalMinVisibleRows != nil { fields.append("verticalMinVisibleRows") }
-        if c.expandable != nil { fields.append("expandable") }
-        if c.handleNavigationKeys != nil { fields.append("handleNavigationKeys") }
-        if c.handleIndexLabelKeys != nil { fields.append("handleIndexLabelKeys") }
-        return fields
+        Self.candidateWindowFieldNames.filter { readCandidateWindowField($0) != nil }
     }
 
     // MARK: Menu items

@@ -59,42 +59,6 @@ class WindowManager {
         Logger.windowManager.info("Opened \(id.rawValue, privacy: .public) window")
     }
 
-    /// Convenience for the simple "host a SwiftUI view in an NSWindow/NSPanel"
-    /// case. Builds the window with sensible defaults and forwards to the
-    /// generic factory-based `showWindow`.
-    func showWindow<Content: View>(
-        _ id: Identifier,
-        title: String,
-        asPanel: Bool = false,
-        transparentTitlebar: Bool = false,
-        content: @escaping () -> Content
-    ) {
-        showWindow(id) {
-            let controller = NSHostingController(rootView: content())
-            let window: NSWindow = asPanel
-                ? NSPanel(contentViewController: controller)
-                : NSWindow(contentViewController: controller)
-            window.title = title
-            if transparentTitlebar {
-                window.titlebarAppearsTransparent = true
-                window.titleVisibility = .hidden
-                window.styleMask = [.titled, .closable, .fullSizeContentView]
-                window.isMovableByWindowBackground = true
-            } else {
-                window.styleMask = [.titled, .closable]
-            }
-            if let panel = window as? NSPanel {
-                panel.hidesOnDeactivate = false
-            }
-            window.setContentSize(controller.view.fittingSize)
-            return window
-        }
-    }
-
-    func close(_ id: Identifier) {
-        windows[id]?.close()
-    }
-
     private func centerOnMouseScreen(_ window: NSWindow) {
         let mouseLocation = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouseLocation) }
@@ -109,8 +73,17 @@ class WindowManager {
 
 extension WindowManager {
     func openAbout() {
-        showWindow(.about, title: "MacishType", asPanel: true, transparentTitlebar: true) {
-            AboutView()
+        showWindow(.about) {
+            let controller = NSHostingController(rootView: AboutView())
+            let panel = NSPanel(contentViewController: controller)
+            panel.title = "MacishType"
+            panel.titlebarAppearsTransparent = true
+            panel.titleVisibility = .hidden
+            panel.styleMask = [.titled, .closable, .fullSizeContentView]
+            panel.isMovableByWindowBackground = true
+            panel.hidesOnDeactivate = false
+            panel.setContentSize(controller.view.fittingSize)
+            return panel
         }
     }
 

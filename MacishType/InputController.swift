@@ -283,11 +283,11 @@ class InputController: IMKInputController {
             charactersIgnoringModifiers: charactersIgnoringModifiers,
             modifiers: event.modifierFlags,
             isRepeat: event.isARepeat)
+        // Tier 1a: policy-gated candidate-window key handling
+        if dispatchCandidateWindowKey(keyEvent) {
+            return true
+        }
         if engineContext.isAssociating {
-            // Tier 1a: policy-gated candidate-window key handling
-            if dispatchCandidateWindowKey(keyEvent) {
-                return true
-            }
             // Tier 1b: engine override point
             switch engine.handleAssociatedKey(
                 context: engineContext, keyEvent: keyEvent,
@@ -301,10 +301,6 @@ class InputController: IMKInputController {
                 executeActions(actions + [.flushStaged()], client: client)
             }
         } else {
-            // Tier 1a: policy-gated candidate-window key handling
-            if dispatchCandidateWindowKey(keyEvent) {
-                return true
-            }
             // Tier 1b: while a composition is in progress, let the engine commit
             // the staged text and re-dispatch this key on a fresh context.
             if !engineContext.markedText.isEmpty,
