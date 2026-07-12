@@ -191,22 +191,7 @@ class JSExternalEngine: JavaScriptEngine {
             )
         }
 
-        let pure = keyEvent.pureModifiers
-
-        if !pure.intersection([.command, .control]).isEmpty {
-            return context.isComposing ? .handled() : .notHandled()
-        }
-        // Esc / Backspace cancel the status prompt when composing.
-        if keyEvent.keyCode == KeyCode.escape || keyEvent.keyCode == KeyCode.backspace {
-            return context.isComposing ? .handled([.resetContext]) : .notHandled()
-        }
-        // Non-printing keys (Return, Space, Tab, arrows, F-keys, etc.)
-        // pass through when idle so the user can still send / navigate;
-        // while composing they re-show the prompt instead of leaking out.
-        if !Self.isPrintingKey(keyEvent.characters) && !context.isComposing {
-            return .notHandled()
-        }
-        return .handled([.updateMarkedText(statusMessage)])
+        return statusPromptResult(keyEvent: keyEvent, context: context, message: statusMessage)
     }
 
     /// No Traditional→Simplified menu item until an engine is actually loaded.
@@ -300,17 +285,6 @@ class JSExternalEngine: JavaScriptEngine {
             return String(localized: "Engine load failed")
         case .loaded, .stale:
             return ""
-        }
-    }
-
-    /// True for keys that produce visible text — anything outside control
-    /// chars, space, DEL, and AppKit's function-key private-use range
-    /// (arrows, F-keys, PageUp/Down, Home/End, etc.).
-    nonisolated private static func isPrintingKey(_ characters: String?) -> Bool {
-        guard let scalar = characters?.unicodeScalars.first else { return false }
-        switch scalar.value {
-        case ..<0x21, 0x7F, 0xF700...0xF8FF: return false
-        default: return true
         }
     }
 

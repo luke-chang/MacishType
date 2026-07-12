@@ -193,9 +193,8 @@ class CINEngine: InputEngine {
     ) -> EngineHandleResult {
         let mods = event.pureModifiers
         if mods.contains(.option), mods.intersection([.command, .control]).isEmpty,
-           let chars = event.charactersIgnoringModifiers, chars.count == 1,
-           let char = chars.first, let fullwidth = Self.toFullwidth(char) {
-            return .handled([.flushStaged(String(fullwidth))])
+           let fullwidthFlush = Self.fullwidthFlushAction(for: event) {
+            return .handled([fullwidthFlush])
         }
         guard let char = inputChar(event) else { return .notHandled() }
         guard table.isCodeKey(char) else { return .notHandled() }

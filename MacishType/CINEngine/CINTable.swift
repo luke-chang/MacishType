@@ -256,14 +256,6 @@ nonisolated final class CINTable: Sendable {
         }
     }
 
-    func hasCandidates(_ code: String) -> Bool {
-        let key = Array(normalize(code).utf8)
-        return buf.withUnsafeBufferPointer { p in
-            let lb = Self.lowerBound(p, entries, key)
-            return lb < entries.count && Self.isExact(p, entries[lb], key)
-        }
-    }
-
     /// Concatenated display roots for the composing buffer; falls back to the
     /// raw character when a key has no keyname entry.
     func rootDisplay(_ code: String) -> String {

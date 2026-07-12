@@ -123,6 +123,17 @@ struct KeyEventInput {
     /// No Cmd/Ctrl/Option/Shift held — nothing that changes the key's meaning,
     /// so a control key may perform its action. (CapsLock / Fn are ignored.)
     var isBareKey: Bool { pureModifiers.isDisjoint(with: [.command, .control, .option, .shift]) }
+
+    /// True for keys that produce visible text — anything outside control
+    /// chars, space, DEL, and AppKit's function-key private-use range
+    /// (arrows, F-keys, PageUp/Down, Home/End, etc.).
+    var isPrintingCharacter: Bool {
+        guard let scalar = characters?.unicodeScalars.first else { return false }
+        switch scalar.value {
+        case ..<0x21, 0x7F, 0xF700...0xF8FF: return false
+        default: return true
+        }
+    }
 }
 
 class InputEngine {
@@ -397,13 +408,9 @@ class InputEngine {
             return context.isComposing ? .handled() : .handled([.flushStaged(text)])
         }
 
-        // charactersIgnoringModifiers is layout-aware and carries Shift, so
-        // Option+Shift → fullwidth uppercase / symbols.
         if pureMods.contains(.option),
-           let chars = keyEvent.charactersIgnoringModifiers,
-           chars.count == 1, let char = chars.first,
-           let fullwidth = Self.toFullwidth(char) {
-            return context.isComposing ? .handled() : .handled([.flushStaged(String(fullwidth))])
+           let fullwidthFlush = Self.fullwidthFlushAction(for: keyEvent) {
+            return context.isComposing ? .handled() : .handled([fullwidthFlush])
         }
 
         if !keyEvent.isBareKey {
@@ -415,6 +422,24 @@ class InputEngine {
         }
 
         return .notHandled()
+    }
+
+    /// Fallback for engines whose backing resource isn't loaded: shows
+    /// `message` as a status prompt instead of composing. Non-printing keys
+    /// pass through when idle so the user can still type and navigate.
+    func statusPromptResult(
+        keyEvent: KeyEventInput, context: InputEngineContext, message: String
+    ) -> EngineHandleResult {
+        if !keyEvent.pureModifiers.intersection([.command, .control]).isEmpty {
+            return context.isComposing ? .handled() : .notHandled()
+        }
+        if keyEvent.keyCode == KeyCode.escape || keyEvent.keyCode == KeyCode.backspace {
+            return context.isComposing ? .handled([.resetContext]) : .notHandled()
+        }
+        if !keyEvent.isPrintingCharacter, !context.isComposing {
+            return .notHandled()
+        }
+        return .handled([.updateMarkedText(message)])
     }
 
     /// Associated-mode key handler. `.notHandled` dismisses associated
@@ -497,6 +522,23 @@ class InputEngine {
         if char == " " { return "\u{3000}" }
         guard let ascii = char.asciiValue, ascii >= 0x21, ascii <= 0x7E else { return nil }
         return Character(UnicodeScalar(UInt32(ascii) + 0xFEE0)!)
+    }
+
+    /// Option+key fullwidth commit kernel. Reads charactersIgnoringModifiers —
+    /// layout-aware and Shift-carrying, so Option+Shift yields fullwidth
+    /// uppercase / symbols. Callers gate on modifiers and composing state.
+    static func fullwidthFlushAction(for keyEvent: KeyEventInput) -> EngineAction? {
+        guard let chars = keyEvent.charactersIgnoringModifiers,
+              chars.count == 1, let char = chars.first,
+              let fullwidth = toFullwidth(char) else { return nil }
+        return .flushStaged(String(fullwidth))
+    }
+
+    /// Same on-disk file → same string regardless of how callers spelled
+    /// the URL. Lets FSEvents paths, recorded load paths, and containment
+    /// checks compare against each other cleanly.
+    nonisolated static func canonicalPath(for url: URL) -> String {
+        url.resolvingSymlinksInPath().standardizedFileURL.path
     }
 
     // MARK: - Output Conversion

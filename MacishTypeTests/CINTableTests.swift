@@ -97,8 +97,7 @@ struct CINTableTests {
     @Test func duplicateCodesKeepFileOrder() throws {
         let table = try makeTable("%chardef begin\naa 一\naa 二\nab 三\n%chardef end")
         #expect(table.lookup("aa") == ["一", "二"])
-        #expect(table.hasCandidates("aa"))
-        #expect(!table.hasCandidates("ac"))
+        #expect(table.lookup("ac").isEmpty)
     }
 
     @Test func representativeMarkerIsStripped() throws {

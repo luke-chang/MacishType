@@ -141,35 +141,14 @@ final class CINExternalEngine: CINEngine, ObservableObject {
             return super.handleKey(
                 context: context, keyEvent: keyEvent, candidateWindow: candidateWindow)
         }
-        // No usable table: show a prompt instead of composing. Non-printing keys
-        // pass through when idle so the user can still type / navigate.
-        let pure = keyEvent.pureModifiers
-        if !pure.intersection([.command, .control]).isEmpty {
-            return context.isComposing ? .handled() : .notHandled()
-        }
-        if keyEvent.keyCode == KeyCode.escape || keyEvent.keyCode == KeyCode.backspace {
-            return context.isComposing ? .handled([.resetContext]) : .notHandled()
-        }
-        if !Self.isPrintingKey(keyEvent.characters), !context.isComposing {
-            return .notHandled()
-        }
-        return .handled([.updateMarkedText(statusMessage)])
+        // No usable table: show a prompt instead of composing.
+        return statusPromptResult(keyEvent: keyEvent, context: context, message: statusMessage)
     }
 
     private var statusMessage: String {
         cinTableURL == nil
             ? String(localized: "Select a CIN table")
             : String(localized: "CIN table load failed")
-    }
-
-    /// Visible-text keys only — excludes control chars, space, DEL, and the
-    /// function-key private-use range (arrows, F-keys, Page, Home/End).
-    nonisolated private static func isPrintingKey(_ characters: String?) -> Bool {
-        guard let scalar = characters?.unicodeScalars.first else { return false }
-        switch scalar.value {
-        case ..<0x21, 0x7F, 0xF700...0xF8FF: return false
-        default: return true
-        }
     }
 
     // MARK: - Settings
@@ -212,9 +191,6 @@ final class CINExternalEngine: CINEngine, ObservableObject {
         }
     }
 
-    nonisolated private static func canonicalPath(for url: URL) -> String {
-        url.resolvingSymlinksInPath().standardizedFileURL.path
-    }
 }
 
 private struct CINExternalSettingsView: View {

@@ -120,9 +120,8 @@ final class ArrayEngine: InputEngine {
         }
         let mods = keyEvent.pureModifiers
         if mods.contains(.option), mods.intersection([.command, .control]).isEmpty,
-           let chars = keyEvent.charactersIgnoringModifiers, chars.count == 1,
-           let char = chars.first, let fullwidth = Self.toFullwidth(char) {
-            return .handled([.flushStaged(String(fullwidth))])
+           let fullwidthFlush = Self.fullwidthFlushAction(for: keyEvent) {
+            return .handled([fullwidthFlush])
         }
         return .notHandled()
     }

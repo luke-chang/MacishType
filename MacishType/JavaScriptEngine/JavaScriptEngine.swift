@@ -1706,13 +1706,6 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         loadedFilePaths.insert(Self.canonicalPath(for: url))
     }
 
-    /// Same on-disk file → same string regardless of how callers spelled
-    /// the URL. Lets FSEvents paths, recorded load paths, and the import
-    /// containment check compare against each other cleanly.
-    nonisolated static func canonicalPath(for url: URL) -> String {
-        url.resolvingSymlinksInPath().standardizedFileURL.path
-    }
-
     /// Trailing-slash prefix match so `/foo` doesn't accept `/foobar`,
     /// plus exact-match for the root itself.
     nonisolated static func isContained(url target: URL, in rootPath: String) -> Bool {
