@@ -90,12 +90,8 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         maxVisibleRows = configuration.horizontalMaxVisibleRows
         widerExpandedColumns = configuration.widerExpandedColumns
         moveOnExpand = configuration.moveOnExpand
-        if !deferRender, isVisible, !candidates.isEmpty {
-            buildCandidateLayout()
-            moveSelection(to: impl?.selectedIndex ?? -1, animated: false)
-            if lastShowNearRect != .zero {
-                show(near: lastShowNearRect)
-            }
+        if !deferRender {
+            rebuildOnConfigChange(reposition: true)
         }
     }
 
@@ -126,19 +122,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     }
 
     private func computeCollapsedGrid() -> [GridRow] {
-        var packedItems: [(candidateIndex: Int, width: CGFloat)] = []
-        var usedWidth: CGFloat = 0
-
-        for i in 0..<displayCount {
-            if packedItems.count >= pageSize { break }
-            let raw = MacishCandidateItemView.measureWidth(candidates[i])
-            let w = max(baseColumnWidth, min(raw, maxPageSlotWidth))
-            if usedWidth + w > maxPageSlotWidth, !packedItems.isEmpty { break }
-            usedWidth += w
-            packedItems.append((i, w))
-        }
-
-        let gridItems = packedItems.enumerated().map { pos, item in
+        let gridItems = packRow(startingAt: 0).items.enumerated().map { pos, item in
             GridItem(candidateIndex: item.candidateIndex, columnStart: pos, columnSpan: 1, measuredWidth: item.width)
         }
         return [GridRow(items: gridItems)]

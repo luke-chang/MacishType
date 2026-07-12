@@ -349,13 +349,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         let progress = min(elapsed / animationDuration, 1.0)
         let t = Self.easeInOut(progress)
 
-        let from = frameAnimFrom, to = frameAnimTo
-        let currentFrame = NSRect(
-            x: from.origin.x + (to.origin.x - from.origin.x) * t,
-            y: from.origin.y + (to.origin.y - from.origin.y) * t,
-            width: from.width + (to.width - from.width) * t,
-            height: from.height + (to.height - from.height) * t
-        )
+        let currentFrame = Self.interpolateRect(frameAnimFrom, frameAnimTo, t)
         setFrame(currentFrame, display: true)
         frameAnimationDidTick(t: t)
 
@@ -523,6 +517,17 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
             computeBaseMetrics()
         }
         self.configuration = configuration
+    }
+    /// Shared tail for subclass `apply` overrides. `reposition` re-anchors
+    /// the window for panels whose `buildCandidateLayout` doesn't do it
+    /// internally.
+    func rebuildOnConfigChange(reposition: Bool) {
+        guard isVisible, !candidates.isEmpty else { return }
+        buildCandidateLayout()
+        moveSelection(to: impl?.selectedIndex ?? -1, animated: false)
+        if reposition, lastShowNearRect != .zero {
+            show(near: lastShowNearRect)
+        }
     }
     func buildCandidateLayout() {}
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}

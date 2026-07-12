@@ -59,9 +59,8 @@ class MacishVerticalPanel: MacishBasePanel {
     override func apply(_ configuration: CandidateWindowConfiguration, deferRender: Bool = false) {
         super.apply(configuration, deferRender: deferRender)
         minVisibleRows = configuration.verticalMinVisibleRows ?? configuration.pageSize
-        if !deferRender, isVisible, !candidates.isEmpty {
-            buildCandidateLayout()
-            moveSelection(to: impl?.selectedIndex ?? -1, animated: false)
+        if !deferRender {
+            rebuildOnConfigChange(reposition: false)
         }
     }
 

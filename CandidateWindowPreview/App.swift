@@ -194,10 +194,9 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     }
 
     /// Drives the TextField red-border state and the applyConfiguration
-    /// fallback. Mirrors the only validity check in
-    /// `CandidateWindowConfiguration.indexLabels.didSet`: ASCII printable.
+    /// fallback, via the same validator `indexLabels.didSet` enforces.
     var isIndexLabelsValid: Bool {
-        indexLabels.allSatisfy(\.isValidIndexLabel)
+        CandidateWindowConfiguration.isValidIndexLabels(indexLabels)
     }
 
     func applyConfiguration() {

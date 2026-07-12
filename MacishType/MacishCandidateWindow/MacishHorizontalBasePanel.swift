@@ -10,6 +10,25 @@ class MacishHorizontalBasePanel: MacishBasePanel {
         baseColumnWidth * CGFloat(max(pageSize, Self.minPageSlotColumns))
     }
 
+    /// Greedily packs one row starting at `offset`: up to `pageSize` items,
+    /// each clamped to `baseColumnWidth...maxPageSlotWidth`, breaking before
+    /// the row width overflows `maxPageSlotWidth` — unless the row is still
+    /// empty, so a single oversized candidate always gets a row.
+    func packRow(startingAt offset: Int) -> (items: [(candidateIndex: Int, width: CGFloat)], nextOffset: Int) {
+        var items: [(candidateIndex: Int, width: CGFloat)] = []
+        var usedWidth: CGFloat = 0
+        var offset = offset
+        while items.count < pageSize, offset < displayCount {
+            let raw = MacishCandidateItemView.measureWidth(candidates[offset])
+            let width = max(baseColumnWidth, min(raw, maxPageSlotWidth))
+            if usedWidth + width > maxPageSlotWidth, !items.isEmpty { break }
+            items.append((offset, width))
+            usedWidth += width
+            offset += 1
+        }
+        return (items, offset)
+    }
+
     func applyUniformCorners() {
         super.updateCorners()
     }

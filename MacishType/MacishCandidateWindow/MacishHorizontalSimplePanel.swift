@@ -51,31 +51,19 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
 
     override func apply(_ configuration: CandidateWindowConfiguration, deferRender: Bool = false) {
         super.apply(configuration, deferRender: deferRender)
-        if !deferRender, isVisible, !candidates.isEmpty {
-            buildCandidateLayout()
-            moveSelection(to: impl?.selectedIndex ?? -1, animated: false)
-            if lastShowNearRect != .zero {
-                show(near: lastShowNearRect)
-            }
+        if !deferRender {
+            rebuildOnConfigChange(reposition: true)
         }
     }
 
     // MARK: - Grid Computation
 
     private func packPage(startingAt offset: Int) -> (items: [GridItem], nextOffset: Int) {
-        var items: [GridItem] = []
-        var usedWidth: CGFloat = 0
-        var offset = offset
-        for _ in 0..<pageSize {
-            guard offset < displayCount else { break }
-            let raw = MacishCandidateItemView.measureWidth(candidates[offset])
-            let w = max(baseColumnWidth, min(raw, maxPageSlotWidth))
-            if usedWidth + w > maxPageSlotWidth, !items.isEmpty { break }
-            items.append(GridItem(candidateIndex: offset, measuredWidth: w))
-            usedWidth += w
-            offset += 1
+        let (packed, nextOffset) = packRow(startingAt: offset)
+        let items = packed.map {
+            GridItem(candidateIndex: $0.candidateIndex, measuredWidth: $0.width)
         }
-        return (items, offset)
+        return (items, nextOffset)
     }
 
     private func computeFirstPage() -> [GridItem] {
