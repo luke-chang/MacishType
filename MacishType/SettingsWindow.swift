@@ -208,6 +208,7 @@ final class SettingsSidebarViewController: NSViewController, NSOutlineViewDataSo
         outline.indentationPerLevel = 0
         outline.style = .sourceList
         outline.rowHeight = 30
+        outline.allowsEmptySelection = false
         outline.dataSource = self
         outline.delegate = self
         outline.autoresizingMask = [.width, .height]
@@ -223,15 +224,22 @@ final class SettingsSidebarViewController: NSViewController, NSOutlineViewDataSo
 
     /// Falls back to the first row when `id` is nil or unknown.
     func select(id: String? = nil) {
-        let row = id.flatMap { target in items.firstIndex(where: { $0.id == target }) } ?? 0
-        if outline.numberOfRows > 0 {
-            outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-        } else {
-            // Outline isn't populated yet (called from init); defer one runloop tick.
-            DispatchQueue.main.async { [weak self] in
-                self?.outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-            }
+        guard !items.isEmpty else { return }
+        loadViewIfNeeded()
+        // The outline populates lazily; selecting a row before the first
+        // reload is a silent no-op. Force the load so selection lands
+        // synchronously.
+        if outline.numberOfRows == 0 {
+            outline.reloadData()
         }
+        let row = id.flatMap { target in items.firstIndex(where: { $0.id == target }) } ?? 0
+        outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        // outlineViewSelectionDidChange fires only when the selection actually
+        // changes — with allowsEmptySelection = false the reload silently
+        // pre-selects row 0, making a programmatic select of row 0 a
+        // no-change. Notify directly; a double invocation is harmless
+        // (rootView and title assignments are idempotent).
+        onSelect?(items[row])
     }
 
     // MARK: data source
