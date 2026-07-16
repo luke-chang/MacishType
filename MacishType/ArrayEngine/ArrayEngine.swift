@@ -71,6 +71,44 @@ final class ArrayEngine: InputEngine {
         super.unload()
     }
 
+    // MARK: Reverse Lookup
+
+    override var supportsReverseLookup: Bool { true }
+
+    override func prepareReverseLookup() async -> Bool {
+        guard !reverseLookupFailed else { return false }
+        if !isLoaded {
+            load()
+            loadedForLookup = isLoaded
+        }
+        guard let dictionary else {
+            reverseLookupFailed = true
+            return false
+        }
+        dictionary.prepareReverseIndex()
+        return true
+    }
+
+    override func endReverseLookup() {
+        dictionary?.releaseReverseIndex()
+        super.endReverseLookup()
+    }
+
+    override func reverseLookup(_ character: Character) -> [ReverseCode] {
+        guard let dictionary else { return [] }
+        let main = dictionary.reverseCodes(for: character).map {
+            ReverseCode(dictionary.radicalReadout($0))
+        }
+        // Short codes render as "readout+selectionKey" — type the code, then
+        // press the fixed selection key to commit.
+        let short = dictionary.reverseShortCodes(for: character).map {
+            ReverseCode(
+                "\(dictionary.radicalReadout($0.code))+\($0.label)",
+                annotation: String(localized: "Short code"))
+        }
+        return main + short
+    }
+
     override var candidateWindowConfiguration: CandidateWindowConfiguration {
         var configuration = super.candidateWindowConfiguration
         configuration.indexLabels = "1234567890"

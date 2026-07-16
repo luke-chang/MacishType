@@ -94,6 +94,7 @@ class CINEngine: InputEngine {
     }
 
     override func unload() {
+        reverseIndex = nil
         replaceTable(nil)
         super.unload()
     }
@@ -117,6 +118,51 @@ class CINEngine: InputEngine {
     /// toggle's visibility is accurate. External overrides to hold scope.
     func refreshTableForSettings() {
         loadTableIfNeeded()
+    }
+
+    // MARK: - Reverse Lookup
+
+    /// `character → raw codes` inverted from the table, built on demand for
+    /// the code lookup window. Single-character values only; scope-unfiltered
+    /// (the forward path filters at lookup time, not at table build).
+    private var reverseIndex: [Character: [String]]?
+
+    override var supportsReverseLookup: Bool { cinTableURL != nil }
+
+    override func prepareReverseLookup() async -> Bool {
+        guard !reverseLookupFailed else { return false }
+        // A table pre-parsed for Settings display (isLoaded still false) is
+        // enough — the index builds from memory, so don't take load
+        // ownership and tear that table down again at end.
+        if !isLoaded, table == nil {
+            load()
+            loadedForLookup = isLoaded
+        }
+        guard let table else {
+            reverseLookupFailed = true
+            return false
+        }
+        if reverseIndex == nil {
+            var index: [Character: [String]] = [:]
+            table.enumerateCandidates { code, values in
+                for value in values {
+                    guard value.count == 1, let char = value.first else { continue }
+                    index[char, default: []].append(code)
+                }
+            }
+            reverseIndex = index
+        }
+        return true
+    }
+
+    override func endReverseLookup() {
+        reverseIndex = nil
+        super.endReverseLookup()
+    }
+
+    override func reverseLookup(_ character: Character) -> [ReverseCode] {
+        guard let table, let codes = reverseIndex?[character] else { return [] }
+        return codes.map { ReverseCode(table.rootDisplay($0)) }
     }
 
     // MARK: - Candidate window

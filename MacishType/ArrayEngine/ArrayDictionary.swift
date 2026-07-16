@@ -67,6 +67,13 @@ final class ArrayDictionary {
     private let shortTable: [String: [(label: Character, value: String)]]
     /// Current scope; `reloadTables` rebuilds the filtered tables when it changes.
     private var scope: InputEngine.CharacterSetScope
+    /// `character → raw codes` for the lookup window, inverted on demand from
+    /// the unfiltered main table — deliberately scope-independent, so lookup
+    /// reports codes even for characters filtered out of typing.
+    private var reverseIndex: [Character: [String]]?
+    /// `character → (code, selection key)` inverted from `shortTable`; built
+    /// and released together with `reverseIndex`.
+    private var reverseShortIndex: [Character: [(code: String, label: Character)]]?
     private let frequency: WordFrequencyDictionary.Handle?
     private let symbolNames: SymbolNameDictionary.Handle?
 
@@ -191,6 +198,52 @@ final class ArrayDictionary {
     func shortCodeView(_ code: String) -> (candidates: [String], indexLabels: String) {
         let entries = shortTable[code] ?? []
         return (entries.map(\.value), String(entries.map(\.label)))
+    }
+
+    // MARK: - Reverse Lookup
+
+    /// Build the char → codes indexes by inverting the main table and the
+    /// short-code table once. Idempotent; single-character values only.
+    func prepareReverseIndex() {
+        guard reverseIndex == nil else { return }
+        var index: [Character: [String]] = [:]
+        // With the .full scope, mainTable already is the unfiltered table.
+        let fullTable = scope == .full
+            ? mainTable
+            : ArrayByteTable(bytes: Self.bundledTableBytes("Array30"))
+        fullTable.forEachMatchingCode(where: { _, _ in true }) { code, values in
+            for value in values {
+                guard value.count == 1, let char = value.first else { continue }
+                index[char, default: []].append(code)
+            }
+        }
+        reverseIndex = index
+
+        var shortIndex: [Character: [(code: String, label: Character)]] = [:]
+        for (code, entries) in shortTable.sorted(by: { $0.key < $1.key }) {
+            for entry in entries {
+                guard entry.value.count == 1, let char = entry.value.first else { continue }
+                shortIndex[char, default: []].append((code, entry.label))
+            }
+        }
+        reverseShortIndex = shortIndex
+    }
+
+    func releaseReverseIndex() {
+        reverseIndex = nil
+        reverseShortIndex = nil
+    }
+
+    /// Raw codes for `character` from the prepared index; callers render
+    /// them via `radicalReadout`.
+    func reverseCodes(for character: Character) -> [String] {
+        reverseIndex?[character] ?? []
+    }
+
+    /// Short codes for `character` from the prepared index: the raw code plus
+    /// the fixed selection key that commits it.
+    func reverseShortCodes(for character: Character) -> [(code: String, label: Character)] {
+        reverseShortIndex?[character] ?? []
     }
 
     /// Wildcard query against the main table. A leading `*` with no other

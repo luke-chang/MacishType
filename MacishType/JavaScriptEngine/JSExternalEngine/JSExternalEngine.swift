@@ -19,6 +19,8 @@ class JSExternalEngine: JavaScriptEngine {
 
     override var engineFolderURL: URL? { folderBookmark.url }
 
+    override var externalSourceURL: URL? { engineFolderURL }
+
     /// `<engineFolder>/_storage/` — sandbox scope is held for the
     /// loaded lifetime (acquire in load, release in unload), so I/O
     /// here doesn't need bridge-side scope handling.

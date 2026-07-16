@@ -25,6 +25,18 @@ class InputController: IMKInputController {
         // Auto-enablement would override engine items' explicit isEnabled.
         menu.autoenablesItems = false
 
+        // Omitting the item also disables its keyboard shortcut for this engine.
+        if engine?.supportsReverseLookup == true {
+            let lookupItem = NSMenuItem(
+                title: String(localized: "Find Input Code"),
+                action: #selector(showCodeLookup(_:)),
+                keyEquivalent: "l"
+            )
+            lookupItem.keyEquivalentModifierMask = [.option, .shift]
+            lookupItem.target = self
+            menu.addItem(lookupItem)
+        }
+
         let engineItems = engine?.menuItems() ?? []
         menuToggleKeys.removeAll()
         for descriptor in engineItems {
@@ -46,7 +58,7 @@ class InputController: IMKInputController {
                 menu.addItem(item)
             }
         }
-        if !engineItems.isEmpty {
+        if !menu.items.isEmpty {
             menu.addItem(.separator())
         }
 
@@ -91,6 +103,36 @@ class InputController: IMKInputController {
 
     @MainActor @objc private func showAboutWindow(_ sender: Any?) {
         WindowManager.shared.openAbout()
+    }
+
+    /// Reads the selection BEFORE opening the window: WindowManager's
+    /// NSApp.activate() steals the client's focus, after which the client's
+    /// selection is no longer readable.
+    @MainActor @objc private func showCodeLookup(_ sender: Any?) {
+        WindowManager.shared.openCodeLookup(
+            seedText: selectedClientText(), initialEngineID: engine?.engineID)
+    }
+
+    /// The client's current selection; nil when there is none or the client
+    /// can't report it. Clients without TSMDocumentAccess return
+    /// {NSNotFound, NSNotFound}, and NSNotFound is NSIntegerMax — a bare
+    /// `length > 0` check would pass, so both fields need explicit guards.
+    private func selectedClientText() -> String? {
+        guard let client = client() else { return nil }
+        var range = client.selectedRange()
+        guard range.location != NSNotFound, range.length != NSNotFound, range.length > 0
+        else { return nil }
+        // Cap absurd selections (select-all in a huge document).
+        let wasCapped = range.length > 256
+        range.length = min(range.length, 256)
+        guard var text = client.attributedSubstring(from: range)?.string else { return nil }
+        // A capped range can bisect a surrogate pair; the lone high surrogate
+        // bridges into Swift as U+FFFD. Drop it so the seed ends on a whole
+        // character.
+        if wasCapped, text.hasSuffix("\u{FFFD}") {
+            text.removeLast()
+        }
+        return text
     }
 
     // MARK: - Input Mode

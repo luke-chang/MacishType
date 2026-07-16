@@ -9,6 +9,7 @@ class WindowManager {
     enum Identifier: String {
         case about
         case settings
+        case codeLookup
     }
 
     private var windows: [Identifier: NSWindow] = [:]
@@ -92,5 +93,14 @@ extension WindowManager {
             existing.selectEngine(id: initialEngineID)
         }
         showWindow(.settings) { SettingsWindow(initialEngineID: initialEngineID) }
+    }
+
+    func openCodeLookup(seedText: String? = nil, initialEngineID: String? = nil) {
+        if let existing = windows[.codeLookup] as? CodeLookupWindow, existing.isVisible {
+            existing.update(seedText: seedText, initialEngineID: initialEngineID)
+        }
+        showWindow(.codeLookup) {
+            CodeLookupWindow(seedText: seedText, initialEngineID: initialEngineID)
+        }
     }
 }

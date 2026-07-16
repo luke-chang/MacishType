@@ -409,6 +409,51 @@ export interface InputEngine {
   candidateSelectionChanged?(event: ConfirmEvent): boolean | void;
 }
 
+/**
+ * One reverse-lookup result: an input code that produces the queried
+ * character, plus an optional short label the host renders dimmed next to
+ * the code. Plain strings are accepted wherever a ReverseCode is expected.
+ */
+export interface ReverseCode {
+  code: string;
+  annotation?: string;
+}
+
+/**
+ * Static-side contract for the default-export class, declared separately
+ * because `InputEngine` describes instances — the host reads these members
+ * off the class itself.
+ */
+export interface InputEngineConstructor {
+  new (): InputEngine;
+  /**
+   * All input codes that produce `character` in this engine. Called only
+   * when the manifest declares `capabilities.reverseLookup: true`.
+   *
+   * `character` is a single user-perceived character (grapheme cluster);
+   * its `.length` can exceed 1 (surrogate pairs, combining marks), so
+   * don't assume `length === 1`. Return `[]` when it has no codes.
+   */
+  reverseLookup?(character: string): (string | ReverseCode)[];
+  /**
+   * Optional. Awaited by the host before reverse lookups — resolve when the
+   * lookup data is ready (await the table fetch, build the reverse index
+   * here). Idempotency should come from null-checking the built index, not
+   * from caching this promise. A rejected promise — or a synchronous throw
+   * — marks the engine as failed for this lookup session. Must eventually
+   * settle. Absent = ready right after module load.
+   */
+  prepareReverseLookup?(): void | Promise<void>;
+  /**
+   * Optional. Release lookup-only state built by `prepareReverseLookup`.
+   * May arrive while a prepare promise is still pending — a late prepare
+   * may rebuild the index afterward (held until the next end or module
+   * unload; the host discards the abandoned query's results). Engines whose
+   * reverse data is shared with the typing path must NOT declare this.
+   */
+  endReverseLookup?(): void;
+}
+
 /** Any value representable as JSON. */
 export type JSONValue =
   | string | number | boolean | null

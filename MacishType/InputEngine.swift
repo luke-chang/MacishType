@@ -105,6 +105,20 @@ extension EngineAction {
     }
 }
 
+// MARK: - Reverse Lookup Result
+
+/// One input code that produces a given character, plus an optional
+/// engine-provided label rendered dimmed next to the code (already localized).
+struct ReverseCode {
+    let code: String
+    let annotation: String?
+
+    init(_ code: String, annotation: String? = nil) {
+        self.code = code
+        self.annotation = annotation
+    }
+}
+
 // MARK: - Base Engine
 
 /// Raw keyboard event payload threaded from InputController into the engine
@@ -573,6 +587,55 @@ class InputEngine {
     func toggleOutputToSimplified() {
         setOutputToSimplified(!outputToSimplified)
     }
+
+    // MARK: - Reverse Lookup
+
+    /// Set when `prepareReverseLookup` itself loaded the engine, so
+    /// `endReverseLookup` knows to unload it again. Cause-tracking: an engine
+    /// that was already loaded (or is enabled for typing) is never torn down
+    /// by the lookup window.
+    var loadedForLookup = false
+
+    /// Latched by subclasses when a prepare attempt failed, so the
+    /// per-keystroke self-heal path doesn't retry the load. Cleared by
+    /// `endReverseLookup` — reselecting the engine retries.
+    var reverseLookupFailed = false
+
+    /// Whether this engine can answer `reverseLookup`. The lookup window
+    /// lists only engines returning true. Opt-in per subclass; must stay
+    /// cheap — it runs during window setup and must not load the engine.
+    var supportsReverseLookup: Bool { false }
+
+    /// URL of the externally supplied source backing this engine (a picked
+    /// table file or folder); nil for bundled engines. Lets callers detect a
+    /// source swap without enumerating engine families.
+    var externalSourceURL: URL? { nil }
+
+    /// Makes `reverseLookup` answerable: loads the dictionary if needed and
+    /// builds the char-to-codes index. Idempotent; returns readiness. Called
+    /// when the user selects this engine in the lookup window, and again
+    /// before each query batch so an externally unloaded engine self-heals.
+    /// Suspends only in engines whose data loads asynchronously; synchronous
+    /// implementations complete without hopping executors (the module
+    /// defaults to MainActor isolation).
+    @discardableResult
+    func prepareReverseLookup() async -> Bool { true }
+
+    /// Releases what `prepareReverseLookup` allocated. Subclasses release
+    /// their reverse index (and any failure latch) first, then call super,
+    /// which unloads the dictionary only when the lookup itself loaded it
+    /// and the engine isn't enabled for typing.
+    func endReverseLookup() {
+        if loadedForLookup, !Self.enabledEngines.contains(engineID) {
+            unload()
+        }
+        loadedForLookup = false
+        reverseLookupFailed = false
+    }
+
+    /// All input codes producing `character`, in table order. Empty when
+    /// unsupported, not prepared, or the character has no codes.
+    func reverseLookup(_ character: Character) -> [ReverseCode] { [] }
 
     // MARK: - Menu Items
 

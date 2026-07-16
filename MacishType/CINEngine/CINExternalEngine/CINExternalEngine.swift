@@ -30,6 +30,8 @@ final class CINExternalEngine: CINEngine, ObservableObject {
 
     override var cinTableURL: URL? { fileBookmark.url }
 
+    override var externalSourceURL: URL? { cinTableURL }
+
     override init() {
         super.init()
         fileObserver = fileBookmark.$url

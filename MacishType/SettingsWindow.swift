@@ -14,7 +14,7 @@ import SwiftUI
 
 @MainActor
 final class SettingsWindow: NSWindow {
-    private let sidebar = SettingsSidebarViewController()
+    private let sidebar = SidebarListViewController(items: SettingsSidebarItem.all)
     private var titleObserver: AnyCancellable?
 
     init(initialEngineID: String? = nil) {
@@ -62,7 +62,7 @@ final class SettingsWindow: NSWindow {
         toolbar = bar
 
         sidebar.onSelect = { [weak self] item in
-            detailHost.rootView = SettingsDetailContent(selection: item?.id)
+            detailHost.rootView = SettingsDetailContent(selection: item.id)
             self?.bindTitle(to: item)
         }
         sidebar.select(id: initialEngineID)
@@ -187,104 +187,6 @@ extension SettingsSidebarItem {
         guard let image = NSImage(contentsOf: url) else { return nil }
         image.isTemplate = true
         return image
-    }
-}
-
-// MARK: - Sidebar view controller
-
-@MainActor
-final class SettingsSidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
-    var onSelect: ((SettingsSidebarItem?) -> Void)?
-
-    private let outline = NSOutlineView()
-    private let items = SettingsSidebarItem.all
-
-    override func loadView() {
-        let scroll = NSScrollView()
-        scroll.hasVerticalScroller = true
-        scroll.drawsBackground = false
-
-        outline.headerView = nil
-        outline.indentationPerLevel = 0
-        outline.style = .sourceList
-        outline.rowHeight = 30
-        outline.allowsEmptySelection = false
-        outline.dataSource = self
-        outline.delegate = self
-        outline.autoresizingMask = [.width, .height]
-
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("col"))
-        column.isEditable = false
-        outline.addTableColumn(column)
-        outline.outlineTableColumn = column
-
-        scroll.documentView = outline
-        view = scroll
-    }
-
-    /// Falls back to the first row when `id` is nil or unknown.
-    func select(id: String? = nil) {
-        guard !items.isEmpty else { return }
-        loadViewIfNeeded()
-        // The outline populates lazily; selecting a row before the first
-        // reload is a silent no-op. Force the load so selection lands
-        // synchronously.
-        if outline.numberOfRows == 0 {
-            outline.reloadData()
-        }
-        let row = id.flatMap { target in items.firstIndex(where: { $0.id == target }) } ?? 0
-        outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-        // outlineViewSelectionDidChange fires only when the selection actually
-        // changes — with allowsEmptySelection = false the reload silently
-        // pre-selects row 0, making a programmatic select of row 0 a
-        // no-change. Notify directly; a double invocation is harmless
-        // (rootView and title assignments are idempotent).
-        onSelect?(items[row])
-    }
-
-    // MARK: data source
-
-    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        item == nil ? items.count : 0
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        items[index]
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { false }
-
-    // MARK: delegate
-
-    func outlineView(_ outlineView: NSOutlineView,
-                     viewFor tableColumn: NSTableColumn?,
-                     item: Any) -> NSView? {
-        guard let row = item as? SettingsSidebarItem else { return nil }
-        let cell = NSTableCellView()
-        let icon = NSImageView(image: row.icon)
-        icon.symbolConfiguration = .init(pointSize: 14, weight: .regular)
-        let label = NSTextField(labelWithString: row.title)
-        cell.imageView = icon
-        cell.textField = label
-        cell.addSubview(icon)
-        cell.addSubview(label)
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        label.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
-            icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 18),
-            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
-            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor),
-        ])
-        return cell
-    }
-
-    func outlineViewSelectionDidChange(_ notification: Notification) {
-        let row = outline.selectedRow
-        let item = (row >= 0 && row < items.count) ? items[row] : nil
-        onSelect?(item)
     }
 }
 

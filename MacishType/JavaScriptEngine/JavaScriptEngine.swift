@@ -1533,6 +1533,139 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// faulted state.
     var isModuleLoaded: Bool { engineClass != nil }
 
+    // MARK: - Reverse Lookup
+
+    /// Declared via the manifest's `capabilities.reverseLookup`. The manifest
+    /// is read from disk on demand (a cold start hasn't parsed it yet); this
+    /// never loads the module itself.
+    override var supportsReverseLookup: Bool {
+        guard engineFolderURL != nil else { return false }
+        if manifest == nil { reloadManifest() }
+        return manifest?.capabilities?.reverseLookup == true
+    }
+
+    /// Bumped by `endReverseLookup`. A teardown rejects the pending fetches
+    /// behind an in-flight static prepare, whose abandoned continuation
+    /// resumes only after the lookup state was already reset — the
+    /// generation check keeps that late resume from polluting it.
+    private var reverseLookupGeneration = 0
+
+    override func prepareReverseLookup() async -> Bool {
+        guard !reverseLookupFailed else { return false }
+        // The guard is required, not just an optimization: an external engine
+        // acquires its folder bookmark before the idempotence check inside
+        // load(), so a duplicate call would unbalance the bookmark refcount.
+        if !isModuleLoaded {
+            load()
+            loadedForLookup = isModuleLoaded
+        }
+        if !isModuleLoaded {
+            reverseLookupFailed = true
+            return false
+        }
+        return await awaitStaticPrepare()
+    }
+
+    /// Resumes its continuation at most once — a settled promise calls back
+    /// synchronously inside `invokeMethod("then")`, before
+    /// `withCheckedContinuation`'s body returns.
+    private final class PrepareSettleBox {
+        var continuation: CheckedContinuation<Bool, Never>?
+
+        func resume(_ fulfilled: Bool) {
+            continuation?.resume(returning: fulfilled)
+            continuation = nil
+        }
+    }
+
+    /// Awaits the class's optional static prepare hook. Ready when the hook
+    /// is absent or returns a non-thenable; a synchronous throw or a
+    /// rejected promise latches the failure.
+    private func awaitStaticPrepare() async -> Bool {
+        guard let engineClass, let context = jsContext else { return true }
+
+        // A synchronous hook reports failure by throwing, which surfaces only
+        // through the context exception handler — capture it around the
+        // invoke so `throw` and `reject` are equivalent.
+        var threw = false
+        let defaultHandler = context.exceptionHandler
+        context.exceptionHandler = { _, exception in
+            threw = true
+            Logger.javaScript.error(
+                "static prepareReverseLookup threw:\n\(Self.describeJSException(exception), privacy: .public)"
+            )
+        }
+        let invoked = Self.invokeIfDefined(engineClass, "prepareReverseLookup", withArguments: [])
+        context.exceptionHandler = defaultHandler
+        if threw {
+            reverseLookupFailed = true
+            return false
+        }
+
+        guard let result = Self.resolved(invoked),
+              let then = result.objectForKeyedSubscript("then"), !then.isUndefined
+        else { return true }
+
+        let generation = reverseLookupGeneration
+        let fulfilled = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            let box = PrepareSettleBox()
+            box.continuation = continuation
+            let onFulfilled: @convention(block) (JSValue) -> Void = { _ in
+                box.resume(true)
+            }
+            let onRejected: @convention(block) (JSValue) -> Void = { reason in
+                Logger.javaScript.error(
+                    "static prepareReverseLookup rejected:\n\(Self.describeJSException(reason), privacy: .public)"
+                )
+                box.resume(false)
+            }
+            result.invokeMethod("then", withArguments: [
+                Self.jsFunction(onFulfilled, in: context),
+                Self.jsFunction(onRejected, in: context),
+            ])
+        }
+        guard generation == reverseLookupGeneration else { return false }
+        if !fulfilled {
+            reverseLookupFailed = true
+        }
+        return fulfilled
+    }
+
+    override func endReverseLookup() {
+        reverseLookupGeneration += 1
+        if let engineClass {
+            Self.invokeIfDefined(engineClass, "endReverseLookup", withArguments: [])
+        }
+        super.endReverseLookup()
+    }
+
+    override func reverseLookup(_ character: Character) -> [ReverseCode] {
+        guard let engineClass,
+              let result = Self.resolved(
+                  Self.invokeIfDefined(
+                      engineClass, "reverseLookup", withArguments: [String(character)]))
+        else { return [] }
+        return Self.marshalReverseCodes(result)
+    }
+
+    /// Accepts both shapes the contract allows: `string[]` and
+    /// `[{code, annotation?}]`. Anything else yields no codes.
+    private static func marshalReverseCodes(_ value: JSValue) -> [ReverseCode] {
+        guard value.isArray, let items = value.toArray() else { return [] }
+        return items.compactMap { item in
+            if let code = item as? String {
+                return code.isEmpty ? nil : ReverseCode(code)
+            }
+            if let dict = item as? [String: Any],
+               let code = dict["code"] as? String, !code.isEmpty {
+                let annotation = dict["annotation"] as? String
+                return ReverseCode(
+                    code, annotation: annotation?.isEmpty == false ? annotation : nil)
+            }
+            return nil
+        }
+    }
+
     override var candidateWindowConfiguration: CandidateWindowConfiguration {
         var config = super.candidateWindowConfiguration
         config.apply(candidateWindowCache)
@@ -1684,7 +1817,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// the method. JSC's `invokeMethod` throws TypeError on undefined, but
     /// the bridge contract is duck-typed: engines may opt out of any of
     /// `activate / deactivate / handleKey / candidateConfirmed /
-    /// candidateSelectionChanged / compositionEnded`.
+    /// candidateSelectionChanged / compositionEnded` and the static
+    /// reverse-lookup hooks.
     ///
     /// A throw inside `invokeMethod` fires the context `exceptionHandler`,
     /// which logs it with a stack trace — no explicit check needed here.

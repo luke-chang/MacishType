@@ -20,13 +20,14 @@ extension JavaScriptEngine {
         let intendedLanguage: String?
         let candidateWindow: CandidateWindowOverrides?
         let modules: Modules?
+        let capabilities: Capabilities?
         let settings: [SettingsSection]?
         // nil = undeclared (host default items apply); non-nil takes full
         // control of the IME-menu items, [] included ("no items").
         let menu: [MenuItem]?
 
         private enum CodingKeys: String, CodingKey {
-            case entry, name, intendedLanguage, candidateWindow, modules, settings, menu
+            case entry, name, intendedLanguage, candidateWindow, modules, capabilities, settings, menu
         }
 
         init(from decoder: Decoder) throws {
@@ -60,6 +61,15 @@ extension JavaScriptEngine {
                     "manifest modules ignored: \(String(describing: error), privacy: .public)"
                 )
                 modules = nil
+            }
+            // capabilities wrapper type-mismatch drops the sub-tree but keeps entry.
+            do {
+                capabilities = try c.decodeIfPresent(Capabilities.self, forKey: .capabilities)
+            } catch {
+                Logger.javaScriptEngine.error(
+                    "manifest capabilities ignored: \(String(describing: error), privacy: .public)"
+                )
+                capabilities = nil
             }
             settings = Self.decodeTolerantSettings(from: c)
             menu = Self.decodeTolerantMenu(from: c)
@@ -313,6 +323,18 @@ extension JavaScriptEngine {
                 if wordFrequency == true { names.append("wordFrequency") }
                 return names
             }
+        }
+
+        // MARK: Capabilities
+
+        /// Host-side feature declarations. Unlike `modules` (data injected
+        /// into JS), these flags tell the host which optional host features
+        /// the engine's class implements. Not exposed to the JS global
+        /// `manifest`. Synthesized decoding suffices for a single key (the
+        /// wrapper decode in `Manifest.init` drops a malformed subtree);
+        /// adopt the `Modules` per-key tolerant pattern when more keys land.
+        struct Capabilities: Decodable {
+            var reverseLookup: Bool?
         }
 
         // MARK: Settings schema
