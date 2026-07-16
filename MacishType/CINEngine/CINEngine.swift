@@ -405,7 +405,10 @@ class CINEngine: InputEngine {
     /// single character. Used for code keys; Space/Return/etc. are matched by
     /// keyCode before this.
     private func inputChar(_ event: KeyEventInput) -> Character? {
-        guard event.pureModifiers.intersection([.command, .control, .option]).isEmpty,
+        // Keypad character keys never count as input keys, so digit-coded
+        // tables can't be composed from the keypad (numeric-keypad rule).
+        guard !event.isNumericPadCharacterKey,
+              event.pureModifiers.intersection([.command, .control, .option]).isEmpty,
               let chars = event.characters, chars.count == 1 else { return nil }
         return chars.first
     }

@@ -578,6 +578,34 @@ truth. Highlights:
   `deactivate` path can fire it with nothing composing (e.g. switching
   apps), so keep it idempotent.
 
+#### Numeric keypad keys
+
+Recommended convention (what macOS input methods do): keypad character
+keys — every `code` starting with `"Numpad"` except `"NumpadEnter"` —
+never enter the composition. Swallow them while composing, pass them
+through when idle, before interpreting characters:
+
+```js
+if (event.code.startsWith("Numpad") && event.code !== "NumpadEnter"
+    && !event.metaKey && !event.ctrlKey && !event.altKey) {
+  return event.isComposing;   // swallow while composing, pass through when idle
+}
+```
+
+While the candidate window is visible, keypad digits matching an index
+label are consumed by the host's label dispatch before `handleKey`
+reaches the engine (it matches by character, so keypad and main-row
+digits select alike).
+
+Two named keypad keys:
+
+- **NumpadEnter** should behave like Return — compare
+  `event.key === "Enter"`, which covers both.
+- **Clear** has `code: "NumLock"` (W3C position semantics) and
+  `key: "Clear"`. Treat it like Escape while composing (match
+  `event.key === "Clear"` alongside `"Escape"`); when idle let it pass
+  through for the client to handle.
+
 #### Host fallback
 
 `candidateConfirmed` and `candidateSelectionChanged` share a single
@@ -741,7 +769,8 @@ the new key is processed normally.
 - `repeat` — true on auto-repeated keydowns past the OS repeat delay.
 - `location` — `0` standard / `1` left modifier / `2` right modifier /
   `3` numpad. Redundant with `code` for numpad keys (those already start
-  with `"Numpad"`); prefer `code` for detection.
+  with `"Numpad"`); prefer `code` for detection. See
+  [Numeric keypad keys](#numeric-keypad-keys) for the handling contract.
 - `isComposing` — same as the read-only context field above.
 - `getModifierState(key)` — query individual states (`"Shift"`, `"Control"`,
   `"Alt"`, `"Meta"`, `"CapsLock"`). Other web-spec strings (`"Fn"` /

@@ -185,6 +185,30 @@ test("Escape clears the composition", () => {
   assert.ok(escape.last("resetContext"));
 });
 
+test("keypad Clear clears the composition like Escape", () => {
+  const engine = freshEngine();
+  compose(engine, ["t"]);
+  const clear = makeEvent({ isComposing: true, code: "NumLock", key: "Clear" });
+  engine.handleKey(clear);
+  assert.equal(engine.code, "");
+  assert.ok(clear.last("resetContext"));
+});
+
+test("keypad character keys never compose (numeric-keypad rule)", () => {
+  const engine = freshEngine();
+  // Idle: keypad `*` must not start a wildcard; the key passes to the client.
+  assert.equal(engine.handleKey(makeEvent({ code: "NumpadMultiply", key: "*" })), false);
+  assert.equal(engine.code, "");
+  assert.equal(engine.handleKey(makeEvent({ code: "Numpad5", key: "5" })), false);
+  // Composing: keypad keys are swallowed and the composition stays intact.
+  compose(engine, ["t"]);
+  const before = engine.code;
+  const star = makeEvent({ isComposing: true, code: "NumpadMultiply", key: "*" });
+  assert.equal(engine.handleKey(star), true);
+  assert.equal(engine.code, before);
+  assert.equal(star.calls.length, 0);
+});
+
 test("a fresh engine starts with cleared fields", () => {
   const engine = new ArrayEngine();
   assert.equal(engine.code, "");

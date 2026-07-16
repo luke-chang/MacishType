@@ -80,6 +80,14 @@ function applyComposition(event, marked) {
 export default class JSExternalEngine {
   /** @param {KeyEvent} event */
   handleKey(event) {
+    // Numeric-keypad rule: keypad character keys never compose — swallow
+    // while composing, pass through when idle. Modifier combos and
+    // NumpadEnter stay on their normal paths (Clear's code is "NumLock").
+    if (event.code.startsWith("Numpad") && event.code !== "NumpadEnter"
+        && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      return event.isComposing;
+    }
+
     if (event.isComposing) {
       if (isEscapeKey(event)) {
         event.flushStaged();

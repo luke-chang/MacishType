@@ -46,6 +46,16 @@ enum KeyboardEventMapping {
         webCodeToMacKeyCode[code]
     }
 
+    /// Character-producing keys in the physical keypad cluster, derived from
+    /// the web-code map: every "Numpad*" code except NumpadEnter (a named
+    /// key; Clear is excluded by the data — its code is "NumLock"). The
+    /// same rule JS engines apply as `code.startsWith("Numpad")`.
+    static let numericPadCharacterKeys: Set<UInt16> = Set(
+        macKeyCodeToWebCode
+            .filter { $0.value.hasPrefix("Numpad") && $0.value != "NumpadEnter" }
+            .keys
+    )
+
     static func webKey(for keyCode: UInt16, characters: String?) -> String {
         if let namedKey = macKeyCodeToWebKey[keyCode] {
             return namedKey

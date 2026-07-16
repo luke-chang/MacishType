@@ -135,6 +135,10 @@ final class ArrayEngine: InputEngine {
         context: InputEngineContext, keyEvent: KeyEventInput, candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
         guard let dictionary else { return .notHandled() }
+        // Before wildcardChar: keypad `*` must not start a wildcard query.
+        if let numericPad = Self.numericPadResult(for: keyEvent, context: context) {
+            return numericPad
+        }
         let ctx = context as! ArrayEngineContext
 
         if !ctx.code.isEmpty {

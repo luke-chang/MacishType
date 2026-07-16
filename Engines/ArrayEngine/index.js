@@ -305,6 +305,14 @@ export default class ArrayEngine {
 
   /** @param {KeyEvent} event */
   handleKey(event) {
+    // Numeric-keypad rule: keypad character keys never compose (keypad `*`
+    // must not start a wildcard) — swallow while composing, pass through
+    // when idle. Modifier combos and NumpadEnter stay on their normal paths.
+    if (event.code.startsWith("Numpad") && event.code !== "NumpadEnter"
+        && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      return event.isComposing;
+    }
+
     if (event.isComposing) {
       if (hasWildcard(this.code)) return this.handleWildcardKey(event);
       return this.selecting

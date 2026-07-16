@@ -157,6 +157,11 @@ struct KeyEventInput {
     /// entry", so while composing it follows the engine's Escape semantics;
     /// when idle both pass through to the client.
     var isEscapeKey: Bool { keyCode == KeyCode.escape || keyCode == KeyCode.keypadClear }
+
+    /// Keypad key that would type a character (digit / operator / decimal).
+    var isNumericPadCharacterKey: Bool {
+        KeyboardEventMapping.numericPadCharacterKeys.contains(keyCode)
+    }
 }
 
 class InputEngine {
@@ -424,6 +429,10 @@ class InputEngine {
             return context.isComposing ? .handled() : .notHandled()
         }
 
+        if let numericPad = Self.numericPadResult(for: keyEvent, context: context) {
+            return numericPad
+        }
+
         // Text-producing combos run before the modified-key rule below.
         if !pureMods.contains(.option),
            let text = keyEvent.characters, text.count == 1,
@@ -555,6 +564,19 @@ class InputEngine {
               chars.count == 1, let char = chars.first,
               let fullwidth = toFullwidth(char) else { return nil }
         return .flushStaged(String(fullwidth))
+    }
+
+    /// The numeric-keypad rule engines apply before interpreting characters:
+    /// keypad character keys never compose — swallow while composing, pass
+    /// through when idle. Cmd/Ctrl/Option combos return nil so shortcuts
+    /// and the fullwidth path stay on their normal routes.
+    static func numericPadResult(
+        for keyEvent: KeyEventInput, context: InputEngineContext
+    ) -> EngineHandleResult? {
+        guard keyEvent.isNumericPadCharacterKey,
+              keyEvent.pureModifiers.intersection([.command, .control, .option]).isEmpty
+        else { return nil }
+        return context.isComposing ? .handled() : .notHandled()
     }
 
     /// Same on-disk file → same string regardless of how callers spelled

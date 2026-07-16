@@ -258,6 +258,13 @@ export interface KeyEvent extends EventContext, EventMutators {
    * Mac's physical Clear key on the numpad reports `code: "NumLock"` per
    * the W3C UI Events spec — Clear sits where NumLock lives on PC keyboards.
    *
+   * Recommended handling ("Numeric keypad keys" in the README): keypad
+   * character keys (`"Numpad*"` except `"NumpadEnter"`) never enter the
+   * composition — swallow while composing, pass through when idle.
+   * NumpadEnter behaves like Return (match `key === "Enter"`, which covers
+   * both); Clear behaves like Escape while composing (match
+   * `key === "Clear"` — its code is `"NumLock"`).
+   *
    * Format examples: `"KeyA"` / `"Digit1"` / `"Space"` / `"Enter"` /
    * `"ArrowLeft"` / `"ShiftLeft"` / `"Numpad0"` / `"F1"`.
    */
