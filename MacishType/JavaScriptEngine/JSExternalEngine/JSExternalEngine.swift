@@ -21,6 +21,14 @@ class JSExternalEngine: JavaScriptEngine {
 
     override var externalSourceURL: URL? { engineFolderURL }
 
+    override var externalDisplayName: String? {
+        Self.normalizedDisplayName(manifest?.name?.resolved())
+    }
+
+    override var externalDisplayNamePublisher: AnyPublisher<String?, Never> {
+        $manifest.map { Self.normalizedDisplayName($0?.name?.resolved()) }.eraseToAnyPublisher()
+    }
+
     /// `<engineFolder>/_storage/` — sandbox scope is held for the
     /// loaded lifetime (acquire in load, release in unload), so I/O
     /// here doesn't need bridge-side scope handling.

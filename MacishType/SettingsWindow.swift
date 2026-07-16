@@ -74,35 +74,25 @@ final class SettingsWindow: NSWindow {
         sidebar.select(id: id)
     }
 
-    /// Binds the window title to the selected item. For the externally-loaded
-    /// engine the title reflects `manifest.name` reactively — picking a folder
-    /// or editing the manifest updates it without reopening Settings.
+    /// Binds the window title to the selected item. For engines backed by an
+    /// external source the title appends the loaded source's name reactively —
+    /// the publisher emits synchronously on subscribe, seeding the initial
+    /// title and tracking every later reload.
     private func bindTitle(to item: SettingsSidebarItem?) {
         titleObserver = nil
         guard let item else { title = ""; return }
-        let baseTitle = item.title
-        // Externally-loaded engines append the loaded resource's name to the
-        // title, reactively. Bundled engines (incl. future subclasses) keep
-        // their own slot label. The publisher emits synchronously on subscribe,
-        // seeding the initial title and tracking every later reload.
-        switch InputEngine.engine(forSuffix: item.id) {
-        case let engine as JSExternalEngine:
-            titleObserver = engine.$manifest.sink { [weak self] manifest in
-                self?.title = Self.composedTitle(base: baseTitle, name: manifest?.name?.resolved())
-            }
-        case let engine as CINExternalEngine:
-            titleObserver = engine.$displayName.sink { [weak self] name in
-                self?.title = Self.composedTitle(base: baseTitle, name: name)
-            }
-        default:
+        guard let engine = InputEngine.engine(forSuffix: item.id) else {
             title = item.title
+            return
+        }
+        let baseTitle = item.title
+        titleObserver = engine.externalDisplayNamePublisher.sink { [weak self] name in
+            self?.title = Self.composedTitle(base: baseTitle, name: name)
         }
     }
 
     private static func composedTitle(base: String, name: String?) -> String {
-        // Blank/missing name → no parens.
-        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let name = trimmed, !name.isEmpty else { return base }
+        guard let name else { return base }
         return "\(base) (\(name))"
     }
 }

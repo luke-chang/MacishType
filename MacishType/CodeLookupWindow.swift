@@ -210,7 +210,7 @@ final class CodeLookupWindow: NSWindow {
             guard let self, self.queryGeneration == generation else { return }
             // Resolved after prepare: an external table's display name only
             // exists once its table is parsed.
-            let name = Self.displayName(for: engine, fallback: fallbackTitle)
+            let name = engine.externalDisplayName ?? fallbackTitle
             if self.state.engineName != name { self.state.engineName = name }
             guard ready else {
                 self.state.status = .loadFailed
@@ -235,21 +235,6 @@ final class CodeLookupWindow: NSWindow {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
     }
 
-    /// Externally-loaded engines are titled by what they loaded; bundled
-    /// engines keep their sidebar title. Mirrors SettingsWindow.bindTitle.
-    private static func displayName(for engine: InputEngine, fallback: String) -> String {
-        switch engine {
-        case let engine as JSExternalEngine:
-            // Blank or whitespace-only manifest names fall back like nil.
-            let name = engine.manifest?.name?.resolved()
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return (name?.isEmpty == false) ? name! : fallback
-        case let engine as CINExternalEngine:
-            return engine.displayName ?? fallback
-        default:
-            return fallback
-        }
-    }
 }
 
 // MARK: - Toolbar

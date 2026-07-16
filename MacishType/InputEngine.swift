@@ -1,5 +1,6 @@
 import Carbon
 import Cocoa
+import Combine
 import OSLog
 import SwiftUI
 
@@ -588,6 +589,30 @@ class InputEngine {
         setOutputToSimplified(!outputToSimplified)
     }
 
+    // MARK: - External Source
+
+    /// URL of the externally supplied source backing this engine (a picked
+    /// table file or folder); nil for bundled engines. Lets callers detect a
+    /// source swap without enumerating engine families.
+    var externalSourceURL: URL? { nil }
+
+    /// User-facing name of the externally loaded source, normalized (blank →
+    /// nil); nil for bundled engines or when nothing is loaded.
+    var externalDisplayName: String? { nil }
+
+    /// Emits the current name on subscribe. The base derives a one-shot
+    /// publisher from the value; subclasses whose name changes across reloads
+    /// must override this with a live publisher.
+    var externalDisplayNamePublisher: AnyPublisher<String?, Never> {
+        Just(externalDisplayName).eraseToAnyPublisher()
+    }
+
+    /// Blank-insensitive normalization for externally sourced display names.
+    nonisolated static func normalizedDisplayName(_ name: String?) -> String? {
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty == false) ? trimmed : nil
+    }
+
     // MARK: - Reverse Lookup
 
     /// Set when `prepareReverseLookup` itself loaded the engine, so
@@ -605,11 +630,6 @@ class InputEngine {
     /// lists only engines returning true. Opt-in per subclass; must stay
     /// cheap — it runs during window setup and must not load the engine.
     var supportsReverseLookup: Bool { false }
-
-    /// URL of the externally supplied source backing this engine (a picked
-    /// table file or folder); nil for bundled engines. Lets callers detect a
-    /// source swap without enumerating engine families.
-    var externalSourceURL: URL? { nil }
 
     /// Makes `reverseLookup` answerable: loads the dictionary if needed and
     /// builds the char-to-codes index. Idempotent; returns readiness. Called

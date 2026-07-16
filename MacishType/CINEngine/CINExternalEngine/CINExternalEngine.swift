@@ -12,8 +12,8 @@ final class CINExternalEngine: CINEngine, ObservableObject {
 
     override var engineID: String { "CINExternal" }
 
-    /// The loaded table's display name (`%cname`/`%ename`), published so the
-    /// Settings window title tracks it. nil when no table is loaded.
+    /// The loaded table's display name (`%cname`/`%ename`), published to back
+    /// `externalDisplayNamePublisher`. nil when no table is loaded.
     @Published private(set) var displayName: String?
 
     let fileBookmark = SecurityScopedBookmark(identifier: "CINExternal_tableFile")
@@ -31,6 +31,14 @@ final class CINExternalEngine: CINEngine, ObservableObject {
     override var cinTableURL: URL? { fileBookmark.url }
 
     override var externalSourceURL: URL? { cinTableURL }
+
+    override var externalDisplayName: String? {
+        Self.normalizedDisplayName(displayName)
+    }
+
+    override var externalDisplayNamePublisher: AnyPublisher<String?, Never> {
+        $displayName.map(Self.normalizedDisplayName).eraseToAnyPublisher()
+    }
 
     override init() {
         super.init()
