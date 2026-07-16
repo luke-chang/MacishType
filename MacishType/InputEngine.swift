@@ -149,6 +149,14 @@ struct KeyEventInput {
         default: return true
         }
     }
+
+    /// Return or keypad Enter — the two keys that confirm.
+    var isReturnKey: Bool { keyCode == KeyCode.return || keyCode == KeyCode.keypadEnter }
+
+    /// Escape or keypad Clear. Clear's native meaning is "clear the current
+    /// entry", so while composing it follows the engine's Escape semantics;
+    /// when idle both pass through to the client.
+    var isEscapeKey: Bool { keyCode == KeyCode.escape || keyCode == KeyCode.keypadClear }
 }
 
 class InputEngine {
@@ -432,7 +440,7 @@ class InputEngine {
             return context.isComposing ? .handled() : .notHandled()
         }
 
-        if keyEvent.keyCode == KeyCode.escape {
+        if keyEvent.isEscapeKey {
             return context.isComposing ? .handled([.flushStaged()]) : .notHandled()
         }
 
@@ -448,7 +456,7 @@ class InputEngine {
         if !keyEvent.pureModifiers.intersection([.command, .control]).isEmpty {
             return context.isComposing ? .handled() : .notHandled()
         }
-        if keyEvent.keyCode == KeyCode.escape || keyEvent.keyCode == KeyCode.backspace {
+        if keyEvent.isEscapeKey || keyEvent.keyCode == KeyCode.backspace {
             return context.isComposing ? .handled([.resetContext]) : .notHandled()
         }
         if !keyEvent.isPrintingCharacter, !context.isComposing {
@@ -465,7 +473,7 @@ class InputEngine {
         keyEvent: KeyEventInput,
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
-        if keyEvent.keyCode == KeyCode.escape {
+        if keyEvent.isEscapeKey {
             return .handled([.flushStaged()])
         }
         return .notHandled()

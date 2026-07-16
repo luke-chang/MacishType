@@ -258,12 +258,12 @@ class CINEngine: InputEngine {
     ) -> EngineHandleResult {
         if event.isBareKey {
             switch event.keyCode {
-            case KeyCode.escape:
+            case KeyCode.escape, KeyCode.keypadClear:
                 return .handled([.resetContext])
             case KeyCode.backspace:
                 ctx.code = String(ctx.code.dropLast())
                 return ctx.code.isEmpty ? .handled([.resetContext]) : .handled(renderPreview(ctx, table))
-            case KeyCode.space, KeyCode.return:
+            case KeyCode.space, KeyCode.return, KeyCode.keypadEnter:
                 // When candidates show, commit the highlight; otherwise discard.
                 // (Return-with-candidates is taken by the host before reaching here.)
                 return window.isVisible ? .handled([.commitSelectedCandidate]) : .handled([.resetContext])
@@ -306,7 +306,7 @@ class CINEngine: InputEngine {
     ) -> EngineHandleResult {
         if event.isBareKey {
             switch event.keyCode {
-            case KeyCode.escape:
+            case KeyCode.escape, KeyCode.keypadClear:
                 return .handled([.resetContext])
             case KeyCode.backspace:
                 ctx.code = String(ctx.code.dropLast())
@@ -335,7 +335,7 @@ class CINEngine: InputEngine {
     ) -> EngineHandleResult {
         if event.isBareKey {
             switch event.keyCode {
-            case KeyCode.escape:
+            case KeyCode.escape, KeyCode.keypadClear:
                 return .handled([.resetContext])
             case KeyCode.backspace:
                 // Return to composing. An endkey appended itself to `code`, so

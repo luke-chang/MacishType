@@ -190,7 +190,7 @@ final class ArrayEngine: InputEngine {
         if let page = pageAction(event, window) { return .handled([page]) }
         if event.isBareKey {
             switch event.keyCode {
-            case KeyCode.escape:
+            case KeyCode.escape, KeyCode.keypadClear:
                 return .handled([.resetContext])
             case KeyCode.backspace:
                 ctx.code = String(ctx.code.dropLast())
@@ -221,7 +221,7 @@ final class ArrayEngine: InputEngine {
         if let page = pageAction(event, window) { return .handled([page]) }
         if event.isBareKey {
             switch event.keyCode {
-            case KeyCode.escape:
+            case KeyCode.escape, KeyCode.keypadClear:
                 return .handled([.resetContext])
             case KeyCode.backspace:
                 // Step back one stage: a symbol group returns to its prefix menu,
@@ -252,7 +252,7 @@ final class ArrayEngine: InputEngine {
         if let page = pageAction(event, window) { return .handled([page]) }
         if event.isBareKey {
             switch event.keyCode {
-            case KeyCode.escape:
+            case KeyCode.escape, KeyCode.keypadClear:
                 return .handled([.resetContext])
             case KeyCode.backspace:
                 ctx.code = String(ctx.code.dropLast())

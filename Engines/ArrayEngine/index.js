@@ -185,6 +185,12 @@ function toFullwidth(char) {
   return String.fromCharCode(code + 0xfee0);
 }
 
+// Escape or keypad Clear. Clear's web code is "NumLock" (W3C position
+// semantics), so match it by key.
+function isEscapeKey(event) {
+  return event.code === "Escape" || event.key === "Clear";
+}
+
 function shortCodeView(code) {
   const entries = shortTable.get(code) ?? [];
   return {
@@ -365,11 +371,12 @@ export default class ArrayEngine {
   handleComposingKey(event) {
     if (this.pageKey(event)) return true;
     if (this.isBareKey(event)) {
+      if (isEscapeKey(event)) {
+        this.reset();
+        event.resetContext();
+        return true;
+      }
       switch (event.code) {
-        case "Escape":
-          this.reset();
-          event.resetContext();
-          return true;
         case "Backspace":
           this.code = this.code.slice(0, -1);
           if (this.code) {
@@ -454,11 +461,12 @@ export default class ArrayEngine {
   handleWildcardKey(event) {
     if (this.pageKey(event)) return true;
     if (this.isBareKey(event)) {
+      if (isEscapeKey(event)) {
+        this.reset();
+        event.resetContext();
+        return true;
+      }
       switch (event.code) {
-        case "Escape":
-          this.reset();
-          event.resetContext();
-          return true;
         case "Backspace":
           this.code = this.code.slice(0, -1);
           if (!this.code) {
@@ -518,11 +526,12 @@ export default class ArrayEngine {
   handleSelectingKey(event) {
     if (this.pageKey(event)) return true;
     if (this.isBareKey(event)) {
+      if (isEscapeKey(event)) {
+        this.reset();
+        event.resetContext();
+        return true;
+      }
       switch (event.code) {
-        case "Escape":
-          this.reset();
-          event.resetContext();
-          return true;
         case "Backspace":
           // Step back one stage: a symbol group returns to its menu, a
           // candidate list returns to the composing preview.

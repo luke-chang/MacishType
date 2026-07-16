@@ -13,6 +13,12 @@ function toFullwidth(char) {
 
 const validCompositionCharacters = new Set("abcdefghijklmnopqrstuvwxyz");
 
+// Escape or keypad Clear. Clear's web code is "NumLock" (W3C position
+// semantics), so match it by key.
+function isEscapeKey(event) {
+  return event.code === "Escape" || event.key === "Clear";
+}
+
 // A-Z → common zh-Hant characters, for exercising the system-provided
 // associated mode.
 const keyMap = {
@@ -75,7 +81,7 @@ export default class JSExternalEngine {
   /** @param {KeyEvent} event */
   handleKey(event) {
     if (event.isComposing) {
-      if (event.code === "Escape") {
+      if (isEscapeKey(event)) {
         event.flushStaged();
       } else if (event.code === "Space") {
         const first = lookupCandidates(event.markedText)[0];

@@ -599,7 +599,7 @@ private extension InputController {
                 return true
             }
             // Only an unmodified Return commits (Cmd / Ctrl already filtered above).
-            if keyEvent.keyCode == KeyCode.return,
+            if keyEvent.isReturnKey,
                pureMods.intersection([.shift, .option]).isEmpty {
                 CandidateWindow.shared.commitSelectedCandidate()
                 return true

@@ -328,7 +328,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
             self.syncPositionIfNeeded()
 
             switch event.keyCode {
-            case KeyCode.return:
+            case KeyCode.return, KeyCode.keypadEnter:
                 self.candidateWindow.commitSelectedCandidate()
                 return nil
             case KeyCode.tab:

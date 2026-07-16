@@ -9,6 +9,8 @@ enum KeyCode {
     static let space = UInt16(kVK_Space)
     static let backspace = UInt16(kVK_Delete)   // the Delete/Backspace key
     static let escape = UInt16(kVK_Escape)
+    static let keypadEnter = UInt16(kVK_ANSI_KeypadEnter)
+    static let keypadClear = UInt16(kVK_ANSI_KeypadClear)
 
     static let equal = UInt16(kVK_ANSI_Equal)
     static let minus = UInt16(kVK_ANSI_Minus)
