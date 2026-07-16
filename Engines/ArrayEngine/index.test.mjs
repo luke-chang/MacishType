@@ -51,8 +51,16 @@ globalThis.manifest = {
 globalThis.addEventListener = () => {};
 // Silence the engine's load-progress logs; keep errors visible.
 globalThis.console = { ...console, info: () => {}, debug: () => {} };
+// fetch is backed by the real data files. Array30 additionally gets one
+// synthetic multi-character row appended so tests can prove reverse lookup
+// skips such values (the real table has none). The code "zzzzz" is unused and
+// matches no wildcard pattern the tests query, so forward-path assertions are
+// unaffected.
 globalThis.fetch = async (path) => ({
-  text: () => readFile(new URL(path, import.meta.url), "utf8"),
+  text: async () => {
+    const text = await readFile(new URL(path, import.meta.url), "utf8");
+    return path === "./Array30.txt" ? text + "\nzzzzz\t火火\n" : text;
+  },
 });
 
 const { default: ArrayEngine } = await import("./index.js");
@@ -118,6 +126,10 @@ async function settle() {
   throw new Error("data tables did not load");
 }
 await settle();
+
+// Reverse-lookup queries require the host's prepare hook; run it once here
+// for the reverse-lookup tests below.
+await ArrayEngine.prepareReverseLookup();
 
 function freshEngine() {
   return new ArrayEngine();
@@ -319,4 +331,72 @@ test("full scope keeps candidates even when no font renders them", () => {
     coverageOf = () => true;
     manifest.settings.characterSetScope = "displayable";
   }
+});
+
+test("reverse lookup renders main codes as radical readouts", () => {
+  // 火 is code "," in the main table, plus short code ",2".
+  assert.deepEqual(ArrayEngine.reverseLookup("火"), [
+    "8⇣",
+    { code: "8⇣+2", annotation: "簡碼" },
+  ]);
+});
+
+test("reverse lookup lists short codes last, annotated 簡碼", () => {
+  // 的: main codes "lplh" and "t" in file order, then short code "l0" rendered
+  // as readout + fixed selection key.
+  assert.deepEqual(ArrayEngine.reverseLookup("的"), [
+    "9-0⇡9-6-",
+    "5⇡",
+    { code: "9-+0", annotation: "簡碼" },
+  ]);
+});
+
+test("reverse lookup of an unknown character returns no codes", () => {
+  assert.deepEqual(ArrayEngine.reverseLookup("A"), []);
+});
+
+test("reverse lookup indexes non-BMP values and accepts multi-unit graphemes", () => {
+  // 𰟭 (U+307ED, .length === 2) maps from ",,,,i"; a `.length === 1` check
+  // would have dropped it from the index.
+  assert.deepEqual(ArrayEngine.reverseLookup("𰟭"), ["8⇣8⇣8⇣8⇣8⇡"]);
+});
+
+test("a multi-character table value is not reverse-indexed", () => {
+  // The fetch stub appends "zzzzz → 火火"; the two-character value must be
+  // skipped rather than indexed under the joined string.
+  assert.deepEqual(ArrayEngine.reverseLookup("火火"), []);
+});
+
+test("reverse lookup ignores the character-set scope", () => {
+  // Even with nothing renderable, lookup still reports codes — the reverse
+  // index inverts the unfiltered table on purpose.
+  coverageOf = () => false;
+  try {
+    assert.ok(ArrayEngine.reverseLookup("火").length > 0);
+  } finally {
+    coverageOf = () => true;
+  }
+});
+
+test("prepareReverseLookup readies queries and is idempotent", async () => {
+  // Already prepared at module level; further calls must not disturb the
+  // built indexes.
+  await ArrayEngine.prepareReverseLookup();
+  await ArrayEngine.prepareReverseLookup();
+  assert.deepEqual(ArrayEngine.reverseLookup("火"), [
+    "8⇣",
+    { code: "8⇣+2", annotation: "簡碼" },
+  ]);
+});
+
+test("endReverseLookup drops the indexes until the next prepare", async () => {
+  ArrayEngine.endReverseLookup();
+  // Unprepared queries report no codes rather than a stale or frozen index.
+  assert.deepEqual(ArrayEngine.reverseLookup("火"), []);
+  // The next prepare rebuilds the indexes from the loaded tables.
+  await ArrayEngine.prepareReverseLookup();
+  assert.deepEqual(ArrayEngine.reverseLookup("火"), [
+    "8⇣",
+    { code: "8⇣+2", annotation: "簡碼" },
+  ]);
 });

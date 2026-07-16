@@ -38,6 +38,9 @@ Mirrors the Swift engine:
 - **Full-width** punctuation via Option + key.
 - **Character set** picker in Settings (standard / all displayable / full) that
   filters candidates by installed-font coverage.
+- **Reverse lookup** (`capabilities.reverseLookup`) for the host's Find Input
+  Code window: main codes as radical readouts, then short codes as
+  `readout+selectionKey` annotated 簡碼.
 
 ## Tests
 

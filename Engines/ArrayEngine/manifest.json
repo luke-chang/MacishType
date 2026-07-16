@@ -12,6 +12,9 @@
     "symbolNames": true,
     "wordFrequency": true
   },
+  "capabilities": {
+    "reverseLookup": true
+  },
   "settings": [
     {
       "title": { "en": "Typing", "zh-Hant": "輸入行為" },

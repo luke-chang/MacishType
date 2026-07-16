@@ -3,7 +3,8 @@
 // Composing: markedText is the radical readout; the window previews short codes
 // for 1-2 keys or main-table candidates for 3+ keys. Space resolves the code
 // into candidate-selection; `'` resolves it against the phrase table instead.
-// Also: `?`/`*` wildcard query, `w`/`hg` symbol groups, Option+key full-width.
+// Also: `?`/`*` wildcard query, `w`/`hg` symbol groups, Option+key full-width,
+// and a static reverse lookup (char → codes) for the host's lookup window.
 
 const SELECTION_KEYS = "1234567890";
 // Array codes are at most 5 keys; the 5th is always the "i" disambiguation key.
@@ -77,51 +78,77 @@ function loadTable(text, table) {
   });
 }
 
-// Fetch an engine-folder file and hand its text to `onText`; log load failures.
+// Fetch an engine-folder file and hand its text to `onText`. Returns the
+// chain so `tablesReady` can await it; a load failure is logged and rethrown.
 function loadFile(filename, onText) {
-  fetch(filename)
+  return fetch(filename)
     .then((response) => response.text())
     .then(onText)
-    .catch((error) => console.error(filename, "load failed:", error.message));
+    .catch((error) => {
+      console.error(filename, "load failed:", error.message);
+      throw error;
+    });
 }
 
-// Load the main and symbol tables.
-loadFile("./Array30.txt", (text) => {
-  const next = new Map();
-  loadTable(text, next);
-  mainTable = next;
-  console.info("Array30.txt loaded:", mainTable.size, "codes");
-});
-loadFile("./ArraySymbol.txt", (text) => {
-  const next = new Map();
-  loadTable(text, next);
-  symbolTable = next;
-  console.info("ArraySymbol.txt loaded:", symbolTable.size, "groups");
-});
-
-loadFile("./ArrayShortCode.txt", (text) => {
-  const next = new Map();
-  forEachRow(text, ([codeWithSlot, value]) => {
-    if (codeWithSlot.length < 2) return;
-    const label = codeWithSlot[codeWithSlot.length - 1];
-    const code = codeWithSlot.slice(0, -1);
-    const list = next.get(code);
-    if (list) list.push({ label, value });
-    else next.set(code, [{ label, value }]);
-  });
-  shortTable = next;
-  console.info("ArrayShortCode.txt loaded:", shortTable.size, "codes");
-});
-
-loadFile("./ArrayPhrase.txt", (text) => {
-  const next = new Map();
-  loadTable(text, next);
-  phraseTable = next;
-  console.info("ArrayPhrase.txt loaded:", phraseTable.size, "codes");
-});
+const tablesReady = Promise.all([
+  loadFile("./Array30.txt", (text) => {
+    const next = new Map();
+    loadTable(text, next);
+    mainTable = next;
+    console.info("Array30.txt loaded:", mainTable.size, "codes");
+  }),
+  loadFile("./ArraySymbol.txt", (text) => {
+    const next = new Map();
+    loadTable(text, next);
+    symbolTable = next;
+    console.info("ArraySymbol.txt loaded:", symbolTable.size, "groups");
+  }),
+  loadFile("./ArrayShortCode.txt", (text) => {
+    const next = new Map();
+    forEachRow(text, ([codeWithSlot, value]) => {
+      if (codeWithSlot.length < 2) return;
+      const label = codeWithSlot[codeWithSlot.length - 1];
+      const code = codeWithSlot.slice(0, -1);
+      const list = next.get(code);
+      if (list) list.push({ label, value });
+      else next.set(code, [{ label, value }]);
+    });
+    shortTable = next;
+    console.info("ArrayShortCode.txt loaded:", shortTable.size, "codes");
+  }),
+  loadFile("./ArrayPhrase.txt", (text) => {
+    const next = new Map();
+    loadTable(text, next);
+    phraseTable = next;
+    console.info("ArrayPhrase.txt loaded:", phraseTable.size, "codes");
+  }),
+]);
+// Mark load failures as handled so the host's unhandled-rejection logging
+// stays quiet during plain typing; prepareReverseLookup's own await still
+// observes the rejection.
+tablesReady.catch(() => {});
 
 function radicalReadout(code) {
   return [...code].map((char) => KEYNAME.get(char) ?? char).join("");
+}
+
+// Reverse lookup: char -> [code] from the main table, char -> [{ code, label }]
+// from the short-code table. Built by prepareReverseLookup, dropped by
+// endReverseLookup. Inverts the unfiltered table, so lookup deliberately
+// reports codes even for characters the character-set scope hides from typing.
+let reverseIndex = null;
+let reverseShortIndex = null;
+
+// Built on first use: only the reverse-index build counts graphemes, so
+// plain typing never pays the segmenter construction.
+let graphemeSegmenter = null;
+
+// Single user-perceived character. `.length === 1` alone would wrongly reject
+// the table's many non-BMP values (surrogate pairs), so count graphemes.
+function isSingleCharacter(value) {
+  if (value.length === 1) return true;
+  graphemeSegmenter ??= new Intl.Segmenter(undefined, { granularity: "grapheme" });
+  return [...graphemeSegmenter.segment(value)].length === 1;
 }
 
 // Whether `value` fits the character-set scope:
@@ -612,5 +639,68 @@ export default class ArrayEngine {
       // Main candidates; an empty list (prefix en route) hides the window.
       event.updateCandidates(mainCandidates(this.code));
     }
+  }
+
+  /**
+   * Host hook before reverse-lookup queries: waits for the table loads, then
+   * inverts the tables into the reverse indexes; only single-character values
+   * are indexed. A prior build survives (the null-check) until endReverseLookup
+   * drops it. Throws if the tables failed to load or loaded empty, so the host
+   * can latch the failure.
+   */
+  static async prepareReverseLookup() {
+    await tablesReady;
+    if (mainTable.size === 0 || shortTable.size === 0) {
+      throw new Error("reverse-lookup tables loaded empty");
+    }
+    if (reverseIndex) return;
+    const index = new Map();
+    for (const [code, values] of mainTable) {
+      for (const value of values) {
+        if (!isSingleCharacter(value)) continue;
+        const codes = index.get(value);
+        if (codes) codes.push(code);
+        else index.set(value, [code]);
+      }
+    }
+    const shortIndex = new Map();
+    for (const [code, entries] of shortTable) {
+      for (const entry of entries) {
+        if (!isSingleCharacter(entry.value)) continue;
+        const list = shortIndex.get(entry.value);
+        if (list) list.push({ code, label: entry.label });
+        else shortIndex.set(entry.value, [{ code, label: entry.label }]);
+      }
+    }
+    reverseIndex = index;
+    reverseShortIndex = shortIndex;
+  }
+
+  // Host hook after the lookup session ends: drop the lookup-only indexes;
+  // the next prepare rebuilds them.
+  static endReverseLookup() {
+    reverseIndex = null;
+    reverseShortIndex = null;
+  }
+
+  /**
+   * All input codes producing `character`, rendered as radical readouts:
+   * main codes first, then short codes as "readout+selectionKey" (type the
+   * code, press the fixed selection key) annotated 簡碼.
+   * @param {string} character - one grapheme cluster; `.length` may exceed 1
+   * @returns {(string | { code: string, annotation: string })[]}
+   */
+  static reverseLookup(character) {
+    // The host prepares before querying; an unprepared query still reports
+    // no codes instead of crashing.
+    if (!reverseIndex) return [];
+    const main = (reverseIndex.get(character) ?? [])
+      .map((code) => radicalReadout(code));
+    const short = (reverseShortIndex.get(character) ?? [])
+      .map((entry) => ({
+        code: radicalReadout(entry.code) + "+" + entry.label,
+        annotation: "簡碼",
+      }));
+    return [...main, ...short];
   }
 }
