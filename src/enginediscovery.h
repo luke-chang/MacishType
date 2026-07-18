@@ -21,6 +21,12 @@ struct EngineInfo {
     // the file directly (no icon-theme install). Empty when the manifest
     // declares no icon or the path is invalid.
     std::string iconPath;
+    // Engine-private persistence (localStorage). User-layer engines keep
+    // the macOS convention of `_storage/` inside the engine folder, so the
+    // folder stays self-contained; system-layer engines live in read-only,
+    // machine-shared /usr, so their storage goes to the per-user XDG state
+    // directory instead.
+    std::filesystem::path storageRoot;
 
     std::string displayName() const {
         return manifest.displayName.empty() ? id : manifest.displayName;

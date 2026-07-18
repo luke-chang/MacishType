@@ -25,6 +25,7 @@ class JsEngineHost {
 public:
     static std::unique_ptr<JsEngineHost>
     load(const std::string &engineId, const std::filesystem::path &engineRoot,
+         const std::filesystem::path &storageRoot,
          const ManifestData &manifest,
          const std::vector<std::string> &languages);
 
@@ -55,6 +56,22 @@ public:
     const std::set<std::string> &loadedFilePaths() const {
         return loadedFilePaths_;
     }
+
+    // Engine-private persistence directory (one file per localStorage
+    // key); resolved by discovery, see EngineInfo::storageRoot.
+    const std::filesystem::path &storageRoot() const { return storageRoot_; }
+
+    // Storage watcher lifecycle: the runtime reports whether any `storage`
+    // listeners exist, and the observer arms or disarms the watch. Set
+    // after load; replays the current state immediately, because engines
+    // typically register listeners while their entry module evaluates.
+    void setStorageListeningObserver(std::function<void(bool)> observer);
+
+    // Files changed inside storageRoot(): skip our own writes' echoes,
+    // decode the remaining filenames, and raise the contract's storage
+    // event for each affected key. Mirrors the macOS host's
+    // handleStorageEvent.
+    void handleStorageChanges(const std::set<std::string> &changedPaths);
 
     using FieldValue = std::variant<bool, double, std::string>;
     // Bridge-visible candidate window field: engine write overlay first,
@@ -107,7 +124,25 @@ public:
 
 private:
     JsEngineHost(std::string engineId, std::filesystem::path engineRoot,
-                 ManifestData manifest, std::vector<std::string> languages);
+                 std::filesystem::path storageRoot, ManifestData manifest,
+                 std::vector<std::string> languages);
+
+    // Snapshot of a storage file's on-disk identity, recorded after the
+    // host's own writes so their inotify echoes can be told apart from
+    // external modifications.
+    struct StorageFileState {
+        bool exists = false;
+        int64_t mtimeNanoseconds = 0;
+        uint64_t size = 0;
+        bool operator==(const StorageFileState &other) const {
+            return exists == other.exists &&
+                   mtimeNanoseconds == other.mtimeNanoseconds &&
+                   size == other.size;
+        }
+    };
+    static StorageFileState statStorageFile(const std::filesystem::path &path);
+    void recordSelfWrite(const std::filesystem::path &path);
+    void dispatchStorageEvent(const std::string &key);
 
     bool initialize();
     bool evaluateScript(const std::filesystem::path &path,
@@ -197,7 +232,11 @@ private:
     std::string engineId_;
     std::filesystem::path engineRoot_;
     std::filesystem::path canonicalRoot_;
+    std::filesystem::path storageRoot_;
     std::set<std::string> loadedFilePaths_;
+    std::map<std::string, StorageFileState> recentSelfWrites_;
+    bool storageListening_ = false;
+    std::function<void(bool)> storageListeningObserver_;
     ManifestData manifest_;
     std::vector<std::string> languages_;
     std::string userAgent_;

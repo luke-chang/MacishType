@@ -1,5 +1,7 @@
 #include "enginehost.h"
 
+#include <sys/stat.h>
+
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -49,9 +51,16 @@ std::optional<std::string> readFile(const std::filesystem::path &path) {
     return buffer.str();
 }
 
+// Filenames must match the macOS host byte for byte, so a user-layer
+// engine folder (which carries its _storage) moves between platforms with
+// its data intact. macOS encodes uppercase because the default APFS
+// volume is case-insensitive, and excludes '.' so no key can produce a
+// dotfile; both restrictions are inherited here.
+constexpr char kStorageFilenamePrefix[] = "localStorage_";
+
 bool isStorageSafeByte(char ch) {
-    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-           (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' || ch == '-';
+    return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+           ch == '_' || ch == '-';
 }
 
 std::string encodeStorageKey(const std::string &key) {
@@ -71,7 +80,14 @@ std::string encodeStorageKey(const std::string &key) {
     return encoded;
 }
 
-std::optional<std::string> decodeStorageKey(const std::string &encoded) {
+// Filename → key; nullopt for foreign files (no prefix) or malformed
+// escapes, mirroring the macOS decodeFilename.
+std::optional<std::string> decodeStorageKey(const std::string &filename) {
+    constexpr size_t prefixLength = sizeof(kStorageFilenamePrefix) - 1;
+    if (filename.rfind(kStorageFilenamePrefix, 0) != 0) {
+        return std::nullopt;
+    }
+    std::string encoded = filename.substr(prefixLength);
     std::string key;
     key.reserve(encoded.size());
     for (size_t i = 0; i < encoded.size(); i++) {
@@ -138,10 +154,11 @@ std::optional<std::string> normalizeRelativePath(const std::string &path) {
 std::unique_ptr<JsEngineHost>
 JsEngineHost::load(const std::string &engineId,
                    const std::filesystem::path &engineRoot,
+                   const std::filesystem::path &storageRoot,
                    const ManifestData &manifest,
                    const std::vector<std::string> &languages) {
-    std::unique_ptr<JsEngineHost> host(
-        new JsEngineHost(engineId, engineRoot, manifest, languages));
+    std::unique_ptr<JsEngineHost> host(new JsEngineHost(
+        engineId, engineRoot, storageRoot, manifest, languages));
     if (!host->initialize()) {
         return nullptr;
     }
@@ -150,10 +167,12 @@ JsEngineHost::load(const std::string &engineId,
 
 JsEngineHost::JsEngineHost(std::string engineId,
                            std::filesystem::path engineRoot,
+                           std::filesystem::path storageRoot,
                            ManifestData manifest,
                            std::vector<std::string> languages)
     : engineId_(std::move(engineId)), engineRoot_(std::move(engineRoot)),
-      manifest_(std::move(manifest)), languages_(std::move(languages)) {}
+      storageRoot_(std::move(storageRoot)), manifest_(std::move(manifest)),
+      languages_(std::move(languages)) {}
 
 JsEngineHost::~JsEngineHost() {
     if (ctx_ != nullptr) {
@@ -778,7 +797,77 @@ void JsEngineHost::setCandidateWindowField(const std::string &field,
 
 std::filesystem::path
 JsEngineHost::storagePathForKey(const std::string &key) const {
-    return canonicalRoot_ / "_storage" / encodeStorageKey(key);
+    return storageRoot_ / (kStorageFilenamePrefix + encodeStorageKey(key));
+}
+
+JsEngineHost::StorageFileState
+JsEngineHost::statStorageFile(const std::filesystem::path &path) {
+    struct stat buffer;
+    if (::stat(path.c_str(), &buffer) != 0) {
+        return {};
+    }
+    return {true,
+            static_cast<int64_t>(buffer.st_mtim.tv_sec) * 1000000000 +
+                buffer.st_mtim.tv_nsec,
+            static_cast<uint64_t>(buffer.st_size)};
+}
+
+void JsEngineHost::recordSelfWrite(const std::filesystem::path &path) {
+    recentSelfWrites_[path.string()] = statStorageFile(path);
+}
+
+void JsEngineHost::setStorageListeningObserver(
+    std::function<void(bool)> observer) {
+    storageListeningObserver_ = std::move(observer);
+    if (storageListeningObserver_) {
+        storageListeningObserver_(storageListening_);
+    }
+}
+
+void JsEngineHost::handleStorageChanges(
+    const std::set<std::string> &changedPaths) {
+    std::set<std::string> keys;
+    for (const auto &path : changedPaths) {
+        if (auto found = recentSelfWrites_.find(path);
+            found != recentSelfWrites_.end()) {
+            if (statStorageFile(path) == found->second) {
+                // Our own write's echo; keep the record so repeated
+                // events for the same state stay silent.
+                continue;
+            }
+            // An external write superseded ours.
+            recentSelfWrites_.erase(found);
+        }
+        auto key = decodeStorageKey(
+            std::filesystem::path(path).filename().string());
+        if (key) {
+            keys.insert(*key);
+        }
+    }
+    for (const auto &key : keys) {
+        dispatchStorageEvent(key);
+    }
+}
+
+void JsEngineHost::dispatchStorageEvent(const std::string &key) {
+    qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
+    qjs::Value dispatch(
+        ctx_,
+        JS_GetPropertyStr(ctx_, global.get(),
+                          "__MacishType_dispatchStorageEvent"));
+    if (!JS_IsFunction(ctx_, dispatch.get())) {
+        return;
+    }
+    JSValue keyValue = JS_NewStringLen(ctx_, key.c_str(), key.size());
+    qjs::Value result(ctx_, JS_Call(ctx_, dispatch.get(), JS_UNDEFINED, 1,
+                                    &keyValue));
+    JS_FreeValue(ctx_, keyValue);
+    if (result.isException()) {
+        MACISHTYPE_ERROR() << "[" << engineId_
+                           << "] storage event dispatch failed: "
+                           << qjs::exceptionText(ctx_);
+    }
+    drainJobs();
 }
 
 // Native bridge functions -------------------------------------------------
@@ -993,10 +1082,13 @@ JSValue JsEngineHost::nativeStorageSetItem(JSContext *ctx,
     auto path = host->storagePathForKey(key);
     std::error_code errorCode;
     std::filesystem::create_directories(path.parent_path(), errorCode);
-    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
-    if (!stream || !(stream << value)) {
-        MACISHTYPE_ERROR() << "localStorage: cannot write " << path;
+    {
+        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+        if (!stream || !(stream << value)) {
+            MACISHTYPE_ERROR() << "localStorage: cannot write " << path;
+        }
     }
+    host->recordSelfWrite(path);
     return JS_UNDEFINED;
 }
 
@@ -1008,9 +1100,10 @@ JSValue JsEngineHost::nativeStorageRemoveItem(JSContext *ctx,
     if (argc < 1) {
         return JS_UNDEFINED;
     }
+    auto path = host->storagePathForKey(qjs::toString(ctx, argv[0]));
     std::error_code errorCode;
-    std::filesystem::remove(
-        host->storagePathForKey(qjs::toString(ctx, argv[0])), errorCode);
+    std::filesystem::remove(path, errorCode);
+    host->recordSelfWrite(path);
     return JS_UNDEFINED;
 }
 
@@ -1020,8 +1113,22 @@ JSValue JsEngineHost::nativeStorageClear(JSContext *ctx, JSValueConst thisVal,
     FCITX_UNUSED(argc);
     FCITX_UNUSED(argv);
     auto *host = hostOf(ctx);
+    // File-by-file rather than remove_all: deleting the directory itself
+    // would kill the inotify watch serving storage events. Only files
+    // carrying the storage prefix are ours to clear.
     std::error_code errorCode;
-    std::filesystem::remove_all(host->canonicalRoot_ / "_storage", errorCode);
+    std::filesystem::directory_iterator iterator(host->storageRoot_,
+                                                 errorCode);
+    if (errorCode) {
+        return JS_UNDEFINED;
+    }
+    for (const auto &fileEntry : iterator) {
+        if (!decodeStorageKey(fileEntry.path().filename().string())) {
+            continue;
+        }
+        std::filesystem::remove(fileEntry.path(), errorCode);
+        host->recordSelfWrite(fileEntry.path());
+    }
     return JS_UNDEFINED;
 }
 
@@ -1034,8 +1141,8 @@ JSValue JsEngineHost::nativeStorageKeys(JSContext *ctx, JSValueConst thisVal,
     JSValue array = JS_NewArray(ctx);
     uint32_t index = 0;
     std::error_code errorCode;
-    std::filesystem::directory_iterator iterator(
-        host->canonicalRoot_ / "_storage", errorCode);
+    std::filesystem::directory_iterator iterator(host->storageRoot_,
+                                                 errorCode);
     if (errorCode) {
         return array;
     }
@@ -1056,12 +1163,16 @@ JSValue JsEngineHost::nativeStorageKeys(JSContext *ctx, JSValueConst thisVal,
 JSValue JsEngineHost::nativeSetStorageListening(JSContext *ctx,
                                                 JSValueConst thisVal,
                                                 int argc, JSValueConst *argv) {
-    FCITX_UNUSED(ctx);
     FCITX_UNUSED(thisVal);
-    FCITX_UNUSED(argc);
-    FCITX_UNUSED(argv);
-    // TODO: inotify watcher on _storage/ feeding
-    // __MacishType_dispatchStorageEvent.
+    auto *host = hostOf(ctx);
+    bool active = argc > 0 && JS_ToBool(ctx, argv[0]) == 1;
+    if (host->storageListening_ == active) {
+        return JS_UNDEFINED;
+    }
+    host->storageListening_ = active;
+    if (host->storageListeningObserver_) {
+        host->storageListeningObserver_(active);
+    }
     return JS_UNDEFINED;
 }
 

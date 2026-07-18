@@ -30,8 +30,10 @@ bool isNoiseName(const std::string &name) {
 
 } // namespace
 
-EngineWatcher::EngineWatcher(fcitx::EventLoop *eventLoop, Callback callback)
-    : eventLoop_(eventLoop), callback_(std::move(callback)) {
+EngineWatcher::EngineWatcher(fcitx::EventLoop *eventLoop, Callback callback,
+                             Callback storageCallback)
+    : eventLoop_(eventLoop), callback_(std::move(callback)),
+      storageCallback_(std::move(storageCallback)) {
     inotifyFd_ = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     if (inotifyFd_ < 0) {
         MACISHTYPE_WARN() << "inotify unavailable; hot reload disabled";
@@ -65,6 +67,33 @@ void EngineWatcher::watchEngine(const std::string &engineId,
     watchDirectoryTree(engineId, canonicalRoot);
 }
 
+void EngineWatcher::watchStorage(const std::string &engineId,
+                                 const std::filesystem::path &directory) {
+    if (inotifyFd_ < 0) {
+        return;
+    }
+    std::error_code errorCode;
+    std::filesystem::create_directories(directory, errorCode);
+    int descriptor =
+        inotify_add_watch(inotifyFd_, directory.c_str(), kWatchMask);
+    if (descriptor < 0) {
+        MACISHTYPE_WARN() << "Cannot watch storage directory " << directory;
+        return;
+    }
+    watches_[descriptor] = {engineId, directory, true};
+    storageWatchDescriptors_[engineId] = descriptor;
+}
+
+void EngineWatcher::unwatchStorage(const std::string &engineId) {
+    auto found = storageWatchDescriptors_.find(engineId);
+    if (found == storageWatchDescriptors_.end()) {
+        return;
+    }
+    inotify_rm_watch(inotifyFd_, found->second);
+    watches_.erase(found->second);
+    storageWatchDescriptors_.erase(found);
+}
+
 void EngineWatcher::watchDirectoryTree(
     const std::string &engineId, const std::filesystem::path &directory) {
     int descriptor =
@@ -73,7 +102,7 @@ void EngineWatcher::watchDirectoryTree(
         return;
     }
     // inotify reuses the descriptor when the directory is already watched.
-    watches_[descriptor] = {engineId, directory};
+    watches_[descriptor] = {engineId, directory, false};
 
     std::error_code errorCode;
     std::filesystem::directory_iterator iterator(directory, errorCode);
@@ -109,29 +138,32 @@ void EngineWatcher::handleEvents() {
             if (isNoiseName(name)) {
                 continue;
             }
-            const auto &[engineId, directory] = watch->second;
+            const auto &[engineId, directory, storage] = watch->second;
             // A new subdirectory (e.g. unpacked data) joins the watch set.
-            if ((event->mask & IN_CREATE) && (event->mask & IN_ISDIR)) {
+            if (!storage && (event->mask & IN_CREATE) &&
+                (event->mask & IN_ISDIR)) {
                 watchDirectoryTree(engineId, directory / name);
             }
-            scheduleCallback(engineId, directory / name);
+            scheduleCallback(engineId, directory / name, storage);
         }
     }
 }
 
-void EngineWatcher::scheduleCallback(
-    const std::string &engineId, const std::filesystem::path &changedPath) {
+void EngineWatcher::scheduleCallback(const std::string &engineId,
+                                     const std::filesystem::path &changedPath,
+                                     bool storage) {
     // Editors burst several events per save; (re)arming a one-shot timer
     // coalesces them into one callback carrying every touched path.
-    pendingPaths_[engineId].insert(changedPath.string());
-    pending_[engineId] = eventLoop_->addTimeEvent(
+    std::string slot = (storage ? "storage:" : "reload:") + engineId;
+    pendingPaths_[slot].insert(changedPath.string());
+    pending_[slot] = eventLoop_->addTimeEvent(
         CLOCK_MONOTONIC, fcitx::now(CLOCK_MONOTONIC) + kDebounceMicroseconds,
         0,
-        [this, engineId](fcitx::EventSourceTime *, uint64_t) {
-            pending_.erase(engineId);
-            auto changed = std::move(pendingPaths_[engineId]);
-            pendingPaths_.erase(engineId);
-            callback_(engineId, changed);
+        [this, engineId, slot, storage](fcitx::EventSourceTime *, uint64_t) {
+            pending_.erase(slot);
+            auto changed = std::move(pendingPaths_[slot]);
+            pendingPaths_.erase(slot);
+            (storage ? storageCallback_ : callback_)(engineId, changed);
             return true;
         });
 }

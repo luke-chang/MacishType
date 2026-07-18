@@ -42,6 +42,9 @@ export FCITX_ADDON_DIRS="$HOME/.local/lib/fcitx5:/usr/lib/$(gcc -dumpmachine 2>/
 # into the user's engine folders.
 export XDG_DATA_DIRS="$script_dir/fixtures/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export XDG_CONFIG_HOME="$config_root"
+# System-layer engines put their storage under XDG state; keep it in the
+# scratch unless the caller wants to reach in (storage tests do).
+export XDG_STATE_HOME="${ISOLATED_STATE_HOME:-$config_root/state}"
 
 dbus-run-session -- sh -c '
     WAYLAND_DISPLAY= DISPLAY= fcitx5 \

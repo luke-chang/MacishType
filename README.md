@@ -31,9 +31,16 @@ unmodified — composition preedit, candidate window with index labels and
 navigation, commit, escape, and OS passthrough all work against an isolated
 fcitx5 instance (`test/acceptance.sh`).
 
-Not yet implemented: settings/config UI, storage change events,
-associated-mode dictionary data, reverse lookup, and live
-fontcoveragechange events on font installs.
+Not yet implemented: settings/config UI, associated-mode dictionary data,
+reverse lookup, and live fontcoveragechange events on font installs.
+
+Engine-private storage (`localStorage`) lives in `_storage/` inside the
+engine folder for user-layer engines — matching macOS, the folder stays
+self-contained — and under `~/.local/state/fcitx5/macishtype/<engine>/`
+for system-layer engines, whose folders are read-only and machine-shared.
+External modifications raise the contract's `storage` events (the
+engine's own writes stay silent, per web semantics); the watch arms only
+while the engine holds storage listeners.
 
 Engines may declare the optional manifest `label` (short panel text;
 defaults to the display name's first character) and `icon` (an

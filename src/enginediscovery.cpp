@@ -1,6 +1,7 @@
 #include "enginediscovery.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <system_error>
 
 #include <fcitx-utils/standardpaths.h>
@@ -12,6 +13,29 @@ namespace macishtype {
 namespace {
 
 constexpr char kEnginesSubdir[] = "macishtype/engines";
+
+std::filesystem::path xdgStateHome() {
+    if (const char *stateHome = std::getenv("XDG_STATE_HOME");
+        stateHome != nullptr && stateHome[0] != '\0') {
+        return stateHome;
+    }
+    const char *home = std::getenv("HOME");
+    return std::filesystem::path(home != nullptr ? home : "") /
+           ".local/state";
+}
+
+std::filesystem::path storageRootForEngine(const std::string &id,
+                                           const std::filesystem::path &root,
+                                           bool userLayer) {
+    if (!userLayer) {
+        return xdgStateHome() / "fcitx5/macishtype" / id;
+    }
+    // Match the canonical form the JS host uses for its own paths, so
+    // watcher events and self-write records compare equal.
+    std::error_code errorCode;
+    auto canonicalRoot = std::filesystem::canonical(root, errorCode);
+    return (errorCode ? root : canonicalRoot) / "_storage";
+}
 
 bool isValidEngineId(const std::string &name) {
     if (name.empty()) {
@@ -86,6 +110,9 @@ discoverEngines(const std::vector<std::string> &languages) {
             std::error_code errorCode;
             return std::filesystem::is_directory(path, errorCode);
         });
+    auto userEngines =
+        paths.userDirectory(fcitx::StandardPathsType::PkgData) /
+        kEnginesSubdir;
 
     std::vector<EngineInfo> engines;
     for (const auto &[name, fullPath] : folders) {
@@ -105,8 +132,11 @@ discoverEngines(const std::vector<std::string> &languages) {
                               << fullPath;
             continue;
         }
-        EngineInfo engine{id, fullPath, std::move(*manifest), {}};
+        EngineInfo engine{id, fullPath, std::move(*manifest), {}, {}};
         engine.iconPath = resolveIconPath(engine.root, engine.manifest.icon);
+        const bool userLayer =
+            fullPath.string().rfind(userEngines.string() + "/", 0) == 0;
+        engine.storageRoot = storageRootForEngine(id, fullPath, userLayer);
         engines.push_back(std::move(engine));
     }
 

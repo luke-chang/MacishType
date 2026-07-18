@@ -92,6 +92,12 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
             if (shouldReload(engineId, changedPaths)) {
                 reloadEngine(engineId);
             }
+        },
+        [this](const std::string &engineId,
+               const std::set<std::string> &changedPaths) {
+            if (auto found = hosts_.find(engineId); found != hosts_.end()) {
+                found->second->handleStorageChanges(changedPaths);
+            }
         });
     // Watch every discovered engine from the start, so manifest edits apply
     // even for engines that have not been activated yet (and a failing one
@@ -218,8 +224,8 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
     if (failedHosts_.count(engine.id) != 0) {
         return nullptr;
     }
-    auto host = JsEngineHost::load(engine.id, engine.root, engine.manifest,
-                                   languages_);
+    auto host = JsEngineHost::load(engine.id, engine.root, engine.storageRoot,
+                                   engine.manifest, languages_);
     if (!host) {
         MACISHTYPE_ERROR() << "Engine failed to load, disabled until it "
                               "changes on disk: "
@@ -230,6 +236,19 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
     auto [inserted, unused] = hosts_.emplace(engine.id, std::move(host));
     FCITX_UNUSED(unused);
     auto *loadedHost = inserted->second.get();
+
+    // Storage watches follow the engine's `storage` listener count; the
+    // observer replays the state accumulated while the entry module
+    // evaluated.
+    loadedHost->setStorageListeningObserver(
+        [this, engineId = engine.id,
+         storageRoot = loadedHost->storageRoot()](bool active) {
+            if (active) {
+                watcher_->watchStorage(engineId, storageRoot);
+            } else {
+                watcher_->unwatchStorage(engineId);
+            }
+        });
 
     // The outputToSimplified system menu key proxies chttrans, so the
     // engine's own toggle command and the chttrans hotkey flip one switch.
