@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""DBus typing client for an isolated fcitx5 instance.
+
+Creates an input context on the session bus, focuses it, sends key events,
+and prints observed signals as JSON lines:
+
+    {"event": "commit", "text": "..."}
+    {"event": "preedit", "text": "...", "cursor": 3}
+    {"event": "forward", "keyval": 65293, "state": 0, "isRelease": false}
+    {"event": "key-result", "keyval": 97, "handled": true}
+
+The first argument is the input method unique name to switch the focused
+context to (a fresh context starts on the group's inactive keyboard entry).
+Remaining arguments are key events in the form `keyval[:keycode[:state]]`
+(all integers, keyval may be a single ASCII character instead), with an
+implicit release after each press.
+"""
+
+import json
+import sys
+
+import gi
+from gi.repository import Gio, GLib
+
+BUS_NAME = "org.fcitx.Fcitx5"
+IM_PATH = "/org/freedesktop/portal/inputmethod"
+IM_IFACE = "org.fcitx.Fcitx.InputMethod1"
+IC_IFACE = "org.fcitx.Fcitx.InputContext1"
+
+CAPABILITY_PREEDIT = 1 << 1
+CAPABILITY_FORMATTED_PREEDIT = 1 << 4
+
+
+def emit(payload):
+    print(json.dumps(payload, ensure_ascii=False), flush=True)
+
+
+def main():
+    im_name = sys.argv[1]
+    keys = []
+    for spec in sys.argv[2:]:
+        parts = spec.split(":")
+        keyval = parts[0]
+        keyval = ord(keyval) if len(keyval) == 1 and not keyval.isdigit() \
+            else int(keyval)
+        keycode = int(parts[1]) if len(parts) > 1 else 0
+        state = int(parts[2]) if len(parts) > 2 else 0
+        keys.append((keyval, keycode, state))
+
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+
+    result = bus.call_sync(
+        BUS_NAME, IM_PATH, IM_IFACE, "CreateInputContext",
+        GLib.Variant("(a(ss))", ([("program", "typing-client")],)),
+        GLib.VariantType("(oay)"), Gio.DBusCallFlags.NONE, 5000, None)
+    ic_path = result.unpack()[0]
+    emit({"event": "created", "path": ic_path})
+
+    def on_signal(_bus, _sender, _path, _iface, signal, params):
+        values = params.unpack()
+        if signal == "CommitString":
+            emit({"event": "commit", "text": values[0]})
+        elif signal == "UpdateFormattedPreedit":
+            segments, cursor = values
+            emit({
+                "event": "preedit",
+                "text": "".join(text for text, _format in segments),
+                "cursor": cursor,
+            })
+        elif signal == "ForwardKey":
+            keyval, state, is_release = values
+            emit({"event": "forward", "keyval": keyval, "state": state,
+                  "isRelease": is_release})
+
+    bus.signal_subscribe(None, IC_IFACE, None, ic_path, None,
+                         Gio.DBusSignalFlags.NONE, on_signal)
+
+    def ic_call(method, params=None, reply_type=None):
+        return bus.call_sync(
+            BUS_NAME, ic_path, IC_IFACE, method, params,
+            GLib.VariantType(reply_type) if reply_type else None,
+            Gio.DBusCallFlags.NONE, 5000, None)
+
+    ic_call("SetCapability", GLib.Variant(
+        "(t)", (CAPABILITY_PREEDIT | CAPABILITY_FORMATTED_PREEDIT,)))
+    ic_call("FocusIn")
+    bus.call_sync(
+        BUS_NAME, "/controller", "org.fcitx.Fcitx.Controller1",
+        "SetCurrentIM", GLib.Variant("(s)", (im_name,)), None,
+        Gio.DBusCallFlags.NONE, 5000, None)
+
+    loop = GLib.MainLoop()
+
+    def send_keys():
+        for keyval, keycode, state in keys:
+            for is_release in (False, True):
+                reply = ic_call(
+                    "ProcessKeyEvent",
+                    GLib.Variant("(uuubu)",
+                                 (keyval, keycode, state, is_release, 0)),
+                    "(b)")
+                if not is_release:
+                    emit({"event": "key-result", "keyval": keyval,
+                          "handled": reply.unpack()[0]})
+        # Give queued signals a beat to arrive before quitting.
+        GLib.timeout_add(300, loop.quit)
+        return False
+
+    GLib.timeout_add(300, send_keys)
+    loop.run()
+
+    ic_call("FocusOut")
+    ic_call("DestroyIC")
+    emit({"event": "done"})
+
+
+if __name__ == "__main__":
+    main()

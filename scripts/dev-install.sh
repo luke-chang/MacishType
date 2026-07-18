@@ -1,0 +1,27 @@
+#!/bin/sh
+# Installs the built addon into user-writable locations. No root needed;
+# load the .so by pointing FCITX_ADDON_DIRS at ~/.local/lib/fcitx5 (the
+# variable replaces the default search path, so list the system dir too):
+#   FCITX_ADDON_DIRS=$HOME/.local/lib/fcitx5:/usr/lib/x86_64-linux-gnu/fcitx5
+set -e
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+build="$root/build"
+lib_dir="$HOME/.local/lib/fcitx5"
+share_dir="$HOME/.local/share/fcitx5"
+
+if [ ! -f "$build/src/libmacishtype.so" ]; then
+    echo "Build first: cmake -B build && cmake --build build -j" >&2
+    exit 1
+fi
+
+install -D -m 755 "$build/src/libmacishtype.so" "$lib_dir/libmacishtype.so"
+install -D -m 644 "$build/src/macishtype-addon.conf" \
+    "$share_dir/addon/macishtype.conf"
+install -D -m 644 "$root/runtime/runtime.js" "$share_dir/macishtype/runtime.js"
+install -D -m 644 "$root/runtime/hostglue.js" \
+    "$share_dir/macishtype/hostglue.js"
+mkdir -p "$share_dir/macishtype/engines"
+
+echo "Installed to $lib_dir and $share_dir."
+echo "Engine folders go into $share_dir/macishtype/engines/<name>/"

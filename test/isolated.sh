@@ -1,0 +1,56 @@
+#!/bin/sh
+# Runs an isolated fcitx5 (private DBus session, scratch config, no display
+# frontends) with the user-dir addon install, then drives it with
+# typing_client.py. The user's running fcitx5 is never touched.
+#
+# Usage: test/isolated.sh <engine-id> [key specs for typing_client.py...]
+# Output: typing_client.py JSON lines on stdout; fcitx5 log in
+#         $ISOLATED_LOG (default /tmp/fcitx5-macishtype-isolated.log).
+set -e
+
+engine_id="$1"
+[ -n "$engine_id" ] || { echo "usage: $0 <engine-id> [keys...]" >&2; exit 1; }
+shift
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+log_file="${ISOLATED_LOG:-/tmp/fcitx5-macishtype-isolated.log}"
+config_root="$(mktemp -d)"
+trap 'rm -rf "$config_root"' EXIT
+
+# Scratch profile: the engine under test is the default IM of the only group.
+mkdir -p "$config_root/fcitx5"
+cat > "$config_root/fcitx5/profile" <<EOF
+[Groups/0]
+Name=Default
+Default Layout=us
+DefaultIM=macishtype-$engine_id
+
+[Groups/0/Items/0]
+Name=keyboard-us
+Layout=
+
+[Groups/0/Items/1]
+Name=macishtype-$engine_id
+Layout=
+
+[GroupOrder]
+0=Default
+EOF
+
+export FCITX_ADDON_DIRS="$HOME/.local/lib/fcitx5:/usr/lib/$(gcc -dumpmachine 2>/dev/null || echo x86_64-linux-gnu)/fcitx5"
+export XDG_CONFIG_HOME="$config_root"
+
+dbus-run-session -- sh -c '
+    WAYLAND_DISPLAY= DISPLAY= fcitx5 \
+        --disable=wayland,waylandim,xcb,classicui,notifications \
+        --verbose=default=4,macishtype=5 > "$1" 2>&1 &
+    fcitx_pid=$!
+    sleep 2
+    log_file="$1"
+    shift
+    python3 "$0" "$@" || { echo "--- fcitx5 log tail ---" >&2; tail -30 "$log_file" >&2; }
+    status=$?
+    kill "$fcitx_pid" 2>/dev/null
+    wait "$fcitx_pid" 2>/dev/null
+    exit $status
+' "$script_dir/typing_client.py" "$log_file" "macishtype-$engine_id" "$@"
