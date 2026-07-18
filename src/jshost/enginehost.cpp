@@ -327,8 +327,9 @@ bool JsEngineHost::injectModules() {
                                     ? JS_NewInt32(ctx_, 0)
                                     : JS_UNDEFINED;
             JSValue table = JS_NewObject(ctx_);
-            if (moduleName == "wordFrequency") {
-                loadFrequencyTable(table);
+            if (moduleName == "wordFrequency" || moduleName == "symbolNames") {
+                loadModuleTable(table, moduleName,
+                                moduleName == "wordFrequency");
             }
             JSValue arguments[3] = {
                 JS_NewString(ctx_, moduleName.c_str()),
@@ -351,20 +352,22 @@ bool JsEngineHost::injectModules() {
 }
 
 // Fills `table` from the per-language module data file installed under
-// <pkgdata>/macishtype/modules/ ("char<TAB>count" lines, # comments). A
+// <pkgdata>/macishtype/modules/ ("key<TAB>value" lines, # comments). A
 // missing file leaves the table empty, which reads as all-miss.
-void JsEngineHost::loadFrequencyTable(JSValue table) {
+void JsEngineHost::loadModuleTable(JSValue table,
+                                   const std::string &moduleName,
+                                   bool numericValues) {
     if (manifest_.intendedLanguage.empty()) {
         return;
     }
     auto path = fcitx::StandardPaths::global().locate(
         fcitx::StandardPathsType::PkgData,
-        "macishtype/modules/wordFrequency." + manifest_.intendedLanguage +
-            ".tsv");
+        "macishtype/modules/" + moduleName + "." +
+            manifest_.intendedLanguage + ".tsv");
     if (path.empty()) {
-        MACISHTYPE_INFO() << "No wordFrequency table for "
+        MACISHTYPE_INFO() << "No " << moduleName << " table for "
                           << manifest_.intendedLanguage
-                          << "; module answers with 0 (run "
+                          << "; module answers with its miss value (run "
                              "scripts/prepare-data.sh and dev-install.sh)";
         return;
     }
@@ -379,18 +382,25 @@ void JsEngineHost::loadFrequencyTable(JSValue table) {
         if (tab == std::string::npos) {
             continue;
         }
-        std::string character = line.substr(0, tab);
-        int64_t frequency = 0;
-        try {
-            frequency = std::stoll(line.substr(tab + 1));
-        } catch (...) {
-            continue;
+        std::string key = line.substr(0, tab);
+        std::string value = line.substr(tab + 1);
+        if (numericValues) {
+            int64_t number = 0;
+            try {
+                number = std::stoll(value);
+            } catch (...) {
+                continue;
+            }
+            JS_SetPropertyStr(ctx_, table, key.c_str(),
+                              JS_NewInt64(ctx_, number));
+        } else {
+            JS_SetPropertyStr(ctx_, table, key.c_str(),
+                              JS_NewStringLen(ctx_, value.c_str(),
+                                              value.size()));
         }
-        JS_SetPropertyStr(ctx_, table, character.c_str(),
-                          JS_NewInt64(ctx_, frequency));
         count++;
     }
-    MACISHTYPE_INFO() << "wordFrequency." << manifest_.intendedLanguage
+    MACISHTYPE_INFO() << moduleName << "." << manifest_.intendedLanguage
                       << ": " << count << " entries";
 }
 

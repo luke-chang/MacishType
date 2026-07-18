@@ -106,7 +106,8 @@ private:
     bool evaluateEntryModule();
     bool pushSettings();
     bool injectModules();
-    void loadFrequencyTable(JSValue table);
+    void loadModuleTable(JSValue table, const std::string &moduleName,
+                         bool numericValues);
     void registerBridgeGlobals();
     void drainJobs();
     void reportRejections();
