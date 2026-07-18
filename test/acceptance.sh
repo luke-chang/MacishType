@@ -55,6 +55,6 @@ output="$(run 104:43 105:31 65363:114 65293:36)"
 check "arrow moves highlight, enter commits it" '{"event": "commit", "text": "嗨"}'
 
 output="$(run 53:14)"
-check "idle digit passes through unhandled" '{"event": "key-result", "keyval": 53, "handled": false}'
+check "idle digit passes through unhandled" '"keyval": 53, "handled": false'
 
 echo "All acceptance checks passed."

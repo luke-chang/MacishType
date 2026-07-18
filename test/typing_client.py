@@ -18,6 +18,7 @@ implicit release after each press.
 
 import json
 import sys
+import time
 
 import gi
 from gi.repository import Gio, GLib
@@ -84,16 +85,22 @@ def main():
     ic_call("SetCapability", GLib.Variant(
         "(t)", (CAPABILITY_PREEDIT | CAPABILITY_FORMATTED_PREEDIT,)))
     ic_call("FocusIn")
+    # The first switch to a macishtype IM loads its JS engine synchronously,
+    # so this duration doubles as the engine load time.
+    switch_started = time.monotonic()
     bus.call_sync(
         BUS_NAME, "/controller", "org.fcitx.Fcitx.Controller1",
         "SetCurrentIM", GLib.Variant("(s)", (im_name,)), None,
-        Gio.DBusCallFlags.NONE, 5000, None)
+        Gio.DBusCallFlags.NONE, 30000, None)
+    emit({"event": "im-switched",
+          "ms": round((time.monotonic() - switch_started) * 1000, 1)})
 
     loop = GLib.MainLoop()
 
     def send_keys():
         for keyval, keycode, state in keys:
             for is_release in (False, True):
+                call_started = time.monotonic()
                 reply = ic_call(
                     "ProcessKeyEvent",
                     GLib.Variant("(uuubu)",
@@ -101,7 +108,9 @@ def main():
                     "(b)")
                 if not is_release:
                     emit({"event": "key-result", "keyval": keyval,
-                          "handled": reply.unpack()[0]})
+                          "handled": reply.unpack()[0],
+                          "ms": round(
+                              (time.monotonic() - call_started) * 1000, 1)})
         # Give queued signals a beat to arrive before quitting.
         GLib.timeout_add(300, loop.quit)
         return False
