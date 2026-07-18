@@ -26,8 +26,15 @@ The goal: engines written against the MacishType JS contract
 
 ## Status
 
-Pre-alpha. Milestone 1: MacishType's `ExampleEngine` types end-to-end,
-unmodified.
+Milestone 1 reached: MacishType's `ExampleEngine` types end to end,
+unmodified — composition preedit, candidate window with index labels and
+navigation, commit, escape, and OS passthrough all work against an isolated
+fcitx5 instance (`test/acceptance.sh`).
+
+Not yet implemented: settings/config UI, storage change events, hot reload,
+associated-mode dictionary data, `manifest.modules` data sources
+(fontCoverage / wordFrequency / symbolNames answer with their miss values),
+reverse lookup, and the committed-text Traditional→Simplified transform.
 
 ## Development
 
