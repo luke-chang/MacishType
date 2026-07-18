@@ -2,7 +2,7 @@ add_library(macishtype SHARED
     enginediscovery.cpp
     macishtype.cpp
 )
-target_link_libraries(macishtype PRIVATE Fcitx5::Core)
+target_link_libraries(macishtype PRIVATE Fcitx5::Core qjs)
 install(TARGETS macishtype DESTINATION "${FCITX_INSTALL_LIBDIR}/fcitx5")
 
 configure_file(macishtype-addon.conf.in macishtype-addon.conf @ONLY)
