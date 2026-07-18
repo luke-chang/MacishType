@@ -8,6 +8,7 @@
 #include <fcitx-utils/utf8.h>
 
 #include "../log.h"
+#include "fontcoverage.h"
 #include "qjsutil.h"
 
 namespace macishtype {
@@ -312,9 +313,10 @@ bool JsEngineHost::injectModules() {
         }
         qjs::Value result;
         if (moduleName == "fontCoverage") {
+            const std::string &coverage = fontCoverageBitmapBase64();
             JSValue arguments[2] = {
                 JS_NewString(ctx_, moduleName.c_str()),
-                JS_NewString(ctx_, ""),
+                JS_NewString(ctx_, coverage.c_str()),
             };
             result = qjs::Value(
                 ctx_, JS_Call(ctx_, setter.get(), JS_UNDEFINED, 2, arguments));

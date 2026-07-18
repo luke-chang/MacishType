@@ -32,9 +32,10 @@ navigation, commit, escape, and OS passthrough all work against an isolated
 fcitx5 instance (`test/acceptance.sh`).
 
 Not yet implemented: settings/config UI, storage change events, hot reload,
-associated-mode dictionary data, the fontCoverage / symbolNames module data
-sources (they answer with their miss values; wordFrequency is fed from the
-corpus prepared by `scripts/prepare-data.sh`), and reverse lookup.
+associated-mode dictionary data, the symbolNames module data source (it
+answers with its miss value; wordFrequency is fed from the corpus prepared
+by `scripts/prepare-data.sh`, fontCoverage from fontconfig), reverse lookup,
+and live fontcoveragechange events on font installs.
 
 Traditional→Simplified output is delegated to fcitx5's own chttrans module
 (attached automatically for Chinese engines, toggled with its hotkey /
