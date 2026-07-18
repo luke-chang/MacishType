@@ -10,7 +10,10 @@ namespace macishtype {
 // The subset of manifest.json the C++ side needs. The JS host re-parses the
 // raw JSON in the engine's own context for everything bridge-visible.
 struct ManifestData {
-    std::string entry = "index.js";
+    // Entry module path relative to the engine folder. Required by the
+    // contract (macOS rejects a manifest without it); parseManifest fails
+    // when it is missing, so it is never empty here.
+    std::string entry;
     // Locale-resolved manifest name; empty when the manifest omits it.
     std::string displayName;
     // Raw manifest intendedLanguage (BCP 47, e.g. zh-Hant); keys the

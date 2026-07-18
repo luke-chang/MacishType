@@ -300,7 +300,14 @@ parseManifest(const std::filesystem::path &manifestPath,
                 }
             }
 
-            result = std::move(data);
+            if (data.entry.empty()) {
+                MACISHTYPE_WARN()
+                    << "Manifest `entry` must be a non-empty string "
+                       "(required): "
+                    << manifestPath;
+            } else {
+                result = std::move(data);
+            }
         }
     }
 
