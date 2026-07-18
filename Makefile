@@ -68,6 +68,7 @@ install:
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
 	cmake --build $(BUILD_DIR) -j
 	sudo cmake --install $(BUILD_DIR)
+	$(MAKE) restart
 
 # Restarts the LIVE fcitx5 with the user-dir addon visible — interrupts
 # typing, so run it yourself. The daemon inherits this terminal's stderr;
