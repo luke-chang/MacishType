@@ -6,7 +6,7 @@ BUILD_DIR := build
 .PHONY: build prepare debug install restart test clean
 
 build:
-	cmake -B $(BUILD_DIR)
+	cmake -B $(BUILD_DIR) -G Ninja
 	cmake --build $(BUILD_DIR) -j
 
 # Module data tables (wordFrequency / symbolNames). Set MACISHTYPE_REPO to a
@@ -25,7 +25,7 @@ debug: build
 # included. The distro fcitx5 only loads addons from /usr, so the install
 # prefix must be /usr — /usr/local would be ignored.
 install:
-	cmake -B $(BUILD_DIR) -DCMAKE_INSTALL_PREFIX=/usr
+	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
 	cmake --build $(BUILD_DIR) -j
 	sudo cmake --install $(BUILD_DIR)
 
