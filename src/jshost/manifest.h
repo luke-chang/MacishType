@@ -13,6 +13,9 @@ struct ManifestData {
     std::string entry = "index.js";
     // Locale-resolved manifest name; empty when the manifest omits it.
     std::string displayName;
+    // Raw manifest intendedLanguage (BCP 47, e.g. zh-Hant); keys the
+    // per-language module data files.
+    std::string intendedLanguage;
     // Fcitx-style language code derived from intendedLanguage (e.g. zh_TW).
     std::string languageCode;
     // JSON object mapping settings field keys to their manifest defaults.

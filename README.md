@@ -32,9 +32,10 @@ navigation, commit, escape, and OS passthrough all work against an isolated
 fcitx5 instance (`test/acceptance.sh`).
 
 Not yet implemented: settings/config UI, storage change events, hot reload,
-associated-mode dictionary data, `manifest.modules` data sources
-(fontCoverage / wordFrequency / symbolNames answer with their miss values),
-reverse lookup, and the committed-text Traditional→Simplified transform.
+associated-mode dictionary data, the fontCoverage / symbolNames module data
+sources (they answer with their miss values; wordFrequency is fed from the
+corpus prepared by `scripts/prepare-data.sh`), reverse lookup, and the
+committed-text Traditional→Simplified transform.
 
 ## Development
 

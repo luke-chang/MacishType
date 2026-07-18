@@ -298,9 +298,9 @@ bool JsEngineHost::injectModules() {
     Entry entry(*this);
     qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
     for (const auto &moduleName : manifest_.enabledModules) {
-        // TODO: real data sources. fontCoverage should come from fontconfig;
-        // symbolNames / wordFrequency from bundled tables. Until then inject
-        // empty views so enabled modules answer with their miss value.
+        // TODO: fontCoverage should come from fontconfig; symbolNames from
+        // a bundled CLDR table. Modules without a data source inject empty
+        // views so they answer with their miss value.
         const char *setterName = moduleName == "fontCoverage"
                                      ? "__MacishType_setCoverageModule"
                                      : "__MacishType_setModuleData";
@@ -324,9 +324,13 @@ bool JsEngineHost::injectModules() {
             JSValue missValue = moduleName == "wordFrequency"
                                     ? JS_NewInt32(ctx_, 0)
                                     : JS_UNDEFINED;
+            JSValue table = JS_NewObject(ctx_);
+            if (moduleName == "wordFrequency") {
+                loadFrequencyTable(table);
+            }
             JSValue arguments[3] = {
                 JS_NewString(ctx_, moduleName.c_str()),
-                JS_NewObject(ctx_),
+                table,
                 missValue,
             };
             result = qjs::Value(
@@ -342,6 +346,50 @@ bool JsEngineHost::injectModules() {
         }
     }
     return true;
+}
+
+// Fills `table` from the per-language module data file installed under
+// <pkgdata>/macishtype/modules/ ("char<TAB>count" lines, # comments). A
+// missing file leaves the table empty, which reads as all-miss.
+void JsEngineHost::loadFrequencyTable(JSValue table) {
+    if (manifest_.intendedLanguage.empty()) {
+        return;
+    }
+    auto path = fcitx::StandardPaths::global().locate(
+        fcitx::StandardPathsType::PkgData,
+        "macishtype/modules/wordFrequency." + manifest_.intendedLanguage +
+            ".tsv");
+    if (path.empty()) {
+        MACISHTYPE_INFO() << "No wordFrequency table for "
+                          << manifest_.intendedLanguage
+                          << "; module answers with 0 (run "
+                             "scripts/prepare-data.sh and dev-install.sh)";
+        return;
+    }
+    std::ifstream stream(path, std::ios::binary);
+    std::string line;
+    size_t count = 0;
+    while (std::getline(stream, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        auto tab = line.find('\t');
+        if (tab == std::string::npos) {
+            continue;
+        }
+        std::string character = line.substr(0, tab);
+        int64_t frequency = 0;
+        try {
+            frequency = std::stoll(line.substr(tab + 1));
+        } catch (...) {
+            continue;
+        }
+        JS_SetPropertyStr(ctx_, table, character.c_str(),
+                          JS_NewInt64(ctx_, frequency));
+        count++;
+    }
+    MACISHTYPE_INFO() << "wordFrequency." << manifest_.intendedLanguage
+                      << ": " << count << " entries";
 }
 
 bool JsEngineHost::evaluateEntryModule() {

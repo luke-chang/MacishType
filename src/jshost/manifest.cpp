@@ -185,8 +185,9 @@ parseManifest(const std::filesystem::path &manifestPath,
             qjs::Value intendedLanguage(
                 ctx, JS_GetPropertyStr(ctx, root.get(), "intendedLanguage"));
             if (JS_IsString(intendedLanguage.get())) {
-                data.languageCode = fcitxLanguageCode(
-                    qjs::toString(ctx, intendedLanguage.get()));
+                data.intendedLanguage =
+                    qjs::toString(ctx, intendedLanguage.get());
+                data.languageCode = fcitxLanguageCode(data.intendedLanguage);
             }
 
             // settings: [{fields: [{key, default}, ...]}, ...] → {key: default}
