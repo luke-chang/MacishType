@@ -10,7 +10,26 @@ USER_SHARE := $(HOME)/.local/share/fcitx5
 ADDON_DIRS := $(USER_LIB):/usr/lib/$(MACHINE)/fcitx5
 
 .PHONY: build prepare debug dev-install dev-uninstall install uninstall \
-	restart test clean
+	restart test clean log log-js log-history
+
+# Window for `make log-history`, systemd time syntax (override:
+# LOG_SHOW_LAST=24h).
+LOG_SHOW_LAST = 1h
+# Both launch paths land in the user journal: the session-autostarted
+# fcitx5 under its desktop identifier, `make restart` under systemd-cat's.
+LOG_MATCH = -t fcitx5 -t org.fcitx.Fcitx5.desktop
+# fcitx5 log lines carry their source file; matching this repo's sources
+# scopes the stream to the addon (the moral equivalent of the macOS
+# Makefile's subsystem filter). Derived from src/, so new files join
+# automatically.
+empty :=
+space := $(empty) $(empty)
+LOG_SOURCES = $(notdir $(wildcard src/*.cpp src/jshost/*.cpp))
+LOG_PATTERN = ($(subst $(space),|,$(strip $(LOG_SOURCES)))):[0-9]+\]
+# `-o cat` drops the journal prefix (its date/host/pid duplicate what the
+# fcitx line already carries); this trims the fcitx timestamp to
+# month-day + time: "07-19 04:22:33.418 I macishtype.cpp:86] ...".
+LOG_SIMPLIFY = sed -u -E 's/^([A-Z])[0-9]{4}-([0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3})[0-9]*/\2 \1/'
 
 build:
 	cmake -B $(BUILD_DIR) -G Ninja
@@ -78,18 +97,27 @@ install:
 	$(MAKE) restart
 
 # Restarts the LIVE fcitx5 with the user-dir addon visible — interrupts
-# typing, so run it yourself. The daemon inherits this terminal's stderr;
-# discard it by default, or set MACISHTYPE_LOG=1 to keep a log file
-# (truncated each restart). A session-autostarted fcitx5 logs to the
-# journal instead.
+# typing, so run it yourself. Output goes to the user journal (see `make
+# log`), same as a session-autostarted fcitx5. Per-key Debug logging is
+# off by default; enable with LOG_DEBUG=1.
 restart:
-	@log_file=/dev/null; \
-	if [ -n "$$MACISHTYPE_LOG" ]; then \
-	    log_file="$${XDG_STATE_HOME:-$$HOME/.local/state}/fcitx5-macishtype/fcitx5.log"; \
-	    mkdir -p "$$(dirname "$$log_file")"; \
-	    echo "fcitx5 log: $$log_file"; \
-	fi; \
-	FCITX_ADDON_DIRS="$(ADDON_DIRS)" fcitx5 -rd > "$$log_file" 2>&1
+	FCITX_ADDON_DIRS="$(ADDON_DIRS)" systemd-cat -t fcitx5 \
+	    fcitx5 -rd $(if $(LOG_DEBUG),--verbose macishtype=5)
+
+# Live addon log stream from the user journal, both launch paths included.
+# For the full fcitx5 stream use journalctl directly.
+log:
+	@journalctl --user -f -o cat $(LOG_MATCH) | grep --line-buffered -E '$(LOG_PATTERN)' | $(LOG_SIMPLIFY)
+
+# JS-originated lines only: engine console.* arrives via the host's log
+# bridge, prefixed with the engine id in brackets.
+log-js:
+	@journalctl --user -f -o cat $(LOG_MATCH) | grep --line-buffered -E '\] \[[a-z0-9_-]+\]' \
+	    | $(LOG_SIMPLIFY) | sed -u -E 's/ [a-z]+\.cpp:[0-9]+\]//'
+
+log-history:
+	@journalctl --user --since "-$(LOG_SHOW_LAST)" -o cat $(LOG_MATCH) \
+	    | grep -E '$(LOG_PATTERN)' | $(LOG_SIMPLIFY) || true
 
 # Removes a production install, using the manifest cmake wrote during the
 # last `make install`, and restarts fcitx5 so the removal takes effect —

@@ -105,6 +105,18 @@ make debug     # dev install into ~/.local + fcitx5 restart (interrupts typing)
 make test      # acceptance suite against an isolated fcitx5
 make install   # production install into /usr (sudo) + fcitx5 restart
 make uninstall # remove the production install (per cmake's manifest)
+
+make log          # follow the addon's log (scoped to this repo's sources)
+make log-js       # follow engine console.* output only
+make log-history  # show recent addon log (default 1h; LOG_SHOW_LAST=24h ...)
+```
+
+fcitx5 logs to the user journal regardless of how it was started
+(session autostart or `make restart`). Per-key Debug logging — including
+engine `console.debug` — is off by default; restart with
+`make restart LOG_DEBUG=1` (or `make debug LOG_DEBUG=1`) to enable it.
+
+```sh
 ```
 
 ### Dev install and `FCITX_ADDON_DIRS`
