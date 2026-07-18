@@ -27,11 +27,16 @@ struct EngineInfo {
     }
 };
 
-// Resolves a manifest icon base name (empty = the default base "icon") to
-// an absolute path by probing `<base>-symbolic.svg`, `<base>.svg`, then
-// `<base>.png`, enforcing the same containment discipline as the
-// engine:/// module loader: the file must resolve inside the engine
-// folder. Returns empty when nothing matches.
+// Candidate absolute paths an icon base name (empty = the default base
+// "icon") may resolve to, in priority order — also the files whose changes
+// should refresh the icon. Empty when the engine root cannot be resolved.
+std::vector<std::string> iconCandidatePaths(const std::filesystem::path &root,
+                                            const std::string &icon);
+
+// Resolves the icon base name to the first existing candidate, enforcing
+// the same containment discipline as the engine:/// module loader: the
+// file must resolve inside the engine folder. Returns empty when nothing
+// matches.
 std::string resolveIconPath(const std::filesystem::path &root,
                             const std::string &icon);
 

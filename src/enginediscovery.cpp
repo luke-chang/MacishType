@@ -25,39 +25,53 @@ bool isValidEngineId(const std::string &name) {
 
 } // namespace
 
-std::string resolveIconPath(const std::filesystem::path &root,
-                            const std::string &icon) {
+std::vector<std::string>
+iconCandidatePaths(const std::filesystem::path &root,
+                   const std::string &icon) {
     // The manifest declares an extensionless base name; each host appends
     // its platform's suffixes. First match wins, so a recolorable symbolic
     // variant beats plain ones when an engine ships several.
     static constexpr const char *kSuffixes[] = {"-symbolic.svg", ".svg",
                                                 ".png"};
-    const bool declared = !icon.empty();
-    const std::string base = declared ? icon : "icon";
-
     std::error_code errorCode;
     auto canonicalRoot = std::filesystem::canonical(root, errorCode);
     if (errorCode) {
         return {};
     }
+    const std::string base = icon.empty() ? "icon" : icon;
+    std::vector<std::string> candidates;
     for (const char *suffix : kSuffixes) {
-        auto path = std::filesystem::canonical(canonicalRoot /
-                                                   (base + suffix),
-                                               errorCode);
+        candidates.push_back((canonicalRoot / (base + suffix)).string());
+    }
+    return candidates;
+}
+
+std::string resolveIconPath(const std::filesystem::path &root,
+                            const std::string &icon) {
+    std::error_code errorCode;
+    auto canonicalRoot = std::filesystem::canonical(root, errorCode);
+    if (errorCode) {
+        return {};
+    }
+    auto rootPrefix = canonicalRoot.string() + "/";
+    for (const auto &candidate : iconCandidatePaths(root, icon)) {
+        auto path = std::filesystem::canonical(candidate, errorCode);
         if (errorCode || !std::filesystem::is_regular_file(path, errorCode)) {
             continue;
         }
-        if (path.string().rfind(canonicalRoot.string() + "/", 0) != 0) {
+        // Candidates sit inside the root by construction, but a symlinked
+        // file may still point elsewhere.
+        if (path.string().rfind(rootPrefix, 0) != 0) {
             MACISHTYPE_WARN() << "Manifest icon escapes the engine folder: "
-                              << base << suffix;
+                              << path;
             continue;
         }
         return path.string();
     }
     // Silence is correct for the probe of the implicit default; only a
     // base the manifest asked for deserves a warning.
-    if (declared) {
-        MACISHTYPE_WARN() << "Manifest icon matches no file: " << root / base
+    if (!icon.empty()) {
+        MACISHTYPE_WARN() << "Manifest icon matches no file: " << root / icon
                           << "{-symbolic.svg,.svg,.png}";
     }
     return {};

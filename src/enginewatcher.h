@@ -4,20 +4,22 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 
 #include <fcitx-utils/event.h>
 
 namespace macishtype {
 
-// inotify watcher over engine folders. Any relevant file change (module
-// sources, fetched data, manifest.json) fires the callback once per engine
-// after a short debounce; `_storage/` traffic and editor droppings are
-// ignored. Watches the resolved folder, so symlinked engine folders (the
-// dev workflow) see edits at the link target.
+// inotify watcher over engine folders. File changes fire the callback once
+// per engine after a short debounce, carrying the affected canonical paths
+// so the reload policy can scope its reaction; `_storage/` traffic and
+// editor droppings are ignored. Watches the resolved folder, so symlinked
+// engine folders (the dev workflow) see edits at the link target.
 class EngineWatcher {
 public:
-    using Callback = std::function<void(const std::string &engineId)>;
+    using Callback = std::function<void(
+        const std::string &engineId, const std::set<std::string> &changed)>;
 
     EngineWatcher(fcitx::EventLoop *eventLoop, Callback callback);
     ~EngineWatcher();
@@ -32,7 +34,8 @@ private:
     void watchDirectoryTree(const std::string &engineId,
                             const std::filesystem::path &directory);
     void handleEvents();
-    void scheduleCallback(const std::string &engineId);
+    void scheduleCallback(const std::string &engineId,
+                          const std::filesystem::path &changedPath);
 
     fcitx::EventLoop *eventLoop_;
     Callback callback_;
@@ -41,6 +44,8 @@ private:
     // watch descriptor → (engine id, directory)
     std::map<int, std::pair<std::string, std::filesystem::path>> watches_;
     std::map<std::string, std::unique_ptr<fcitx::EventSourceTime>> pending_;
+    // Paths accumulated while an engine's debounce timer is armed.
+    std::map<std::string, std::set<std::string>> pendingPaths_;
 };
 
 } // namespace macishtype

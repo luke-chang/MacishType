@@ -177,6 +177,7 @@ bool JsEngineHost::initialize() {
                            << ": " << errorCode.message();
         return false;
     }
+    loadedFilePaths_.insert((canonicalRoot_ / "manifest.json").string());
 
     runtime_ = JS_NewRuntime();
     ctx_ = JS_NewContext(runtime_);
@@ -417,6 +418,7 @@ bool JsEngineHost::evaluateEntryModule() {
                            << entryPath.fileSystemPath;
         return false;
     }
+    loadedFilePaths_.insert(entryPath.fileSystemPath.string());
 
     Entry entry(*this);
     qjs::Value compiled(
@@ -690,6 +692,7 @@ JSModuleDef *JsEngineHost::moduleLoad(JSContext *ctx, const char *moduleName,
         JS_ThrowReferenceError(ctx, "could not read module '%s'", moduleName);
         return nullptr;
     }
+    host->loadedFilePaths_.insert(modulePath.fileSystemPath.string());
     JSValue compiled =
         JS_Eval(ctx, content->c_str(), content->size(),
                 modulePath.url.c_str(),
@@ -1090,6 +1093,9 @@ JSValue JsEngineHost::nativeReadEngineFile(JSContext *ctx,
         return JS_ThrowPlainError(ctx, "fetch: %s", error->c_str());
     }
     auto &filePath = std::get<ResolvedPath>(resolved);
+    // A fetch alone expresses interest in the file; record it before the
+    // read so a later edit reloads even when this read fails.
+    host->loadedFilePaths_.insert(filePath.fileSystemPath.string());
     auto content = readFile(filePath.fileSystemPath);
     if (!content) {
         return JS_ThrowPlainError(ctx, "fetch: cannot read %s",

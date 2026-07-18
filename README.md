@@ -51,7 +51,10 @@ Engine folders hot-reload:
 editing an engine's files (or fixing a broken one) applies on the next
 keystroke with a desktop notification, no fcitx5 restart needed — except
 display-name changes, which fcitx5 only picks up on restart (its input
-method list cannot be updated at runtime). All `manifest.modules` data
+method list cannot be updated at runtime). Reloads are scoped to the files
+the engine expressed interest in — manifest, entry, imported modules,
+fetched data, icon candidates — so unrelated files in the folder don't
+trigger one; an engine that failed to load retries on any change. All `manifest.modules` data
 sources are fed: wordFrequency and symbolNames from the corpora pinned in
 `scripts/external-resources.lock`, fontCoverage from fontconfig.
 

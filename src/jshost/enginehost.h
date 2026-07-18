@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <variant>
 #include <vector>
@@ -46,6 +47,14 @@ public:
 
     JSContext *context() const { return ctx_; }
     const std::string &engineId() const { return engineId_; }
+
+    // Canonical paths of files the engine expressed interest in: manifest,
+    // entry, every imported module, every fetched resource. Consumed by
+    // the reload policy to scope hot reloads to relevant edits, mirroring
+    // the macOS host's loadedFilePaths.
+    const std::set<std::string> &loadedFilePaths() const {
+        return loadedFilePaths_;
+    }
 
     using FieldValue = std::variant<bool, double, std::string>;
     // Bridge-visible candidate window field: engine write overlay first,
@@ -188,6 +197,7 @@ private:
     std::string engineId_;
     std::filesystem::path engineRoot_;
     std::filesystem::path canonicalRoot_;
+    std::set<std::string> loadedFilePaths_;
     ManifestData manifest_;
     std::vector<std::string> languages_;
     std::string userAgent_;

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -52,6 +53,13 @@ private:
     bool chttransEnabled(const std::string &inputMethodName);
     void setChttransEnabled(const std::string &inputMethodName, bool enabled);
 
+    // Scopes hot reloads to relevant changes, mirroring the macOS host's
+    // tracked-file set: while an engine is live, only files it expressed
+    // interest in (plus the icon candidates) count. Engines without a live
+    // host accept any change, so a broken or not-yet-activated engine
+    // still retries on a fix.
+    bool shouldReload(const std::string &engineId,
+                      const std::set<std::string> &changedPaths);
     // Hot reload: tears down the engine's JS host and rebuilds the active
     // sessions so on-disk edits apply immediately.
     void reloadEngine(const std::string &engineId);

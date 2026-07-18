@@ -87,7 +87,12 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
                       << " engine folder(s)";
     watcher_ = std::make_unique<EngineWatcher>(
         &instance_->eventLoop(),
-        [this](const std::string &engineId) { reloadEngine(engineId); });
+        [this](const std::string &engineId,
+               const std::set<std::string> &changedPaths) {
+            if (shouldReload(engineId, changedPaths)) {
+                reloadEngine(engineId);
+            }
+        });
     // Watch every discovered engine from the start, so manifest edits apply
     // even for engines that have not been activated yet (and a failing one
     // retries as soon as it changes on disk).
@@ -317,6 +322,35 @@ void MacishTypeEngine::setChttransEnabled(const std::string &inputMethodName,
 
 void MacishTypeEngine::endSession(fcitx::InputContext *inputContext) {
     sessions_.erase(inputContext);
+}
+
+bool MacishTypeEngine::shouldReload(
+    const std::string &engineId, const std::set<std::string> &changedPaths) {
+    auto found = hosts_.find(engineId);
+    if (found == hosts_.end()) {
+        return true;
+    }
+    const auto &tracked = found->second->loadedFilePaths();
+    for (const auto &path : changedPaths) {
+        if (tracked.count(path) != 0) {
+            return true;
+        }
+    }
+    for (const auto &engine : engines_) {
+        if (engine.id != engineId) {
+            continue;
+        }
+        for (const auto &candidate :
+             iconCandidatePaths(engine.root, engine.manifest.icon)) {
+            if (changedPaths.count(candidate) != 0) {
+                return true;
+            }
+        }
+        break;
+    }
+    MACISHTYPE_DEBUG() << "Ignoring untracked file change(s) in "
+                       << engineId;
+    return false;
 }
 
 void MacishTypeEngine::reloadEngine(const std::string &engineId) {

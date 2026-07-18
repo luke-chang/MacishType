@@ -114,20 +114,24 @@ void EngineWatcher::handleEvents() {
             if ((event->mask & IN_CREATE) && (event->mask & IN_ISDIR)) {
                 watchDirectoryTree(engineId, directory / name);
             }
-            scheduleCallback(engineId);
+            scheduleCallback(engineId, directory / name);
         }
     }
 }
 
-void EngineWatcher::scheduleCallback(const std::string &engineId) {
+void EngineWatcher::scheduleCallback(
+    const std::string &engineId, const std::filesystem::path &changedPath) {
     // Editors burst several events per save; (re)arming a one-shot timer
-    // coalesces them into one reload.
+    // coalesces them into one callback carrying every touched path.
+    pendingPaths_[engineId].insert(changedPath.string());
     pending_[engineId] = eventLoop_->addTimeEvent(
         CLOCK_MONOTONIC, fcitx::now(CLOCK_MONOTONIC) + kDebounceMicroseconds,
         0,
         [this, engineId](fcitx::EventSourceTime *, uint64_t) {
             pending_.erase(engineId);
-            callback_(engineId);
+            auto changed = std::move(pendingPaths_[engineId]);
+            pendingPaths_.erase(engineId);
+            callback_(engineId, changed);
             return true;
         });
 }
