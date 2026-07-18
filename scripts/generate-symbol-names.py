@@ -5,12 +5,13 @@ Interface (external-resources processor convention):
     generate-symbol-names.py <cldr-annotations.json> <output> <source-url>
 
 Keeps single-codepoint BMP symbols and their `tts` name, sorted by
-codepoint. Mirrors MacishType's Scripts/GenerateSymbolNames.swift; when
-MACISHTYPE_REPO points at a MacishType checkout, its hand-curated
-Scripts/SymbolNamesOverride.zh-Hant.txt is overlaid (override wins on
-conflicts). The overlay is environment-dependent, so the driver's stamp
-does not track it — after editing the override, rerun with
-`external-resources.sh --clean` (or touch this script).
+codepoint. Mirrors MacishType's Scripts/GenerateSymbolNames.swift. The
+hand-curated override table (a sibling lock entry downloaded to
+data/symbol-names-override.zh-Hant.txt, pinned to the MacishType repo) is
+overlaid on the CLDR base; the override wins on conflicts. The .inputs
+sidecar folds the downloaded override into the stamp, so a pin bump
+regenerates this table (the override's lock line sorts first, keeping the
+download ahead of this processor).
 """
 
 import json
@@ -33,22 +34,17 @@ def main():
             names[symbol] = tts[0]
 
     overlaid = 0
-    macishtype_repo = os.environ.get("MACISHTYPE_REPO")
-    if macishtype_repo:
-        override_path = os.path.join(
-            macishtype_repo, "Scripts", "SymbolNamesOverride.zh-Hant.txt")
-        try:
-            with open(override_path, encoding="utf-8") as override:
-                for line in override:
-                    line = line.rstrip("\n")
-                    if not line or line.startswith("#") or "\t" not in line:
-                        continue
-                    symbol, name = line.split("\t", 1)
-                    names[symbol] = name
-                    overlaid += 1
-        except FileNotFoundError:
-            print(f"override not found, skipped: {override_path}",
-                  file=sys.stderr)
+    override_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(output_path))),
+        "symbol-names-override.zh-Hant.txt")
+    with open(override_path, encoding="utf-8") as override:
+        for line in override:
+            line = line.rstrip("\n")
+            if not line or line.startswith("#") or "\t" not in line:
+                continue
+            symbol, name = line.split("\t", 1)
+            names[symbol] = name
+            overlaid += 1
 
     header = [
         "# Symbol-to-name table (CLDR zh-Hant annotations, single BMP "

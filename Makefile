@@ -16,8 +16,8 @@ build:
 	cmake -B $(BUILD_DIR) -G Ninja
 	cmake --build $(BUILD_DIR) -j
 
-# Module data tables (wordFrequency / symbolNames). Set MACISHTYPE_REPO to a
-# MacishType checkout to overlay its hand-curated symbol names.
+# Module data tables (wordFrequency / symbolNames), pinned in
+# scripts/external-resources.lock.
 prepare:
 	scripts/external-resources.sh --prepare
 
