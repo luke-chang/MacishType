@@ -41,14 +41,14 @@ check_absent() {
 }
 
 output="$(run 104:43 105:31 32:65)"
-check "composing shows preedit" '{"event": "preedit", "text": "HI", "cursor": 2}'
+check "composing shows preedit" '"text": "HI", "cursor": 2'
 check "space commits the first candidate" '{"event": "commit", "text": "哈囉"}'
 
 output="$(run 104:43 105:31 50:11)"
 check "index label 2 commits the second candidate" '{"event": "commit", "text": "嗨"}'
 
 output="$(run 104:43 65307:9)"
-check "escape clears the preedit" '{"event": "preedit", "text": "", "cursor": 0}'
+check "escape clears the preedit" '"text": "", "cursor": 0'
 check_absent "escape commits nothing" '"event": "commit"'
 
 output="$(run 104:43 105:31 65363:114 65293:36)"

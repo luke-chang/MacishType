@@ -632,6 +632,12 @@ void EngineSession::applyUpdateCandidates(UpdateCandidatesAction action) {
     }
     candidatesVisible_ = true;
     renderCandidates();
+    // The initial selection counts as a selection change (macOS parity:
+    // the window notifies when moving from no-selection to the initial
+    // highlight), so engines can render replace previews on open.
+    if (!highlightSuspended_) {
+        fireSelectionChanged();
+    }
 }
 
 // Candidate word pushed into the fcitx input panel; select() fires when the

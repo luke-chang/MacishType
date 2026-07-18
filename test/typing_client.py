@@ -74,6 +74,7 @@ def main():
                 "event": "preedit",
                 "text": "".join(text for text, _format in segments),
                 "cursor": cursor,
+                "segments": [[text, fmt] for text, fmt in segments],
             })
         elif signal == "ForwardKey":
             keyval, state, is_release = values
