@@ -17,6 +17,10 @@ include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cma
 # needs PIC; EXCLUDE_FROM_ALL keeps its CLI and install rules out.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(QJS_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/third_party/quickjs-ng/CMakeLists.txt")
+    message(FATAL_ERROR "quickjs-ng submodule is missing; run:\n"
+                        "  git submodule update --init")
+endif()
 add_subdirectory(third_party/quickjs-ng EXCLUDE_FROM_ALL)
 
 add_subdirectory(po)
