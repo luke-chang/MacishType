@@ -53,9 +53,32 @@ make test      # acceptance suite against an isolated fcitx5
 make install   # production install into the system prefix (sudo)
 ```
 
-`make debug` needs fcitx5 launched with `FCITX_ADDON_DIRS` pointing at
-`~/.local/lib/fcitx5` (a `~/.config/environment.d/` entry makes that stick
-across logins); `make install` has no such requirement.
+### Dev install and `FCITX_ADDON_DIRS`
+
+fcitx5 only searches its baked-in system directory for addon `.so` files,
+so the dev install relies on launching fcitx5 with `FCITX_ADDON_DIRS`
+(`make restart` does this for the current session). Make it survive
+re-login with a one-time systemd user-environment entry — adjust the home
+path and the multiarch triplet (`gcc -dumpmachine`) to your system:
+
+```sh
+cat > ~/.config/environment.d/90-fcitx5-macishtype.conf <<'EOF'
+FCITX_ADDON_DIRS=/home/YOU/.local/lib/fcitx5:/usr/lib/x86_64-linux-gnu/fcitx5
+EOF
+```
+
+Notes:
+
+- The variable REPLACES the default search path; keep the system directory
+  listed or every other addon breaks.
+- `environment.d` is read at login, so the entry takes effect on the next
+  login; use `make restart` to apply immediately.
+- **Skipping this bites after the next re-login**: the autostarted fcitx5
+  comes up without the variable, fails to load the addon, and prunes its
+  input methods from `~/.config/fcitx5/profile` on save — they have to be
+  re-added in fcitx5-configtool.
+- A production `make install` needs none of this (and run
+  `make dev-uninstall` first — user-dir files shadow the system install).
 
 ## License
 
