@@ -16,6 +16,13 @@ struct ManifestData {
     std::string entry;
     // Locale-resolved manifest name; empty when the manifest omits it.
     std::string displayName;
+    // Optional short panel text from manifest `label`; empty means derive
+    // one from the display name.
+    std::string label;
+    // Optional panel icon base name (extensionless, relative to the
+    // engine folder) from manifest `icon`; empty means the default base
+    // "icon". Hosts append platform-appropriate suffixes.
+    std::string icon;
     // Raw manifest intendedLanguage (BCP 47, e.g. zh-Hant); keys the
     // per-language module data files.
     std::string intendedLanguage;

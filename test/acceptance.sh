@@ -57,4 +57,12 @@ check "arrow moves highlight, enter commits it" '{"event": "commit", "text": "å—
 output="$(run 53:14)"
 check "idle digit passes through unhandled" '"keyval": 53, "handled": false'
 
+# The fixture engine (test/fixtures, joined via XDG_DATA_DIRS) declares the
+# optional manifest label; its icon comes from the default base name
+# probing, which must prefer the -symbolic.svg over the .png it also ships.
+output="$("$root/test/isolated.sh" fixture iminfo 2> /dev/null)"
+check "manifest label reaches the entry" '"label": "Fx"'
+check "default icon base serves an absolute path" '"icon": "/'
+check "icon probing prefers the symbolic variant" '/engines/fixture/icon-symbolic.svg"'
+
 echo "All acceptance checks passed."

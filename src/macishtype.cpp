@@ -62,8 +62,13 @@ std::string uniqueNameForEngine(const EngineInfo &engine) {
     return std::string(kUniqueNamePrefix) + engine.id;
 }
 
-// Compact label shown in panels: the first character of the display name.
+// Compact label shown in panels: the manifest label when declared, else
+// the first character of the display name.
 std::string labelForEngine(const EngineInfo &engine) {
+    if (!engine.manifest.label.empty() &&
+        fcitx::utf8::validate(engine.manifest.label)) {
+        return engine.manifest.label;
+    }
     std::string displayName = engine.displayName();
     if (!fcitx::utf8::validate(displayName)) {
         return engine.id.substr(0, 1);
@@ -99,10 +104,29 @@ std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {
                                       engine.manifest.languageCode,
                                       "macishtype");
         entry.setLabel(labelForEngine(engine));
+        if (!engine.iconPath.empty()) {
+            entry.setIcon(engine.iconPath);
+        }
         entry.setConfigurable(false);
         entries.push_back(std::move(entry));
     }
     return entries;
+}
+
+std::string
+MacishTypeEngine::subModeIconImpl(const fcitx::InputMethodEntry &entry,
+                                  fcitx::InputContext &inputContext) {
+    FCITX_UNUSED(inputContext);
+    const auto *engine = engineForEntry(entry);
+    return engine != nullptr ? engine->iconPath : std::string();
+}
+
+std::string
+MacishTypeEngine::subModeLabelImpl(const fcitx::InputMethodEntry &entry,
+                                   fcitx::InputContext &inputContext) {
+    FCITX_UNUSED(inputContext);
+    const auto *engine = engineForEntry(entry);
+    return engine != nullptr ? labelForEngine(*engine) : std::string();
 }
 
 void MacishTypeEngine::keyEvent(const fcitx::InputMethodEntry &entry,
@@ -330,6 +354,9 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
             parseManifest(engine->root / "manifest.json", languages_)) {
         engine->manifest = std::move(*manifest);
     }
+    // Icon file changes count too, even when the manifest kept its old
+    // parse result; the subMode overrides serve the new value live.
+    engine->iconPath = resolveIconPath(engine->root, engine->manifest.icon);
 
     auto *host = hostForEngine(*engine);
     notifyReload(engine->displayName(), host != nullptr);

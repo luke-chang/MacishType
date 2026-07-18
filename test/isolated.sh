@@ -38,6 +38,9 @@ Layout=
 EOF
 
 export FCITX_ADDON_DIRS="$HOME/.local/lib/fcitx5:/usr/lib/$(gcc -dumpmachine 2>/dev/null || echo x86_64-linux-gnu)/fcitx5"
+# Fixture engines join through the system XDG layer, so tests never write
+# into the user's engine folders.
+export XDG_DATA_DIRS="$script_dir/fixtures/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export XDG_CONFIG_HOME="$config_root"
 
 dbus-run-session -- sh -c '

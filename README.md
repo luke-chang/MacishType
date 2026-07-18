@@ -33,7 +33,21 @@ fcitx5 instance (`test/acceptance.sh`).
 
 Not yet implemented: settings/config UI, storage change events,
 associated-mode dictionary data, reverse lookup, and live
-fontcoveragechange events on font installs. Engine folders hot-reload:
+fontcoveragechange events on font installs.
+
+Engines may declare the optional manifest `label` (short panel text;
+defaults to the display name's first character) and `icon` (an
+extensionless base name inside the engine folder, default `icon`). The
+addon probes `<icon>-symbolic.svg`, `<icon>.svg`, then `<icon>.png` and
+serves the first match to panels by absolute path — nothing is installed
+into an icon theme. A `-symbolic.svg` gets recolored to the panel
+foreground by the desktop; `scripts/generate-icon.py` bakes such a badge
+(macOS-style rounded rectangle with the glyph knocked out, carrying both
+the GNOME and KDE recoloring conventions) from a glyph. Both fields apply
+live on hot reload. Note that `fcitx5-configtool` lists icons by
+theme-name lookup only, so path-served icons do not show there.
+
+Engine folders hot-reload:
 editing an engine's files (or fixing a broken one) applies on the next
 keystroke with a desktop notification, no fcitx5 restart needed — except
 display-name changes, which fcitx5 only picks up on restart (its input
@@ -63,6 +77,10 @@ Build:
 
 Data preparation (`make prepare`): `curl`, `python3`.
 
+Icon badge generation (`scripts/generate-icon.py`, optional authoring
+tool): `python3` with fontTools (`python3-fonttools` on Debian-family) and
+fontconfig's `fc-match`.
+
 Tests (`make test`): `python3` with GObject introspection (`python3-gi` on
 Debian-family), `dbus-run-session`, and an installed fcitx5 to test
 against.
@@ -72,7 +90,7 @@ On Debian/Ubuntu, everything above is:
 ```sh
 sudo apt install build-essential cmake ninja-build pkgconf git \
     fcitx5-modules-dev libfcitx5core-dev libfontconfig-dev \
-    gettext curl python3 python3-gi dbus
+    gettext curl python3 python3-gi python3-fonttools dbus
 ```
 
 ### Workflow

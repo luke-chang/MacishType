@@ -182,6 +182,17 @@ parseManifest(const std::filesystem::path &manifestPath,
             qjs::Value name(ctx, JS_GetPropertyStr(ctx, root.get(), "name"));
             data.displayName = resolveLocalizedName(ctx, name.get(), languages);
 
+            qjs::Value label(ctx,
+                             JS_GetPropertyStr(ctx, root.get(), "label"));
+            if (JS_IsString(label.get())) {
+                data.label = qjs::toString(ctx, label.get());
+            }
+
+            qjs::Value icon(ctx, JS_GetPropertyStr(ctx, root.get(), "icon"));
+            if (JS_IsString(icon.get())) {
+                data.icon = qjs::toString(ctx, icon.get());
+            }
+
             qjs::Value intendedLanguage(
                 ctx, JS_GetPropertyStr(ctx, root.get(), "intendedLanguage"));
             if (JS_IsString(intendedLanguage.get())) {

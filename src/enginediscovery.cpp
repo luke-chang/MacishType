@@ -25,6 +25,44 @@ bool isValidEngineId(const std::string &name) {
 
 } // namespace
 
+std::string resolveIconPath(const std::filesystem::path &root,
+                            const std::string &icon) {
+    // The manifest declares an extensionless base name; each host appends
+    // its platform's suffixes. First match wins, so a recolorable symbolic
+    // variant beats plain ones when an engine ships several.
+    static constexpr const char *kSuffixes[] = {"-symbolic.svg", ".svg",
+                                                ".png"};
+    const bool declared = !icon.empty();
+    const std::string base = declared ? icon : "icon";
+
+    std::error_code errorCode;
+    auto canonicalRoot = std::filesystem::canonical(root, errorCode);
+    if (errorCode) {
+        return {};
+    }
+    for (const char *suffix : kSuffixes) {
+        auto path = std::filesystem::canonical(canonicalRoot /
+                                                   (base + suffix),
+                                               errorCode);
+        if (errorCode || !std::filesystem::is_regular_file(path, errorCode)) {
+            continue;
+        }
+        if (path.string().rfind(canonicalRoot.string() + "/", 0) != 0) {
+            MACISHTYPE_WARN() << "Manifest icon escapes the engine folder: "
+                              << base << suffix;
+            continue;
+        }
+        return path.string();
+    }
+    // Silence is correct for the probe of the implicit default; only a
+    // base the manifest asked for deserves a warning.
+    if (declared) {
+        MACISHTYPE_WARN() << "Manifest icon matches no file: " << root / base
+                          << "{-symbolic.svg,.svg,.png}";
+    }
+    return {};
+}
+
 std::vector<EngineInfo>
 discoverEngines(const std::vector<std::string> &languages) {
     const auto &paths = fcitx::StandardPaths::global();
@@ -53,7 +91,9 @@ discoverEngines(const std::vector<std::string> &languages) {
                               << fullPath;
             continue;
         }
-        engines.push_back(EngineInfo{id, fullPath, std::move(*manifest)});
+        EngineInfo engine{id, fullPath, std::move(*manifest), {}};
+        engine.iconPath = resolveIconPath(engine.root, engine.manifest.icon);
+        engines.push_back(std::move(engine));
     }
 
     std::sort(engines.begin(), engines.end(),

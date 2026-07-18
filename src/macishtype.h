@@ -25,6 +25,12 @@ public:
     explicit MacishTypeEngine(fcitx::Instance *instance);
 
     std::vector<fcitx::InputMethodEntry> listInputMethods() override;
+    // Panels consult these live, unlike the registration-time entry
+    // fields, so manifest label and icon edits apply on hot reload.
+    std::string subModeIconImpl(const fcitx::InputMethodEntry &entry,
+                                fcitx::InputContext &inputContext) override;
+    std::string subModeLabelImpl(const fcitx::InputMethodEntry &entry,
+                                 fcitx::InputContext &inputContext) override;
     void keyEvent(const fcitx::InputMethodEntry &entry,
                   fcitx::KeyEvent &keyEvent) override;
     void activate(const fcitx::InputMethodEntry &entry,

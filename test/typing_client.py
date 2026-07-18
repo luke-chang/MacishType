@@ -47,6 +47,10 @@ def main():
         if spec.startswith("sleep:"):
             keys.append(("sleep", int(spec.split(":")[1])))
             continue
+        # "iminfo" dumps the current IM's registered entry fields.
+        if spec == "iminfo":
+            keys.append(("iminfo",))
+            continue
         parts = spec.split(":")
         keyval = parts[0]
         keyval = ord(keyval) if len(keyval) == 1 and not keyval.isdigit() \
@@ -122,6 +126,18 @@ def main():
         for entry in keys:
             if entry[0] == "sleep":
                 time.sleep(entry[1] / 1000)
+                continue
+            if entry[0] == "iminfo":
+                reply = bus.call_sync(
+                    BUS_NAME, "/controller", "org.fcitx.Fcitx.Controller1",
+                    "AvailableInputMethods", None,
+                    GLib.VariantType("(a(ssssssb))"),
+                    Gio.DBusCallFlags.NONE, 5000, None)
+                for (unique_name, name, _native, icon, label, language,
+                     _configurable) in reply.unpack()[0]:
+                    if unique_name == im_name:
+                        emit({"event": "iminfo", "name": name, "icon": icon,
+                              "label": label, "language": language})
                 continue
             _kind, keyval, keycode, state = entry
             for is_release in (False, True):
