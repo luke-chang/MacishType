@@ -4,8 +4,12 @@
 #include <string>
 #include <string_view>
 
+#include <cstdlib>
+#include <filesystem>
+
 #include <fcitx-config/rawconfig.h>
 #include <notifications_public.h>
+#include <fcitx-utils/i18n.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/action.h>
 #include <fcitx/addonmanager.h>
@@ -21,6 +25,38 @@ FCITX_DEFINE_LOG_CATEGORY(macishtype_logcategory, "macishtype");
 namespace {
 
 constexpr std::string_view kUniqueNamePrefix = "macishtype-";
+constexpr char kTextDomain[] = "fcitx5-macishtype";
+
+// Translations follow the install flavor: the dev install puts .mo files
+// under ~/.local/share/locale, the production install under the system
+// locale dir. gettext binds one directory per domain, so pick whichever
+// actually carries the domain.
+void registerTextDomain() {
+    const char *home = std::getenv("HOME");
+    if (home != nullptr) {
+        std::filesystem::path userLocale =
+            std::filesystem::path(home) / ".local/share/locale";
+        std::error_code errorCode;
+        std::filesystem::directory_iterator languages(userLocale, errorCode);
+        if (!errorCode) {
+            for (const auto &language : languages) {
+                if (std::filesystem::is_regular_file(
+                        language.path() / "LC_MESSAGES" /
+                            "fcitx5-macishtype.mo",
+                        errorCode)) {
+                    fcitx::registerDomain(kTextDomain,
+                                          userLocale.c_str());
+                    return;
+                }
+            }
+        }
+    }
+    fcitx::registerDomain(kTextDomain, FCITX_INSTALL_LOCALEDIR);
+}
+
+std::string translated(const char *text) {
+    return fcitx::translateDomain(kTextDomain, text);
+}
 
 std::string uniqueNameForEngine(const EngineInfo &engine) {
     return std::string(kUniqueNamePrefix) + engine.id;
@@ -41,6 +77,7 @@ std::string labelForEngine(const EngineInfo &engine) {
 MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     : instance_(instance), languages_(preferredLanguages()),
       engines_(discoverEngines(languages_)) {
+    registerTextDomain();
     MACISHTYPE_INFO() << "Discovered " << engines_.size()
                       << " engine folder(s)";
     watcher_ = std::make_unique<EngineWatcher>(
@@ -318,9 +355,11 @@ void MacishTypeEngine::notifyReload(const std::string &displayName,
     }
     notifications->call<fcitx::INotifications::showTip>(
         "macishtype-reload", "MacishType", "input-keyboard",
-        succeeded ? "Engine reloaded" : "Engine failed to load",
+        succeeded ? translated("Engine reloaded")
+                  : translated("Engine failed to load"),
         succeeded ? displayName
-                  : displayName + " — see the fcitx5 log for details",
+                  : displayName + " · " +
+                        translated("See the fcitx5 log for details"),
         3000);
 }
 

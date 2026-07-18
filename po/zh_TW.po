@@ -1,0 +1,17 @@
+# Traditional Chinese translations for fcitx5-macishtype.
+msgid ""
+msgstr ""
+"Project-Id-Version: fcitx5-macishtype\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: zh_TW\n"
+
+msgid "Engine reloaded"
+msgstr "引擎已重新載入"
+
+msgid "Engine failed to load"
+msgstr "引擎載入失敗"
+
+msgid "See the fcitx5 log for details"
+msgstr "詳見 fcitx5 記錄"

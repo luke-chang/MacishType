@@ -33,6 +33,8 @@ dev-install:
 	install -D -m 644 runtime/runtime.js $(USER_SHARE)/macishtype/runtime.js
 	install -D -m 644 runtime/hostglue.js $(USER_SHARE)/macishtype/hostglue.js
 	@mkdir -p $(USER_SHARE)/macishtype/engines
+	install -D -m 644 $(BUILD_DIR)/po/zh_TW.mo \
+	    $(HOME)/.local/share/locale/zh_TW/LC_MESSAGES/fcitx5-macishtype.mo
 	@if [ -d data/modules ]; then \
 	    mkdir -p $(USER_SHARE)/macishtype/modules; \
 	    cp data/modules/* $(USER_SHARE)/macishtype/modules/; \
@@ -49,6 +51,7 @@ dev-uninstall:
 	rm -f $(USER_SHARE)/macishtype/runtime.js
 	rm -f $(USER_SHARE)/macishtype/hostglue.js
 	rm -rf $(USER_SHARE)/macishtype/modules
+	rm -f $(HOME)/.local/share/locale/*/LC_MESSAGES/fcitx5-macishtype.mo
 	@rmdir $(USER_SHARE)/macishtype/engines $(USER_SHARE)/macishtype \
 	    2> /dev/null || true
 
