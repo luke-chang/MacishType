@@ -25,7 +25,8 @@ bool isValidEngineId(const std::string &name) {
 
 } // namespace
 
-std::vector<EngineInfo> discoverEngines() {
+std::vector<EngineInfo>
+discoverEngines(const std::vector<std::string> &languages) {
     const auto &paths = fcitx::StandardPaths::global();
     auto folders = paths.locate(
         fcitx::StandardPathsType::PkgData, kEnginesSubdir,
@@ -45,15 +46,14 @@ std::vector<EngineInfo> discoverEngines() {
                 << fullPath;
             continue;
         }
-        std::error_code errorCode;
-        if (!std::filesystem::is_regular_file(fullPath / "manifest.json",
-                                              errorCode)) {
-            MACISHTYPE_WARN() << "Skipping engine folder without "
+        auto manifest = parseManifest(fullPath / "manifest.json", languages);
+        if (!manifest) {
+            MACISHTYPE_WARN() << "Skipping engine folder without a valid "
                                  "manifest.json: "
                               << fullPath;
             continue;
         }
-        engines.push_back(EngineInfo{id, fullPath, id});
+        engines.push_back(EngineInfo{id, fullPath, std::move(*manifest)});
     }
 
     std::sort(engines.begin(), engines.end(),

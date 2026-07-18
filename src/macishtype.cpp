@@ -22,21 +22,19 @@ std::string uniqueNameForEngine(const EngineInfo &engine) {
 
 // Compact label shown in panels: the first character of the display name.
 std::string labelForEngine(const EngineInfo &engine) {
-    if (engine.displayName.empty()) {
+    std::string displayName = engine.displayName();
+    if (!fcitx::utf8::validate(displayName)) {
         return engine.id.substr(0, 1);
     }
-    auto range = fcitx::utf8::MakeUTF8CharRange(engine.displayName);
-    auto first = std::begin(range);
-    if (first == std::end(range)) {
-        return engine.id.substr(0, 1);
-    }
-    return std::string(engine.displayName.begin(), first.charRange().second);
+    auto firstCharBytes = fcitx::utf8::ncharByteLength(displayName.begin(), 1);
+    return displayName.substr(0, firstCharBytes);
 }
 
 } // namespace
 
 MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
-    : instance_(instance), engines_(discoverEngines()) {
+    : instance_(instance), languages_(preferredLanguages()),
+      engines_(discoverEngines(languages_)) {
     MACISHTYPE_INFO() << "Discovered " << engines_.size()
                       << " engine folder(s)";
 }
@@ -44,10 +42,10 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
 std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {
     std::vector<fcitx::InputMethodEntry> entries;
     for (const auto &engine : engines_) {
-        // TODO: language code and display name from manifest.json once the
-        // JS host lands; empty language groups the entry under "Unknown".
         fcitx::InputMethodEntry entry(uniqueNameForEngine(engine),
-                                      engine.displayName, "", "macishtype");
+                                      engine.displayName(),
+                                      engine.manifest.languageCode,
+                                      "macishtype");
         entry.setLabel(labelForEngine(engine));
         entry.setConfigurable(false);
         entries.push_back(std::move(entry));
@@ -58,25 +56,51 @@ std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {
 void MacishTypeEngine::keyEvent(const fcitx::InputMethodEntry &entry,
                                 fcitx::KeyEvent &keyEvent) {
     FCITX_UNUSED(entry);
-    // Skeleton: let every key through until the JS host handles them.
+    // Key dispatch into JS lands with the event translation layer; until
+    // then every key passes through.
     FCITX_UNUSED(keyEvent);
 }
 
 void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
                                 fcitx::InputContextEvent &event) {
-    FCITX_UNUSED(entry);
-    FCITX_UNUSED(event);
+    const auto *engine = engineForEntry(entry);
+    if (engine == nullptr) {
+        return;
+    }
+    auto *host = hostForEngine(*engine);
+    if (host == nullptr) {
+        return;
+    }
+    auto *inputContext = event.inputContext();
+    endSession(inputContext);
+    uint64_t instanceId = host->createInstance();
+    if (instanceId == 0) {
+        return;
+    }
+    sessions_[inputContext] = Session{host, instanceId};
+    host->invokeHook(instanceId, "activate");
 }
 
 void MacishTypeEngine::deactivate(const fcitx::InputMethodEntry &entry,
                                   fcitx::InputContextEvent &event) {
-    reset(entry, event);
+    FCITX_UNUSED(entry);
+    auto found = sessions_.find(event.inputContext());
+    if (found != sessions_.end()) {
+        auto &session = found->second;
+        session.host->invokeHook(session.instanceId, "compositionEnded");
+        session.host->invokeHook(session.instanceId, "deactivate");
+    }
+    endSession(event.inputContext());
 }
 
 void MacishTypeEngine::reset(const fcitx::InputMethodEntry &entry,
                              fcitx::InputContextEvent &event) {
     FCITX_UNUSED(entry);
-    FCITX_UNUSED(event);
+    auto found = sessions_.find(event.inputContext());
+    if (found != sessions_.end()) {
+        auto &session = found->second;
+        session.host->invokeHook(session.instanceId, "compositionEnded");
+    }
 }
 
 const EngineInfo *
@@ -93,6 +117,36 @@ MacishTypeEngine::engineForEntry(const fcitx::InputMethodEntry &entry) {
         }
     }
     return nullptr;
+}
+
+JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
+    if (auto found = hosts_.find(engine.id); found != hosts_.end()) {
+        return found->second.get();
+    }
+    if (failedHosts_.count(engine.id) != 0) {
+        return nullptr;
+    }
+    auto host = JsEngineHost::load(engine.id, engine.root, engine.manifest,
+                                   languages_);
+    if (!host) {
+        MACISHTYPE_ERROR() << "Engine failed to load, disabling until "
+                              "restart: "
+                           << engine.id;
+        failedHosts_[engine.id] = true;
+        return nullptr;
+    }
+    auto [inserted, unused] = hosts_.emplace(engine.id, std::move(host));
+    FCITX_UNUSED(unused);
+    return inserted->second.get();
+}
+
+void MacishTypeEngine::endSession(fcitx::InputContext *inputContext) {
+    auto found = sessions_.find(inputContext);
+    if (found == sessions_.end()) {
+        return;
+    }
+    found->second.host->destroyInstance(found->second.instanceId);
+    sessions_.erase(found);
 }
 
 fcitx::AddonInstance *

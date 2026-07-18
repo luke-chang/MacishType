@@ -1,9 +1,16 @@
 add_library(macishtype SHARED
     enginediscovery.cpp
+    jshost/enginehost.cpp
+    jshost/manifest.cpp
     macishtype.cpp
 )
 target_link_libraries(macishtype PRIVATE Fcitx5::Core qjs)
 install(TARGETS macishtype DESTINATION "${FCITX_INSTALL_LIBDIR}/fcitx5")
+
+install(FILES
+    "${CMAKE_SOURCE_DIR}/runtime/hostglue.js"
+    "${CMAKE_SOURCE_DIR}/runtime/runtime.js"
+    DESTINATION "${FCITX_INSTALL_PKGDATADIR}/macishtype")
 
 configure_file(macishtype-addon.conf.in macishtype-addon.conf @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/macishtype-addon.conf"

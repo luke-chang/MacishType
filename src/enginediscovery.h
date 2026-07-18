@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "jshost/manifest.h"
+
 namespace macishtype {
 
 struct EngineInfo {
@@ -14,13 +16,18 @@ struct EngineInfo {
     // Engine folder as discovered (may be a symlink; resolved lazily by the
     // JS host, which needs realpath containment anyway).
     std::filesystem::path root;
-    // Human-readable name; falls back to id until the manifest is parsed.
-    std::string displayName;
+    ManifestData manifest;
+
+    std::string displayName() const {
+        return manifest.displayName.empty() ? id : manifest.displayName;
+    }
 };
 
 // Scans <pkgdata>/macishtype/engines/* across XDG layers (user shadows
-// system). A folder qualifies if its name is valid and it contains a
-// manifest.json. Returns engines sorted by id for stable listing order.
-std::vector<EngineInfo> discoverEngines();
+// system). A folder qualifies if its name is valid and it carries a
+// parsable manifest.json. Returns engines sorted by id for stable listing
+// order.
+std::vector<EngineInfo>
+discoverEngines(const std::vector<std::string> &languages);
 
 } // namespace macishtype
