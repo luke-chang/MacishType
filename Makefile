@@ -64,6 +64,13 @@ dev-uninstall:
 # included. The distro fcitx5 only loads addons from /usr, so the install
 # prefix must be /usr — /usr/local would be ignored.
 install:
+	@if [ -f $(USER_LIB)/libmacishtype.so ] || \
+	    [ -f $(USER_SHARE)/addon/macishtype.conf ]; then \
+	    echo "A dev install exists in ~/.local and would shadow the" >&2; \
+	    echo "system install. Run \`make dev-uninstall\` first (engine" >&2; \
+	    echo "folders are kept)." >&2; \
+	    exit 1; \
+	fi
 	$(MAKE) prepare
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
 	cmake --build $(BUILD_DIR) -j
