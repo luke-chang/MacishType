@@ -30,6 +30,9 @@ IC_IFACE = "org.fcitx.Fcitx.InputContext1"
 
 CAPABILITY_PREEDIT = 1 << 1
 CAPABILITY_FORMATTED_PREEDIT = 1 << 4
+# Routes the input panel over DBus (UpdateClientSideUI) so tests can assert
+# candidate lists and their comments.
+CAPABILITY_CLIENT_SIDE_INPUT_PANEL = 1 << 39
 
 
 def emit(payload):
@@ -72,6 +75,18 @@ def main():
             keyval, state, is_release = values
             emit({"event": "forward", "keyval": keyval, "state": state,
                   "isRelease": is_release})
+        elif signal == "UpdateClientSideUI":
+            (_preedit, _cursor, _aux_up, _aux_down, candidates,
+             candidate_cursor, layout, has_prev, has_next) = values
+            emit({
+                "event": "candidates",
+                "items": [{"label": label, "text": text}
+                          for label, text in candidates],
+                "cursor": candidate_cursor,
+                "layout": layout,
+                "hasPrev": has_prev,
+                "hasNext": has_next,
+            })
 
     bus.signal_subscribe(None, IC_IFACE, None, ic_path, None,
                          Gio.DBusSignalFlags.NONE, on_signal)
@@ -83,7 +98,8 @@ def main():
             Gio.DBusCallFlags.NONE, 5000, None)
 
     ic_call("SetCapability", GLib.Variant(
-        "(t)", (CAPABILITY_PREEDIT | CAPABILITY_FORMATTED_PREEDIT,)))
+        "(t)", (CAPABILITY_PREEDIT | CAPABILITY_FORMATTED_PREEDIT |
+                CAPABILITY_CLIENT_SIDE_INPUT_PANEL,)))
     ic_call("FocusIn")
     # The first switch to a macishtype IM loads its JS engine synchronously,
     # so this duration doubles as the engine load time.
