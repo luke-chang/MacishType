@@ -38,8 +38,8 @@ editing an engine's files (or fixing a broken one) applies on the next
 keystroke with a desktop notification, no fcitx5 restart needed — except
 display-name changes, which fcitx5 only picks up on restart (its input
 method list cannot be updated at runtime). All `manifest.modules` data
-sources are fed: wordFrequency and symbolNames from the corpora prepared by
-`scripts/prepare-data.sh`, fontCoverage from fontconfig.
+sources are fed: wordFrequency and symbolNames from the corpora pinned in
+`scripts/external-resources.lock`, fontCoverage from fontconfig.
 
 Traditional→Simplified output is delegated to fcitx5's own chttrans module
 (attached automatically for Chinese engines, toggled with its hotkey /

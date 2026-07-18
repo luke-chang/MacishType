@@ -19,7 +19,7 @@ build:
 # Module data tables (wordFrequency / symbolNames). Set MACISHTYPE_REPO to a
 # MacishType checkout to overlay its hand-curated symbol names.
 prepare:
-	scripts/prepare-data.sh
+	scripts/external-resources.sh --prepare
 
 # Development install into ~/.local plus a fcitx5 restart. Restarting
 # interrupts typing in the current session — run this yourself.

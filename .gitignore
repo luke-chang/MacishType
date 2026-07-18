@@ -2,3 +2,4 @@ build/
 .cache/
 compile_commands.json
 data/
+.external-resources/
