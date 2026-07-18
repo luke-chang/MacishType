@@ -31,9 +31,13 @@ unmodified — composition preedit, candidate window with index labels and
 navigation, commit, escape, and OS passthrough all work against an isolated
 fcitx5 instance (`test/acceptance.sh`).
 
-Not yet implemented: settings/config UI, storage change events, hot reload,
+Not yet implemented: settings/config UI, storage change events,
 associated-mode dictionary data, reverse lookup, and live
-fontcoveragechange events on font installs. All `manifest.modules` data
+fontcoveragechange events on font installs. Engine folders hot-reload:
+editing an engine's files (or fixing a broken one) applies on the next
+keystroke with a desktop notification, no fcitx5 restart needed — except
+display-name changes, which fcitx5 only picks up on restart (its input
+method list cannot be updated at runtime). All `manifest.modules` data
 sources are fed: wordFrequency and symbolNames from the corpora prepared by
 `scripts/prepare-data.sh`, fontCoverage from fontconfig.
 

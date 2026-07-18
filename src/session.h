@@ -34,6 +34,7 @@ public:
     EngineSession &operator=(const EngineSession &) = delete;
 
     bool valid() const { return instanceId_ != 0; }
+    const std::string &engineId() const { return host_->engineId(); }
 
     // Full key pipeline: candidate-window interception, associated-mode
     // tier, then the engine's handleKey. Calls filterAndAccept() when the

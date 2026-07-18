@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include <fcitx-config/rawconfig.h>
+#include <notifications_public.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/action.h>
 #include <fcitx/addonmanager.h>
@@ -42,6 +43,15 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
       engines_(discoverEngines(languages_)) {
     MACISHTYPE_INFO() << "Discovered " << engines_.size()
                       << " engine folder(s)";
+    watcher_ = std::make_unique<EngineWatcher>(
+        &instance_->eventLoop(),
+        [this](const std::string &engineId) { reloadEngine(engineId); });
+    // Watch every discovered engine from the start, so manifest edits apply
+    // even for engines that have not been activated yet (and a failing one
+    // retries as soon as it changes on disk).
+    for (const auto &engine : engines_) {
+        watcher_->watchEngine(engine.id, engine.root);
+    }
 }
 
 std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {
@@ -145,8 +155,8 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
     auto host = JsEngineHost::load(engine.id, engine.root, engine.manifest,
                                    languages_);
     if (!host) {
-        MACISHTYPE_ERROR() << "Engine failed to load, disabling until "
-                              "restart: "
+        MACISHTYPE_ERROR() << "Engine failed to load, disabled until it "
+                              "changes on disk: "
                            << engine.id;
         failedHosts_[engine.id] = true;
         return nullptr;
@@ -246,6 +256,72 @@ void MacishTypeEngine::setChttransEnabled(const std::string &inputMethodName,
 
 void MacishTypeEngine::endSession(fcitx::InputContext *inputContext) {
     sessions_.erase(inputContext);
+}
+
+void MacishTypeEngine::reloadEngine(const std::string &engineId) {
+    MACISHTYPE_INFO() << "Engine changed on disk, reloading: " << engineId;
+    failedHosts_.erase(engineId);
+
+    std::vector<fcitx::InputContext *> affected;
+    for (const auto &[inputContext, session] : sessions_) {
+        if (session->engineId() == engineId) {
+            affected.push_back(inputContext);
+        }
+    }
+    for (auto *inputContext : affected) {
+        sessions_[inputContext]->endFromDeactivate();
+        endSession(inputContext);
+    }
+    hosts_.erase(engineId);
+
+    EngineInfo *engine = nullptr;
+    for (auto &candidate : engines_) {
+        if (candidate.id == engineId) {
+            engine = &candidate;
+            break;
+        }
+    }
+    if (engine == nullptr) {
+        return;
+    }
+    // Manifest edits apply too (settings defaults, modules, candidate
+    // window). Display names are the exception: fcitx5's input method list
+    // only grows at runtime (loadDynamicEntries skips existing entries and
+    // nothing can update or remove one), so a rename shows after the next
+    // fcitx5 restart.
+    if (auto manifest =
+            parseManifest(engine->root / "manifest.json", languages_)) {
+        engine->manifest = std::move(*manifest);
+    }
+
+    auto *host = hostForEngine(*engine);
+    notifyReload(engine->displayName(), host != nullptr);
+    if (host == nullptr) {
+        return;
+    }
+    for (auto *inputContext : affected) {
+        auto session = std::make_unique<EngineSession>(host, inputContext);
+        if (!session->valid()) {
+            continue;
+        }
+        session->invokeActivateHook();
+        sessions_[inputContext] = std::move(session);
+    }
+}
+
+void MacishTypeEngine::notifyReload(const std::string &displayName,
+                                    bool succeeded) {
+    auto *notifications = instance_->addonManager().addon("notifications",
+                                                          true);
+    if (notifications == nullptr) {
+        return;
+    }
+    notifications->call<fcitx::INotifications::showTip>(
+        "macishtype-reload", "MacishType", "input-keyboard",
+        succeeded ? "Engine reloaded" : "Engine failed to load",
+        succeeded ? displayName
+                  : displayName + " — see the fcitx5 log for details",
+        3000);
 }
 
 fcitx::AddonInstance *

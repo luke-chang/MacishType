@@ -1,5 +1,6 @@
 add_library(macishtype SHARED
     enginediscovery.cpp
+    enginewatcher.cpp
     webkeymap.cpp
     jshost/enginehost.cpp
     jshost/fontcoverage.cpp
@@ -7,7 +8,8 @@ add_library(macishtype SHARED
     macishtype.cpp
     session.cpp
 )
-target_link_libraries(macishtype PRIVATE Fcitx5::Core qjs Fontconfig::Fontconfig)
+target_link_libraries(macishtype PRIVATE Fcitx5::Core Fcitx5::Module::Notifications qjs
+    Fontconfig::Fontconfig)
 install(TARGETS macishtype DESTINATION "${FCITX_INSTALL_LIBDIR}/fcitx5")
 
 install(FILES

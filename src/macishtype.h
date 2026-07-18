@@ -14,6 +14,7 @@
 #include <fcitx/instance.h>
 
 #include "enginediscovery.h"
+#include "enginewatcher.h"
 #include "jshost/enginehost.h"
 #include "session.h"
 
@@ -45,12 +46,18 @@ private:
     bool chttransEnabled(const std::string &inputMethodName);
     void setChttransEnabled(const std::string &inputMethodName, bool enabled);
 
+    // Hot reload: tears down the engine's JS host and rebuilds the active
+    // sessions so on-disk edits apply immediately.
+    void reloadEngine(const std::string &engineId);
+    void notifyReload(const std::string &displayName, bool succeeded);
+
     fcitx::Instance *instance_;
     std::vector<std::string> languages_;
     std::vector<EngineInfo> engines_;
     std::map<std::string, std::unique_ptr<JsEngineHost>> hosts_;
     std::map<std::string, bool> failedHosts_;
     std::map<fcitx::InputContext *, std::unique_ptr<EngineSession>> sessions_;
+    std::unique_ptr<EngineWatcher> watcher_;
 };
 
 class MacishTypeAddonFactory : public fcitx::AddonFactory {

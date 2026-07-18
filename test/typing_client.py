@@ -43,13 +43,17 @@ def main():
     im_name = sys.argv[1]
     keys = []
     for spec in sys.argv[2:]:
+        # "sleep:MS" pauses between keys (e.g. for hot-reload tests).
+        if spec.startswith("sleep:"):
+            keys.append(("sleep", int(spec.split(":")[1])))
+            continue
         parts = spec.split(":")
         keyval = parts[0]
         keyval = ord(keyval) if len(keyval) == 1 and not keyval.isdigit() \
             else int(keyval)
         keycode = int(parts[1]) if len(parts) > 1 else 0
         state = int(parts[2]) if len(parts) > 2 else 0
-        keys.append((keyval, keycode, state))
+        keys.append(("key", keyval, keycode, state))
 
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
@@ -114,7 +118,11 @@ def main():
     loop = GLib.MainLoop()
 
     def send_keys():
-        for keyval, keycode, state in keys:
+        for entry in keys:
+            if entry[0] == "sleep":
+                time.sleep(entry[1] / 1000)
+                continue
+            _kind, keyval, keycode, state = entry
             for is_release in (False, True):
                 call_started = time.monotonic()
                 reply = ic_call(

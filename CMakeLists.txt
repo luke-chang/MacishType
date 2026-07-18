@@ -9,6 +9,7 @@ endif()
 
 find_package(Fcitx5Core REQUIRED)
 find_package(Fontconfig REQUIRED)
+find_package(Fcitx5Module REQUIRED COMPONENTS Notifications)
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
 
 # quickjs-ng builds as a static library folded into the addon .so, so it
