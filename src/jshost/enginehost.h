@@ -53,6 +53,15 @@ public:
     std::optional<FieldValue>
     candidateWindowField(const std::string &field) const;
 
+    // Backs a manifest-declared system menu key with host-side state (e.g.
+    // the shared Chinese conversion toggle) instead of the plain in-memory
+    // value.
+    struct MenuDelegate {
+        std::function<bool()> get;
+        std::function<void(bool)> set;
+    };
+    void setMenuDelegate(const std::string &key, MenuDelegate delegate);
+
     // Receiver for the event-object mutator dispatcher
     // (__MacishTypeHost_action). Scoped to the active session invocation.
     using ActionHandler = std::function<void(
@@ -189,6 +198,7 @@ private:
     std::map<std::string, FieldValue> manifestCandidateWindow_;
     std::map<std::string, FieldValue> engineCandidateWindow_;
     std::map<std::string, bool> menuValues_;
+    std::map<std::string, MenuDelegate> menuDelegates_;
 
     std::map<uint64_t, JSValue> instances_;
     uint64_t nextInstanceId_ = 1;

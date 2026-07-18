@@ -1,10 +1,15 @@
 #include "macishtype.h"
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 
+#include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/utf8.h>
+#include <fcitx/action.h>
 #include <fcitx/addonmanager.h>
+#include <fcitx/statusarea.h>
+#include <fcitx/userinterfacemanager.h>
 
 #include "log.h"
 
@@ -81,6 +86,18 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
     }
     session->invokeActivateHook();
     sessions_[inputContext] = std::move(session);
+
+    // Chinese engines opt into the shared Simplified/Traditional conversion
+    // (chttrans is OnDemand and registers its toggle action on load); the
+    // status-area action also arms its hotkey and commit filter.
+    if (entry.languageCode().compare(0, 3, "zh_") == 0) {
+        instance_->addonManager().addon("chttrans", true);
+        if (auto *action =
+                instance_->userInterfaceManager().lookupAction("chttrans")) {
+            inputContext->statusArea().addAction(
+                fcitx::StatusGroup::InputMethod, action);
+        }
+    }
 }
 
 void MacishTypeEngine::deactivate(const fcitx::InputMethodEntry &entry,
@@ -136,7 +153,95 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
     }
     auto [inserted, unused] = hosts_.emplace(engine.id, std::move(host));
     FCITX_UNUSED(unused);
-    return inserted->second.get();
+    auto *loadedHost = inserted->second.get();
+
+    // The outputToSimplified system menu key proxies chttrans, so the
+    // engine's own toggle command and the chttrans hotkey flip one switch.
+    const auto &menuKeys = engine.manifest.menuKeys;
+    if (std::find(menuKeys.begin(), menuKeys.end(), "outputToSimplified") !=
+        menuKeys.end()) {
+        std::string inputMethodName = uniqueNameForEngine(engine);
+        loadedHost->setMenuDelegate(
+            "outputToSimplified",
+            JsEngineHost::MenuDelegate{
+                [this, inputMethodName]() {
+                    return chttransEnabled(inputMethodName);
+                },
+                [this, inputMethodName](bool enabled) {
+                    setChttransEnabled(inputMethodName, enabled);
+                },
+            });
+    }
+    return loadedHost;
+}
+
+bool MacishTypeEngine::chttransEnabled(const std::string &inputMethodName) {
+    auto *chttrans = instance_->addonManager().addon("chttrans", true);
+    if (chttrans == nullptr) {
+        return false;
+    }
+    const auto *config = chttrans->getConfig();
+    if (config == nullptr) {
+        return false;
+    }
+    fcitx::RawConfig raw;
+    config->save(raw);
+    auto enabledList = raw.get("EnabledIM");
+    if (!enabledList) {
+        return false;
+    }
+    for (const auto &index : enabledList->subItems()) {
+        auto item = enabledList->get(index);
+        if (item && item->value() == inputMethodName) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void MacishTypeEngine::setChttransEnabled(const std::string &inputMethodName,
+                                          bool enabled) {
+    auto *chttrans = instance_->addonManager().addon("chttrans", true);
+    if (chttrans == nullptr) {
+        MACISHTYPE_WARN() << "outputToSimplified: chttrans is unavailable";
+        return;
+    }
+    const auto *config = chttrans->getConfig();
+    if (config == nullptr) {
+        return;
+    }
+    fcitx::RawConfig raw;
+    config->save(raw);
+    std::vector<std::string> names;
+    if (auto enabledList = raw.get("EnabledIM")) {
+        for (const auto &index : enabledList->subItems()) {
+            auto item = enabledList->get(index);
+            if (item && !item->value().empty() &&
+                item->value() != inputMethodName) {
+                names.push_back(item->value());
+            }
+        }
+    }
+    if (enabled) {
+        names.push_back(inputMethodName);
+    }
+    raw.remove("EnabledIM");
+    // chttrans loads the config partially: an absent EnabledIM node means
+    // "keep the old list", so the node must exist even when empty.
+    raw.get("EnabledIM", true);
+    for (size_t i = 0; i < names.size(); i++) {
+        raw.setValueByPath("EnabledIM/" + std::to_string(i), names[i]);
+    }
+    chttrans->setConfig(raw);
+    // chttrans's own hotkey path refreshes its status action after a
+    // toggle; mirror that so menus show the new state on first open.
+    if (auto *action =
+            instance_->userInterfaceManager().lookupAction("chttrans")) {
+        for (const auto &[inputContext, session] : sessions_) {
+            FCITX_UNUSED(session);
+            action->update(inputContext);
+        }
+    }
 }
 
 void MacishTypeEngine::endSession(fcitx::InputContext *inputContext) {

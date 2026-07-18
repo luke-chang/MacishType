@@ -864,6 +864,16 @@ JSValue JsEngineHost::nativeCandidateWindowFields(JSContext *ctx,
     return array;
 }
 
+void JsEngineHost::setMenuDelegate(const std::string &key,
+                                   MenuDelegate delegate) {
+    if (menuValues_.count(key) == 0) {
+        MACISHTYPE_WARN() << "menu delegate for undeclared key ignored: "
+                          << key;
+        return;
+    }
+    menuDelegates_[key] = std::move(delegate);
+}
+
 JSValue JsEngineHost::nativeGetMenuValue(JSContext *ctx, JSValueConst thisVal,
                                          int argc, JSValueConst *argv) {
     FCITX_UNUSED(thisVal);
@@ -871,9 +881,14 @@ JSValue JsEngineHost::nativeGetMenuValue(JSContext *ctx, JSValueConst thisVal,
     if (argc < 1) {
         return JS_NULL;
     }
-    auto found = host->menuValues_.find(qjs::toString(ctx, argv[0]));
+    std::string key = qjs::toString(ctx, argv[0]);
+    auto found = host->menuValues_.find(key);
     if (found == host->menuValues_.end()) {
         return JS_NULL;
+    }
+    if (auto delegate = host->menuDelegates_.find(key);
+        delegate != host->menuDelegates_.end()) {
+        return JS_NewBool(ctx, delegate->second.get());
     }
     return JS_NewBool(ctx, found->second);
 }
@@ -896,8 +911,12 @@ JSValue JsEngineHost::nativeSetMenuValue(JSContext *ctx, JSValueConst thisVal,
                           << ": expected boolean, write ignored";
         return JS_UNDEFINED;
     }
-    // TODO: persist across restarts and reflect in an IM status menu.
-    found->second = JS_ToBool(ctx, argv[1]) == 1;
+    bool value = JS_ToBool(ctx, argv[1]) == 1;
+    found->second = value;
+    if (auto delegate = host->menuDelegates_.find(key);
+        delegate != host->menuDelegates_.end()) {
+        delegate->second.set(value);
+    }
     return JS_UNDEFINED;
 }
 

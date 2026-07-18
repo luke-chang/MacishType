@@ -34,8 +34,13 @@ fcitx5 instance (`test/acceptance.sh`).
 Not yet implemented: settings/config UI, storage change events, hot reload,
 associated-mode dictionary data, the fontCoverage / symbolNames module data
 sources (they answer with their miss values; wordFrequency is fed from the
-corpus prepared by `scripts/prepare-data.sh`), reverse lookup, and the
-committed-text Traditional→Simplified transform.
+corpus prepared by `scripts/prepare-data.sh`), and reverse lookup.
+
+Traditional→Simplified output is delegated to fcitx5's own chttrans module
+(attached automatically for Chinese engines, toggled with its hotkey /
+status-area icon, state persisted per input method). The
+`outputToSimplified` system menu key proxies the same chttrans state, so
+engine-driven toggles and the chttrans hotkey flip one switch.
 
 ## Development
 

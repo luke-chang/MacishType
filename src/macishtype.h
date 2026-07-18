@@ -40,6 +40,11 @@ private:
     JsEngineHost *hostForEngine(const EngineInfo &engine);
     void endSession(fcitx::InputContext *inputContext);
 
+    // chttrans enablement for one input method, via its addon config (the
+    // same state its hotkey toggles and persists).
+    bool chttransEnabled(const std::string &inputMethodName);
+    void setChttransEnabled(const std::string &inputMethodName, bool enabled);
+
     fcitx::Instance *instance_;
     std::vector<std::string> languages_;
     std::vector<EngineInfo> engines_;
