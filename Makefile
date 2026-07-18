@@ -9,8 +9,9 @@ USER_SHARE := $(HOME)/.local/share/fcitx5
 # system directory must stay listed.
 ADDON_DIRS := $(USER_LIB):/usr/lib/$(MACHINE)/fcitx5
 
-.PHONY: build prepare debug dev-install dev-uninstall install uninstall \
-	restart test clean log log-js log-history
+.PHONY: help build prepare debug dev-install dev-uninstall install \
+	uninstall restart test clean log log-js log-history
+.DEFAULT_GOAL := help
 
 # Window for `make log-history`, systemd time syntax (override:
 # LOG_SHOW_LAST=24h).
@@ -30,6 +31,26 @@ LOG_PATTERN = ($(subst $(space),|,$(strip $(LOG_SOURCES)))):[0-9]+\]
 # fcitx line already carries); this trims the fcitx timestamp to
 # month-day + time: "07-19 04:22:33.418 I macishtype.cpp:86] ...".
 LOG_SIMPLIFY = sed -u -E 's/^([A-Z])[0-9]{4}-([0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3})[0-9]*/\2 \1/'
+
+help:
+	@echo "fcitx5-macishtype development entry points:"
+	@echo ""
+	@echo "  make build          - CMake configure + build"
+	@echo "  make prepare        - Sync pinned module data tables"
+	@echo "  make test           - Acceptance suite against an isolated fcitx5"
+	@echo "  make debug          - prepare + build + dev-install + restart"
+	@echo "  make dev-install    - Install into ~/.local (no restart)"
+	@echo "  make dev-uninstall  - Remove the ~/.local install (keeps engines)"
+	@echo "  make install        - Production install into /usr (sudo) + restart"
+	@echo "  make uninstall      - Remove the production install + restart"
+	@echo "  make restart        - Restart the live fcitx5 (interrupts typing;"
+	@echo "                        LOG_DEBUG=1 enables per-key Debug logging)"
+	@echo "  make log            - Follow the addon's log (user journal)"
+	@echo "  make log-js         - Follow engine console.* output only"
+	@echo "  make log-history    - Recent addon log (default $(LOG_SHOW_LAST); LOG_SHOW_LAST=24h)"
+	@echo "  make clean          - Remove the build directory"
+	@echo ""
+	@echo "Quick start: make debug, then add the input methods in fcitx5-configtool."
 
 build:
 	cmake -B $(BUILD_DIR) -G Ninja
