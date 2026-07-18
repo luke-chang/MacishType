@@ -23,7 +23,11 @@ prepare:
 
 # Development install into ~/.local plus a fcitx5 restart. Restarting
 # interrupts typing in the current session — run this yourself.
-debug: build dev-install restart
+debug:
+	$(MAKE) prepare
+	$(MAKE) build
+	$(MAKE) dev-install
+	$(MAKE) restart
 
 # User-dir install; no root needed. Engine folders go into
 # ~/.local/share/fcitx5/macishtype/engines/<name>/.
@@ -60,6 +64,7 @@ dev-uninstall:
 # included. The distro fcitx5 only loads addons from /usr, so the install
 # prefix must be /usr — /usr/local would be ignored.
 install:
+	$(MAKE) prepare
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
 	cmake --build $(BUILD_DIR) -j
 	sudo cmake --install $(BUILD_DIR)

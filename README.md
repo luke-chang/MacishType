@@ -79,7 +79,7 @@ sudo apt install build-essential cmake ninja-build pkgconf git \
 
 ```sh
 make build     # cmake configure + build
-make prepare   # download/convert module data tables (wordFrequency, ...)
+make prepare   # sync pinned module data tables (also run by debug/install)
 make debug     # dev install into ~/.local + fcitx5 restart (interrupts typing)
 make test      # acceptance suite against an isolated fcitx5
 make install   # production install into the system prefix (sudo)
