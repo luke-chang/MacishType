@@ -49,6 +49,34 @@ engine-driven toggles and the chttrans hotkey flip one switch.
 
 ## Development
 
+### Dependencies
+
+Build:
+
+- A C++20 compiler, CMake ≥ 3.16, Ninja, pkg-config
+- Fcitx5 development files: the `Fcitx5Core` CMake package plus the
+  Notifications module headers, matching your installed fcitx5 (this addon
+  is developed against 5.1.x)
+- fontconfig development files
+- git — quickjs-ng is a submodule; clone with `--recurse-submodules`
+- gettext
+
+Data preparation (`make prepare`): `curl`, `python3`.
+
+Tests (`make test`): `python3` with GObject introspection (`python3-gi` on
+Debian-family), `dbus-run-session`, and an installed fcitx5 to test
+against.
+
+On Debian/Ubuntu, everything above is:
+
+```sh
+sudo apt install build-essential cmake ninja-build pkgconf git \
+    fcitx5-modules-dev libfcitx5core-dev libfontconfig-dev \
+    gettext curl python3 python3-gi dbus
+```
+
+### Workflow
+
 ```sh
 make build     # cmake configure + build
 make prepare   # download/convert module data tables (wordFrequency, ...)
