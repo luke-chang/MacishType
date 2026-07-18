@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -41,9 +42,37 @@ public:
     std::optional<bool> invokeHook(uint64_t instanceId, const char *method,
                                    JSValue argument);
     std::optional<bool> invokeHook(uint64_t instanceId, const char *method);
+    bool instanceHasHook(uint64_t instanceId, const char *method);
 
     JSContext *context() const { return ctx_; }
     const std::string &engineId() const { return engineId_; }
+
+    using FieldValue = std::variant<bool, double, std::string>;
+    // Bridge-visible candidate window field: engine write overlay first,
+    // then the manifest declaration.
+    std::optional<FieldValue>
+    candidateWindowField(const std::string &field) const;
+
+    // Receiver for the event-object mutator dispatcher
+    // (__MacishTypeHost_action). Scoped to the active session invocation.
+    using ActionHandler = std::function<void(
+        const std::string &name, int argc, JSValueConst *argv)>;
+    class ScopedActionHandler {
+    public:
+        ScopedActionHandler(JsEngineHost &host, ActionHandler handler)
+            : host_(host), previous_(std::move(host.actionHandler_)) {
+            host_.actionHandler_ = std::move(handler);
+        }
+        ~ScopedActionHandler() {
+            host_.actionHandler_ = std::move(previous_);
+        }
+        ScopedActionHandler(const ScopedActionHandler &) = delete;
+        ScopedActionHandler &operator=(const ScopedActionHandler &) = delete;
+
+    private:
+        JsEngineHost &host_;
+        ActionHandler previous_;
+    };
 
     // RAII guard for host→JS entries: arms the execution watchdog on the
     // outermost entry and drains microtasks when it unwinds.
@@ -84,9 +113,6 @@ private:
 
     // Bridge state ------------------------------------------------------
 
-    using FieldValue = std::variant<bool, double, std::string>;
-
-    std::optional<FieldValue> candidateWindowField(const std::string &field) const;
     void setCandidateWindowField(const std::string &field, JSValueConst value);
 
     std::filesystem::path storagePathForKey(const std::string &key) const;
@@ -132,6 +158,8 @@ private:
                                         int argc, JSValueConst *argv);
     static JSValue nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
                                     int argc, JSValueConst *argv);
+    static JSValue nativeAction(JSContext *ctx, JSValueConst thisVal,
+                                int argc, JSValueConst *argv);
 
     static int interruptHandler(JSRuntime *runtime, void *opaque);
     static void rejectionTracker(JSContext *ctx, JSValueConst promise,
@@ -167,6 +195,7 @@ private:
     int callDepth_ = 0;
     std::chrono::steady_clock::time_point deadline_{};
     std::map<void *, std::string> pendingRejections_;
+    ActionHandler actionHandler_;
 };
 
 } // namespace macishtype

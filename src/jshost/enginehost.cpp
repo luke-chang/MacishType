@@ -476,6 +476,15 @@ std::optional<bool> JsEngineHost::invokeHook(uint64_t instanceId,
     return invokeHook(instanceId, method, JS_UNDEFINED);
 }
 
+bool JsEngineHost::instanceHasHook(uint64_t instanceId, const char *method) {
+    auto found = instances_.find(instanceId);
+    if (found == instances_.end()) {
+        return false;
+    }
+    qjs::Value hook(ctx_, JS_GetPropertyStr(ctx_, found->second, method));
+    return hook.isFunction();
+}
+
 // Watchdog, jobs, rejections --------------------------------------------
 
 JsEngineHost::Entry::Entry(JsEngineHost &host) : host_(host) {
@@ -1018,6 +1027,23 @@ JSValue JsEngineHost::nativeReadEngineFile(JSContext *ctx,
     return result;
 }
 
+JSValue JsEngineHost::nativeAction(JSContext *ctx, JSValueConst thisVal,
+                                   int argc, JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    auto *host = hostOf(ctx);
+    if (argc < 1) {
+        return JS_UNDEFINED;
+    }
+    std::string name = qjs::toString(ctx, argv[0]);
+    if (!host->actionHandler_) {
+        MACISHTYPE_WARN() << host->engineId_ << ": mutator '" << name
+                          << "' called outside an engine hook, ignored";
+        return JS_UNDEFINED;
+    }
+    host->actionHandler_(name, argc - 1, argv + 1);
+    return JS_UNDEFINED;
+}
+
 JSValue JsEngineHost::nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
                                        int argc, JSValueConst *argv) {
     FCITX_UNUSED(thisVal);
@@ -1067,6 +1093,7 @@ void JsEngineHost::registerBridgeGlobals() {
     define("__MacishTypeHost_readEngineFile",
            &JsEngineHost::nativeReadEngineFile, 1);
     define("__MacishTypeHost_utf8Decode", &JsEngineHost::nativeUtf8Decode, 1);
+    define("__MacishTypeHost_action", &JsEngineHost::nativeAction, 1);
     JS_SetPropertyStr(ctx_, global.get(), "__MacishType_userAgent",
                       JS_NewString(ctx_, userAgent_.c_str()));
 }

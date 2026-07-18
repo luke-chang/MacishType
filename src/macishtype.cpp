@@ -56,9 +56,11 @@ std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {
 void MacishTypeEngine::keyEvent(const fcitx::InputMethodEntry &entry,
                                 fcitx::KeyEvent &keyEvent) {
     FCITX_UNUSED(entry);
-    // Key dispatch into JS lands with the event translation layer; until
-    // then every key passes through.
-    FCITX_UNUSED(keyEvent);
+    auto found = sessions_.find(keyEvent.inputContext());
+    if (found == sessions_.end()) {
+        return;
+    }
+    found->second->handleKey(keyEvent);
 }
 
 void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
@@ -73,12 +75,12 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
     }
     auto *inputContext = event.inputContext();
     endSession(inputContext);
-    uint64_t instanceId = host->createInstance();
-    if (instanceId == 0) {
+    auto session = std::make_unique<EngineSession>(host, inputContext);
+    if (!session->valid()) {
         return;
     }
-    sessions_[inputContext] = Session{host, instanceId};
-    host->invokeHook(instanceId, "activate");
+    session->invokeActivateHook();
+    sessions_[inputContext] = std::move(session);
 }
 
 void MacishTypeEngine::deactivate(const fcitx::InputMethodEntry &entry,
@@ -86,9 +88,7 @@ void MacishTypeEngine::deactivate(const fcitx::InputMethodEntry &entry,
     FCITX_UNUSED(entry);
     auto found = sessions_.find(event.inputContext());
     if (found != sessions_.end()) {
-        auto &session = found->second;
-        session.host->invokeHook(session.instanceId, "compositionEnded");
-        session.host->invokeHook(session.instanceId, "deactivate");
+        found->second->endFromDeactivate();
     }
     endSession(event.inputContext());
 }
@@ -98,8 +98,7 @@ void MacishTypeEngine::reset(const fcitx::InputMethodEntry &entry,
     FCITX_UNUSED(entry);
     auto found = sessions_.find(event.inputContext());
     if (found != sessions_.end()) {
-        auto &session = found->second;
-        session.host->invokeHook(session.instanceId, "compositionEnded");
+        found->second->resetFromClient();
     }
 }
 
@@ -141,12 +140,7 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
 }
 
 void MacishTypeEngine::endSession(fcitx::InputContext *inputContext) {
-    auto found = sessions_.find(inputContext);
-    if (found == sessions_.end()) {
-        return;
-    }
-    found->second.host->destroyInstance(found->second.instanceId);
-    sessions_.erase(found);
+    sessions_.erase(inputContext);
 }
 
 fcitx::AddonInstance *

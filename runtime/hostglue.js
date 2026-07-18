@@ -52,4 +52,80 @@
     }
     resolve(makeResponse(file.url, file.buffer));
   };
+
+  // Assembles the event object handed to engine hooks. `data` is built by
+  // the C++ session per invocation; mutators queue through the
+  // __MacishTypeHost_action dispatcher and apply after the hook returns.
+  globalThis.__MacishTypeHost_makeEvent = function (data) {
+    const event = Object.assign({}, data.fields);
+    const states = data.modifierStates || {};
+    event.getModifierState = (name) => states[name] === true;
+
+    const cw = data.candidateWindow;
+    event.candidateWindow = {
+      isVisible: cw.isVisible,
+      indexLabels: cw.indexLabels,
+      pageSize: cw.pageSize,
+      layoutDirection: cw.layoutDirection,
+      handleNavigationKeys: cw.handleNavigationKeys,
+      handleIndexLabelKeys: cw.handleIndexLabelKeys,
+      candidateIndex(char) {
+        if (typeof char !== "string" || char.length === 0) return null;
+        const index = Array.from(cw.indexLabels).indexOf(char);
+        if (index < 0 || index >= cw.pageItemCount) return null;
+        return index;
+      },
+      // Mirrors the host's nav-key table (dispatchCandidateWindowKey) for
+      // engines that opt out of handleNavigationKeys.
+      navigationIntent(keyEvent) {
+        if (!keyEvent || typeof keyEvent !== "object") return null;
+        switch (keyEvent.code) {
+          case "ArrowUp": return { direction: "up" };
+          case "ArrowDown": return { direction: "down" };
+          case "ArrowLeft": return { direction: "left" };
+          case "ArrowRight": return { direction: "right" };
+          case "PageUp": return { direction: "pageUp" };
+          case "PageDown": return { direction: "pageDown" };
+          case "Home": return { direction: "home" };
+          case "End": return { direction: "end" };
+          case "Tab":
+            return {
+              direction: keyEvent.shiftKey ? "itemBackward" : "itemForward",
+            };
+          default:
+            return null;
+        }
+      },
+    };
+
+    const act = globalThis.__MacishTypeHost_action;
+    event.updateMarkedText = (text, options) => {
+      act("updateMarkedText", text, options);
+    };
+    event.updateCandidates = (items, options) => {
+      act("updateCandidates", items, options);
+    };
+    event.commit = (candidate) => {
+      act("commit", candidate);
+    };
+    event.commitSelectedCandidate = () => {
+      act("commitSelectedCandidate");
+    };
+    event.commitCandidateAtIndex = (index) => {
+      act("commitCandidateAtIndex", index);
+    };
+    event.navigateCandidates = (direction, options) => {
+      act("navigateCandidates", direction, options);
+    };
+    event.resetContext = () => {
+      act("resetContext");
+    };
+    event.flushStaged = (append) => {
+      act("flushStaged", append);
+    };
+    event.enterAssociatedMode = (heldChar, candidates) => {
+      act("enterAssociatedMode", heldChar, candidates);
+    };
+    return event;
+  };
 })();

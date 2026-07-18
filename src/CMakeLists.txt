@@ -4,6 +4,7 @@ add_library(macishtype SHARED
     jshost/enginehost.cpp
     jshost/manifest.cpp
     macishtype.cpp
+    session.cpp
 )
 target_link_libraries(macishtype PRIVATE Fcitx5::Core qjs)
 install(TARGETS macishtype DESTINATION "${FCITX_INSTALL_LIBDIR}/fcitx5")

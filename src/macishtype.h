@@ -15,6 +15,7 @@
 
 #include "enginediscovery.h"
 #include "jshost/enginehost.h"
+#include "session.h"
 
 namespace macishtype {
 
@@ -33,11 +34,6 @@ public:
                fcitx::InputContextEvent &event) override;
 
 private:
-    struct Session {
-        JsEngineHost *host = nullptr;
-        uint64_t instanceId = 0;
-    };
-
     const EngineInfo *engineForEntry(const fcitx::InputMethodEntry &entry);
     // Lazily loads the JS host for an engine; a load failure is remembered
     // so a broken engine does not re-load on every focus change.
@@ -49,7 +45,7 @@ private:
     std::vector<EngineInfo> engines_;
     std::map<std::string, std::unique_ptr<JsEngineHost>> hosts_;
     std::map<std::string, bool> failedHosts_;
-    std::map<fcitx::InputContext *, Session> sessions_;
+    std::map<fcitx::InputContext *, std::unique_ptr<EngineSession>> sessions_;
 };
 
 class MacishTypeAddonFactory : public fcitx::AddonFactory {

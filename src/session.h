@@ -1,0 +1,161 @@
+#pragma once
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <variant>
+#include <vector>
+
+#include <fcitx/inputcontext.h>
+
+#include "jshost/enginehost.h"
+#include "webkeymap.h"
+
+namespace macishtype {
+
+// Candidate emitted by the engine; `payload` is an opaque JS value that
+// round-trips back through confirm/selection events.
+struct CandidateData {
+    std::string text;
+    std::string annotation;
+    JSValue payload = JS_UNDEFINED;
+    bool hasPayload = false;
+};
+
+// One engine session per focused input context: owns the JS instance, the
+// composition state (marked/staged text, candidates, associated mode), and
+// the mapping onto the fcitx input panel. Mirrors the macOS
+// InputController's action executor.
+class EngineSession {
+public:
+    EngineSession(JsEngineHost *host, fcitx::InputContext *inputContext);
+    ~EngineSession();
+    EngineSession(const EngineSession &) = delete;
+    EngineSession &operator=(const EngineSession &) = delete;
+
+    bool valid() const { return instanceId_ != 0; }
+
+    // Full key pipeline: candidate-window interception, associated-mode
+    // tier, then the engine's handleKey. Calls filterAndAccept() when the
+    // key is consumed.
+    void handleKey(fcitx::KeyEvent &keyEvent);
+
+    void invokeActivateHook();
+    // Client-initiated reset: drop composition without committing.
+    void resetFromClient();
+    // Focus leaves: commit staged text, then tear down hooks.
+    void endFromDeactivate();
+
+private:
+    struct UpdateMarkedTextAction {
+        std::string text;
+        std::optional<int> cursor;
+        std::optional<int> staged;
+        std::optional<std::pair<int, int>> emphasis;
+    };
+    struct CandidateUpdateOptions {
+        std::optional<int> initialHighlight;
+        std::optional<int> pageSize;
+        std::optional<std::string> indexLabels;
+        std::optional<std::string> layoutDirection;
+        std::optional<bool> handleNavigationKeys;
+        std::optional<bool> handleIndexLabelKeys;
+    };
+    struct UpdateCandidatesAction {
+        std::vector<CandidateData> items;
+        CandidateUpdateOptions options;
+    };
+    struct CommitAction {
+        CandidateData candidate;
+    };
+    struct CommitSelectedAction {};
+    struct CommitAtIndexAction {
+        int index = 0;
+    };
+    struct NavigateAction {
+        std::string direction;
+        bool wrapping = false;
+    };
+    struct ResetAction {};
+    struct FlushStagedAction {
+        std::string append;
+    };
+    struct EnterAssociatedAction {
+        std::string heldChar;
+        std::optional<std::vector<std::string>> candidates;
+    };
+    using Action =
+        std::variant<UpdateMarkedTextAction, UpdateCandidatesAction,
+                     CommitAction, CommitSelectedAction, CommitAtIndexAction,
+                     NavigateAction, ResetAction, FlushStagedAction,
+                     EnterAssociatedAction>;
+
+    // Effective candidate window behavior for the current list.
+    struct WindowConfig {
+        std::string indexLabels = "1234567890";
+        int pageSize = 9;
+        bool vertical = false;
+        bool handleNavigationKeys = true;
+        bool handleIndexLabelKeys = true;
+    };
+
+    // Host→JS invocation with an action queue on the stack; queued actions
+    // apply after the hook (and its microtasks) return.
+    std::optional<bool> invokeEngineMethod(const char *method,
+                                           JSValue eventObject);
+    void queueAction(const std::string &name, int argc, JSValueConst *argv);
+    void applyActions(std::vector<Action> actions);
+
+    // Tier 1a: policy-gated candidate window keys.
+    bool dispatchCandidateWindowKey(const WebKeyEvent &web);
+    static std::optional<std::string>
+    navigationDirectionFor(const WebKeyEvent &web);
+
+    void applyUpdateMarkedText(const UpdateMarkedTextAction &action);
+    void applyUpdateCandidates(UpdateCandidatesAction action);
+    void navigate(const std::string &direction, bool wrapping);
+    void confirmCandidateAt(size_t absoluteIndex);
+    void confirmCandidate(const CandidateData &candidate, int absoluteIndex);
+    void fireSelectionChanged();
+    void enterAssociatedMode(const std::string &heldChar,
+                             std::optional<std::vector<std::string>> candidates);
+    // Commits `insertion` when non-empty, clears composition and candidate
+    // state either way. The macOS endComposition equivalent.
+    void endComposition(const std::string &insertion);
+
+    void renderCandidates();
+    void hideCandidates();
+    void clearCompositionState();
+
+    WindowConfig sessionWindowConfig() const;
+    int currentPageItemCount() const;
+    int pageStartFor(int highlight) const;
+
+    JSValue buildEventData(const WebKeyEvent *web,
+                           const CandidateData *candidate, int absoluteIndex);
+    JSValue makeEvent(const WebKeyEvent *web, const CandidateData *candidate,
+                      int absoluteIndex);
+
+    static CandidateData copyCandidate(JSContext *ctx,
+                                       const CandidateData &candidate);
+    void freeCandidates(std::vector<CandidateData> &candidates);
+
+    JsEngineHost *host_;
+    fcitx::InputContext *inputContext_;
+    uint64_t instanceId_ = 0;
+
+    std::string markedText_;
+    std::string stagedText_;
+    bool associating_ = false;
+
+    std::vector<CandidateData> candidates_;
+    bool candidatesVisible_ = false;
+    int highlight_ = 0;
+    int pageStart_ = 0;
+    bool highlightSuspended_ = false;
+    WindowConfig windowConfig_;
+
+    std::vector<std::vector<Action>> queueStack_;
+};
+
+} // namespace macishtype
