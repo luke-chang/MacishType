@@ -1,5 +1,6 @@
 add_library(macishtype SHARED
     enginediscovery.cpp
+    webkeymap.cpp
     jshost/enginehost.cpp
     jshost/manifest.cpp
     macishtype.cpp
