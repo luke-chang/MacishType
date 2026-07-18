@@ -1,0 +1,11 @@
+add_library(macishtype SHARED
+    enginediscovery.cpp
+    macishtype.cpp
+)
+target_link_libraries(macishtype PRIVATE Fcitx5::Core)
+install(TARGETS macishtype DESTINATION "${FCITX_INSTALL_LIBDIR}/fcitx5")
+
+configure_file(macishtype-addon.conf.in macishtype-addon.conf @ONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/macishtype-addon.conf"
+        RENAME macishtype.conf
+        DESTINATION "${FCITX_INSTALL_PKGDATADIR}/addon")

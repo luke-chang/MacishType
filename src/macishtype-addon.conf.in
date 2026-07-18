@@ -1,0 +1,11 @@
+[Addon]
+Name=MacishType
+Comment=JavaScript input method engine host
+Category=InputMethod
+Version=@PROJECT_VERSION@
+Library=libmacishtype
+Type=SharedLibrary
+# Dynamic input methods come from listInputMethods(); fcitx5 skips OnDemand
+# addons when collecting dynamic entries, so this must stay loaded eagerly.
+OnDemand=False
+Configurable=False
