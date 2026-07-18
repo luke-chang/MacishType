@@ -8,7 +8,7 @@
 set -e
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-"$root/scripts/dev-install.sh" > /dev/null
+make -s -C "$root" dev-install > /dev/null
 
 # h=104:43 i=105:31 space=32:65 digit2=50:11 escape=65307:9
 # right=65363:114 enter=65293:36 digit5=53:14

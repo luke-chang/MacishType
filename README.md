@@ -55,8 +55,7 @@ make install   # production install into the system prefix (sudo)
 
 `make debug` needs fcitx5 launched with `FCITX_ADDON_DIRS` pointing at
 `~/.local/lib/fcitx5` (a `~/.config/environment.d/` entry makes that stick
-across logins); `make install` has no such requirement. The underlying
-scripts live in `scripts/` and are directly invokable.
+across logins); `make install` has no such requirement.
 
 ## License
 
