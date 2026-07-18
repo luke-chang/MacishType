@@ -71,6 +71,9 @@
       handleIndexLabelKeys: cw.handleIndexLabelKeys,
       candidateIndex(char) {
         if (typeof char !== "string" || char.length === 0) return null;
+        // A " " label is a blank slot: it reserves the position but is not
+        // selectable ("" collapses the labels entirely).
+        if (char === " ") return null;
         const index = Array.from(cw.indexLabels).indexOf(char);
         if (index < 0 || index >= cw.pageItemCount) return null;
         return index;

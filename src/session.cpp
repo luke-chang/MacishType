@@ -228,8 +228,10 @@ bool EngineSession::dispatchCandidateWindowKey(const WebKeyEvent &web) {
     if (web.ctrlKey || web.metaKey) {
         return false;
     }
+    // " " labels are blank slots (position reserved, not selectable), so a
+    // space key never matches them.
     if (windowConfig_.handleIndexLabelKeys && !web.altKey &&
-        characterCount(web.key) == 1) {
+        characterCount(web.key) == 1 && web.key != " ") {
         int labelIndex = 0;
         bool matched = false;
         auto range = fcitx::utf8::MakeUTF8CharRange(windowConfig_.indexLabels);
@@ -663,6 +665,9 @@ void EngineSession::renderCandidates() {
                             ? fcitx::CandidateLayoutHint::Vertical
                             : fcitx::CandidateLayoutHint::Horizontal);
 
+    // Blank labels are selection-disabled placeholders; the panels prepend
+    // label text to the candidate, so render them as no label at all to
+    // keep rows aligned.
     std::vector<std::string> labels;
     auto labelRange =
         fcitx::utf8::MakeUTF8CharRange(windowConfig_.indexLabels);
@@ -670,9 +675,9 @@ void EngineSession::renderCandidates() {
          iterator != std::end(labelRange) &&
          labels.size() < static_cast<size_t>(pageItems);
          ++iterator) {
-        labels.push_back(std::string(iterator.charRange().first,
-                                     iterator.charRange().second) +
-                         " ");
+        std::string labelText(iterator.charRange().first,
+                              iterator.charRange().second);
+        labels.push_back(labelText == " " ? "" : labelText + " ");
     }
     labels.resize(pageItems, "");
     list->setLabels(labels);
