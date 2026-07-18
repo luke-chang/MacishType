@@ -83,6 +83,7 @@ make prepare   # sync pinned module data tables (also run by debug/install)
 make debug     # dev install into ~/.local + fcitx5 restart (interrupts typing)
 make test      # acceptance suite against an isolated fcitx5
 make install   # production install into /usr (sudo) + fcitx5 restart
+make uninstall # remove the production install (per cmake's manifest)
 ```
 
 ### Dev install and `FCITX_ADDON_DIRS`

@@ -9,8 +9,8 @@ USER_SHARE := $(HOME)/.local/share/fcitx5
 # system directory must stay listed.
 ADDON_DIRS := $(USER_LIB):/usr/lib/$(MACHINE)/fcitx5
 
-.PHONY: build prepare debug dev-install dev-uninstall install restart test \
-	clean
+.PHONY: build prepare debug dev-install dev-uninstall install uninstall \
+	restart test clean
 
 build:
 	cmake -B $(BUILD_DIR) -G Ninja
@@ -83,6 +83,20 @@ restart:
 	    echo "fcitx5 log: $$log_file"; \
 	fi; \
 	FCITX_ADDON_DIRS="$(ADDON_DIRS)" fcitx5 -rd > "$$log_file" 2>&1
+
+# Removes a production install, using the manifest cmake wrote during the
+# last `make install`, and restarts fcitx5 so the removal takes effect —
+# fcitx5 then drops this addon's entries from the profile, which is
+# the correct cleanup for a real removal. Switching to a dev install
+# instead? Run `make debug` first so the addon never disappears and the
+# profile keeps its entries.
+uninstall:
+	@test -f $(BUILD_DIR)/install_manifest.txt || \
+	    { echo "No install manifest; nothing recorded to uninstall." >&2; exit 1; }
+	sudo xargs rm -f < $(BUILD_DIR)/install_manifest.txt
+	@sudo rmdir /usr/share/fcitx5/macishtype/modules \
+	    /usr/share/fcitx5/macishtype 2> /dev/null || true
+	$(MAKE) restart
 
 # Acceptance suite against an isolated fcitx5; safe to run any time.
 test: build
