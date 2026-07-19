@@ -330,11 +330,35 @@ extension JavaScriptEngine {
         /// Host-side feature declarations. Unlike `modules` (data injected
         /// into JS), these flags tell the host which optional host features
         /// the engine's class implements. Not exposed to the JS global
-        /// `manifest`. Synthesized decoding suffices for a single key (the
-        /// wrapper decode in `Manifest.init` drops a malformed subtree);
-        /// adopt the `Modules` per-key tolerant pattern when more keys land.
+        /// `manifest`. Per-key tolerant decoding (mirroring `Modules`): a
+        /// malformed flag drops only itself; `Manifest.init`'s wrapper still
+        /// drops a non-object subtree.
         struct Capabilities: Decodable {
             var reverseLookup: Bool?
+            var fullwidthInput: Bool?
+
+            private enum CodingKeys: String, CodingKey {
+                case reverseLookup, fullwidthInput
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                reverseLookup = Self.tolerant(c, .reverseLookup)
+                fullwidthInput = Self.tolerant(c, .fullwidthInput)
+            }
+
+            private static func tolerant(
+                _ container: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys
+            ) -> Bool? {
+                do {
+                    return try container.decodeIfPresent(Bool.self, forKey: key)
+                } catch {
+                    Logger.javaScriptEngine.error(
+                        "manifest capabilities.\(key.stringValue, privacy: .public) ignored: \(String(describing: error), privacy: .public)"
+                    )
+                    return nil
+                }
+            }
         }
 
         // MARK: Settings schema

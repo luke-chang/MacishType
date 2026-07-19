@@ -1720,6 +1720,10 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
     // MARK: Event Handling
 
+    /// Declared via `capabilities.fullwidthInput`. Safe to read the parsed
+    /// manifest directly — `handleKey` only runs with a live instance.
+    private var fullwidthInputEnabled: Bool { manifest?.capabilities?.fullwidthInput == true }
+
     override func handleKey(
         context: InputEngineContext,
         keyEvent: KeyEventInput,
@@ -1738,8 +1742,17 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
         let handled = Self.invokeIfDefined(instance, "handleKey", withArguments: [event])?
             .toBool() ?? false
+        if handled { return .handled(sink.actions) }
 
-        return handled ? .handled(sink.actions) : .notHandled(sink.actions)
+        // Opt-in: when the engine declares `fullwidthInput` and declines an
+        // idle key, apply the shared Option+key policy's commit. Gated on
+        // `!isComposing` so the engine's composing behavior is untouched.
+        if fullwidthInputEnabled, !context.isComposing,
+           case .handled(let fullwidthActions)? =
+               Self.hostOptionFullwidthResult(for: keyEvent, context: context) {
+            return .handled(sink.actions + fullwidthActions)
+        }
+        return .notHandled(sink.actions)
     }
 
     override func handleAssociatedKey(

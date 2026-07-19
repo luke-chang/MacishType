@@ -440,9 +440,8 @@ class InputEngine {
             return context.isComposing ? .handled() : .handled([.flushStaged(text)])
         }
 
-        if pureMods.contains(.option),
-           let fullwidthFlush = Self.fullwidthFlushAction(for: keyEvent) {
-            return context.isComposing ? .handled() : .handled([fullwidthFlush])
+        if let optionFullwidth = Self.hostOptionFullwidthResult(for: keyEvent, context: context) {
+            return optionFullwidth
         }
 
         if !keyEvent.isBareKey {
@@ -564,6 +563,24 @@ class InputEngine {
               chars.count == 1, let char = chars.first,
               let fullwidth = toFullwidth(char) else { return nil }
         return .flushStaged(String(fullwidth))
+    }
+
+    /// Host-level Option+key full-width policy, shared so the wiring lives in
+    /// one place. Returns nil for non-Option keys (caller continues its own
+    /// dispatch). An Option key is swallowed while composing; when idle it
+    /// commits its full-width form, or declines when it has none. Excludes
+    /// Cmd/Ctrl so shortcuts reach the OS — engines without an upstream
+    /// Cmd/Ctrl gate rely on this.
+    static func hostOptionFullwidthResult(
+        for keyEvent: KeyEventInput, context: InputEngineContext
+    ) -> EngineHandleResult? {
+        let mods = keyEvent.pureModifiers
+        guard mods.contains(.option),
+              mods.intersection([.command, .control]).isEmpty else { return nil }
+        if let fullwidthFlush = fullwidthFlushAction(for: keyEvent) {
+            return context.isComposing ? .handled() : .handled([fullwidthFlush])
+        }
+        return context.isComposing ? .handled() : .notHandled()
     }
 
     /// The numeric-keypad rule engines apply before interpreting characters:

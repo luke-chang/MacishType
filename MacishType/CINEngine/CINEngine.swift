@@ -237,10 +237,8 @@ class CINEngine: InputEngine {
     private func handleIdle(
         _ ctx: CINEngineContext, _ event: KeyEventInput, _ table: CINTable
     ) -> EngineHandleResult {
-        let mods = event.pureModifiers
-        if mods.contains(.option), mods.intersection([.command, .control]).isEmpty,
-           let fullwidthFlush = Self.fullwidthFlushAction(for: event) {
-            return .handled([fullwidthFlush])
+        if let optionFullwidth = Self.hostOptionFullwidthResult(for: event, context: ctx) {
+            return optionFullwidth
         }
         guard let char = inputChar(event) else { return .notHandled() }
         guard table.isCodeKey(char) else { return .notHandled() }

@@ -176,15 +176,6 @@ function mainCandidates(code) {
   return coverageFilter(mainTable.get(code) ?? []);
 }
 
-// Convert an ASCII printable char to its full-width form (space -> U+3000).
-function toFullwidth(char) {
-  if (!char || char.length !== 1) return null;
-  if (char === " ") return "　";
-  const code = char.charCodeAt(0);
-  if (code < 0x21 || code > 0x7e) return null;
-  return String.fromCharCode(code + 0xfee0);
-}
-
 // Escape or keypad Clear. Clear's web code is "NumLock" (W3C position
 // semantics), so match it by key.
 function isEscapeKey(event) {
@@ -331,14 +322,6 @@ export default class ArrayEngine {
       this.code = wild;
       this.renderWildcard(event);
       return true;
-    }
-    // Option + printable: commit its full-width form (layout-aware).
-    if (event.altKey && !event.metaKey && !event.ctrlKey) {
-      const fullwidth = toFullwidth(event.keyIgnoringModifiers);
-      if (fullwidth) {
-        event.flushStaged(fullwidth);
-        return true;
-      }
     }
     return false;
   }

@@ -160,10 +160,8 @@ final class ArrayEngine: InputEngine {
             ctx.code = String(key)
             return .handled(renderWildcardActions(ctx, dictionary))
         }
-        let mods = keyEvent.pureModifiers
-        if mods.contains(.option), mods.intersection([.command, .control]).isEmpty,
-           let fullwidthFlush = Self.fullwidthFlushAction(for: keyEvent) {
-            return .handled([fullwidthFlush])
+        if let optionFullwidth = Self.hostOptionFullwidthResult(for: keyEvent, context: context) {
+            return optionFullwidth
         }
         return .notHandled()
     }

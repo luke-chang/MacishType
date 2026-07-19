@@ -13,7 +13,8 @@
     "wordFrequency": true
   },
   "capabilities": {
-    "reverseLookup": true
+    "reverseLookup": true,
+    "fullwidthInput": true
   },
   "settings": [
     {

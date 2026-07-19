@@ -165,14 +165,17 @@ the same, its backing data updates).
 
 ### `capabilities` (optional)
 
-Declares which optional host features the engine's class implements. Unlike
-`modules` (data the host injects into JS), these flags describe what the host
-may call on the engine; they are host-only and **not** exposed on the JS
-global `manifest`.
+Declares which optional host features the engine opts into. Unlike `modules`
+(data the host injects into JS), these flags tell the host which behaviors to
+enable for the engine; they are host-only and **not** exposed on the JS global
+`manifest`. Some are pure host behaviors with nothing to implement
+(`fullwidthInput`); others require a matching method on the engine's class
+(`reverseLookup`).
 
 ```jsonc
 "capabilities": {
-  "reverseLookup": true
+  "reverseLookup": true,
+  "fullwidthInput": true
 }
 ```
 
@@ -233,6 +236,22 @@ export default class MyEngine {
 The typed contract for the static side is `InputEngineConstructor` in
 `Utils/MacishType.d.ts`; see the TypeScript hint section for how to check
 it with `satisfies`.
+
+#### `fullwidthInput`
+
+Declaring `"fullwidthInput": true` lets the host commit the full-width form of
+an Option-modified key — `Option`+`a` → `ａ`, `Option`+`Shift`+`a` → `Ａ`,
+`Option`+space → U+3000 — when the engine is **idle** and returns
+`false`/`undefined` from `handleKey`. There is **no method to implement**.
+
+- Default is `false`; omitting the flag changes nothing.
+- Composing is untouched — the host only acts while the engine is idle, so an
+  engine that consumes or ignores Option keys during composition keeps doing
+  so. An engine that hand-handles `Option`+key itself and returns `true` never
+  reaches the host fallback.
+- On macOS the trigger is the one-shot `Option`+key; the capability is the
+  portable contract, so a host on another platform can supply its own trigger
+  (e.g. a full-width mode) without the engine changing.
 
 ### `settings` (optional)
 

@@ -63,6 +63,27 @@ struct ManifestTests {
         #expect(manifest.modules?.enabledNames == ["fontCoverage"])
     }
 
+    // MARK: Capabilities
+
+    @Test func capabilitiesDecodeReverseLookupAndFullwidthInput() throws {
+        let both = try decode(#"{"entry": "e", "capabilities": {"reverseLookup": true, "fullwidthInput": true}}"#)
+        #expect(both.capabilities?.reverseLookup == true)
+        #expect(both.capabilities?.fullwidthInput == true)
+
+        let off = try decode(#"{"entry": "e", "capabilities": {"fullwidthInput": false}}"#)
+        #expect(off.capabilities?.fullwidthInput == false)
+        #expect(off.capabilities?.reverseLookup == nil)
+
+        #expect(try decode(#"{"entry": "e"}"#).capabilities?.fullwidthInput == nil)
+    }
+
+    @Test func capabilitiesTolerateABrokenKeyWithoutDroppingNeighbors() throws {
+        // Per-key tolerant decoding: a type-mismatched flag drops only itself.
+        let manifest = try decode(#"{"entry": "e", "capabilities": {"reverseLookup": true, "fullwidthInput": "yes"}}"#)
+        #expect(manifest.capabilities?.reverseLookup == true)
+        #expect(manifest.capabilities?.fullwidthInput == nil)
+    }
+
     // MARK: Settings tolerance and dedupe
 
     @Test func duplicateFieldKeysKeepTheFirstDeclaration() throws {

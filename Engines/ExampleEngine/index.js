@@ -1,15 +1,7 @@
 // JS-port of Swift ExampleEngine — exercises the JavaScriptEngine bridge
-// surface end-to-end (handleKey rules, candidate window, fullwidth,
-// associated mode). Standard nav keys, Enter, and indexLabels keys are
-// handled by the host while the candidate window is visible.
-
-function toFullwidth(char) {
-  if (char.length !== 1) return null;
-  if (char === " ") return "　";
-  const code = char.charCodeAt(0);
-  if (code < 0x21 || code > 0x7E) return null;
-  return String.fromCharCode(code + 0xFEE0);
-}
+// surface end-to-end (handleKey rules, candidate window, the fullwidthInput
+// capability, associated mode). Standard nav keys, Enter, and indexLabels
+// keys are handled by the host while the candidate window is visible.
 
 const validCompositionCharacters = new Set("abcdefghijklmnopqrstuvwxyz");
 
@@ -108,16 +100,10 @@ export default class JSExternalEngine {
 
     if (event.metaKey || event.ctrlKey) return false;
 
-    // Option+printable: layout-aware fullwidth pass-through.
-    if (event.altKey) {
-      const fw = toFullwidth(event.keyIgnoringModifiers);
-      if (!fw) return false;
-      event.flushStaged(fw);
-      return true;
-    }
-
-    // Plain a-z starts a composing session.
-    if (event.key.length === 1
+    // Exclude altKey so a modified letter declines instead of starting
+    // composition.
+    if (!event.altKey
+        && event.key.length === 1
         && validCompositionCharacters.has(event.key)) {
       applyComposition(event, event.key.toUpperCase());
       return true;
