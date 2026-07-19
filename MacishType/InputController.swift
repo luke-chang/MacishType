@@ -32,7 +32,7 @@ class InputController: IMKInputController {
                 action: #selector(showCodeLookup(_:)),
                 keyEquivalent: "l"
             )
-            lookupItem.keyEquivalentModifierMask = [.option, .shift]
+            lookupItem.keyEquivalentModifierMask = [.command, .control]
             lookupItem.target = self
             menu.addItem(lookupItem)
         }
