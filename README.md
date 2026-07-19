@@ -31,8 +31,17 @@ unmodified — composition preedit, candidate window with index labels and
 navigation, commit, escape, and OS passthrough all work against an isolated
 fcitx5 instance (`test/acceptance.sh`).
 
-Not yet implemented: associated-mode dictionary data, reverse lookup, and
-live fontcoveragechange events on font installs.
+Not yet implemented: associated-mode dictionary data and reverse lookup.
+
+Font coverage (which drives the "displayable" character-set filter) is
+computed once when an engine loads; the contract's `fontcoveragechange`
+event is not raised for fonts installed mid-session. This is deliberate:
+the candidate window is drawn by the desktop (e.g. the kimpanel GNOME
+Shell extension), whose own font set only refreshes on re-login under
+Wayland, so live-updating the filter alone would surface candidates the
+panel still draws as tofu. Installing a font therefore takes effect after
+a fcitx5 restart — which the re-login that makes the desktop render the
+new font performs anyway, keeping the filter and the renderer in step.
 
 Manifest `settings` become a per-input-method configuration dialog in
 `fcitx5-configtool` (select the input method, then the gear button), and
