@@ -1,6 +1,8 @@
 add_library(macishtype SHARED
     enginediscovery.cpp
+    enginesettings.cpp
     enginewatcher.cpp
+    i18n.cpp
     webkeymap.cpp
     jshost/enginehost.cpp
     jshost/fontcoverage.cpp

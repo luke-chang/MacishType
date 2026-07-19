@@ -7,6 +7,7 @@
 
 #include <quickjs.h>
 
+#include "../i18n.h"
 #include "../log.h"
 #include "qjsutil.h"
 
@@ -108,6 +109,342 @@ std::string resolveLocalizedName(JSContext *ctx, JSValueConst nameValue,
     return result;
 }
 
+// JSON text of a JS value; empty for undefined or stringify failure.
+std::string stringifyJson(JSContext *ctx, JSValueConst value) {
+    if (JS_IsUndefined(value)) {
+        return {};
+    }
+    qjs::Value json(ctx, JS_JSONStringify(ctx, value, JS_UNDEFINED,
+                                          JS_UNDEFINED));
+    if (!JS_IsString(json.get())) {
+        return {};
+    }
+    return qjs::toString(ctx, json.get());
+}
+
+// PickerOption: a shorthand string, or {text, value?, tag?}. The token
+// identity chain (tag → plain string value → plain text literal → value
+// JSON) gives every usable option a stable storage identifier.
+std::optional<SettingsFieldOption>
+parseSettingsOption(JSContext *ctx, JSValueConst optionValue,
+                    const std::vector<std::string> &languages) {
+    SettingsFieldOption option;
+    if (JS_IsString(optionValue)) {
+        std::string text = qjs::toString(ctx, optionValue);
+        option.token = text;
+        option.label = text;
+        option.valueJson = stringifyJson(ctx, optionValue);
+        return option;
+    }
+    if (!JS_IsObject(optionValue)) {
+        return std::nullopt;
+    }
+    qjs::Value text(ctx, JS_GetPropertyStr(ctx, optionValue, "text"));
+    option.label = resolveLocalizedName(ctx, text.get(), languages);
+    const bool plainText = JS_IsString(text.get());
+
+    qjs::Value value(ctx, JS_GetPropertyStr(ctx, optionValue, "value"));
+    if (!JS_IsUndefined(value.get())) {
+        option.valueJson = stringifyJson(ctx, value.get());
+    } else if (plainText) {
+        // Value defaults to the text literal.
+        option.valueJson = stringifyJson(ctx, text.get());
+    }
+
+    qjs::Value tag(ctx, JS_GetPropertyStr(ctx, optionValue, "tag"));
+    if (JS_IsString(tag.get())) {
+        option.token = qjs::toString(ctx, tag.get());
+    } else if (JS_IsString(value.get())) {
+        option.token = qjs::toString(ctx, value.get());
+    } else if (plainText) {
+        option.token = qjs::toString(ctx, text.get());
+    } else {
+        option.token = option.valueJson;
+    }
+    if (option.label.empty()) {
+        option.label = option.token;
+    }
+    if (option.valueJson.empty() || option.token.empty()) {
+        return std::nullopt;
+    }
+    return option;
+}
+
+std::string replaceFirst(std::string text, const char *placeholder,
+                         const std::string &value) {
+    auto position = text.find(placeholder);
+    if (position != std::string::npos) {
+        text.replace(position, 2, value);
+    }
+    return text;
+}
+
+const SettingsField *findField(const std::vector<SettingsSection> &sections,
+                               const std::string &key) {
+    for (const auto &section : sections) {
+        for (const auto &field : section.fields) {
+            if (field.key == key) {
+                return &field;
+            }
+        }
+    }
+    return nullptr;
+}
+
+// Display text for a condition's comparison value: the option label when
+// the referenced field is a picker, else the bare string / JSON literal.
+std::string conditionValueText(JSContext *ctx, JSValueConst value,
+                               const SettingsField *target) {
+    std::string json = stringifyJson(ctx, value);
+    if (target != nullptr) {
+        for (const auto &option : target->options) {
+            if (option.valueJson == json || option.token == json) {
+                return option.label;
+            }
+            // Tag references arrive as plain strings.
+            if (json.size() >= 2 && json.front() == '"' &&
+                option.token == json.substr(1, json.size() - 2)) {
+                return option.label;
+            }
+        }
+    }
+    if (json.size() >= 2 && json.front() == '"' && json.back() == '"' &&
+        json.find('\\') == std::string::npos) {
+        return json.substr(1, json.size() - 2);
+    }
+    return json;
+}
+
+// Renders a disabledWhen/hiddenWhen condition as a sentence fragment. The
+// host never evaluates conditions (the config dialog is a static form);
+// the text keeps the rule visible to the user via the option tooltip.
+std::string conditionToText(JSContext *ctx, JSValueConst condition,
+                            const std::vector<SettingsSection> &sections) {
+    if (!JS_IsObject(condition)) {
+        return {};
+    }
+    auto joinChildren = [&](JSValueConst array, const std::string &glue) {
+        std::string joined;
+        qjs::Value length(ctx, JS_GetPropertyStr(ctx, array, "length"));
+        uint32_t count = 0;
+        JS_ToUint32(ctx, &count, length.get());
+        for (uint32_t i = 0; i < count; i++) {
+            qjs::Value child(ctx, JS_GetPropertyUint32(ctx, array, i));
+            std::string text = conditionToText(ctx, child.get(), sections);
+            if (text.empty()) {
+                continue;
+            }
+            if (!joined.empty()) {
+                joined += glue;
+            }
+            joined += text;
+        }
+        return joined;
+    };
+
+    qjs::Value allOf(ctx, JS_GetPropertyStr(ctx, condition, "and"));
+    if (JS_IsArray(allOf.get())) {
+        return joinChildren(allOf.get(), translated(" and "));
+    }
+    qjs::Value anyOf(ctx, JS_GetPropertyStr(ctx, condition, "or"));
+    if (JS_IsArray(anyOf.get())) {
+        return joinChildren(anyOf.get(), translated(" or "));
+    }
+    qjs::Value negated(ctx, JS_GetPropertyStr(ctx, condition, "not"));
+    if (JS_IsObject(negated.get())) {
+        return replaceFirst(translated("not (%1)"), "%1",
+                            conditionToText(ctx, negated.get(), sections));
+    }
+
+    qjs::Value key(ctx, JS_GetPropertyStr(ctx, condition, "key"));
+    if (!JS_IsString(key.get())) {
+        return {};
+    }
+    std::string keyText = qjs::toString(ctx, key.get());
+    const SettingsField *target = findField(sections, keyText);
+    std::string label =
+        target != nullptr && !target->label.empty() ? target->label : keyText;
+
+    auto relation = [&](const char *name,
+                        const std::string &sentence) -> std::string {
+        qjs::Value operand(ctx, JS_GetPropertyStr(ctx, condition, name));
+        if (operand.isUndefined()) {
+            return {};
+        }
+        std::string values;
+        if (JS_IsArray(operand.get())) {
+            qjs::Value length(
+                ctx, JS_GetPropertyStr(ctx, operand.get(), "length"));
+            uint32_t count = 0;
+            JS_ToUint32(ctx, &count, length.get());
+            for (uint32_t i = 0; i < count; i++) {
+                qjs::Value item(ctx,
+                                JS_GetPropertyUint32(ctx, operand.get(), i));
+                if (!values.empty()) {
+                    values += translated(", ");
+                }
+                values += conditionValueText(ctx, item.get(), target);
+            }
+        } else {
+            values = conditionValueText(ctx, operand.get(), target);
+        }
+        return replaceFirst(replaceFirst(sentence, "%1", label), "%2",
+                            values);
+    };
+
+    if (auto text = relation("equals", translated("“%1” is “%2”"));
+        !text.empty()) {
+        return text;
+    }
+    if (auto text = relation("notEquals", translated("“%1” is not “%2”"));
+        !text.empty()) {
+        return text;
+    }
+    if (auto text = relation("in", translated("“%1” is one of: %2"));
+        !text.empty()) {
+        return text;
+    }
+    if (auto text = relation("notIn", translated("“%1” is none of: %2"));
+        !text.empty()) {
+        return text;
+    }
+    return {};
+}
+
+std::vector<SettingsSection>
+parseSettingsSections(JSContext *ctx, JSValueConst settingsValue,
+                      const std::vector<std::string> &languages) {
+    std::vector<SettingsSection> sections;
+    if (!JS_IsArray(settingsValue)) {
+        return sections;
+    }
+    auto arrayLength = [&](JSValueConst array) {
+        qjs::Value length(ctx, JS_GetPropertyStr(ctx, array, "length"));
+        uint32_t count = 0;
+        JS_ToUint32(ctx, &count, length.get());
+        return count;
+    };
+    auto numberProperty = [&](JSValueConst object,
+                              const char *name) -> std::optional<double> {
+        qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
+        if (!JS_IsNumber(value.get())) {
+            return std::nullopt;
+        }
+        double number = 0;
+        JS_ToFloat64(ctx, &number, value.get());
+        return number;
+    };
+
+    // Condition sentences reference other fields' labels, so they render
+    // in a second pass once the whole schema is assembled.
+    struct PendingCondition {
+        size_t section;
+        size_t field;
+        std::string disabledJson;
+        std::string hiddenJson;
+    };
+    std::vector<PendingCondition> pendingConditions;
+
+    uint32_t sectionCount = arrayLength(settingsValue);
+    for (uint32_t si = 0; si < sectionCount; si++) {
+        qjs::Value sectionValue(ctx,
+                                JS_GetPropertyUint32(ctx, settingsValue, si));
+        SettingsSection section;
+        qjs::Value title(ctx,
+                         JS_GetPropertyStr(ctx, sectionValue.get(), "title"));
+        section.title = resolveLocalizedName(ctx, title.get(), languages);
+
+        qjs::Value fields(ctx,
+                          JS_GetPropertyStr(ctx, sectionValue.get(),
+                                            "fields"));
+        if (!JS_IsArray(fields.get())) {
+            continue;
+        }
+        uint32_t fieldCount = arrayLength(fields.get());
+        for (uint32_t fi = 0; fi < fieldCount; fi++) {
+            qjs::Value fieldValue(
+                ctx, JS_GetPropertyUint32(ctx, fields.get(), fi));
+            qjs::Value key(ctx,
+                           JS_GetPropertyStr(ctx, fieldValue.get(), "key"));
+            qjs::Value type(ctx,
+                            JS_GetPropertyStr(ctx, fieldValue.get(), "type"));
+            if (!JS_IsString(key.get()) || !JS_IsString(type.get())) {
+                continue;
+            }
+            SettingsField field;
+            field.key = qjs::toString(ctx, key.get());
+            field.type = qjs::toString(ctx, type.get());
+
+            auto localized = [&](const char *name) {
+                qjs::Value value(
+                    ctx, JS_GetPropertyStr(ctx, fieldValue.get(), name));
+                return resolveLocalizedName(ctx, value.get(), languages);
+            };
+            field.label = localized("label");
+            field.description = localized("description");
+            field.placeholder = localized("placeholder");
+
+            auto rawJson = [&](const char *name) {
+                qjs::Value value(
+                    ctx, JS_GetPropertyStr(ctx, fieldValue.get(), name));
+                return stringifyJson(ctx, value.get());
+            };
+            field.defaultJson = rawJson("default");
+            std::string disabledJson = rawJson("disabledWhen");
+            std::string hiddenJson = rawJson("hiddenWhen");
+            if (!disabledJson.empty() || !hiddenJson.empty()) {
+                pendingConditions.push_back({sections.size(),
+                                             section.fields.size(),
+                                             std::move(disabledJson),
+                                             std::move(hiddenJson)});
+            }
+
+            field.min = numberProperty(fieldValue.get(), "min");
+            field.max = numberProperty(fieldValue.get(), "max");
+            field.step = numberProperty(fieldValue.get(), "step");
+
+            qjs::Value options(
+                ctx, JS_GetPropertyStr(ctx, fieldValue.get(), "options"));
+            if (JS_IsArray(options.get())) {
+                uint32_t optionCount = arrayLength(options.get());
+                for (uint32_t oi = 0; oi < optionCount; oi++) {
+                    qjs::Value optionValue(
+                        ctx, JS_GetPropertyUint32(ctx, options.get(), oi));
+                    if (auto parsed = parseSettingsOption(
+                            ctx, optionValue.get(), languages)) {
+                        field.options.push_back(std::move(*parsed));
+                    }
+                }
+            }
+            section.fields.push_back(std::move(field));
+        }
+        sections.push_back(std::move(section));
+    }
+
+    for (const auto &pending : pendingConditions) {
+        auto &field = sections[pending.section].fields[pending.field];
+        auto render = [&](const std::string &json, const char *sentence) {
+            qjs::Value condition(ctx, JS_ParseJSON(ctx, json.c_str(),
+                                                   json.size(), "condition"));
+            std::string text = conditionToText(ctx, condition.get(), sections);
+            return text.empty()
+                       ? std::string()
+                       : replaceFirst(translated(sentence), "%1", text);
+        };
+        // One wording for both condition kinds (hidden/disabled): the
+        // practical meaning to the user is the same.
+        if (!pending.disabledJson.empty()) {
+            field.disabledWhenText =
+                render(pending.disabledJson, "Has no effect when %1.");
+        }
+        if (!pending.hiddenJson.empty()) {
+            field.hiddenWhenText =
+                render(pending.hiddenJson, "Has no effect when %1.");
+        }
+    }
+    return sections;
+}
+
 std::string fcitxLanguageCode(const std::string &intendedLanguage) {
     std::string lower = lowered(intendedLanguage);
     if (lower == "zh-hant") {
@@ -201,57 +538,10 @@ parseManifest(const std::filesystem::path &manifestPath,
                 data.languageCode = fcitxLanguageCode(data.intendedLanguage);
             }
 
-            // settings: [{fields: [{key, default}, ...]}, ...] → {key: default}
-            qjs::Value defaults(ctx, JS_NewObject(ctx));
             qjs::Value settings(
                 ctx, JS_GetPropertyStr(ctx, root.get(), "settings"));
-            if (JS_IsArray(settings.get())) {
-                qjs::Value sectionCount(
-                    ctx, JS_GetPropertyStr(ctx, settings.get(), "length"));
-                uint32_t sections = 0;
-                JS_ToUint32(ctx, &sections, sectionCount.get());
-                for (uint32_t si = 0; si < sections; si++) {
-                    qjs::Value section(
-                        ctx, JS_GetPropertyUint32(ctx, settings.get(), si));
-                    qjs::Value fields(
-                        ctx,
-                        JS_GetPropertyStr(ctx, section.get(), "fields"));
-                    if (!JS_IsArray(fields.get())) {
-                        continue;
-                    }
-                    qjs::Value fieldCount(
-                        ctx, JS_GetPropertyStr(ctx, fields.get(), "length"));
-                    uint32_t fieldTotal = 0;
-                    JS_ToUint32(ctx, &fieldTotal, fieldCount.get());
-                    for (uint32_t fi = 0; fi < fieldTotal; fi++) {
-                        qjs::Value field(
-                            ctx,
-                            JS_GetPropertyUint32(ctx, fields.get(), fi));
-                        qjs::Value key(
-                            ctx, JS_GetPropertyStr(ctx, field.get(), "key"));
-                        if (!JS_IsString(key.get())) {
-                            continue;
-                        }
-                        qjs::Value defaultValue(
-                            ctx,
-                            JS_GetPropertyStr(ctx, field.get(), "default"));
-                        if (defaultValue.isUndefined()) {
-                            continue;
-                        }
-                        std::string keyText = qjs::toString(ctx, key.get());
-                        JS_SetPropertyStr(ctx, defaults.get(),
-                                          keyText.c_str(),
-                                          defaultValue.release());
-                    }
-                }
-            }
-            qjs::Value defaultsJson(
-                ctx, JS_JSONStringify(ctx, defaults.get(), JS_UNDEFINED,
-                                      JS_UNDEFINED));
-            if (JS_IsString(defaultsJson.get())) {
-                data.settingsDefaultsJson =
-                    qjs::toString(ctx, defaultsJson.get());
-            }
+            data.settingsSections =
+                parseSettingsSections(ctx, settings.get(), languages);
 
             // modules: {name: true, ...}
             qjs::Value modules(ctx,

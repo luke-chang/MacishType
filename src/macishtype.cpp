@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <filesystem>
 
+#include <fcitx-config/iniparser.h>
 #include <fcitx-config/rawconfig.h>
 #include <notifications_public.h>
 #include <fcitx-utils/i18n.h>
@@ -16,6 +17,7 @@
 #include <fcitx/statusarea.h>
 #include <fcitx/userinterfacemanager.h>
 
+#include "i18n.h"
 #include "log.h"
 
 namespace macishtype {
@@ -25,41 +27,17 @@ FCITX_DEFINE_LOG_CATEGORY(macishtype_logcategory, "macishtype");
 namespace {
 
 constexpr std::string_view kUniqueNamePrefix = "macishtype-";
-constexpr char kTextDomain[] = "fcitx5-macishtype";
-
-// Translations follow the install flavor: the dev install puts .mo files
-// under ~/.local/share/locale, the production install under the system
-// locale dir. gettext binds one directory per domain, so pick whichever
-// actually carries the domain.
-void registerTextDomain() {
-    const char *home = std::getenv("HOME");
-    if (home != nullptr) {
-        std::filesystem::path userLocale =
-            std::filesystem::path(home) / ".local/share/locale";
-        std::error_code errorCode;
-        std::filesystem::directory_iterator languages(userLocale, errorCode);
-        if (!errorCode) {
-            for (const auto &language : languages) {
-                if (std::filesystem::is_regular_file(
-                        language.path() / "LC_MESSAGES" /
-                            "fcitx5-macishtype.mo",
-                        errorCode)) {
-                    fcitx::registerDomain(kTextDomain,
-                                          userLocale.c_str());
-                    return;
-                }
-            }
-        }
-    }
-    fcitx::registerDomain(kTextDomain, FCITX_INSTALL_LOCALEDIR);
-}
-
-std::string translated(const char *text) {
-    return fcitx::translateDomain(kTextDomain, text);
-}
 
 std::string uniqueNameForEngine(const EngineInfo &engine) {
     return std::string(kUniqueNamePrefix) + engine.id;
+}
+
+std::string engineIdFromEntry(const fcitx::InputMethodEntry &entry) {
+    return entry.uniqueName().substr(kUniqueNamePrefix.size());
+}
+
+std::string settingsConfigPath(const std::string &engineId) {
+    return "macishtype/" + engineId + ".conf";
 }
 
 // Compact label shown in panels: the manifest label when declared, else
@@ -82,9 +60,12 @@ std::string labelForEngine(const EngineInfo &engine) {
 MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     : instance_(instance), languages_(preferredLanguages()),
       engines_(discoverEngines(languages_)) {
-    registerTextDomain();
     MACISHTYPE_INFO() << "Discovered " << engines_.size()
                       << " engine folder(s)";
+    fcitx::readAsIni(config_, "conf/macishtype.conf");
+    for (const auto &engine : engines_) {
+        rebuildEngineSettings(engine);
+    }
     watcher_ = std::make_unique<EngineWatcher>(
         &instance_->eventLoop(),
         [this](const std::string &engineId,
@@ -118,10 +99,57 @@ std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {
         if (!engine.iconPath.empty()) {
             entry.setIcon(engine.iconPath);
         }
-        entry.setConfigurable(false);
+        auto settings = engineSettings_.find(engine.id);
+        entry.setConfigurable(settings != engineSettings_.end() &&
+                              settings->second->hasOptions());
         entries.push_back(std::move(entry));
     }
     return entries;
+}
+
+void MacishTypeEngine::setConfig(const fcitx::RawConfig &raw) {
+    config_.load(raw, true);
+    fcitx::safeSaveAsIni(config_, "conf/macishtype.conf");
+}
+
+void MacishTypeEngine::rebuildEngineSettings(const EngineInfo &engine) {
+    if (engine.manifest.settingsSections.empty()) {
+        engineSettings_.erase(engine.id);
+        return;
+    }
+    auto settings =
+        std::make_unique<EngineSettings>(engine.manifest.settingsSections);
+    // Manifest defaults live in the options themselves (the constructor
+    // defaults, which is also what "reset to default" restores); the
+    // persisted user values layer over them.
+    fcitx::RawConfig raw;
+    fcitx::readAsIni(raw, fcitx::StandardPathsType::PkgConfig,
+                     settingsConfigPath(engine.id));
+    settings->load(raw, true);
+    engineSettings_[engine.id] = std::move(settings);
+}
+
+const fcitx::Configuration *MacishTypeEngine::getConfigForInputMethod(
+    const fcitx::InputMethodEntry &entry) const {
+    auto found = engineSettings_.find(engineIdFromEntry(entry));
+    return found != engineSettings_.end() ? found->second.get() : nullptr;
+}
+
+void MacishTypeEngine::setConfigForInputMethod(
+    const fcitx::InputMethodEntry &entry, const fcitx::RawConfig &raw) {
+    std::string engineId = engineIdFromEntry(entry);
+    auto found = engineSettings_.find(engineId);
+    if (found == engineSettings_.end()) {
+        return;
+    }
+    found->second->load(raw, true);
+    fcitx::safeSaveAsIni(*found->second, fcitx::StandardPathsType::PkgConfig,
+                         settingsConfigPath(engineId));
+    // The new values are not pushed to a live engine here: the contract
+    // refreshes manifest.settings only at session boundaries, never
+    // mid-composition. They apply the next time the engine activates
+    // (changing settings means focusing configtool, so returning to a
+    // text field is itself an activate).
 }
 
 std::string
@@ -162,6 +190,14 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
     }
     auto *inputContext = event.inputContext();
     endSession(inputContext);
+    // Settings apply at this session boundary (mirrors macOS re-reading on
+    // activate): push the persisted values before the new instance is
+    // constructed so it observes them, deduplicated so an unchanged
+    // config is a no-op.
+    if (auto settings = engineSettings_.find(engine->id);
+        settings != engineSettings_.end()) {
+        host->updateSettings(settings->second->valuesToJson());
+    }
     auto session = std::make_unique<EngineSession>(host, inputContext);
     if (!session->valid()) {
         return;
@@ -224,8 +260,12 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
     if (failedHosts_.count(engine.id) != 0) {
         return nullptr;
     }
-    auto host = JsEngineHost::load(engine.id, engine.root, engine.storageRoot,
-                                   engine.manifest, languages_);
+    auto settings = engineSettings_.find(engine.id);
+    auto host = JsEngineHost::load(
+        engine.id, engine.root, engine.storageRoot,
+        settings != engineSettings_.end() ? settings->second->valuesToJson()
+                                          : std::string("{}"),
+        engine.manifest, languages_);
     if (!host) {
         MACISHTYPE_ERROR() << "Engine failed to load, disabled until it "
                               "changes on disk: "
@@ -410,6 +450,9 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
     // Icon file changes count too, even when the manifest kept its old
     // parse result; the subMode overrides serve the new value live.
     engine->iconPath = resolveIconPath(engine->root, engine->manifest.icon);
+    // The settings schema may have changed shape; recompose it (persisted
+    // values re-layer over the fresh defaults).
+    rebuildEngineSettings(*engine);
 
     auto *host = hostForEngine(*engine);
     notifyReload(engine->displayName(), host != nullptr);
@@ -433,6 +476,9 @@ void MacishTypeEngine::notifyReload(const std::string &displayName,
     if (notifications == nullptr) {
         return;
     }
+    if (!*config_.notifyOnReload) {
+        return;
+    }
     notifications->call<fcitx::INotifications::showTip>(
         "macishtype-reload", "MacishType", "input-keyboard",
         succeeded ? translated("Engine reloaded")
@@ -445,6 +491,9 @@ void MacishTypeEngine::notifyReload(const std::string &displayName,
 
 fcitx::AddonInstance *
 MacishTypeAddonFactory::create(fcitx::AddonManager *manager) {
+    // Before construction: option descriptions translate during member
+    // initialization.
+    registerTextDomain();
     return new MacishTypeEngine(manager->instance());
 }
 

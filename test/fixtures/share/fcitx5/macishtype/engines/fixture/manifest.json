@@ -1,5 +1,47 @@
 {
   "entry": "index.js",
   "name": { "en": "Fixture" },
-  "label": "Fx"
+  "label": "Fx",
+  "settings": [
+    {
+      "title": { "en": "Test" },
+      "fields": [
+        {
+          "key": "flag",
+          "type": "toggle",
+          "label": { "en": "Flag" },
+          "default": true
+        },
+        {
+          "key": "note",
+          "type": "textField",
+          "label": { "en": "Note" },
+          "default": "hello"
+        },
+        {
+          "key": "mode",
+          "type": "picker",
+          "label": { "en": "Mode", "zh-Hant": "模式" },
+          "default": "beta",
+          "options": [
+            {
+              "text": { "en": "Alpha", "zh-Hant": "甲模式" },
+              "tag": "alpha",
+              "value": { "kind": "a" }
+            },
+            {
+              "text": { "en": "Beta", "zh-Hant": "乙模式" },
+              "tag": "beta",
+              "value": { "kind": "b" }
+            }
+          ]
+        },
+        {
+          "key": "enableAssociatedMode",
+          "type": "system",
+          "default": true
+        }
+      ]
+    }
+  ]
 }

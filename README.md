@@ -31,8 +31,31 @@ unmodified — composition preedit, candidate window with index labels and
 navigation, commit, escape, and OS passthrough all work against an isolated
 fcitx5 instance (`test/acceptance.sh`).
 
-Not yet implemented: settings/config UI, associated-mode dictionary data,
-reverse lookup, and live fontcoveragechange events on font installs.
+Not yet implemented: associated-mode dictionary data, reverse lookup, and
+live fontcoveragechange events on font installs.
+
+Manifest `settings` become a per-input-method configuration dialog in
+`fcitx5-configtool` (select the input method, then the gear button), and
+the addon's own options live on its Add-ons page entry. Values persist
+under `~/.config/fcitx5/macishtype/<engine>.conf` and reach the live
+engine immediately through the contract's `settingschange` event. A field
+renders only when its behavior can match the macOS host ("render means
+equivalent"); otherwise it stays hidden and its manifest default still
+reaches the engine:
+
+- Supported: `toggle`, `textField`, integer `number` (integral default
+  and step), `picker` (stored by tag, dropdown only).
+- Hidden: `multiSelect`, fractional `number`.
+- `system` fields are availability-gated like on macOS; with
+  associated-mode data not implemented yet they are treated as
+  undeclared and not pushed.
+- Section titles are ignored (flat list); `disabledWhen`/`hiddenWhen`
+  are not evaluated — the rule is rendered as a static sentence in the
+  field's tooltip instead.
+
+The macOS General-page keyboard-layout override has a native fcitx5
+equivalent: the per-input-method layout (the keyboard button in
+configtool's input method list) or the group's default layout.
 
 Engine-private storage (`localStorage`) lives in `_storage/` inside the
 engine folder for user-layer engines — matching macOS, the folder stays

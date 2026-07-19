@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <fcitx-config/configuration.h>
+#include <fcitx-config/option.h>
 #include <fcitx/addonfactory.h>
 #include <fcitx/addoninstance.h>
 #include <fcitx/inputcontext.h>
@@ -15,11 +17,20 @@
 #include <fcitx/instance.h>
 
 #include "enginediscovery.h"
+#include "enginesettings.h"
 #include "enginewatcher.h"
+#include "i18n.h"
 #include "jshost/enginehost.h"
 #include "session.h"
 
 namespace macishtype {
+
+FCITX_CONFIGURATION(
+    MacishTypeConfig,
+    fcitx::Option<bool> notifyOnReload{
+        this, "NotifyOnReload",
+        translated("Show a desktop notification when an engine reloads"),
+        true};);
 
 class MacishTypeEngine final : public fcitx::InputMethodEngineV2 {
 public:
@@ -32,6 +43,20 @@ public:
                                 fcitx::InputContext &inputContext) override;
     std::string subModeLabelImpl(const fcitx::InputMethodEntry &entry,
                                  fcitx::InputContext &inputContext) override;
+
+    // Addon-wide options (the "Add-ons" page in configtool).
+    const fcitx::Configuration *getConfig() const override {
+        return &config_;
+    }
+    void setConfig(const fcitx::RawConfig &raw) override;
+
+    // Per input method settings composed from the engine's manifest
+    // schema (the gear next to a selected input method).
+    const fcitx::Configuration *
+    getConfigForInputMethod(const fcitx::InputMethodEntry &entry) const
+        override;
+    void setConfigForInputMethod(const fcitx::InputMethodEntry &entry,
+                                 const fcitx::RawConfig &raw) override;
     void keyEvent(const fcitx::InputMethodEntry &entry,
                   fcitx::KeyEvent &keyEvent) override;
     void activate(const fcitx::InputMethodEntry &entry,
@@ -60,14 +85,23 @@ private:
     // still retries on a fix.
     bool shouldReload(const std::string &engineId,
                       const std::set<std::string> &changedPaths);
+    // (Re)composes the engine's fcitx configuration from its manifest
+    // settings schema and layers the persisted user values over the
+    // manifest defaults.
+    void rebuildEngineSettings(const EngineInfo &engine);
     // Hot reload: tears down the engine's JS host and rebuilds the active
     // sessions so on-disk edits apply immediately.
     void reloadEngine(const std::string &engineId);
     void notifyReload(const std::string &displayName, bool succeeded);
 
     fcitx::Instance *instance_;
+    MacishTypeConfig config_;
     std::vector<std::string> languages_;
     std::vector<EngineInfo> engines_;
+    // Present for every engine that declares settings sections (it also
+    // produces the values pushed to the JS side); hasOptions() decides
+    // whether the entry is configurable.
+    std::map<std::string, std::unique_ptr<EngineSettings>> engineSettings_;
     std::map<std::string, std::unique_ptr<JsEngineHost>> hosts_;
     std::map<std::string, bool> failedHosts_;
     std::map<fcitx::InputContext *, std::unique_ptr<EngineSession>> sessions_;

@@ -159,6 +159,7 @@ test: build
 	test/acceptance.sh
 	test/reload.sh
 	test/storage.sh
+	test/settings.sh
 
 clean:
 	rm -rf $(BUILD_DIR)

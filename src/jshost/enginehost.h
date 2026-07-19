@@ -23,10 +23,13 @@ namespace macishtype {
 // first activate of the corresponding input method.
 class JsEngineHost {
 public:
+    // `settingsValuesJson` is the sanitized settings object the engine
+    // observes as manifest.settings; it must be final before load because
+    // engines read it while their entry module evaluates.
     static std::unique_ptr<JsEngineHost>
     load(const std::string &engineId, const std::filesystem::path &engineRoot,
          const std::filesystem::path &storageRoot,
-         const ManifestData &manifest,
+         const std::string &settingsValuesJson, const ManifestData &manifest,
          const std::vector<std::string> &languages);
 
     ~JsEngineHost();
@@ -72,6 +75,11 @@ public:
     // event for each affected key. Mirrors the macOS host's
     // handleStorageEvent.
     void handleStorageChanges(const std::set<std::string> &changedPaths);
+
+    // Replaces manifest.settings at runtime; the runtime dispatches the
+    // contract's settingschange event. Deduplicated against the last
+    // pushed values, mirroring the macOS host's lastPushedSettings gate.
+    void updateSettings(const std::string &valuesJson);
 
     using FieldValue = std::variant<bool, double, std::string>;
     // Bridge-visible candidate window field: engine write overlay first,
@@ -124,7 +132,8 @@ public:
 
 private:
     JsEngineHost(std::string engineId, std::filesystem::path engineRoot,
-                 std::filesystem::path storageRoot, ManifestData manifest,
+                 std::filesystem::path storageRoot,
+                 std::string settingsValuesJson, ManifestData manifest,
                  std::vector<std::string> languages);
 
     // Snapshot of a storage file's on-disk identity, recorded after the
@@ -148,7 +157,7 @@ private:
     bool evaluateScript(const std::filesystem::path &path,
                         const char *scriptName);
     bool evaluateEntryModule();
-    bool pushSettings();
+    bool pushSettings(const std::string &valuesJson);
     bool injectModules();
     void loadModuleTable(JSValue table, const std::string &moduleName,
                          bool numericValues);
@@ -233,6 +242,9 @@ private:
     std::filesystem::path engineRoot_;
     std::filesystem::path canonicalRoot_;
     std::filesystem::path storageRoot_;
+    // Last values pushed as manifest.settings (the updateSettings dedup
+    // gate).
+    std::string settingsValuesJson_;
     std::set<std::string> loadedFilePaths_;
     std::map<std::string, StorageFileState> recentSelfWrites_;
     bool storageListening_ = false;

@@ -15,3 +15,36 @@ msgstr "引擎載入失敗"
 
 msgid "See the fcitx5 log for details"
 msgstr "詳見 fcitx5 記錄"
+
+msgid "Show a desktop notification when an engine reloads"
+msgstr "引擎重新載入時顯示桌面通知"
+
+msgid "Placeholder: %1"
+msgstr "提示文字：%1"
+
+msgid "Has no effect when %1."
+msgstr "當%1時，此設定不生效。"
+
+msgid "“%1” is “%2”"
+msgstr "「%1」為「%2」"
+
+msgid "“%1” is not “%2”"
+msgstr "「%1」不為「%2」"
+
+msgid "“%1” is one of: %2"
+msgstr "「%1」為其中之一：%2"
+
+msgid "“%1” is none of: %2"
+msgstr "「%1」皆不為：%2"
+
+msgid " and "
+msgstr "且"
+
+msgid " or "
+msgstr "或"
+
+msgid "not (%1)"
+msgstr "非（%1）"
+
+msgid ", "
+msgstr "、"

@@ -7,6 +7,41 @@
 
 namespace macishtype {
 
+// One choice of a picker field. `token` identifies the option in host
+// storage and in the configtool enum: the manifest tag when declared, else
+// a plain string value, else the plain text literal, else the value's
+// canonical JSON. `valueJson` is what the engine receives when chosen.
+struct SettingsFieldOption {
+    std::string token;
+    std::string label;
+    std::string valueJson;
+};
+
+// One manifest settings field, labels already locale-resolved. Numeric
+// properties stay raw doubles; integrality checks and rounding are the
+// consumer's concern.
+struct SettingsField {
+    std::string key;
+    std::string type;
+    std::string label;
+    std::string description;
+    std::string placeholder;
+    std::string defaultJson;
+    // Human-readable renderings of disabledWhen/hiddenWhen (the conditions
+    // are not evaluated on this host; these feed the option tooltip).
+    std::string disabledWhenText;
+    std::string hiddenWhenText;
+    std::vector<SettingsFieldOption> options;
+    std::optional<double> min;
+    std::optional<double> max;
+    std::optional<double> step;
+};
+
+struct SettingsSection {
+    std::string title;
+    std::vector<SettingsField> fields;
+};
+
 // The subset of manifest.json the C++ side needs. The JS host re-parses the
 // raw JSON in the engine's own context for everything bridge-visible.
 struct ManifestData {
@@ -28,8 +63,9 @@ struct ManifestData {
     std::string intendedLanguage;
     // Fcitx-style language code derived from intendedLanguage (e.g. zh_TW).
     std::string languageCode;
-    // JSON object mapping settings field keys to their manifest defaults.
-    std::string settingsDefaultsJson = "{}";
+    // Full manifest settings schema; drives the per-IM configuration UI
+    // and the values pushed to the engine.
+    std::vector<SettingsSection> settingsSections;
     // Module names enabled via the manifest `modules` object.
     std::vector<std::string> enabledModules;
     // Raw JSON object of manifest `candidateWindow`; empty when absent.

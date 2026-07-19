@@ -51,6 +51,20 @@ def main():
         if spec == "iminfo":
             keys.append(("iminfo",))
             continue
+        # "getconfig" dumps the IM's config values and description.
+        if spec == "getconfig":
+            keys.append(("getconfig",))
+            continue
+        # "refocus" ends and restarts the session (deactivate + activate),
+        # the boundary at which settings refresh.
+        if spec == "refocus":
+            keys.append(("refocus",))
+            continue
+        # "setconfig:KEY=VALUE" writes one option through DBus SetConfig.
+        if spec.startswith("setconfig:"):
+            key, _, value = spec[len("setconfig:"):].partition("=")
+            keys.append(("setconfig", key, value))
+            continue
         parts = spec.split(":")
         keyval = parts[0]
         keyval = ord(keyval) if len(keyval) == 1 and not keyval.isdigit() \
@@ -126,6 +140,37 @@ def main():
         for entry in keys:
             if entry[0] == "sleep":
                 time.sleep(entry[1] / 1000)
+                continue
+            if entry[0] == "refocus":
+                ic_call("FocusOut")
+                time.sleep(0.2)
+                ic_call("FocusIn")
+                time.sleep(0.2)
+                emit({"event": "refocused"})
+                continue
+            if entry[0] == "getconfig":
+                reply = bus.call_sync(
+                    BUS_NAME, "/controller", "org.fcitx.Fcitx.Controller1",
+                    "GetConfig",
+                    GLib.Variant(
+                        "(s)", (f"fcitx://config/inputmethod/{im_name}",)),
+                    GLib.VariantType("(va(sa(sssva{sv})))"),
+                    Gio.DBusCallFlags.NONE, 5000, None)
+                values, description = reply.unpack()
+                emit({"event": "config", "values": values,
+                      "description": description})
+                continue
+            if entry[0] == "setconfig":
+                _kind, key, value = entry
+                raw = GLib.Variant("a{sv}", {key: GLib.Variant("s", value)})
+                bus.call_sync(
+                    BUS_NAME, "/controller", "org.fcitx.Fcitx.Controller1",
+                    "SetConfig",
+                    GLib.Variant(
+                        "(sv)",
+                        (f"fcitx://config/inputmethod/{im_name}", raw)),
+                    None, Gio.DBusCallFlags.NONE, 5000, None)
+                emit({"event": "config-set", "key": key, "value": value})
                 continue
             if entry[0] == "iminfo":
                 reply = bus.call_sync(

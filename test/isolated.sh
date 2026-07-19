@@ -14,8 +14,15 @@ shift
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 log_file="${ISOLATED_LOG:-/tmp/fcitx5-macishtype-isolated.log}"
-config_root="$(mktemp -d)"
-trap 'rm -rf "$config_root"' EXIT
+# A caller-provided config home persists across runs (the settings test
+# verifies values survive a reload); scratch otherwise.
+if [ -n "$ISOLATED_CONFIG_HOME" ]; then
+    config_root="$ISOLATED_CONFIG_HOME"
+    mkdir -p "$config_root"
+else
+    config_root="$(mktemp -d)"
+    trap 'rm -rf "$config_root"' EXIT
+fi
 
 # Scratch profile: the engine under test is the default IM of the only group.
 mkdir -p "$config_root/fcitx5"

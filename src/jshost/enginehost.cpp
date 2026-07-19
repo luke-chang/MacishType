@@ -155,10 +155,12 @@ std::unique_ptr<JsEngineHost>
 JsEngineHost::load(const std::string &engineId,
                    const std::filesystem::path &engineRoot,
                    const std::filesystem::path &storageRoot,
+                   const std::string &settingsValuesJson,
                    const ManifestData &manifest,
                    const std::vector<std::string> &languages) {
-    std::unique_ptr<JsEngineHost> host(new JsEngineHost(
-        engineId, engineRoot, storageRoot, manifest, languages));
+    std::unique_ptr<JsEngineHost> host(
+        new JsEngineHost(engineId, engineRoot, storageRoot,
+                         settingsValuesJson, manifest, languages));
     if (!host->initialize()) {
         return nullptr;
     }
@@ -168,11 +170,15 @@ JsEngineHost::load(const std::string &engineId,
 JsEngineHost::JsEngineHost(std::string engineId,
                            std::filesystem::path engineRoot,
                            std::filesystem::path storageRoot,
+                           std::string settingsValuesJson,
                            ManifestData manifest,
                            std::vector<std::string> languages)
     : engineId_(std::move(engineId)), engineRoot_(std::move(engineRoot)),
-      storageRoot_(std::move(storageRoot)), manifest_(std::move(manifest)),
-      languages_(std::move(languages)) {}
+      storageRoot_(std::move(storageRoot)),
+      settingsValuesJson_(settingsValuesJson.empty() ? "{}"
+                                                     : std::move(
+                                                           settingsValuesJson)),
+      manifest_(std::move(manifest)), languages_(std::move(languages)) {}
 
 JsEngineHost::~JsEngineHost() {
     if (ctx_ != nullptr) {
@@ -254,7 +260,7 @@ bool JsEngineHost::initialize() {
         !evaluateScript(runtimeJs, "runtime.js")) {
         return false;
     }
-    if (!pushSettings() || !injectModules()) {
+    if (!pushSettings(settingsValuesJson_) || !injectModules()) {
         return false;
     }
     if (!evaluateEntryModule()) {
@@ -282,7 +288,7 @@ bool JsEngineHost::evaluateScript(const std::filesystem::path &path,
     return true;
 }
 
-bool JsEngineHost::pushSettings() {
+bool JsEngineHost::pushSettings(const std::string &valuesJson) {
     Entry entry(*this);
     qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
     qjs::Value setter(
@@ -292,16 +298,14 @@ bool JsEngineHost::pushSettings() {
                               "__MacishType_setSettings";
         return false;
     }
-    qjs::Value defaults(
-        ctx_, JS_ParseJSON(ctx_, manifest_.settingsDefaultsJson.c_str(),
-                           manifest_.settingsDefaultsJson.size(),
-                           "settings-defaults"));
-    if (defaults.isException()) {
-        MACISHTYPE_ERROR() << "Invalid settings defaults: "
+    qjs::Value values(ctx_, JS_ParseJSON(ctx_, valuesJson.c_str(),
+                                         valuesJson.size(), "settings"));
+    if (values.isException()) {
+        MACISHTYPE_ERROR() << "Invalid settings values: "
                            << qjs::exceptionText(ctx_);
         return false;
     }
-    JSValue argument = defaults.get();
+    JSValue argument = values.get();
     qjs::Value result(
         ctx_, JS_Call(ctx_, setter.get(), JS_UNDEFINED, 1, &argument));
     if (result.isException()) {
@@ -310,6 +314,15 @@ bool JsEngineHost::pushSettings() {
         return false;
     }
     return true;
+}
+
+void JsEngineHost::updateSettings(const std::string &valuesJson) {
+    if (valuesJson.empty() || valuesJson == settingsValuesJson_) {
+        return;
+    }
+    if (pushSettings(valuesJson)) {
+        settingsValuesJson_ = valuesJson;
+    }
 }
 
 bool JsEngineHost::injectModules() {
