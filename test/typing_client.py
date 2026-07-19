@@ -60,6 +60,16 @@ def main():
         if spec == "refocus":
             keys.append(("refocus",))
             continue
+        # "focusout" drops focus (window switch away); fcitx commits the
+        # committable preedit and deactivates.
+        if spec == "focusout":
+            keys.append(("focusout",))
+            continue
+        # "reset" asks the IM to reset (in-app commit: click elsewhere in
+        # the same field, Ctrl+A) without losing focus.
+        if spec == "reset":
+            keys.append(("reset",))
+            continue
         # "setconfig:KEY=VALUE" writes one option through DBus SetConfig.
         if spec.startswith("setconfig:"):
             key, _, value = spec[len("setconfig:"):].partition("=")
@@ -147,6 +157,14 @@ def main():
                 ic_call("FocusIn")
                 time.sleep(0.2)
                 emit({"event": "refocused"})
+                continue
+            if entry[0] == "focusout":
+                ic_call("FocusOut")
+                emit({"event": "focused-out"})
+                continue
+            if entry[0] == "reset":
+                ic_call("Reset")
+                emit({"event": "was-reset"})
                 continue
             if entry[0] == "getconfig":
                 reply = bus.call_sync(

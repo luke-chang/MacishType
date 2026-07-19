@@ -42,12 +42,15 @@ public:
     void handleKey(fcitx::KeyEvent &keyEvent);
 
     void invokeActivateHook();
-    // Client-initiated reset: drop composition without committing.
+    // Client reset (in-app commit, cursor move): abandon the composition,
+    // matching fcitx5's reset semantics.
     void resetFromClient();
-    // Focus leaves: commit staged text, then tear down hooks.
+    // Focus leaves the text field (window switch): fcitx5 already committed
+    // the staged prefix from the client preedit; we tear down the rest.
     void endFromDeactivate();
 
 private:
+
     struct UpdateMarkedTextAction {
         std::string text;
         std::optional<int> cursor;

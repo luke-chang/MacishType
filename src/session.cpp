@@ -1,6 +1,8 @@
 #include "session.h"
 
 #include <algorithm>
+#include <set>
+#include <vector>
 
 #include <fcitx-utils/utf8.h>
 #include <fcitx/candidatelist.h>
@@ -307,6 +309,10 @@ void EngineSession::resetFromClient() {
     if (!valid()) {
         return;
     }
+    // fcitx5's reset abandons the input; discard the whole composition
+    // (staged and composing alike) rather than committing, matching the
+    // platform convention. Unlike focus-out, reset does not auto-commit
+    // the preedit, so nothing is left behind.
     endComposition("");
     invokeEngineMethod("compositionEnded", JS_UNDEFINED);
 }
@@ -315,7 +321,11 @@ void EngineSession::endFromDeactivate() {
     if (!valid()) {
         return;
     }
-    endComposition(stagedText_);
+    // fcitx5's focus-out handler already committed the committable client
+    // preedit before this runs (the staged prefix; the composing rest is
+    // flagged DontCommit), so we only tear down — committing again would
+    // duplicate it.
+    endComposition("");
     invokeEngineMethod("compositionEnded", JS_UNDEFINED);
     invokeEngineMethod("deactivate", JS_UNDEFINED);
 }
@@ -554,23 +564,42 @@ void EngineSession::applyUpdateMarkedText(
 
     fcitx::Text preedit;
     if (!markedText_.empty()) {
-        fcitx::TextFormatFlags base{fcitx::TextFormatFlag::Underline};
+        // Split the preedit into uniform-flag runs at the staged boundary
+        // and any emphasis range. The composing (post-staged) region is
+        // flagged DontCommit, so fcitx5's focus-out auto-commit
+        // (clientPreedit().toStringForCommit()) takes only the staged
+        // prefix and drops the composing code — the macOS deactivate
+        // behavior of committing staged text and discarding the rest,
+        // without us committing it a second time.
+        int emphasisStart =
+            action.emphasis
+                ? std::min(std::max(action.emphasis->first, 0), total)
+                : -1;
+        int emphasisEnd = action.emphasis
+                              ? std::min(std::max(action.emphasis->second, 0),
+                                         total)
+                              : -1;
+        std::set<int> cutSet{0, total, stagedCount};
         if (action.emphasis) {
-            size_t emphasisStart =
-                byteOffsetForCharacter(markedText_, action.emphasis->first);
-            size_t emphasisEnd =
-                byteOffsetForCharacter(markedText_, action.emphasis->second);
-            if (emphasisStart > 0) {
-                preedit.append(markedText_.substr(0, emphasisStart), base);
+            cutSet.insert(emphasisStart);
+            cutSet.insert(emphasisEnd);
+        }
+        std::vector<int> cuts(cutSet.begin(), cutSet.end());
+        for (size_t i = 0; i + 1 < cuts.size(); i++) {
+            int from = cuts[i];
+            int to = cuts[i + 1];
+            fcitx::TextFormatFlags flags{fcitx::TextFormatFlag::Underline};
+            if (from >= stagedCount) {
+                flags |= fcitx::TextFormatFlag::DontCommit;
             }
-            preedit.append(
-                markedText_.substr(emphasisStart, emphasisEnd - emphasisStart),
-                base | fcitx::TextFormatFlag::Bold);
-            if (emphasisEnd < markedText_.size()) {
-                preedit.append(markedText_.substr(emphasisEnd), base);
+            if (action.emphasis && from >= emphasisStart &&
+                from < emphasisEnd) {
+                flags |= fcitx::TextFormatFlag::Bold;
             }
-        } else {
-            preedit.append(markedText_, base);
+            size_t byteFrom = byteOffsetForCharacter(markedText_, from);
+            size_t byteTo = byteOffsetForCharacter(markedText_, to);
+            preedit.append(markedText_.substr(byteFrom, byteTo - byteFrom),
+                           flags);
         }
         int cursorCharacters =
             action.cursor ? std::min(std::max(*action.cursor, 0), total)
