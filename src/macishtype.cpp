@@ -40,6 +40,25 @@ std::string settingsConfigPath(const std::string &engineId) {
     return "macishtype/" + engineId + ".conf";
 }
 
+// Resolves the per-input-method orientation token to a concrete direction.
+// "system" (and any absent/unknown token) follows the sole fcitx global that
+// carries a candidate direction — classicui's "Vertical Candidate List" —
+// falling back to horizontal when it is unreadable. Read fresh each activate
+// so a changed global is picked up on the next session.
+bool resolveLayoutVertical(const std::string &token) {
+    if (token == "vertical") {
+        return true;
+    }
+    if (token == "horizontal") {
+        return false;
+    }
+    fcitx::RawConfig classicui;
+    fcitx::readAsIni(classicui, fcitx::StandardPathsType::PkgConfig,
+                     "conf/classicui.conf");
+    const auto *value = classicui.valueByPath("Vertical Candidate List");
+    return value != nullptr && *value == "True";
+}
+
 // Compact label shown in panels: the manifest label when declared, else
 // the first character of the display name.
 std::string labelForEngine(const EngineInfo &engine) {
@@ -113,13 +132,16 @@ void MacishTypeEngine::setConfig(const fcitx::RawConfig &raw) {
 }
 
 void MacishTypeEngine::rebuildEngineSettings(const EngineInfo &engine) {
-    if (engine.manifest.settingsSections.empty()) {
+    auto settings = std::make_unique<EngineSettings>(
+        engine.manifest.settingsSections,
+        associatedDictionaryAvailable(engine.manifest.intendedLanguage),
+        engine.manifest.candidateWindowHasLayoutDirection);
+    if (!settings->hasOptions()) {
+        // Nothing configurable: no supported manifest settings, and the
+        // manifest fixes the candidate orientation.
         engineSettings_.erase(engine.id);
         return;
     }
-    auto settings = std::make_unique<EngineSettings>(
-        engine.manifest.settingsSections,
-        associatedDictionaryAvailable(engine.manifest.intendedLanguage));
     // Manifest defaults live in the options themselves (the constructor
     // defaults, which is also what "reset to default" restores); the
     // persisted user values layer over them.
@@ -200,6 +222,8 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
         host->updateSettings(settings->second->valuesToJson());
         host->setAssociatedModeEnabled(
             settings->second->associatedModeEnabled());
+        host->setLayoutVertical(
+            resolveLayoutVertical(settings->second->layoutDirection()));
     }
     auto session = std::make_unique<EngineSession>(host, inputContext);
     if (!session->valid()) {
@@ -285,10 +309,13 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
     FCITX_UNUSED(unused);
     auto *loadedHost = inserted->second.get();
 
-    // The host gates its associated-mode dictionary fallback on this.
+    // The host gates its associated-mode dictionary fallback on this, and
+    // holds the resolved base orientation for manifests that leave it open.
     if (settings != engineSettings_.end()) {
         loadedHost->setAssociatedModeEnabled(
             settings->second->associatedModeEnabled());
+        loadedHost->setLayoutVertical(
+            resolveLayoutVertical(settings->second->layoutDirection()));
     }
 
     // Storage watches follow the engine's `storage` listener count; the

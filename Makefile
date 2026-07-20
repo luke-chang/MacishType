@@ -160,6 +160,7 @@ test: build
 	test/reload.sh
 	test/storage.sh
 	test/settings.sh
+	test/orientation.sh
 	test/compositionend.sh
 	test/associated.sh
 

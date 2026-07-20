@@ -25,6 +25,18 @@ msgstr "關聯字"
 msgid "Enable associated words"
 msgstr "啟用關聯字"
 
+msgid "Candidate orientation"
+msgstr "候選字方向"
+
+msgid "Follow system default"
+msgstr "跟隨系統預設"
+
+msgid "Horizontal"
+msgstr "水平"
+
+msgid "Vertical"
+msgstr "垂直"
+
 msgid "Placeholder: %1"
 msgstr "提示文字：%1"
 

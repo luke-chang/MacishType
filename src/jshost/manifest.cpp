@@ -580,6 +580,11 @@ parseManifest(const std::filesystem::path &manifestPath,
                 if (JS_IsString(json.get())) {
                     data.candidateWindowJson = qjs::toString(ctx, json.get());
                 }
+                qjs::Value direction(
+                    ctx, JS_GetPropertyStr(ctx, candidateWindow.get(),
+                                           "layoutDirection"));
+                data.candidateWindowHasLayoutDirection =
+                    JS_IsString(direction.get());
             }
 
             // menu: [{key, ...} | divider], collect declared keys

@@ -153,6 +153,10 @@ EngineSession::WindowConfig EngineSession::sessionWindowConfig() const {
     }
     if (auto direction = stringField("layoutDirection")) {
         config.vertical = *direction == "vertical";
+    } else {
+        // No manifest direction: the host holds the resolved per-input-method
+        // orientation setting (macOS parity).
+        config.vertical = host_->layoutVertical();
     }
     if (auto navigation = boolField("handleNavigationKeys")) {
         config.handleNavigationKeys = *navigation;

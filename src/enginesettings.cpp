@@ -237,9 +237,18 @@ void FieldAnnotation::dumpDescription(fcitx::RawConfig &config) const {
 }
 
 EngineSettings::EngineSettings(const std::vector<SettingsSection> &sections,
-                               bool associatedAvailable)
+                               bool associatedAvailable,
+                               bool layoutDirectionFixed)
     : associatedAvailable_(associatedAvailable) {
     std::set<std::string> usedKeys;
+    // The orientation picker takes the candidate-window section first (macOS
+    // parity), and only when the manifest does not fix the direction. Its key
+    // is reserved so a colliding manifest field is skipped rather than
+    // throwing in addOption.
+    if (!layoutDirectionFixed) {
+        materializeOrientation();
+        usedKeys.insert("orientation");
+    }
     for (const auto &section : sections) {
         for (const auto &field : section.fields) {
             // '/' is reserved by fcitx option paths; duplicates would
@@ -367,6 +376,26 @@ void EngineSettings::materializeField(const SettingsField &field) {
                           << field.type << "' hidden: " << field.key;
     }
     fields_.push_back(std::move(bound));
+}
+
+void EngineSettings::materializeOrientation() {
+    FieldAnnotation annotation;
+    annotation.enumTokens = {"system", "horizontal", "vertical"};
+    annotation.enumLabels = {translated("Follow system default"),
+                             translated("Horizontal"), translated("Vertical")};
+    auto option = std::make_unique<PickerOption>(
+        this, "orientation", translated("Candidate orientation"),
+        std::string("system"), fcitx::NoConstrain<std::string>{},
+        fcitx::DefaultMarshaller<std::string>{}, annotation);
+    orientationOption_ = option.get();
+    options_.push_back(std::move(option));
+}
+
+std::string EngineSettings::layoutDirection() const {
+    if (orientationOption_ == nullptr) {
+        return {};
+    }
+    return static_cast<const PickerOption *>(orientationOption_)->value();
 }
 
 std::string EngineSettings::valuesToJson() const {

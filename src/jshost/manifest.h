@@ -70,6 +70,10 @@ struct ManifestData {
     std::vector<std::string> enabledModules;
     // Raw JSON object of manifest `candidateWindow`; empty when absent.
     std::string candidateWindowJson;
+    // Whether `candidateWindow.layoutDirection` is declared. When it is not,
+    // the addon auto-generates a per-input-method orientation setting (macOS
+    // parity), so the user picks the candidate direction.
+    bool candidateWindowHasLayoutDirection = false;
     // Keys of manifest `menu` items (dividers carry no key).
     std::vector<std::string> menuKeys;
 };

@@ -35,8 +35,11 @@ public:
     // `associatedAvailable` reports whether an associated-mode dictionary
     // is bundled for the engine's language; only then is the
     // enableAssociatedMode system field surfaced (macOS availability gating).
+    // `layoutDirectionFixed` is true when the manifest declares
+    // `candidateWindow.layoutDirection`; only when it does not does the
+    // orientation picker materialize (macOS parity).
     EngineSettings(const std::vector<SettingsSection> &sections,
-                   bool associatedAvailable);
+                   bool associatedAvailable, bool layoutDirectionFixed);
 
     const char *typeName() const override { return "EngineSettings"; }
 
@@ -52,6 +55,12 @@ public:
     // field is absent or gated); the addon feeds it to the host.
     bool associatedModeEnabled() const;
 
+    // Selected orientation token ("system"/"horizontal"/"vertical"), or empty
+    // when the picker is absent (the manifest fixes the direction). "system"
+    // means follow the fcitx global; the addon resolves it to a concrete
+    // direction before pushing it to the host.
+    std::string layoutDirection() const;
+
 private:
     enum class Kind { Toggle, Text, Number, Picker, HiddenDefault, Gated };
     struct BoundField {
@@ -61,9 +70,13 @@ private:
     };
 
     void materializeField(const SettingsField &field);
+    void materializeOrientation();
 
     bool associatedAvailable_ = false;
     std::vector<BoundField> fields_;
+    // Host-level orientation control (not a manifest setting, so kept out of
+    // fields_ and the JS values push); non-null only when materialized.
+    fcitx::OptionBase *orientationOption_ = nullptr;
     // Configuration keeps raw pointers to its options; they are owned
     // here and destroyed with this object (members before base).
     std::vector<std::unique_ptr<fcitx::OptionBase>> options_;

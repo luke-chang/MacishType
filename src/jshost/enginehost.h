@@ -88,6 +88,14 @@ public:
         associatedModeEnabled_ = enabled;
     }
     bool associatedModeEnabled() const { return associatedModeEnabled_; }
+
+    // Base candidate orientation used when the manifest does not fix
+    // `candidateWindow.layoutDirection`. The addon resolves the per-input-
+    // method orientation setting (including "follow the fcitx global") to a
+    // concrete direction and pushes it here; manifest/updateCandidates values
+    // still override per candidate window.
+    void setLayoutVertical(bool vertical) { layoutVertical_ = vertical; }
+    bool layoutVertical() const { return layoutVertical_; }
     // Follow-up phrases for a held character from the locale dictionary
     // (lazily loaded); empty when no entry.
     std::vector<std::string> associatedFollowups(const std::string &heldChar);
@@ -265,6 +273,7 @@ private:
     std::map<std::string, std::vector<std::string>> associatedDictionary_;
     bool associatedDictionaryLoaded_ = false;
     bool associatedModeEnabled_ = false;
+    bool layoutVertical_ = false;
     ManifestData manifest_;
     std::vector<std::string> languages_;
     std::string userAgent_;

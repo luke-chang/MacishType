@@ -62,12 +62,21 @@ reaches the engine:
 - Supported: `toggle`, `textField`, integer `number` (integral default
   and step), `picker` (stored by tag, dropdown only).
 - Hidden: `multiSelect`, fractional `number`.
-- `system` fields are availability-gated like on macOS; with
-  associated-mode data not implemented yet they are treated as
-  undeclared and not pushed.
+- `system` fields are availability-gated like on macOS: `enableAssociatedMode`
+  surfaces only when an associated-phrase dictionary is bundled for the
+  engine's language; other or unavailable system fields stay undeclared and
+  are not pushed.
 - Section titles are ignored (flat list); `disabledWhen`/`hiddenWhen`
   are not evaluated — the rule is rendered as a static sentence in the
   field's tooltip instead.
+
+When the manifest omits `candidateWindow.layoutDirection`, a candidate
+orientation setting is generated (Follow system default / Horizontal /
+Vertical), matching macOS. "System default" follows the only fcitx global
+carrying a candidate direction — classicui's "Vertical Candidate List" —
+and falls back to horizontal when it is unreadable (e.g. under kimpanel,
+which renders through the desktop rather than classicui). A manifest that
+fixes the direction hides the setting.
 
 The macOS General-page keyboard-layout override has a native fcitx5
 equivalent: the per-input-method layout (the keyboard button in
