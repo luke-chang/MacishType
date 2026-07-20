@@ -121,6 +121,13 @@ status-area icon, state persisted per input method). The
 `outputToSimplified` system menu key proxies the same chttrans state, so
 engine-driven toggles and the chttrans hotkey flip one switch.
 
+An engine declaring the `capabilities.fullwidthInput` contract flag gets
+fcitx5's own fullwidth module attached to its status area. On macOS the flag
+means "commit the full-width form of an Option-modified key"; Linux and
+Windows leave `Alt`/`Option`+key to shortcuts, so the portable stand-in is a
+full-width mode toggle instead (fcitx's hotkey / status-area icon), off by
+default. The module is loaded on demand and simply absent when not installed.
+
 ### Intl
 
 The addon provides `Intl` (absent from quickjs-ng), backed by the system ICU

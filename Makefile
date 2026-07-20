@@ -177,6 +177,7 @@ test: build
 	test/plural.sh
 	test/collator.sh
 	test/errorstack.sh
+	test/fullwidth.sh
 	test/compositionend.sh
 	test/associated.sh
 

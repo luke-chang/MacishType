@@ -1,0 +1,5 @@
+{
+  "entry": "index.js",
+  "name": { "en": "Fullwidth Fixture" },
+  "capabilities": { "fullwidthInput": true }
+}

@@ -606,6 +606,17 @@ parseManifest(const std::filesystem::path &manifestPath,
                 }
             }
 
+            // capabilities: {fullwidthInput: true, ...} — host-only behavior
+            // flags, not surfaced on the JS `manifest`.
+            qjs::Value capabilities(
+                ctx, JS_GetPropertyStr(ctx, root.get(), "capabilities"));
+            if (JS_IsObject(capabilities.get())) {
+                qjs::Value fullwidth(
+                    ctx, JS_GetPropertyStr(ctx, capabilities.get(),
+                                           "fullwidthInput"));
+                data.fullwidthInput = JS_ToBool(ctx, fullwidth.get()) == 1;
+            }
+
             if (data.entry.empty()) {
                 MACISHTYPE_WARN()
                     << "Manifest `entry` must be a non-empty string "

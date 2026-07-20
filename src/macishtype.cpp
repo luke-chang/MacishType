@@ -242,6 +242,20 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
                 fcitx::StatusGroup::InputMethod, action);
         }
     }
+
+    // Engines declaring the `fullwidthInput` capability get fcitx5's
+    // full-width toggle in their status area — the portable stand-in for
+    // macOS's Option+key full-width trigger. Linux/Windows leave that to a
+    // mode toggle (Alt+key is a shortcut modifier there), so it is off by
+    // default and the user flips it. No-op when the module is not installed.
+    if (engine->manifest.fullwidthInput) {
+        instance_->addonManager().addon("fullwidth", true);
+        if (auto *action =
+                instance_->userInterfaceManager().lookupAction("fullwidth")) {
+            inputContext->statusArea().addAction(
+                fcitx::StatusGroup::InputMethod, action);
+        }
+    }
 }
 
 void MacishTypeEngine::deactivate(const fcitx::InputMethodEntry &entry,

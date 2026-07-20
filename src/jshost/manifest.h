@@ -76,6 +76,11 @@ struct ManifestData {
     bool candidateWindowHasLayoutDirection = false;
     // Keys of manifest `menu` items (dividers carry no key).
     std::vector<std::string> menuKeys;
+    // Whether manifest `capabilities.fullwidthInput` is declared. Host-only
+    // (not exposed on the JS `manifest`); on fcitx5 it puts fcitx's full-width
+    // toggle in the engine's status area — the portable stand-in for macOS's
+    // Option+key full-width trigger.
+    bool fullwidthInput = false;
 };
 
 // Parses and validates manifest.json using a throwaway QuickJS context.
