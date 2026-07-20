@@ -325,15 +325,17 @@ void EngineSession::resetFromClient() {
     invokeEngineMethod("compositionEnded", JS_UNDEFINED);
 }
 
-void EngineSession::endFromDeactivate() {
+void EngineSession::endFromDeactivate(bool preeditAlreadyCommitted) {
     if (!valid()) {
         return;
     }
-    // fcitx5's focus-out handler already committed the committable client
-    // preedit before this runs (the staged prefix; the composing rest is
-    // flagged DontCommit), so we only tear down — committing again would
-    // duplicate it.
-    endComposition("");
+    // macOS parity: deactivating commits the staged prefix and drops the
+    // composing rest. On a focus-out fcitx5 has already committed the
+    // committable client preedit (the staged prefix; the composing rest is
+    // flagged DontCommit), so committing again would duplicate it. Any other
+    // deactivation — switching input method by hand — gets no such
+    // auto-commit, so we commit the staged prefix ourselves.
+    endComposition(preeditAlreadyCommitted ? std::string() : stagedText_);
     invokeEngineMethod("compositionEnded", JS_UNDEFINED);
     invokeEngineMethod("deactivate", JS_UNDEFINED);
 }

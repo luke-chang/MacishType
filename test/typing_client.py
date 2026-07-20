@@ -70,6 +70,11 @@ def main():
         if spec == "reset":
             keys.append(("reset",))
             continue
+        # "switchim:NAME" switches the current input method by hand (e.g. to
+        # keyboard-us) mid-sequence, keeping focus.
+        if spec.startswith("switchim:"):
+            keys.append(("switchim", spec[len("switchim:"):]))
+            continue
         # "setconfig:KEY=VALUE" writes one option through DBus SetConfig.
         if spec.startswith("setconfig:"):
             key, _, value = spec[len("setconfig:"):].partition("=")
@@ -166,6 +171,14 @@ def main():
             if entry[0] == "reset":
                 ic_call("Reset")
                 emit({"event": "was-reset"})
+                continue
+            if entry[0] == "switchim":
+                bus.call_sync(
+                    BUS_NAME, "/controller",
+                    "org.fcitx.Fcitx.Controller1", "SetCurrentIM",
+                    GLib.Variant("(s)", (entry[1],)), None,
+                    Gio.DBusCallFlags.NONE, 5000, None)
+                emit({"event": "im-switched-away", "to": entry[1]})
                 continue
             if entry[0] == "getconfig":
                 reply = bus.call_sync(

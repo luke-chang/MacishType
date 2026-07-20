@@ -226,7 +226,12 @@ void MacishTypeEngine::deactivate(const fcitx::InputMethodEntry &entry,
     FCITX_UNUSED(entry);
     auto found = sessions_.find(event.inputContext());
     if (found != sessions_.end()) {
-        found->second->endFromDeactivate();
+        // Focus-out is the one deactivation where fcitx5 auto-commits the
+        // committable client preedit before we run; every other (a by-hand
+        // input-method switch) leaves the staged prefix for us to commit.
+        bool preeditAlreadyCommitted =
+            event.type() == fcitx::EventType::InputContextFocusOut;
+        found->second->endFromDeactivate(preeditAlreadyCommitted);
     }
     endSession(event.inputContext());
 }
@@ -432,7 +437,9 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
         }
     }
     for (auto *inputContext : affected) {
-        sessions_[inputContext]->endFromDeactivate();
+        // No fcitx auto-commit here (not a focus-out), so the staged prefix
+        // is committed rather than lost across the reload.
+        sessions_[inputContext]->endFromDeactivate(false);
         endSession(inputContext);
     }
     hosts_.erase(engineId);

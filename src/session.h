@@ -45,9 +45,12 @@ public:
     // Client reset (in-app commit, cursor move): abandon the composition,
     // matching fcitx5's reset semantics.
     void resetFromClient();
-    // Focus leaves the text field (window switch): fcitx5 already committed
-    // the staged prefix from the client preedit; we tear down the rest.
-    void endFromDeactivate();
+    // The input method is deactivated (focus-out or a by-hand input-method
+    // switch): commit the staged prefix and drop the composing rest.
+    // preeditAlreadyCommitted is true on focus-out, where fcitx5 has already
+    // committed the staged prefix from the client preedit, so we must not
+    // commit it again.
+    void endFromDeactivate(bool preeditAlreadyCommitted);
 
 private:
 
