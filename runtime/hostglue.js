@@ -415,4 +415,156 @@
     };
     return self;
   };
+
+  // Intl.NumberFormat. ECMA-402 options compile to an ICU number skeleton
+  // (which also serves as the format cache key); the number crosses to the
+  // host as a decimal string so BigInt and large integers keep full
+  // precision. macOS engines get this from JavaScriptCore.
+  const NF_ROUNDING = {
+    ceil: "rounding-mode-ceiling",
+    floor: "rounding-mode-floor",
+    expand: "rounding-mode-up",
+    trunc: "rounding-mode-down",
+    halfCeil: "rounding-mode-half-ceiling",
+    halfFloor: "rounding-mode-half-floor",
+    halfExpand: "rounding-mode-half-up",
+    halfTrunc: "rounding-mode-half-down",
+    halfEven: "rounding-mode-half-even",
+  };
+
+  function nfClampInt(value, lo, hi, fallback) {
+    if (value === undefined) return fallback;
+    let n = Math.floor(Number(value));
+    if (isNaN(n)) return fallback;
+    if (n < lo) n = lo;
+    if (n > hi) n = hi;
+    return n;
+  }
+
+  function nfNumberString(value) {
+    if (typeof value === "bigint") return value.toString();
+    if (typeof value === "string") return value.trim();
+    return String(Number(value));
+  }
+
+  function nfSkeleton(o) {
+    const tokens = [];
+    if (o.style === "percent") {
+      tokens.push("percent", "scale/100");
+    } else if (o.style === "currency") {
+      if (!o.currency || !/^[A-Za-z]{3}$/.test(String(o.currency))) {
+        throw new RangeError("Invalid currency code: " + o.currency);
+      }
+      tokens.push("currency/" + String(o.currency).toUpperCase());
+      const width = {
+        code: "unit-width-iso-code",
+        name: "unit-width-full-name",
+        narrowSymbol: "unit-width-narrow",
+      }[o.currencyDisplay];
+      if (width) tokens.push(width);
+    } else if (o.style === "unit") {
+      if (!o.unit) throw new TypeError("unit style requires a unit");
+      tokens.push("unit/" + String(o.unit));
+      const width = { long: "unit-width-full-name", narrow: "unit-width-narrow" }[
+        o.unitDisplay
+      ];
+      if (width) tokens.push(width);
+    }
+
+    if (o.notation === "scientific") tokens.push("scientific");
+    else if (o.notation === "engineering") tokens.push("engineering");
+    else if (o.notation === "compact")
+      tokens.push(o.compactDisplay === "long" ? "compact-long" : "compact-short");
+
+    if (
+      o.minimumSignificantDigits !== undefined ||
+      o.maximumSignificantDigits !== undefined
+    ) {
+      const min = nfClampInt(o.minimumSignificantDigits, 1, 21, 1);
+      const max = nfClampInt(o.maximumSignificantDigits, min, 21, 21);
+      tokens.push("@".repeat(min) + "#".repeat(Math.max(0, max - min)));
+    } else {
+      const isCurrency = o.style === "currency";
+      const defMin = isCurrency ? 2 : 0;
+      const defMax = isCurrency ? 2 : o.style === "percent" ? 0 : 3;
+      const min = nfClampInt(o.minimumFractionDigits, 0, 100, defMin);
+      const max = nfClampInt(o.maximumFractionDigits, min, 100, Math.max(min, defMax));
+      if (max === 0) tokens.push("precision-integer");
+      else tokens.push("." + "0".repeat(min) + "#".repeat(Math.max(0, max - min)));
+    }
+
+    if (o.minimumIntegerDigits !== undefined) {
+      tokens.push("integer-width/+" + "0".repeat(nfClampInt(o.minimumIntegerDigits, 1, 21, 1)));
+    }
+
+    if (o.useGrouping === false || o.useGrouping === "false")
+      tokens.push("group-off");
+    else if (o.useGrouping === "always" || o.useGrouping === true)
+      tokens.push("group-on-aligned");
+
+    const sign = {
+      always: "sign-always",
+      never: "sign-never",
+      exceptZero: "sign-except-zero",
+      negative: "sign-negative",
+    }[o.signDisplay];
+    if (sign) tokens.push(sign);
+
+    if (o.roundingMode && NF_ROUNDING[o.roundingMode])
+      tokens.push(NF_ROUNDING[o.roundingMode]);
+
+    return tokens.join(" ");
+  }
+
+  intl.NumberFormat = function NumberFormat(locales, options) {
+    const self =
+      this instanceof intl.NumberFormat
+        ? this
+        : Object.create(intl.NumberFormat.prototype);
+    const o = options ? Object(options) : {};
+    const style = o.style ? String(o.style) : "decimal";
+    if (["decimal", "currency", "percent", "unit"].indexOf(style) === -1) {
+      throw new RangeError(
+        "Value " + style + " out of range for Intl.NumberFormat options property style",
+      );
+    }
+    const skeleton = nfSkeleton(Object.assign({}, o, { style }));
+
+    const requested = Array.isArray(locales) ? locales[0] : locales;
+    let localeTag = typeof requested === "string" ? requested : "en";
+    if (o.numberingSystem) {
+      localeTag +=
+        (/-u-/.test(localeTag) ? "-" : "-u-") + "nu-" + String(o.numberingSystem);
+    }
+    const resolved = __MacishTypeHost_intlResolveLocale(localeTag);
+
+    self.format = (value) =>
+      __MacishTypeHost_intlNumberFormat(localeTag, skeleton, nfNumberString(value));
+    self.formatToParts = (value) =>
+      __MacishTypeHost_intlNumberFormatToParts(
+        localeTag,
+        skeleton,
+        nfNumberString(value),
+      );
+    self.resolvedOptions = () => {
+      const r = {
+        locale: resolved.locale,
+        numberingSystem: resolved.numberingSystem,
+        style,
+      };
+      if (style === "currency") {
+        r.currency = String(o.currency).toUpperCase();
+        r.currencyDisplay = o.currencyDisplay || "symbol";
+      }
+      if (style === "unit") {
+        r.unit = String(o.unit);
+        r.unitDisplay = o.unitDisplay || "short";
+      }
+      if (o.notation) r.notation = String(o.notation);
+      if (o.signDisplay) r.signDisplay = String(o.signDisplay);
+      r.useGrouping = o.useGrouping === undefined ? "auto" : o.useGrouping;
+      return r;
+    };
+    return self;
+  };
 })();

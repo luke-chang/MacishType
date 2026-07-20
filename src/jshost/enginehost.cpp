@@ -1458,6 +1458,12 @@ void JsEngineHost::registerBridgeGlobals() {
            &JsEngineHost::nativeIntlDateTimeFormat, 4);
     define("__MacishTypeHost_intlDateTimeFormatToParts",
            &JsEngineHost::nativeIntlDateTimeFormatToParts, 4);
+    define("__MacishTypeHost_intlResolveLocale",
+           &JsEngineHost::nativeIntlResolveLocale, 1);
+    define("__MacishTypeHost_intlNumberFormat",
+           &JsEngineHost::nativeIntlNumberFormat, 3);
+    define("__MacishTypeHost_intlNumberFormatToParts",
+           &JsEngineHost::nativeIntlNumberFormatToParts, 3);
     define("__MacishTypeHost_action", &JsEngineHost::nativeAction, 1);
     JS_SetPropertyStr(ctx_, global.get(), "__MacishType_userAgent",
                       JS_NewString(ctx_, userAgent_.c_str()));

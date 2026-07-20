@@ -288,6 +288,87 @@ void pushPart(JSContext *ctx, JSValue array, uint32_t index, const char *type,
     JS_SetPropertyUint32(ctx, array, index, part);
 }
 
+// The numbering system name for an ICU locale (respects the -u-nu- keyword).
+std::string numberingSystemName(const std::string &icuLocale) {
+    UErrorCode status = U_ZERO_ERROR;
+    UNumberingSystem *system = unumsys_open(icuLocale.c_str(), &status);
+    std::string name = "latn";
+    if (U_SUCCESS(status) && system != nullptr) {
+        const char *value = unumsys_getName(system);
+        if (value != nullptr) {
+            name = value;
+        }
+    }
+    if (system != nullptr) {
+        unumsys_close(system);
+    }
+    return name;
+}
+
+// get-or-open a UNumberFormatter for (localeTag, skeleton). The skeleton
+// encodes the entire ECMA-402 option set, so it doubles as the cache key.
+UNumberFormatter *numberFormatter(IntlCache &cache, const std::string &localeTag,
+                                  const UChar *skeleton, int32_t skeletonLength,
+                                  int *errorOut) {
+    std::string key = localeTag + "\x01" + fromUChars(skeleton, skeletonLength);
+    if (void *cached = cache.get(IntlCache::kNumberFormat, key)) {
+        return static_cast<UNumberFormatter *>(cached);
+    }
+    std::string icuLocale = toIcuLocale(localeTag);
+    UErrorCode status = U_ZERO_ERROR;
+    UNumberFormatter *formatter = unumf_openForSkeletonAndLocale(
+        skeleton, skeletonLength, icuLocale.c_str(), &status);
+    if (U_FAILURE(status)) {
+        if (formatter != nullptr) {
+            unumf_close(formatter);
+        }
+        *errorOut = status;
+        return nullptr;
+    }
+    cache.put(IntlCache::kNumberFormat, key, formatter);
+    return formatter;
+}
+
+// INTEGER and FRACTION span the separators nested inside them, so they paint
+// first and the separators overwrite the overlap.
+bool isNumberContainer(int32_t field) {
+    return field == UNUM_INTEGER_FIELD || field == UNUM_FRACTION_FIELD;
+}
+
+// Maps a UNumberFormatField to its ECMA-402 formatToParts type. Sign fields
+// resolve to minus/plus by inspecting the first character of the run.
+const char *numberFieldType(int32_t field, UChar first) {
+    switch (field) {
+    case UNUM_INTEGER_FIELD:
+        return "integer";
+    case UNUM_FRACTION_FIELD:
+        return "fraction";
+    case UNUM_DECIMAL_SEPARATOR_FIELD:
+        return "decimal";
+    case UNUM_GROUPING_SEPARATOR_FIELD:
+        return "group";
+    case UNUM_CURRENCY_FIELD:
+        return "currency";
+    case UNUM_PERCENT_FIELD:
+        return "percentSign";
+    case UNUM_SIGN_FIELD:
+        return (first == u'-' || first == u'−') ? "minusSign" : "plusSign";
+    case UNUM_EXPONENT_SYMBOL_FIELD:
+        return "exponentSeparator";
+    case UNUM_EXPONENT_SIGN_FIELD:
+        return (first == u'-' || first == u'−') ? "exponentMinusSign"
+                                                      : "exponentPlusSign";
+    case UNUM_EXPONENT_FIELD:
+        return "exponentInteger";
+    case UNUM_MEASURE_UNIT_FIELD:
+        return "unit";
+    case UNUM_COMPACT_FIELD:
+        return "compact";
+    default:
+        return "literal";
+    }
+}
+
 } // namespace
 
 JSValue JsEngineHost::nativeIntlSegment(JSContext *ctx, JSValueConst thisVal,
@@ -487,21 +568,7 @@ JSValue JsEngineHost::nativeIntlDateTimeResolve(JSContext *ctx,
         }
     }
 
-    // Numbering system name (respects the locale's -u-nu- keyword).
-    std::string numberingSystem = "latn";
-    {
-        UErrorCode nsStatus = U_ZERO_ERROR;
-        UNumberingSystem *ns = unumsys_open(icuLocale.c_str(), &nsStatus);
-        if (U_SUCCESS(nsStatus) && ns != nullptr) {
-            const char *name = unumsys_getName(ns);
-            if (name != nullptr) {
-                numberingSystem = name;
-            }
-        }
-        if (ns != nullptr) {
-            unumsys_close(ns);
-        }
-    }
+    std::string numberingSystem = numberingSystemName(icuLocale);
 
     const char *hourCycle =
         hourCycleFromPattern(patternBuffer.data(), patternLength);
@@ -658,6 +725,183 @@ JSValue JsEngineHost::nativeIntlDateTimeFormatToParts(JSContext *ctx,
         pushPart(ctx, array, index++, "literal", output.data(), cursor, length);
     }
     ufieldpositer_close(fields);
+    return array;
+}
+
+JSValue JsEngineHost::nativeIntlResolveLocale(JSContext *ctx,
+                                              JSValueConst thisVal, int argc,
+                                              JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    std::string localeTag = argc > 0 ? qjs::toString(ctx, argv[0]) : std::string();
+    std::string icuLocale = toIcuLocale(localeTag);
+    JSValue result = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, result, "locale",
+                      JS_NewString(ctx, canonicalLanguageTag(icuLocale).c_str()));
+    JS_SetPropertyStr(ctx, result, "numberingSystem",
+                      JS_NewString(ctx, numberingSystemName(icuLocale).c_str()));
+    return result;
+}
+
+JSValue JsEngineHost::nativeIntlNumberFormat(JSContext *ctx,
+                                             JSValueConst thisVal, int argc,
+                                             JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    if (argc < 3) {
+        return JS_ThrowTypeError(ctx, "intlNumberFormat: expected 3 arguments");
+    }
+    std::string localeTag = qjs::toString(ctx, argv[0]);
+    size_t skeletonLength = 0;
+    const uint16_t *skeleton =
+        JS_ToCStringLenUTF16(ctx, &skeletonLength, argv[1]);
+    if (skeleton == nullptr) {
+        return JS_EXCEPTION;
+    }
+    // The number arrives as a decimal string to keep BigInt/large-int
+    // precision that a double round-trip would lose.
+    std::string number = qjs::toString(ctx, argv[2]);
+
+    int error = U_ZERO_ERROR;
+    UNumberFormatter *formatter = numberFormatter(
+        hostOf(ctx)->intlCache(), localeTag,
+        reinterpret_cast<const UChar *>(skeleton),
+        static_cast<int32_t>(skeletonLength), &error);
+    JS_FreeCStringUTF16(ctx, skeleton);
+    if (formatter == nullptr) {
+        return JS_ThrowPlainError(ctx, "intlNumberFormat: ICU open failed (%d)",
+                                  error);
+    }
+
+    UErrorCode status = U_ZERO_ERROR;
+    UFormattedNumber *result = unumf_openResult(&status);
+    unumf_formatDecimal(formatter, number.c_str(),
+                        static_cast<int32_t>(number.size()), result, &status);
+    std::vector<UChar> output(128);
+    int32_t length = unumf_resultToString(result, output.data(),
+                                          static_cast<int32_t>(output.size()),
+                                          &status);
+    if (status == U_BUFFER_OVERFLOW_ERROR) {
+        output.resize(length);
+        status = U_ZERO_ERROR;
+        length = unumf_resultToString(result, output.data(),
+                                      static_cast<int32_t>(output.size()),
+                                      &status);
+    }
+    unumf_closeResult(result);
+    if (U_FAILURE(status)) {
+        return JS_ThrowPlainError(ctx, "intlNumberFormat: format failed (%d)",
+                                  status);
+    }
+    return JS_NewStringUTF16(ctx,
+                             reinterpret_cast<const uint16_t *>(output.data()),
+                             static_cast<size_t>(length));
+}
+
+JSValue JsEngineHost::nativeIntlNumberFormatToParts(JSContext *ctx,
+                                                    JSValueConst thisVal,
+                                                    int argc,
+                                                    JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    if (argc < 3) {
+        return JS_ThrowTypeError(ctx, "intlNumberFormatToParts: expected 3 "
+                                      "arguments");
+    }
+    std::string localeTag = qjs::toString(ctx, argv[0]);
+    size_t skeletonLength = 0;
+    const uint16_t *skeleton =
+        JS_ToCStringLenUTF16(ctx, &skeletonLength, argv[1]);
+    if (skeleton == nullptr) {
+        return JS_EXCEPTION;
+    }
+    std::string number = qjs::toString(ctx, argv[2]);
+
+    int error = U_ZERO_ERROR;
+    UNumberFormatter *formatter = numberFormatter(
+        hostOf(ctx)->intlCache(), localeTag,
+        reinterpret_cast<const UChar *>(skeleton),
+        static_cast<int32_t>(skeletonLength), &error);
+    JS_FreeCStringUTF16(ctx, skeleton);
+    if (formatter == nullptr) {
+        return JS_ThrowPlainError(ctx, "intlNumberFormatToParts: ICU open "
+                                       "failed (%d)",
+                                  error);
+    }
+
+    UErrorCode status = U_ZERO_ERROR;
+    UFormattedNumber *result = unumf_openResult(&status);
+    unumf_formatDecimal(formatter, number.c_str(),
+                        static_cast<int32_t>(number.size()), result, &status);
+    std::vector<UChar> output(128);
+    int32_t length = unumf_resultToString(result, output.data(),
+                                          static_cast<int32_t>(output.size()),
+                                          &status);
+    if (status == U_BUFFER_OVERFLOW_ERROR) {
+        output.resize(length);
+        status = U_ZERO_ERROR;
+        length = unumf_resultToString(result, output.data(),
+                                      static_cast<int32_t>(output.size()),
+                                      &status);
+    }
+    if (U_FAILURE(status)) {
+        unumf_closeResult(result);
+        return JS_ThrowPlainError(ctx, "intlNumberFormatToParts: format failed "
+                                       "(%d)",
+                                  status);
+    }
+
+    UFieldPositionIterator *fields = ufieldpositer_open(&status);
+    if (U_SUCCESS(status)) {
+        unumf_resultGetAllFieldPositions(result, fields, &status);
+    }
+    struct Field {
+        int32_t field;
+        int32_t begin;
+        int32_t end;
+    };
+    std::vector<Field> collected;
+    int32_t begin = 0;
+    int32_t end = 0;
+    for (int32_t field = ufieldpositer_next(fields, &begin, &end); field >= 0;
+         field = ufieldpositer_next(fields, &begin, &end)) {
+        collected.push_back({field, begin, end});
+    }
+    ufieldpositer_close(fields);
+    unumf_closeResult(result);
+
+    // Paint a per-character type map: containers first, then the separators
+    // and symbols nested inside them, so the inner runs win the overlap. Gaps
+    // stay "literal".
+    std::vector<std::string> charType(length, "literal");
+    for (const auto &f : collected) {
+        if (!isNumberContainer(f.field)) {
+            continue;
+        }
+        const char *type = numberFieldType(f.field, output[f.begin]);
+        for (int32_t i = f.begin; i < f.end; i++) {
+            charType[i] = type;
+        }
+    }
+    for (const auto &f : collected) {
+        if (isNumberContainer(f.field)) {
+            continue;
+        }
+        const char *type = numberFieldType(f.field, output[f.begin]);
+        for (int32_t i = f.begin; i < f.end; i++) {
+            charType[i] = type;
+        }
+    }
+
+    JSValue array = JS_NewArray(ctx);
+    uint32_t index = 0;
+    int32_t cursor = 0;
+    while (cursor < length) {
+        int32_t run = cursor + 1;
+        while (run < length && charType[run] == charType[cursor]) {
+            run++;
+        }
+        pushPart(ctx, array, index++, charType[cursor].c_str(), output.data(),
+                 cursor, run);
+        cursor = run;
+    }
     return array;
 }
 

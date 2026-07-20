@@ -17,6 +17,7 @@
 #include <unicode/ucal.h>
 #include <unicode/udat.h>
 #include <unicode/udatpg.h>
+#include <unicode/unum.h>
 #include <unicode/unumberformatter.h>
 #include <unicode/unumsys.h>
 #include <unicode/ucol.h>

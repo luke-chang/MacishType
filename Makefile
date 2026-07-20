@@ -164,6 +164,7 @@ test: build
 	test/orientation.sh
 	test/segmenter.sh
 	test/datetime.sh
+	test/number.sh
 	test/compositionend.sh
 	test/associated.sh
 

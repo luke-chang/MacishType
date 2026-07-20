@@ -261,6 +261,20 @@ private:
     static JSValue nativeIntlDateTimeFormatToParts(JSContext *ctx,
                                                    JSValueConst thisVal,
                                                    int argc, JSValueConst *argv);
+    // Locale negotiation shared by the number-oriented Intl objects: returns
+    // the canonical BCP-47 locale and its numbering system for
+    // resolvedOptions().
+    static JSValue nativeIntlResolveLocale(JSContext *ctx, JSValueConst thisVal,
+                                           int argc, JSValueConst *argv);
+    // Intl.NumberFormat. The shim compiles ECMA-402 options into an ICU number
+    // skeleton; ICU formats. Numbers cross as decimal strings to keep BigInt
+    // and large-integer precision. quickjs-ng has no Intl; JavaScriptCore
+    // provides it on macOS.
+    static JSValue nativeIntlNumberFormat(JSContext *ctx, JSValueConst thisVal,
+                                          int argc, JSValueConst *argv);
+    static JSValue nativeIntlNumberFormatToParts(JSContext *ctx,
+                                                 JSValueConst thisVal, int argc,
+                                                 JSValueConst *argv);
     static JSValue nativeAction(JSContext *ctx, JSValueConst thisVal,
                                 int argc, JSValueConst *argv);
 
