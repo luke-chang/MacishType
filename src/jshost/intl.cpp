@@ -1,6 +1,7 @@
 #include "intl.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -390,6 +391,54 @@ UPluralRules *pluralRules(IntlCache &cache, const std::string &localeTag,
     }
     cache.put(IntlCache::kPluralRules, key, rules);
     return rules;
+}
+
+// get-or-open a UCollator for (localeTag, signature). The signature is the
+// comma-joined option tuple "strength,caseLevel,numeric,caseFirst,alternate"
+// the shim derives from ECMA-402 options; it is parsed once, on the miss that
+// opens the collator, then reused as the cache key.
+UCollator *collator(IntlCache &cache, const std::string &localeTag,
+                    const std::string &signature, int *errorOut) {
+    std::string key = localeTag + "\x01" + signature;
+    if (void *cached = cache.get(IntlCache::kCollator, key)) {
+        return static_cast<UCollator *>(cached);
+    }
+    std::string icuLocale = toIcuLocale(localeTag);
+    UErrorCode status = U_ZERO_ERROR;
+    UCollator *coll = ucol_open(icuLocale.c_str(), &status);
+    if (U_FAILURE(status)) {
+        if (coll != nullptr) {
+            ucol_close(coll);
+        }
+        *errorOut = status;
+        return nullptr;
+    }
+    int strength = 2;
+    int caseLevel = 0;
+    int numeric = 0;
+    int caseFirst = 0;
+    int alternate = 0;
+    std::sscanf(signature.c_str(), "%d,%d,%d,%d,%d", &strength, &caseLevel,
+                &numeric, &caseFirst, &alternate);
+    UColAttributeValue strengthValue = strength == 0   ? UCOL_PRIMARY
+                                       : strength == 1 ? UCOL_SECONDARY
+                                       : strength == 3 ? UCOL_QUATERNARY
+                                                       : UCOL_TERTIARY;
+    ucol_setStrength(coll, strengthValue);
+    UErrorCode attr = U_ZERO_ERROR;
+    ucol_setAttribute(coll, UCOL_CASE_LEVEL, caseLevel ? UCOL_ON : UCOL_OFF,
+                      &attr);
+    ucol_setAttribute(coll, UCOL_NUMERIC_COLLATION,
+                      numeric ? UCOL_ON : UCOL_OFF, &attr);
+    ucol_setAttribute(coll, UCOL_CASE_FIRST,
+                      caseFirst == 1   ? UCOL_UPPER_FIRST
+                      : caseFirst == 2 ? UCOL_LOWER_FIRST
+                                       : UCOL_OFF,
+                      &attr);
+    ucol_setAttribute(coll, UCOL_ALTERNATE_HANDLING,
+                      alternate ? UCOL_SHIFTED : UCOL_NON_IGNORABLE, &attr);
+    cache.put(IntlCache::kCollator, key, coll);
+    return coll;
 }
 
 } // namespace
@@ -1024,6 +1073,46 @@ JSValue JsEngineHost::nativeIntlPluralCategories(JSContext *ctx,
     }
     uenum_close(keywords);
     return array;
+}
+
+JSValue JsEngineHost::nativeIntlCollatorCompare(JSContext *ctx,
+                                                JSValueConst thisVal, int argc,
+                                                JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    if (argc < 4) {
+        return JS_ThrowTypeError(ctx, "intlCollatorCompare: expected 4 "
+                                      "arguments");
+    }
+    std::string localeTag = qjs::toString(ctx, argv[0]);
+    std::string signature = qjs::toString(ctx, argv[1]);
+
+    int error = U_ZERO_ERROR;
+    UCollator *coll =
+        collator(hostOf(ctx)->intlCache(), localeTag, signature, &error);
+    if (coll == nullptr) {
+        return JS_ThrowPlainError(ctx, "intlCollatorCompare: ICU open failed "
+                                       "(%d)",
+                                  error);
+    }
+
+    size_t leftLength = 0;
+    size_t rightLength = 0;
+    const uint16_t *left = JS_ToCStringLenUTF16(ctx, &leftLength, argv[2]);
+    if (left == nullptr) {
+        return JS_EXCEPTION;
+    }
+    const uint16_t *right = JS_ToCStringLenUTF16(ctx, &rightLength, argv[3]);
+    if (right == nullptr) {
+        JS_FreeCStringUTF16(ctx, left);
+        return JS_EXCEPTION;
+    }
+    UCollationResult order = ucol_strcoll(
+        coll, reinterpret_cast<const UChar *>(left),
+        static_cast<int32_t>(leftLength), reinterpret_cast<const UChar *>(right),
+        static_cast<int32_t>(rightLength));
+    JS_FreeCStringUTF16(ctx, left);
+    JS_FreeCStringUTF16(ctx, right);
+    return JS_NewInt32(ctx, order);
 }
 
 } // namespace macishtype

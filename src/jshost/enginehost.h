@@ -282,6 +282,11 @@ private:
     static JSValue nativeIntlPluralCategories(JSContext *ctx,
                                               JSValueConst thisVal, int argc,
                                               JSValueConst *argv);
+    // Intl.Collator. Compares two strings under a collator whose options are
+    // encoded in a signature string (which also keys the collator cache).
+    static JSValue nativeIntlCollatorCompare(JSContext *ctx,
+                                             JSValueConst thisVal, int argc,
+                                             JSValueConst *argv);
     static JSValue nativeAction(JSContext *ctx, JSValueConst thisVal,
                                 int argc, JSValueConst *argv);
 

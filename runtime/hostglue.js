@@ -606,4 +606,79 @@
     });
     return self;
   };
+
+  // Intl.Collator. ECMA-402 options collapse to a strength/case/numeric
+  // signature that both configures ICU's collator and keys its cache; compare
+  // then defers to ucol_strcoll. macOS engines get this from JavaScriptCore.
+  intl.Collator = function Collator(locales, options) {
+    const self =
+      this instanceof intl.Collator
+        ? this
+        : Object.create(intl.Collator.prototype);
+    const o = options ? Object(options) : {};
+
+    const usage = o.usage ? String(o.usage) : "sort";
+    if (usage !== "sort" && usage !== "search") {
+      throw new RangeError(
+        "Value " + usage + " out of range for Intl.Collator options property usage",
+      );
+    }
+    const sensitivity = o.sensitivity ? String(o.sensitivity) : "variant";
+    if (["base", "accent", "case", "variant"].indexOf(sensitivity) === -1) {
+      throw new RangeError(
+        "Value " +
+          sensitivity +
+          " out of range for Intl.Collator options property sensitivity",
+      );
+    }
+    const caseFirst = o.caseFirst ? String(o.caseFirst) : "false";
+    if (["upper", "lower", "false"].indexOf(caseFirst) === -1) {
+      throw new RangeError(
+        "Value " +
+          caseFirst +
+          " out of range for Intl.Collator options property caseFirst",
+      );
+    }
+    const numeric = !!o.numeric;
+    const ignorePunctuation = !!o.ignorePunctuation;
+
+    // sensitivity → (strength, case level).
+    let strength = 2; // variant -> tertiary
+    let caseLevel = 0;
+    if (sensitivity === "base") strength = 0;
+    else if (sensitivity === "accent") strength = 1;
+    else if (sensitivity === "case") {
+      strength = 0;
+      caseLevel = 1;
+    }
+    const cf = caseFirst === "upper" ? 1 : caseFirst === "lower" ? 2 : 0;
+    const signature = [
+      strength,
+      caseLevel,
+      numeric ? 1 : 0,
+      cf,
+      ignorePunctuation ? 1 : 0,
+    ].join(",");
+
+    const requested = Array.isArray(locales) ? locales[0] : locales;
+    let localeTag = typeof requested === "string" ? requested : "en";
+    if (o.collation) {
+      localeTag +=
+        (/-u-/.test(localeTag) ? "-" : "-u-") + "co-" + String(o.collation);
+    }
+    const resolved = __MacishTypeHost_intlResolveLocale(localeTag);
+
+    self.compare = (a, b) =>
+      __MacishTypeHost_intlCollatorCompare(localeTag, signature, String(a), String(b));
+    self.resolvedOptions = () => ({
+      locale: resolved.locale,
+      usage,
+      sensitivity,
+      numeric,
+      caseFirst,
+      ignorePunctuation,
+      collation: o.collation ? String(o.collation) : "default",
+    });
+    return self;
+  };
 })();

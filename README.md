@@ -121,16 +121,26 @@ status-area icon, state persisted per input method). The
 `outputToSimplified` system menu key proxies the same chttrans state, so
 engine-driven toggles and the chttrans hotkey flip one switch.
 
-The contract recommends `Intl.Segmenter` for counting extended grapheme
-clusters (so `"👨‍👩‍👧"` or a base plus combining marks counts as one
-character). On macOS the engine's JavaScript runtime (JavaScriptCore)
-provides `Intl` as a standard built-in, but quickjs-ng ships no `Intl` at
-all, so the addon supplies it — backed by the system ICU library (as on
-macOS) rather than bundled Unicode data. All three granularities work:
-`grapheme`, `word` (with `isWordLike`), and `sentence`, over ICU's UAX #29
-break iterators, so clustering and word breaking match a real ICU build and
-differ from macOS only by ICU version. Segment `index` values are UTF-16
-code-unit offsets, matching JavaScriptCore.
+### Intl
+
+The addon provides `Intl` (absent from quickjs-ng), backed by the system ICU
+library rather than bundled data. A common option subset of each object is
+implemented:
+
+- `Segmenter` — `grapheme`, `word` (with `isWordLike`), and `sentence`;
+  segment `index` values are UTF-16 code units.
+- `DateTimeFormat` — component options (`weekday`, `era`, `year`, `month`,
+  `day`, `hour`, `minute`, `second`, `fractionalSecondDigits`, `dayPeriod`,
+  `timeZoneName`), `dateStyle`/`timeStyle` presets (not mixable with
+  components), `hour12`/`hourCycle`, and `timeZone` (validated, defaulting to
+  the system IANA zone).
+- `NumberFormat` — `decimal`/`currency`/`percent`/`unit` styles, fraction and
+  significant-digit control, grouping, notation, `signDisplay`, and `BigInt`.
+- `PluralRules` — `cardinal` and `ordinal`.
+- `Collator` — `sensitivity`, `numeric`, `caseFirst`, and `ignorePunctuation`.
+
+`Intl.getCanonicalLocales`, `Intl.Locale`, and `Intl.supportedValuesOf` are
+not implemented.
 
 ## Development
 

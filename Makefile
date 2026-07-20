@@ -166,6 +166,7 @@ test: build
 	test/datetime.sh
 	test/number.sh
 	test/plural.sh
+	test/collator.sh
 	test/compositionend.sh
 	test/associated.sh
 
