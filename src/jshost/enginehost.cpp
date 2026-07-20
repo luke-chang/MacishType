@@ -1,10 +1,14 @@
 #include "enginehost.h"
 
 #include <sys/stat.h>
+#include <sys/utsname.h>
 
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
+
+#include <fcitx/instance.h>
 
 #include <fcitx-utils/standardpaths.h>
 #include <fcitx-utils/utf8.h>
@@ -26,6 +30,63 @@ constexpr std::string_view kEngineUrlPrefix = "engine:///";
 constexpr auto kWatchdogTimeout = std::chrono::seconds(3);
 constexpr size_t kStorageMaxEncodedKeyBytes = 200;
 constexpr size_t kStorageMaxValueBytes = 10 * 1024 * 1024;
+
+// navigator.userAgent platform segment helpers. Each host info axis is
+// resolved independently so a missing source drops only its own token.
+std::string displayServerName() {
+    const char *sessionType = std::getenv("XDG_SESSION_TYPE");
+    if (sessionType == nullptr) {
+        return {};
+    }
+    const std::string_view type(sessionType);
+    if (type == "wayland") {
+        return "Wayland";
+    }
+    if (type == "x11") {
+        return "X11";
+    }
+    return {};
+}
+
+std::string machineArchitecture() {
+    struct utsname info;
+    if (uname(&info) != 0) {
+        return {};
+    }
+    return info.machine;
+}
+
+// Distro label like "Ubuntu 26.04" from /etc/os-release NAME + VERSION_ID.
+std::string distroLabel() {
+    std::ifstream file("/etc/os-release");
+    if (!file) {
+        return {};
+    }
+    std::string name;
+    std::string versionId;
+    std::string line;
+    const auto readField = [&line](std::string_view key, std::string &out) {
+        if (line.rfind(key, 0) != 0) {
+            return;
+        }
+        std::string value = line.substr(key.size());
+        if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
+            value = value.substr(1, value.size() - 2);
+        }
+        out = std::move(value);
+    };
+    while (std::getline(file, line)) {
+        readField("NAME=", name);
+        readField("VERSION_ID=", versionId);
+    }
+    if (name.empty()) {
+        return {};
+    }
+    if (versionId.empty()) {
+        return name;
+    }
+    return name + " " + versionId;
+}
 
 enum class FieldType { Boolean, Number, String };
 
@@ -218,8 +279,31 @@ bool JsEngineHost::initialize() {
     JS_SetModuleLoaderFunc(runtime_, &JsEngineHost::moduleNormalize,
                            &JsEngineHost::moduleLoad, this);
 
-    userAgent_ = std::string("MacishType/") + "0.1.0" +
-                 " (Linux; fcitx5-macishtype) quickjs-ng/" + JS_GetVersion();
+    // Product token stays "MacishType/" across host ports; platform tokens
+    // and the fcitx5/quickjs-ng segments identify this Linux host.
+    std::vector<std::string> platformTokens;
+    if (std::string displayServer = displayServerName();
+        !displayServer.empty()) {
+        platformTokens.push_back(std::move(displayServer));
+    }
+    if (std::string arch = machineArchitecture(); !arch.empty()) {
+        platformTokens.push_back("Linux " + arch);
+    } else {
+        platformTokens.emplace_back("Linux");
+    }
+    if (std::string distro = distroLabel(); !distro.empty()) {
+        platformTokens.push_back(std::move(distro));
+    }
+    std::string platform;
+    for (size_t i = 0; i < platformTokens.size(); ++i) {
+        if (i != 0) {
+            platform += "; ";
+        }
+        platform += platformTokens[i];
+    }
+    userAgent_ = std::string("MacishType/") + MACISHTYPE_VERSION + " (" +
+                 platform + ") fcitx5/" + fcitx::Instance::version() +
+                 " quickjs-ng/" + JS_GetVersion();
 
     // Manifest-declared candidate window fields become the read fallback
     // for the manifest.candidateWindow proxy.
