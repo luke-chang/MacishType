@@ -1,5 +1,5 @@
-// Exercises the host-provided Intl.Segmenter (grapheme granularity) at load
-// time and logs the results for the test to assert. Mirrors how a real
+// Exercises the host-provided Intl.Segmenter (grapheme, word, sentence) at
+// load time and logs the results for the test to assert. Mirrors how a real
 // engine counts user-perceived characters. Inputs are built from explicit
 // code points so multi-codepoint clusters are unambiguous.
 const cp = String.fromCodePoint;
@@ -24,15 +24,34 @@ console.log(`grapheme-counts ${JSON.stringify(counts)}`);
 const indices = [...seg.segment(cases.mixed)].map((piece) => piece.index);
 console.log(`grapheme-indices ${JSON.stringify(indices)}`);
 
-// Unsupported granularities fail loudly rather than approximate.
-let wordResult;
+// containing(): offset 1 falls inside the a-acute cluster spanning [0, 2).
+console.log(`containing-index ${seg.segment(cases.mixed).containing(1).index}`);
+
+// Word granularity: ASCII word breaking is stable across ICU versions.
+// Whitespace and punctuation runs are segments too but not word-like.
+const wordSeg = new Intl.Segmenter("en", { granularity: "word" });
+const wordLike = [...wordSeg.segment("The quick fox.")]
+  .filter((piece) => piece.isWordLike)
+  .map((piece) => piece.segment);
+console.log(`word-like ${JSON.stringify(wordLike)}`);
+
+// Sentence granularity: two sentences, and the pieces reconstruct the input.
+const sentSeg = new Intl.Segmenter("en", { granularity: "sentence" });
+const sentences = [...sentSeg.segment("Hello world. How are you?")].map(
+  (piece) => piece.segment,
+);
+console.log(`sentence-count ${sentences.length}`);
+console.log(`sentence-rejoin ${sentences.join("") === "Hello world. How are you?"}`);
+
+// An unknown granularity still fails loudly rather than approximating.
+let badResult;
 try {
-  new Intl.Segmenter(undefined, { granularity: "word" });
-  wordResult = "no-throw";
+  new Intl.Segmenter(undefined, { granularity: "line" });
+  badResult = "no-throw";
 } catch (error) {
-  wordResult = error.constructor.name;
+  badResult = error.constructor.name;
 }
-console.log(`word-granularity ${wordResult}`);
+console.log(`bad-granularity ${badResult}`);
 
 console.log(
   `resolved ${JSON.stringify(new Intl.Segmenter("zh-Hant").resolvedOptions())}`,

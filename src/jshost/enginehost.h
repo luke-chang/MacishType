@@ -14,6 +14,7 @@
 
 #include <quickjs.h>
 
+#include "intl.h"
 #include "manifest.h"
 
 namespace macishtype {
@@ -242,11 +243,12 @@ private:
                                         int argc, JSValueConst *argv);
     static JSValue nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
                                     int argc, JSValueConst *argv);
-    // Splits a string into Unicode grapheme clusters (UAX #29). The
-    // hostglue Intl.Segmenter builds on it; JavaScriptCore provides the
-    // real thing on macOS, quickjs-ng has no Intl at all.
-    static JSValue nativeSegmentGraphemes(JSContext *ctx, JSValueConst thisVal,
-                                          int argc, JSValueConst *argv);
+    // Segments a string via ICU (UAX #29) at grapheme/word/sentence
+    // granularity, returning boundary offsets in UTF-16 code units (the
+    // ECMA-402 index unit). Backs the hostglue Intl.Segmenter, which
+    // JavaScriptCore provides natively on macOS but quickjs-ng lacks.
+    static JSValue nativeIntlSegment(JSContext *ctx, JSValueConst thisVal,
+                                     int argc, JSValueConst *argv);
     static JSValue nativeAction(JSContext *ctx, JSValueConst thisVal,
                                 int argc, JSValueConst *argv);
 
@@ -260,6 +262,9 @@ private:
                                    void *opaque);
 
     static JsEngineHost *hostOf(JSContext *ctx);
+
+    // Lazily creates and returns this host's ICU handle cache.
+    IntlCache &intlCache();
 
     // Members -----------------------------------------------------------
 
@@ -299,6 +304,10 @@ private:
     std::chrono::steady_clock::time_point deadline_{};
     std::map<void *, std::string> pendingRejections_;
     ActionHandler actionHandler_;
+
+    // ICU-backed Intl handle cache; created lazily on the first Intl native
+    // call, closed with this host. ICU types stay confined to intl.cpp.
+    std::unique_ptr<IntlCache> intlCache_;
 };
 
 // Whether an associated-mode dictionary is bundled for `intendedLanguage`.

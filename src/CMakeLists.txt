@@ -6,6 +6,7 @@ add_library(macishtype SHARED
     webkeymap.cpp
     jshost/enginehost.cpp
     jshost/fontcoverage.cpp
+    jshost/intl.cpp
     jshost/manifest.cpp
     macishtype.cpp
     session.cpp
@@ -14,7 +15,7 @@ target_compile_definitions(macishtype PRIVATE
     FCITX_INSTALL_LOCALEDIR="${FCITX_INSTALL_LOCALEDIR}"
     MACISHTYPE_VERSION="${PROJECT_VERSION}")
 target_link_libraries(macishtype PRIVATE Fcitx5::Core Fcitx5::Module::Notifications qjs
-    Fontconfig::Fontconfig)
+    Fontconfig::Fontconfig ICU::i18n ICU::uc)
 install(TARGETS macishtype DESTINATION "${FCITX_INSTALL_LIBDIR}/fcitx5")
 
 install(FILES

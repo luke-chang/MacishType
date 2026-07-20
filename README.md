@@ -124,16 +124,13 @@ engine-driven toggles and the chttrans hotkey flip one switch.
 The contract recommends `Intl.Segmenter` for counting extended grapheme
 clusters (so `"👨‍👩‍👧"` or a base plus combining marks counts as one
 character). On macOS the engine's JavaScript runtime (JavaScriptCore)
-provides it as a standard built-in, but quickjs-ng ships no `Intl` at all,
-so the addon supplies `Intl.Segmenter` itself. Only `grapheme` granularity
-is implemented — a UAX #29 segmenter over quickjs-ng's Unicode tables,
-covering combining marks, astral codepoints, emoji ZWJ sequences, regional-
-indicator flags, and conjoining Hangul jamo. `word` and `sentence` throw
-`RangeError`: they would need the locale word/sentence dictionaries this
-addon deliberately does not bundle, and a naive approximation would diverge
-from JavaScriptCore. The Prepend and SpacingMark break classes are folded
-into the default class, so clustering can differ from JavaScriptCore for
-Arabic and Indic scripts — no bundled engine targets those.
+provides `Intl` as a standard built-in, but quickjs-ng ships no `Intl` at
+all, so the addon supplies it — backed by the system ICU library (as on
+macOS) rather than bundled Unicode data. All three granularities work:
+`grapheme`, `word` (with `isWordLike`), and `sentence`, over ICU's UAX #29
+break iterators, so clustering and word breaking match a real ICU build and
+differ from macOS only by ICU version. Segment `index` values are UTF-16
+code-unit offsets, matching JavaScriptCore.
 
 ## Development
 
@@ -146,6 +143,8 @@ Build:
   Notifications module headers, matching your installed fcitx5 (this addon
   is developed against 5.1.x)
 - fontconfig development files
+- ICU development files (`libicu-dev`) — the system ICU backs the JS `Intl`
+  implementation; the runtime library ships with any desktop environment
 - git — quickjs-ng is a submodule; clone with `--recurse-submodules`
 - gettext
 
@@ -163,7 +162,7 @@ On Debian/Ubuntu, everything above is:
 
 ```sh
 sudo apt install build-essential cmake ninja-build pkgconf git \
-    fcitx5-modules-dev libfcitx5core-dev libfontconfig-dev \
+    fcitx5-modules-dev libfcitx5core-dev libfontconfig-dev libicu-dev \
     gettext curl python3 python3-gi python3-fonttools dbus
 ```
 

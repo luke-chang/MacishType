@@ -133,29 +133,33 @@
   };
 
   // Intl.Segmenter. macOS engines get this from JavaScriptCore; quickjs-ng
-  // ships no Intl at all, so synthesize the standard API over the host's
-  // UAX #29 grapheme segmenter. Only "grapheme" is supported — word and
-  // sentence boundaries need locale dictionaries we do not bundle, so those
-  // granularities throw rather than silently approximate.
+  // ships no Intl at all, so synthesize the standard API over ICU's UAX #29
+  // break iterators (grapheme, word, sentence). The native returns boundary
+  // offsets in UTF-16 code units, so `index` matches JavaScriptCore's.
   const intl = globalThis.Intl || (globalThis.Intl = {});
 
-  function makeSegments(input) {
-    const pieces = __MacishTypeHost_segmentGraphemes(input);
-    // Segment start offsets in UTF-16 code units (String#length units), so
-    // `index` matches JavaScriptCore's.
-    const starts = new Array(pieces.length);
-    let offset = 0;
-    for (let i = 0; i < pieces.length; i++) {
-      starts[i] = offset;
-      offset += pieces[i].length;
-    }
-    const record = (i) => ({ segment: pieces[i], index: starts[i], input });
+  function makeSegments(locale, granularity, input) {
+    const { boundaries, wordLike } = __MacishTypeHost_intlSegment(
+      locale,
+      granularity,
+      input,
+    );
+    const count = boundaries.length > 0 ? boundaries.length - 1 : 0;
+    const record = (i) => {
+      const seg = {
+        segment: input.slice(boundaries[i], boundaries[i + 1]),
+        index: boundaries[i],
+        input,
+      };
+      if (wordLike) seg.isWordLike = wordLike[i];
+      return seg;
+    };
     return {
       [Symbol.iterator]() {
         let i = 0;
         return {
           next() {
-            return i < pieces.length
+            return i < count
               ? { value: record(i++), done: false }
               : { value: undefined, done: true };
           },
@@ -164,11 +168,15 @@
       containing(index) {
         const at = Math.trunc(Number(index) || 0);
         if (at < 0 || at >= input.length) return undefined;
-        let found = 0;
-        for (let i = 0; i < pieces.length && starts[i] <= at; i++) {
-          found = i;
+        // Largest i with boundaries[i] <= at; the spans cover [0, length).
+        let lo = 0;
+        let hi = count - 1;
+        while (lo < hi) {
+          const mid = (lo + hi + 1) >> 1;
+          if (boundaries[mid] <= at) lo = mid;
+          else hi = mid - 1;
         }
-        return record(found);
+        return record(lo);
       },
     };
   }
@@ -178,17 +186,20 @@
       throw new TypeError("Constructor Intl.Segmenter requires 'new'");
     }
     const granularity = (options && options.granularity) || "grapheme";
-    if (granularity !== "grapheme") {
+    if (
+      granularity !== "grapheme" &&
+      granularity !== "word" &&
+      granularity !== "sentence"
+    ) {
       throw new RangeError(
-        'Intl.Segmenter: only "grapheme" granularity is supported on this ' +
-          'platform (got "' +
+        "Value " +
           granularity +
-          '")',
+          " out of range for Intl.Segmenter options property granularity",
       );
     }
     const requested = Array.isArray(locales) ? locales[0] : locales;
     const locale = typeof requested === "string" ? requested : "en";
-    this.segment = (input) => makeSegments(String(input));
+    this.segment = (input) => makeSegments(locale, granularity, String(input));
     this.resolvedOptions = () => ({ locale, granularity });
   };
 })();

@@ -9,6 +9,10 @@ endif()
 
 find_package(Fcitx5Core REQUIRED)
 find_package(Fontconfig REQUIRED)
+# System ICU backs the JS Intl bindings (like fontconfig, we link the system
+# library rather than bundling CLDR data). Present on desktop Linux and, for a
+# future Windows port, on Windows 10 1703+.
+find_package(ICU REQUIRED COMPONENTS i18n uc)
 find_package(Fcitx5Module REQUIRED COMPONENTS Notifications)
 find_package(Gettext REQUIRED)
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
