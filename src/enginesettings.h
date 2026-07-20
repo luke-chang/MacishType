@@ -32,7 +32,11 @@ struct FieldAnnotation {
 // omitted entirely, mirroring macOS availability gating.
 class EngineSettings : public fcitx::Configuration {
 public:
-    explicit EngineSettings(const std::vector<SettingsSection> &sections);
+    // `associatedAvailable` reports whether an associated-mode dictionary
+    // is bundled for the engine's language; only then is the
+    // enableAssociatedMode system field surfaced (macOS availability gating).
+    EngineSettings(const std::vector<SettingsSection> &sections,
+                   bool associatedAvailable);
 
     const char *typeName() const override { return "EngineSettings"; }
 
@@ -44,6 +48,10 @@ public:
     // pickers resolved token→value.
     std::string valuesToJson() const;
 
+    // Current value of the enableAssociatedMode toggle (false when the
+    // field is absent or gated); the addon feeds it to the host.
+    bool associatedModeEnabled() const;
+
 private:
     enum class Kind { Toggle, Text, Number, Picker, HiddenDefault, Gated };
     struct BoundField {
@@ -54,6 +62,7 @@ private:
 
     void materializeField(const SettingsField &field);
 
+    bool associatedAvailable_ = false;
     std::vector<BoundField> fields_;
     // Configuration keeps raw pointers to its options; they are owned
     // here and destroyed with this object (members before base).

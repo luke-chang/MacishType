@@ -19,6 +19,12 @@ msgstr "詳見 fcitx5 記錄"
 msgid "Show a desktop notification when an engine reloads"
 msgstr "引擎重新載入時顯示桌面通知"
 
+msgid "Associated words"
+msgstr "關聯字"
+
+msgid "Enable associated words"
+msgstr "啟用關聯字"
+
 msgid "Placeholder: %1"
 msgstr "提示文字：%1"
 

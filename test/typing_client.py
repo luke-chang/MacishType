@@ -109,10 +109,11 @@ def main():
             emit({"event": "forward", "keyval": keyval, "state": state,
                   "isRelease": is_release})
         elif signal == "UpdateClientSideUI":
-            (_preedit, _cursor, _aux_up, _aux_down, candidates,
+            (_preedit, _cursor, aux_up, _aux_down, candidates,
              candidate_cursor, layout, has_prev, has_next) = values
             emit({
                 "event": "candidates",
+                "auxUp": "".join(text for text, _format in aux_up),
                 "items": [{"label": label, "text": text}
                           for label, text in candidates],
                 "cursor": candidate_cursor,

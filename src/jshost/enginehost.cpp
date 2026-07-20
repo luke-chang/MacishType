@@ -437,6 +437,70 @@ void JsEngineHost::loadModuleTable(JSValue table,
                       << ": " << count << " entries";
 }
 
+namespace {
+std::filesystem::path associatedDictionaryPath(const std::string &language) {
+    if (language.empty()) {
+        return {};
+    }
+    return fcitx::StandardPaths::global().locate(
+        fcitx::StandardPathsType::PkgData,
+        "macishtype/modules/AssociatedDictionary." + language + ".tsv");
+}
+} // namespace
+
+bool associatedDictionaryAvailable(const std::string &intendedLanguage) {
+    return !associatedDictionaryPath(intendedLanguage).empty();
+}
+
+void JsEngineHost::ensureAssociatedDictionary() {
+    if (associatedDictionaryLoaded_) {
+        return;
+    }
+    associatedDictionaryLoaded_ = true;
+    auto path = associatedDictionaryPath(manifest_.intendedLanguage);
+    if (path.empty()) {
+        return;
+    }
+    std::ifstream stream(path, std::ios::binary);
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        auto tab = line.find('\t');
+        if (tab == std::string::npos) {
+            continue;
+        }
+        std::string key = line.substr(0, tab);
+        std::vector<std::string> followups;
+        std::istringstream values(line.substr(tab + 1));
+        std::string phrase;
+        while (values >> phrase) {
+            followups.push_back(phrase);
+        }
+        if (!key.empty() && !followups.empty()) {
+            associatedDictionary_[key] = std::move(followups);
+        }
+    }
+    MACISHTYPE_INFO() << "AssociatedDictionary." << manifest_.intendedLanguage
+                      << ": " << associatedDictionary_.size() << " prefixes";
+}
+
+std::vector<std::string>
+JsEngineHost::associatedFollowups(const std::string &heldChar) {
+    ensureAssociatedDictionary();
+    if (heldChar.empty() || !fcitx::utf8::validate(heldChar)) {
+        return {};
+    }
+    // Key on the first character only; the dictionary is keyed by single
+    // leading characters.
+    size_t firstCharBytes =
+        fcitx::utf8::ncharByteLength(heldChar.begin(), 1);
+    auto found = associatedDictionary_.find(heldChar.substr(0, firstCharBytes));
+    return found != associatedDictionary_.end() ? found->second
+                                                : std::vector<std::string>{};
+}
+
 bool JsEngineHost::evaluateEntryModule() {
     auto resolved = resolveEnginePath("./" + manifest_.entry);
     if (auto *error = std::get_if<std::string>(&resolved)) {

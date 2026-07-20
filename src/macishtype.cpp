@@ -117,8 +117,9 @@ void MacishTypeEngine::rebuildEngineSettings(const EngineInfo &engine) {
         engineSettings_.erase(engine.id);
         return;
     }
-    auto settings =
-        std::make_unique<EngineSettings>(engine.manifest.settingsSections);
+    auto settings = std::make_unique<EngineSettings>(
+        engine.manifest.settingsSections,
+        associatedDictionaryAvailable(engine.manifest.intendedLanguage));
     // Manifest defaults live in the options themselves (the constructor
     // defaults, which is also what "reset to default" restores); the
     // persisted user values layer over them.
@@ -197,6 +198,8 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
     if (auto settings = engineSettings_.find(engine->id);
         settings != engineSettings_.end()) {
         host->updateSettings(settings->second->valuesToJson());
+        host->setAssociatedModeEnabled(
+            settings->second->associatedModeEnabled());
     }
     auto session = std::make_unique<EngineSession>(host, inputContext);
     if (!session->valid()) {
@@ -276,6 +279,12 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
     auto [inserted, unused] = hosts_.emplace(engine.id, std::move(host));
     FCITX_UNUSED(unused);
     auto *loadedHost = inserted->second.get();
+
+    // The host gates its associated-mode dictionary fallback on this.
+    if (settings != engineSettings_.end()) {
+        loadedHost->setAssociatedModeEnabled(
+            settings->second->associatedModeEnabled());
+    }
 
     // Storage watches follow the engine's `storage` listener count; the
     // observer replays the state accumulated while the entry module

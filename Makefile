@@ -161,6 +161,7 @@ test: build
 	test/storage.sh
 	test/settings.sh
 	test/compositionend.sh
+	test/associated.sh
 
 clean:
 	rm -rf $(BUILD_DIR)

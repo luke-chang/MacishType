@@ -11,8 +11,10 @@ engines_dir="$HOME/.local/share/fcitx5/macishtype/engines"
 fixture="$engines_dir/reloadtest"
 rm -rf "$fixture"
 mkdir -p "$fixture"
-cp -L "$engines_dir/example/index.js" "$engines_dir/example/manifest.json" \
-    "$fixture/"
+cp -L "$engines_dir/example/index.js" "$fixture/"
+# A minimal manifest (no settings / intendedLanguage) keeps this test on the
+# hot-reload path without associated mode intercepting the single-char commit.
+printf '{ "entry": "index.js", "name": "Reload Test" }\n' > "$fixture/manifest.json"
 printf 'hi 甲,乙\n' > "$fixture/demo.txt"
 trap 'rm -rf "$fixture"' EXIT
 

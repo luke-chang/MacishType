@@ -9,6 +9,7 @@
 #include <fcitx/inputpanel.h>
 #include <fcitx/text.h>
 
+#include "i18n.h"
 #include "jshost/qjsutil.h"
 #include "log.h"
 
@@ -257,7 +258,14 @@ bool EngineSession::dispatchCandidateWindowKey(const WebKeyEvent &web) {
             return true;
         }
         if (web.key == "Enter" && !web.shiftKey && !web.altKey) {
-            applyActions({CommitSelectedAction{}});
+            if (associating_ && highlightSuspended_) {
+                // Associated mode with nothing highlighted: commit the held
+                // character alone, like any other dismiss key, rather than
+                // the first follow-up.
+                applyActions({FlushStagedAction{}});
+            } else {
+                applyActions({CommitSelectedAction{}});
+            }
             return true;
         }
     }
@@ -726,7 +734,12 @@ void EngineSession::renderCandidates() {
     }
     list->setGlobalCursorIndex(highlightSuspended_ ? -1
                                                    : highlight_ - pageStart_);
-    inputContext_->inputPanel().setCandidateList(std::move(list));
+    auto &inputPanel = inputContext_->inputPanel();
+    inputPanel.setCandidateList(std::move(list));
+    // A header labels the candidates as associated words; cleared otherwise.
+    inputPanel.setAuxUp(associating_
+                            ? fcitx::Text(translated("Associated words"))
+                            : fcitx::Text());
     inputContext_->updateUserInterface(
         fcitx::UserInterfaceComponent::InputPanel);
 }
@@ -737,7 +750,9 @@ void EngineSession::hideCandidates() {
     highlight_ = 0;
     pageStart_ = 0;
     freeCandidates(candidates_);
-    inputContext_->inputPanel().setCandidateList(nullptr);
+    auto &inputPanel = inputContext_->inputPanel();
+    inputPanel.setCandidateList(nullptr);
+    inputPanel.setAuxUp(fcitx::Text());
     inputContext_->updateUserInterface(
         fcitx::UserInterfaceComponent::InputPanel);
 }
@@ -854,11 +869,19 @@ void EngineSession::confirmCandidate(const CandidateData &candidate,
     if (handled.value_or(false)) {
         return;
     }
-    // Host fallback (macOS parity): in associated mode flush held+picked;
-    // otherwise flush staged plus this candidate. The associated-follow-up
-    // branch needs the host AssociatedDictionary, which has no Linux data
-    // source yet.
-    endComposition(stagedText_ + candidate.text);
+    // Host fallback (macOS parity): commit the staged prefix plus this
+    // candidate. A single confirmed character can enter associated mode
+    // (hold it, offer follow-ups from the host dictionary) when enabled.
+    std::string committed = stagedText_ + candidate.text;
+    if (!associating_ && host_->associatedModeEnabled() &&
+        characterCount(committed) == 1) {
+        auto followups = host_->associatedFollowups(committed);
+        if (!followups.empty()) {
+            enterAssociatedMode(committed, std::move(followups));
+            return;
+        }
+    }
+    endComposition(committed);
 }
 
 void EngineSession::fireSelectionChanged() {
@@ -878,12 +901,21 @@ void EngineSession::fireSelectionChanged() {
 void EngineSession::enterAssociatedMode(
     const std::string &heldChar,
     std::optional<std::vector<std::string>> candidates) {
+    // Engine-supplied candidates always apply; without them, fall back to
+    // the host dictionary only when the setting is on (contract semantics).
+    std::vector<std::string> resolved =
+        candidates ? std::move(*candidates)
+        : host_->associatedModeEnabled()
+            ? host_->associatedFollowups(heldChar)
+            : std::vector<std::string>{};
+    if (resolved.empty()) {
+        // No follow-ups: don't enter associated mode, just commit the held
+        // character (macOS parity).
+        endComposition(heldChar);
+        return;
+    }
     clearCompositionState();
     associating_ = true;
-    // TODO: fall back to a host associated dictionary when `candidates` is
-    // absent; there is no Linux data source yet.
-    std::vector<std::string> resolved =
-        candidates ? std::move(*candidates) : std::vector<std::string>{};
 
     UpdateMarkedTextAction marked;
     marked.text = heldChar;

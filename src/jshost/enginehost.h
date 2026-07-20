@@ -81,6 +81,17 @@ public:
     // pushed values, mirroring the macOS host's lastPushedSettings gate.
     void updateSettings(const std::string &valuesJson);
 
+    // Associated-mode host dictionary. `associatedModeEnabled_` mirrors the
+    // engine's enableAssociatedMode setting (set by the addon); it gates the
+    // dictionary fallback, matching the macOS host.
+    void setAssociatedModeEnabled(bool enabled) {
+        associatedModeEnabled_ = enabled;
+    }
+    bool associatedModeEnabled() const { return associatedModeEnabled_; }
+    // Follow-up phrases for a held character from the locale dictionary
+    // (lazily loaded); empty when no entry.
+    std::vector<std::string> associatedFollowups(const std::string &heldChar);
+
     using FieldValue = std::variant<bool, double, std::string>;
     // Bridge-visible candidate window field: engine write overlay first,
     // then the manifest declaration.
@@ -161,6 +172,7 @@ private:
     bool injectModules();
     void loadModuleTable(JSValue table, const std::string &moduleName,
                          bool numericValues);
+    void ensureAssociatedDictionary();
     void registerBridgeGlobals();
     void drainJobs();
     void reportRejections();
@@ -249,6 +261,10 @@ private:
     std::map<std::string, StorageFileState> recentSelfWrites_;
     bool storageListening_ = false;
     std::function<void(bool)> storageListeningObserver_;
+    // Leading character (UTF-8) → follow-up phrases; loaded on first query.
+    std::map<std::string, std::vector<std::string>> associatedDictionary_;
+    bool associatedDictionaryLoaded_ = false;
+    bool associatedModeEnabled_ = false;
     ManifestData manifest_;
     std::vector<std::string> languages_;
     std::string userAgent_;
@@ -270,5 +286,10 @@ private:
     std::map<void *, std::string> pendingRejections_;
     ActionHandler actionHandler_;
 };
+
+// Whether an associated-mode dictionary is bundled for `intendedLanguage`.
+// Standalone (no host instance) so the addon can gate the settings toggle
+// before any engine is loaded, mirroring macOS `isAvailable(for:)`.
+bool associatedDictionaryAvailable(const std::string &intendedLanguage);
 
 } // namespace macishtype

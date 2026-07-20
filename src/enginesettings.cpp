@@ -236,8 +236,9 @@ void FieldAnnotation::dumpDescription(fcitx::RawConfig &config) const {
     }
 }
 
-EngineSettings::EngineSettings(
-    const std::vector<SettingsSection> &sections) {
+EngineSettings::EngineSettings(const std::vector<SettingsSection> &sections,
+                               bool associatedAvailable)
+    : associatedAvailable_(associatedAvailable) {
     std::set<std::string> usedKeys;
     for (const auto &section : sections) {
         for (const auto &field : section.fields) {
@@ -281,13 +282,25 @@ void EngineSettings::materializeField(const SettingsField &field) {
     const std::string &label = field.label.empty() ? field.key : field.label;
 
     if (field.type == "system") {
-        // No system feature is backed on this host yet (associated-mode
-        // dictionaries are not implemented), so the field counts as never
-        // declared: no option, and no value pushed — mirroring macOS
-        // availability gating.
-        bound.kind = Kind::Gated;
-        MACISHTYPE_DEBUG() << "System settings field gated off: "
-                           << field.key;
+        // System fields surface only when the host backs the feature for
+        // this engine (macOS availability gating). enableAssociatedMode is
+        // backed when a dictionary is bundled; its label comes from the
+        // host since a system field carries none. Other/unavailable system
+        // fields stay gated — no option, no value pushed.
+        if (field.key == "enableAssociatedMode" && associatedAvailable_) {
+            auto option = std::make_unique<ToggleOption>(
+                this, field.key, translated("Enable associated words"),
+                boolFromJson(field.defaultJson).value_or(false),
+                fcitx::NoConstrain<bool>{}, fcitx::DefaultMarshaller<bool>{},
+                annotation);
+            bound.kind = Kind::Toggle;
+            bound.option = option.get();
+            options_.push_back(std::move(option));
+        } else {
+            bound.kind = Kind::Gated;
+            MACISHTYPE_DEBUG() << "System settings field gated off: "
+                               << field.key;
+        }
     } else if (field.type == "toggle") {
         auto option = std::make_unique<ToggleOption>(
             this, field.key, label,
@@ -427,6 +440,16 @@ std::string EngineSettings::valuesToJson() const {
     }
     json += "}";
     return json;
+}
+
+bool EngineSettings::associatedModeEnabled() const {
+    for (const auto &bound : fields_) {
+        if (bound.schema.key == "enableAssociatedMode" &&
+            bound.kind == Kind::Toggle) {
+            return static_cast<const ToggleOption *>(bound.option)->value();
+        }
+    }
+    return false;
 }
 
 } // namespace macishtype

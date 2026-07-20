@@ -31,7 +31,14 @@ unmodified — composition preedit, candidate window with index labels and
 navigation, commit, escape, and OS passthrough all work against an isolated
 fcitx5 instance (`test/acceptance.sh`).
 
-Not yet implemented: associated-mode dictionary data and reverse lookup.
+Not yet implemented: reverse lookup.
+
+Associated mode: committing a single character (when the engine's
+`enableAssociatedMode` setting is on and an associated-phrase dictionary is
+bundled for its language) holds that character and offers common
+follow-ups under a "關聯字" header; picking one commits the pair, any other
+key commits the held character alone. The dictionary is derived from the
+same pinned corpus as `wordFrequency` (`scripts/external-resources.lock`).
 
 Font coverage (which drives the "displayable" character-set filter) is
 computed once when an engine loads; the contract's `fontcoveragechange`
