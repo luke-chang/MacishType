@@ -157,6 +157,7 @@ uninstall:
 # Acceptance suite against an isolated fcitx5; safe to run any time.
 test: build
 	test/acceptance.sh
+	test/navigation.sh
 	test/reload.sh
 	test/storage.sh
 	test/settings.sh

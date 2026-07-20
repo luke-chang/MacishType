@@ -767,13 +767,24 @@ void EngineSession::navigate(const std::string &direction, bool wrapping) {
     if (!candidatesVisible_ || candidates_.empty()) {
         return;
     }
+    bool wasSuspended = highlightSuspended_;
     if (highlightSuspended_) {
-        // First navigation reveals the highlight without moving it.
+        // First navigation from a suspended highlight: arrow / item keys only
+        // reveal the first candidate without moving it, but page keys and
+        // Home/End navigate right away, treating the suspended state as
+        // index 0 (MacishType parity).
         highlightSuspended_ = false;
         highlight_ = pageStart_;
-        renderCandidates();
-        fireSelectionChanged();
-        return;
+        bool revealOnly = direction == "up" || direction == "down" ||
+                          direction == "left" || direction == "right" ||
+                          direction == "itemForward" ||
+                          direction == "itemBackward";
+        if (revealOnly) {
+            renderCandidates();
+            fireSelectionChanged();
+            return;
+        }
+        // Page keys / Home / End fall through and navigate from index 0.
     }
 
     int total = static_cast<int>(candidates_.size());
@@ -848,7 +859,7 @@ void EngineSession::navigate(const std::string &direction, bool wrapping) {
     }
     pageStart_ = pageStartFor(highlight_);
     renderCandidates();
-    if (highlight_ != previousHighlight) {
+    if (highlight_ != previousHighlight || wasSuspended) {
         fireSelectionChanged();
     }
 }
