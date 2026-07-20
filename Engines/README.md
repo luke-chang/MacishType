@@ -753,6 +753,13 @@ Enter associated mode: `heldChar` becomes staged marked text and
 `heldChar + chosen`; typing anything else commits `heldChar` alone and
 the new key is processed normally.
 
+Most engines never call this directly. With `enableAssociatedMode` on, the
+host enters associated mode automatically during
+[`candidateConfirmed` fallback](#host-fallback), using the bundled
+`AssociatedDictionary` for the committed character. Reach for this method
+only to supply a custom `candidates` list or to enter associated mode from a
+non-standard trigger.
+
 - `heldChar` *(string, required)* — the just-committed character to keep as the staged prefix.
 - `candidates` *(string[], optional)* — follow-up suggestions. Omit to fall
   back to the host's `AssociatedDictionary` dictionary keyed by `heldChar`'s
