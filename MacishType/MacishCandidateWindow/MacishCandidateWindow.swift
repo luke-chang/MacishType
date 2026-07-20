@@ -112,17 +112,21 @@ class MacishCandidateWindow: CandidateWindowImpl {
         guard activePanel.isVisible else { return }
         if !hasSelection {
             switch direction {
-            case .up, .down, .left, .right, .itemForward, .itemBackward,
-                 .pageUp, .pageDown, .pageForward, .pageBackward:
+            case .up, .down, .left, .right, .itemForward, .itemBackward:
+                // Arrow keys only reveal the first candidate on the first press
+                // from a suspended highlight; they don't move yet.
                 activePanel.moveSelection(to: 0)
                 return
             default:
-                break   // home / end fall through; panels handle -1 themselves
+                // Page keys and .home / .end fall through: panels treat the -1
+                // sentinel as index 0, so page keys jump (and expandable panels
+                // expand) instead of merely revealing the first candidate.
+                break
             }
         }
         activePanel.handleNavigation(direction: direction, wrapping: wrapping)
-        // Reveal at 0 when the panel's jump-key logic short-circuited
-        // (e.g. .home from page 0) and left selection unchanged.
+        // Reveal at 0 when the panel short-circuited from the suspended state
+        // (e.g. .home or pageUp on the first page) and left selection unchanged.
         if !hasSelection {
             activePanel.moveSelection(to: 0)
         }
