@@ -1452,6 +1452,12 @@ void JsEngineHost::registerBridgeGlobals() {
     define("__MacishTypeHost_utf8Decode", &JsEngineHost::nativeUtf8Decode, 1);
     define("__MacishTypeHost_intlSegment",
            &JsEngineHost::nativeIntlSegment, 3);
+    define("__MacishTypeHost_intlDateTimeResolve",
+           &JsEngineHost::nativeIntlDateTimeResolve, 5);
+    define("__MacishTypeHost_intlDateTimeFormat",
+           &JsEngineHost::nativeIntlDateTimeFormat, 4);
+    define("__MacishTypeHost_intlDateTimeFormatToParts",
+           &JsEngineHost::nativeIntlDateTimeFormatToParts, 4);
     define("__MacishTypeHost_action", &JsEngineHost::nativeAction, 1);
     JS_SetPropertyStr(ctx_, global.get(), "__MacishType_userAgent",
                       JS_NewString(ctx_, userAgent_.c_str()));

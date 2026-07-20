@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <fcitx-utils/macros.h>
 
@@ -11,9 +12,9 @@
 
 namespace macishtype {
 
-// Closes every cached ICU handle. The maps are populated by the get-or-open
-// helpers below; the maps not yet driven by any helper stay empty until later
-// phases, but their close calls also anchor the ICU link.
+// Closes every cached ICU handle. Each map is closed with the matching ICU
+// close function; a kind whose service is not yet wired stays empty until its
+// phase lands, but the close call still anchors the ICU link.
 IntlCache::~IntlCache() {
     for (auto &[key, handle] : breakIterators_) {
         ubrk_close(static_cast<UBreakIterator *>(handle));
@@ -32,12 +33,37 @@ IntlCache::~IntlCache() {
     }
 }
 
+std::map<std::string, void *> &IntlCache::mapFor(Kind kind) {
+    switch (kind) {
+    case kBreak:
+        return breakIterators_;
+    case kDateFormat:
+        return dateFormatters_;
+    case kNumberFormat:
+        return numberFormatters_;
+    case kCollator:
+        return collators_;
+    case kPluralRules:
+        return pluralRules_;
+    }
+    return breakIterators_; // unreachable
+}
+
+void *IntlCache::get(Kind kind, const std::string &key) {
+    auto &store = mapFor(kind);
+    auto existing = store.find(key);
+    return existing == store.end() ? nullptr : existing->second;
+}
+
+void IntlCache::put(Kind kind, const std::string &key, void *handle) {
+    mapFor(kind)[key] = handle;
+}
+
 void *IntlCache::breakIterator(int type, const std::string &locale,
                                int *status) {
     std::string key = std::to_string(type) + "|" + locale;
-    auto existing = breakIterators_.find(key);
-    if (existing != breakIterators_.end()) {
-        return existing->second;
+    if (void *cached = get(kBreak, key)) {
+        return cached;
     }
     UErrorCode code = U_ZERO_ERROR;
     UBreakIterator *iterator = ubrk_open(static_cast<UBreakIteratorType>(type),
@@ -49,7 +75,7 @@ void *IntlCache::breakIterator(int type, const std::string &locale,
         *status = code;
         return nullptr;
     }
-    breakIterators_[key] = iterator;
+    put(kBreak, key, iterator);
     return iterator;
 }
 
@@ -64,7 +90,8 @@ namespace {
 
 // Converts a BCP-47 language tag to an ICU locale ID (e.g. "zh-Hant" →
 // "zh_Hant"). Falls back to the raw tag when ICU cannot parse it, so a bad
-// tag degrades to ICU's own locale fallback rather than an error.
+// tag degrades to ICU's own locale fallback rather than an error. Unicode
+// extensions (-u-ca-, -u-nu-) are carried through into keywords.
 std::string toIcuLocale(const std::string &tag) {
     if (tag.empty()) {
         return {};
@@ -75,6 +102,18 @@ std::string toIcuLocale(const std::string &tag) {
                                          nullptr, &status);
     if (U_FAILURE(status) || length <= 0) {
         return tag;
+    }
+    return std::string(buffer, length);
+}
+
+// The canonical BCP-47 tag for an ICU locale ID, for resolvedOptions().locale.
+std::string canonicalLanguageTag(const std::string &icuLocale) {
+    char buffer[ULOC_FULLNAME_CAPACITY];
+    UErrorCode status = U_ZERO_ERROR;
+    int32_t length = uloc_toLanguageTag(icuLocale.c_str(), buffer,
+                                        sizeof(buffer), false, &status);
+    if (U_FAILURE(status) || length <= 0) {
+        return icuLocale;
     }
     return std::string(buffer, length);
 }
@@ -92,6 +131,161 @@ bool granularityType(const std::string &granularity, UBreakIteratorType *out) {
         return false;
     }
     return true;
+}
+
+// UTF-8 → UTF-16 for ICU input (patterns, skeletons, zone IDs — all BMP text).
+std::vector<UChar> toUChars(const std::string &utf8) {
+    if (utf8.empty()) {
+        return {};
+    }
+    UErrorCode status = U_ZERO_ERROR;
+    int32_t needed = 0;
+    u_strFromUTF8(nullptr, 0, &needed, utf8.data(),
+                  static_cast<int32_t>(utf8.size()), &status);
+    std::vector<UChar> out(needed > 0 ? needed : 0);
+    status = U_ZERO_ERROR;
+    u_strFromUTF8(out.data(), needed, nullptr, utf8.data(),
+                  static_cast<int32_t>(utf8.size()), &status);
+    if (U_FAILURE(status)) {
+        return {};
+    }
+    return out;
+}
+
+// UTF-16 → UTF-8 for ICU output that becomes a C++ key/string (zone IDs).
+std::string fromUChars(const UChar *text, int32_t length) {
+    if (text == nullptr || length <= 0) {
+        return {};
+    }
+    UErrorCode status = U_ZERO_ERROR;
+    int32_t needed = 0;
+    u_strToUTF8(nullptr, 0, &needed, text, length, &status);
+    std::string out(needed > 0 ? needed : 0, '\0');
+    status = U_ZERO_ERROR;
+    u_strToUTF8(out.data(), needed, nullptr, text, length, &status);
+    if (U_FAILURE(status)) {
+        return {};
+    }
+    return out;
+}
+
+// Reads the resolved hour cycle off a generated pattern by finding its hour
+// field letter, skipping quoted literals. Returns nullptr when the pattern
+// carries no hour field.
+const char *hourCycleFromPattern(const UChar *pattern, int32_t length) {
+    bool inQuote = false;
+    for (int32_t i = 0; i < length; i++) {
+        UChar c = pattern[i];
+        if (c == u'\'') {
+            inQuote = !inQuote;
+            continue;
+        }
+        if (inQuote) {
+            continue;
+        }
+        switch (c) {
+        case u'h':
+            return "h12";
+        case u'H':
+            return "h23";
+        case u'K':
+            return "h11";
+        case u'k':
+            return "h24";
+        default:
+            break;
+        }
+    }
+    return nullptr;
+}
+
+// Maps a UDateFormatField to its ECMA-402 formatToParts type.
+const char *dateFieldType(int32_t field) {
+    switch (field) {
+    case UDAT_ERA_FIELD:
+        return "era";
+    case UDAT_YEAR_FIELD:
+    case UDAT_YEAR_WOY_FIELD:
+    case UDAT_EXTENDED_YEAR_FIELD:
+    case UDAT_YEAR_NAME_FIELD:
+        return "year";
+    case UDAT_MONTH_FIELD:
+    case UDAT_STANDALONE_MONTH_FIELD:
+        return "month";
+    case UDAT_DATE_FIELD:
+        return "day";
+    case UDAT_HOUR_OF_DAY1_FIELD:
+    case UDAT_HOUR_OF_DAY0_FIELD:
+    case UDAT_HOUR1_FIELD:
+    case UDAT_HOUR0_FIELD:
+        return "hour";
+    case UDAT_MINUTE_FIELD:
+        return "minute";
+    case UDAT_SECOND_FIELD:
+        return "second";
+    case UDAT_FRACTIONAL_SECOND_FIELD:
+        return "fractionalSecond";
+    case UDAT_DAY_OF_WEEK_FIELD:
+    case UDAT_STANDALONE_DAY_FIELD:
+    case UDAT_DOW_LOCAL_FIELD:
+        return "weekday";
+    case UDAT_AM_PM_FIELD:
+    case UDAT_AM_PM_MIDNIGHT_NOON_FIELD:
+    case UDAT_FLEXIBLE_DAY_PERIOD_FIELD:
+        return "dayPeriod";
+    case UDAT_TIMEZONE_FIELD:
+    case UDAT_TIMEZONE_RFC_FIELD:
+    case UDAT_TIMEZONE_GENERIC_FIELD:
+    case UDAT_TIMEZONE_SPECIAL_FIELD:
+    case UDAT_TIMEZONE_LOCALIZED_GMT_OFFSET_FIELD:
+    case UDAT_TIMEZONE_ISO_FIELD:
+    case UDAT_TIMEZONE_ISO_LOCAL_FIELD:
+        return "timeZoneName";
+    default:
+        return "unknown";
+    }
+}
+
+// get-or-open a UDateFormat bound to (localeTag, timeZone, pattern). The
+// pattern already encodes the field widths; the locale keyword carries the
+// calendar and numbering system.
+UDateFormat *dateFormatter(IntlCache &cache, const std::string &localeTag,
+                           const std::string &timeZone, const UChar *pattern,
+                           int32_t patternLength, int *errorOut) {
+    std::string key = localeTag + "\x01" + timeZone + "\x01" +
+                      fromUChars(pattern, patternLength);
+    if (void *cached = cache.get(IntlCache::kDateFormat, key)) {
+        return static_cast<UDateFormat *>(cached);
+    }
+    std::string icuLocale = toIcuLocale(localeTag);
+    std::vector<UChar> zone = toUChars(timeZone);
+    UErrorCode status = U_ZERO_ERROR;
+    UDateFormat *formatter =
+        udat_open(UDAT_PATTERN, UDAT_PATTERN, icuLocale.c_str(),
+                  zone.empty() ? nullptr : zone.data(),
+                  static_cast<int32_t>(zone.size()), pattern, patternLength,
+                  &status);
+    if (U_FAILURE(status)) {
+        if (formatter != nullptr) {
+            udat_close(formatter);
+        }
+        *errorOut = status;
+        return nullptr;
+    }
+    cache.put(IntlCache::kDateFormat, key, formatter);
+    return formatter;
+}
+
+// Appends {type, value} to `array` at `index`, from a slice of `text`.
+void pushPart(JSContext *ctx, JSValue array, uint32_t index, const char *type,
+              const UChar *text, int32_t begin, int32_t end) {
+    JSValue part = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, part, "type", JS_NewString(ctx, type));
+    JS_SetPropertyStr(
+        ctx, part, "value",
+        JS_NewStringUTF16(ctx, reinterpret_cast<const uint16_t *>(text + begin),
+                          static_cast<size_t>(end - begin)));
+    JS_SetPropertyUint32(ctx, array, index, part);
 }
 
 } // namespace
@@ -168,6 +362,303 @@ JSValue JsEngineHost::nativeIntlSegment(JSContext *ctx, JSValueConst thisVal,
         JS_SetPropertyStr(ctx, result, "wordLike", wordLike);
     }
     return result;
+}
+
+JSValue JsEngineHost::nativeIntlDateTimeResolve(JSContext *ctx,
+                                                JSValueConst thisVal, int argc,
+                                                JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    if (argc < 5) {
+        return JS_ThrowTypeError(ctx, "intlDateTimeResolve: expected 5 "
+                                      "arguments");
+    }
+    std::string localeTag = qjs::toString(ctx, argv[0]);
+    std::string skeleton = qjs::toString(ctx, argv[1]);
+    std::string requestedZone = qjs::toString(ctx, argv[2]);
+    int32_t dateStyle = -1;
+    int32_t timeStyle = -1;
+    JS_ToInt32(ctx, &dateStyle, argv[3]);
+    JS_ToInt32(ctx, &timeStyle, argv[4]);
+
+    std::string icuLocale = toIcuLocale(localeTag);
+    JSValue result = JS_NewObject(ctx);
+
+    // Time zone: validate/canonicalize an explicit zone, else read the system
+    // default (the value McBopomofo's timezone macros surface).
+    std::string resolvedZone;
+    if (requestedZone.empty()) {
+        UErrorCode status = U_ZERO_ERROR;
+        int32_t length = ucal_getDefaultTimeZone(nullptr, 0, &status);
+        std::vector<UChar> buffer(length > 0 ? length + 1 : 1);
+        status = U_ZERO_ERROR;
+        length = ucal_getDefaultTimeZone(buffer.data(),
+                                         static_cast<int32_t>(buffer.size()),
+                                         &status);
+        if (U_SUCCESS(status)) {
+            resolvedZone = fromUChars(buffer.data(), length);
+        }
+    } else {
+        std::vector<UChar> zone = toUChars(requestedZone);
+        UErrorCode status = U_ZERO_ERROR;
+        UBool isSystem = false;
+        std::vector<UChar> canonical(64);
+        int32_t length = ucal_getCanonicalTimeZoneID(
+            zone.data(), static_cast<int32_t>(zone.size()), canonical.data(),
+            static_cast<int32_t>(canonical.size()), &isSystem, &status);
+        if (status == U_BUFFER_OVERFLOW_ERROR) {
+            canonical.resize(length + 1);
+            status = U_ZERO_ERROR;
+            length = ucal_getCanonicalTimeZoneID(
+                zone.data(), static_cast<int32_t>(zone.size()),
+                canonical.data(), static_cast<int32_t>(canonical.size()),
+                &isSystem, &status);
+        }
+        if (U_FAILURE(status) || !isSystem) {
+            JS_SetPropertyStr(ctx, result, "ok", JS_NewBool(ctx, false));
+            JS_SetPropertyStr(ctx, result, "error",
+                              JS_NewString(ctx, "invalid-timezone"));
+            return result;
+        }
+        resolvedZone = fromUChars(canonical.data(), length);
+    }
+
+    // Pattern: a fixed date/time style extracts its own pattern; otherwise the
+    // skeleton is matched to a locale-appropriate one.
+    std::vector<UChar> patternBuffer(256);
+    int32_t patternLength = 0;
+    UErrorCode status = U_ZERO_ERROR;
+    if (dateStyle >= 0 || timeStyle >= 0) {
+        std::vector<UChar> zone = toUChars(resolvedZone);
+        UDateFormat *styled = udat_open(
+            timeStyle >= 0 ? static_cast<UDateFormatStyle>(timeStyle)
+                           : UDAT_NONE,
+            dateStyle >= 0 ? static_cast<UDateFormatStyle>(dateStyle)
+                           : UDAT_NONE,
+            icuLocale.c_str(), zone.empty() ? nullptr : zone.data(),
+            static_cast<int32_t>(zone.size()), nullptr, 0, &status);
+        if (U_SUCCESS(status)) {
+            patternLength = udat_toPattern(styled, false, patternBuffer.data(),
+                                           static_cast<int32_t>(
+                                               patternBuffer.size()),
+                                           &status);
+        }
+        if (styled != nullptr) {
+            udat_close(styled);
+        }
+    } else {
+        UDateTimePatternGenerator *generator =
+            udatpg_open(icuLocale.c_str(), &status);
+        if (U_SUCCESS(status)) {
+            std::vector<UChar> skeletonU = toUChars(skeleton);
+            patternLength = udatpg_getBestPatternWithOptions(
+                generator, skeletonU.data(),
+                static_cast<int32_t>(skeletonU.size()),
+                UDATPG_MATCH_ALL_FIELDS_LENGTH, patternBuffer.data(),
+                static_cast<int32_t>(patternBuffer.size()), &status);
+        }
+        if (generator != nullptr) {
+            udatpg_close(generator);
+        }
+    }
+    if (U_FAILURE(status)) {
+        JS_FreeValue(ctx, result);
+        return JS_ThrowPlainError(ctx, "intlDateTimeResolve: pattern build "
+                                       "failed (%d)",
+                                  status);
+    }
+
+    // Calendar type, mapped from ICU's name to the BCP-47 keyword value.
+    std::string calendar = "gregory";
+    {
+        std::vector<UChar> zone = toUChars(resolvedZone);
+        UErrorCode calStatus = U_ZERO_ERROR;
+        UCalendar *cal = ucal_open(zone.empty() ? nullptr : zone.data(),
+                                   static_cast<int32_t>(zone.size()),
+                                   icuLocale.c_str(), UCAL_DEFAULT, &calStatus);
+        if (U_SUCCESS(calStatus)) {
+            const char *type = ucal_getType(cal, &calStatus);
+            if (U_SUCCESS(calStatus) && type != nullptr) {
+                calendar = (std::string(type) == "gregorian") ? "gregory"
+                                                              : type;
+            }
+        }
+        if (cal != nullptr) {
+            ucal_close(cal);
+        }
+    }
+
+    // Numbering system name (respects the locale's -u-nu- keyword).
+    std::string numberingSystem = "latn";
+    {
+        UErrorCode nsStatus = U_ZERO_ERROR;
+        UNumberingSystem *ns = unumsys_open(icuLocale.c_str(), &nsStatus);
+        if (U_SUCCESS(nsStatus) && ns != nullptr) {
+            const char *name = unumsys_getName(ns);
+            if (name != nullptr) {
+                numberingSystem = name;
+            }
+        }
+        if (ns != nullptr) {
+            unumsys_close(ns);
+        }
+    }
+
+    const char *hourCycle =
+        hourCycleFromPattern(patternBuffer.data(), patternLength);
+
+    JS_SetPropertyStr(ctx, result, "ok", JS_NewBool(ctx, true));
+    JS_SetPropertyStr(ctx, result, "locale",
+                      JS_NewString(ctx, canonicalLanguageTag(icuLocale).c_str()));
+    JS_SetPropertyStr(ctx, result, "calendar",
+                      JS_NewString(ctx, calendar.c_str()));
+    JS_SetPropertyStr(ctx, result, "numberingSystem",
+                      JS_NewString(ctx, numberingSystem.c_str()));
+    JS_SetPropertyStr(ctx, result, "timeZone",
+                      JS_NewString(ctx, resolvedZone.c_str()));
+    if (hourCycle != nullptr) {
+        JS_SetPropertyStr(ctx, result, "hourCycle",
+                          JS_NewString(ctx, hourCycle));
+    }
+    JS_SetPropertyStr(
+        ctx, result, "pattern",
+        JS_NewStringUTF16(ctx,
+                          reinterpret_cast<const uint16_t *>(
+                              patternBuffer.data()),
+                          static_cast<size_t>(patternLength)));
+    return result;
+}
+
+JSValue JsEngineHost::nativeIntlDateTimeFormat(JSContext *ctx,
+                                               JSValueConst thisVal, int argc,
+                                               JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    if (argc < 4) {
+        return JS_ThrowTypeError(ctx, "intlDateTimeFormat: expected 4 "
+                                      "arguments");
+    }
+    std::string localeTag = qjs::toString(ctx, argv[0]);
+    size_t patternLength = 0;
+    const uint16_t *pattern = JS_ToCStringLenUTF16(ctx, &patternLength, argv[1]);
+    if (pattern == nullptr) {
+        return JS_EXCEPTION;
+    }
+    std::string timeZone = qjs::toString(ctx, argv[2]);
+    double epochMs = 0;
+    JS_ToFloat64(ctx, &epochMs, argv[3]);
+
+    int error = U_ZERO_ERROR;
+    UDateFormat *formatter = dateFormatter(
+        hostOf(ctx)->intlCache(), localeTag, timeZone,
+        reinterpret_cast<const UChar *>(pattern),
+        static_cast<int32_t>(patternLength), &error);
+    JS_FreeCStringUTF16(ctx, pattern);
+    if (formatter == nullptr) {
+        return JS_ThrowPlainError(ctx, "intlDateTimeFormat: ICU open failed "
+                                       "(%d)",
+                                  error);
+    }
+
+    UErrorCode status = U_ZERO_ERROR;
+    std::vector<UChar> output(128);
+    int32_t length = udat_format(formatter, epochMs, output.data(),
+                                 static_cast<int32_t>(output.size()), nullptr,
+                                 &status);
+    if (status == U_BUFFER_OVERFLOW_ERROR) {
+        output.resize(length);
+        status = U_ZERO_ERROR;
+        length = udat_format(formatter, epochMs, output.data(),
+                             static_cast<int32_t>(output.size()), nullptr,
+                             &status);
+    }
+    if (U_FAILURE(status)) {
+        return JS_ThrowPlainError(ctx, "intlDateTimeFormat: format failed (%d)",
+                                  status);
+    }
+    return JS_NewStringUTF16(ctx,
+                             reinterpret_cast<const uint16_t *>(output.data()),
+                             static_cast<size_t>(length));
+}
+
+JSValue JsEngineHost::nativeIntlDateTimeFormatToParts(JSContext *ctx,
+                                                      JSValueConst thisVal,
+                                                      int argc,
+                                                      JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    if (argc < 4) {
+        return JS_ThrowTypeError(ctx, "intlDateTimeFormatToParts: expected 4 "
+                                      "arguments");
+    }
+    std::string localeTag = qjs::toString(ctx, argv[0]);
+    size_t patternLength = 0;
+    const uint16_t *pattern = JS_ToCStringLenUTF16(ctx, &patternLength, argv[1]);
+    if (pattern == nullptr) {
+        return JS_EXCEPTION;
+    }
+    std::string timeZone = qjs::toString(ctx, argv[2]);
+    double epochMs = 0;
+    JS_ToFloat64(ctx, &epochMs, argv[3]);
+
+    int error = U_ZERO_ERROR;
+    UDateFormat *formatter = dateFormatter(
+        hostOf(ctx)->intlCache(), localeTag, timeZone,
+        reinterpret_cast<const UChar *>(pattern),
+        static_cast<int32_t>(patternLength), &error);
+    JS_FreeCStringUTF16(ctx, pattern);
+    if (formatter == nullptr) {
+        return JS_ThrowPlainError(ctx, "intlDateTimeFormatToParts: ICU open "
+                                       "failed (%d)",
+                                  error);
+    }
+
+    UErrorCode status = U_ZERO_ERROR;
+    UFieldPositionIterator *fields = ufieldpositer_open(&status);
+    if (U_FAILURE(status)) {
+        return JS_ThrowPlainError(ctx, "intlDateTimeFormatToParts: field "
+                                       "iterator failed (%d)",
+                                  status);
+    }
+    std::vector<UChar> output(128);
+    int32_t length = udat_formatForFields(formatter, epochMs, output.data(),
+                                          static_cast<int32_t>(output.size()),
+                                          fields, &status);
+    if (status == U_BUFFER_OVERFLOW_ERROR) {
+        output.resize(length);
+        ufieldpositer_close(fields);
+        status = U_ZERO_ERROR;
+        fields = ufieldpositer_open(&status);
+        length = udat_formatForFields(formatter, epochMs, output.data(),
+                                      static_cast<int32_t>(output.size()),
+                                      fields, &status);
+    }
+    if (U_FAILURE(status)) {
+        ufieldpositer_close(fields);
+        return JS_ThrowPlainError(ctx, "intlDateTimeFormatToParts: format "
+                                       "failed (%d)",
+                                  status);
+    }
+
+    // Fields arrive in document order and do not overlap for date patterns;
+    // the gaps between them are ECMA-402 "literal" parts.
+    JSValue array = JS_NewArray(ctx);
+    uint32_t index = 0;
+    int32_t cursor = 0;
+    int32_t begin = 0;
+    int32_t end = 0;
+    for (int32_t field = ufieldpositer_next(fields, &begin, &end); field >= 0;
+         field = ufieldpositer_next(fields, &begin, &end)) {
+        if (begin > cursor) {
+            pushPart(ctx, array, index++, "literal", output.data(), cursor,
+                     begin);
+        }
+        pushPart(ctx, array, index++, dateFieldType(field), output.data(),
+                 begin, end);
+        cursor = end;
+    }
+    if (cursor < length) {
+        pushPart(ctx, array, index++, "literal", output.data(), cursor, length);
+    }
+    ufieldpositer_close(fields);
+    return array;
 }
 
 } // namespace macishtype

@@ -18,6 +18,7 @@
 #include <unicode/udat.h>
 #include <unicode/udatpg.h>
 #include <unicode/unumberformatter.h>
+#include <unicode/unumsys.h>
 #include <unicode/ucol.h>
 #include <unicode/upluralrules.h>
 #include <unicode/ufieldpositer.h>

@@ -249,6 +249,18 @@ private:
     // JavaScriptCore provides natively on macOS but quickjs-ng lacks.
     static JSValue nativeIntlSegment(JSContext *ctx, JSValueConst thisVal,
                                      int argc, JSValueConst *argv);
+    // Intl.DateTimeFormat, split into resolve (locale/calendar/timezone/
+    // pattern negotiation) and per-value format/formatToParts. The shim
+    // normalizes ECMA-402 options into a CLDR skeleton; ICU builds the pattern
+    // and formats. quickjs-ng has no Intl; JavaScriptCore provides it on macOS.
+    static JSValue nativeIntlDateTimeResolve(JSContext *ctx,
+                                             JSValueConst thisVal, int argc,
+                                             JSValueConst *argv);
+    static JSValue nativeIntlDateTimeFormat(JSContext *ctx, JSValueConst thisVal,
+                                            int argc, JSValueConst *argv);
+    static JSValue nativeIntlDateTimeFormatToParts(JSContext *ctx,
+                                                   JSValueConst thisVal,
+                                                   int argc, JSValueConst *argv);
     static JSValue nativeAction(JSContext *ctx, JSValueConst thisVal,
                                 int argc, JSValueConst *argv);
 
