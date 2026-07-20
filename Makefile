@@ -165,6 +165,7 @@ test: build
 	test/segmenter.sh
 	test/datetime.sh
 	test/number.sh
+	test/plural.sh
 	test/compositionend.sh
 	test/associated.sh
 

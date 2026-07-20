@@ -11,6 +11,7 @@
 #include <icu.h>
 #else
 #include <unicode/utypes.h>
+#include <unicode/uenum.h>
 #include <unicode/ustring.h>
 #include <unicode/uloc.h>
 #include <unicode/ubrk.h>

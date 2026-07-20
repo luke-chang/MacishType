@@ -567,4 +567,43 @@
     };
     return self;
   };
+
+  // Intl.PluralRules. Reuses NumberFormat's skeleton builder so the digit
+  // options shape the operands, then defers category selection to ICU.
+  intl.PluralRules = function PluralRules(locales, options) {
+    const self =
+      this instanceof intl.PluralRules
+        ? this
+        : Object.create(intl.PluralRules.prototype);
+    const o = options ? Object(options) : {};
+    const type = o.type ? String(o.type) : "cardinal";
+    if (type !== "cardinal" && type !== "ordinal") {
+      throw new RangeError(
+        "Value " + type + " out of range for Intl.PluralRules options property type",
+      );
+    }
+    const typeCode = type === "ordinal" ? 1 : 0;
+    const skeleton = nfSkeleton({
+      style: "decimal",
+      minimumIntegerDigits: o.minimumIntegerDigits,
+      minimumFractionDigits: o.minimumFractionDigits,
+      maximumFractionDigits: o.maximumFractionDigits,
+      minimumSignificantDigits: o.minimumSignificantDigits,
+      maximumSignificantDigits: o.maximumSignificantDigits,
+      roundingMode: o.roundingMode,
+    });
+
+    const requested = Array.isArray(locales) ? locales[0] : locales;
+    const localeTag = typeof requested === "string" ? requested : "en";
+    const resolved = __MacishTypeHost_intlResolveLocale(localeTag);
+
+    self.select = (value) =>
+      __MacishTypeHost_intlPluralSelect(localeTag, typeCode, skeleton, nfNumberString(value));
+    self.resolvedOptions = () => ({
+      locale: resolved.locale,
+      type,
+      pluralCategories: __MacishTypeHost_intlPluralCategories(localeTag, typeCode),
+    });
+    return self;
+  };
 })();

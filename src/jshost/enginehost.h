@@ -275,6 +275,13 @@ private:
     static JSValue nativeIntlNumberFormatToParts(JSContext *ctx,
                                                  JSValueConst thisVal, int argc,
                                                  JSValueConst *argv);
+    // Intl.PluralRules. Selects the plural category for a formatted number
+    // (respecting the shim's digit skeleton) and lists a locale's categories.
+    static JSValue nativeIntlPluralSelect(JSContext *ctx, JSValueConst thisVal,
+                                          int argc, JSValueConst *argv);
+    static JSValue nativeIntlPluralCategories(JSContext *ctx,
+                                              JSValueConst thisVal, int argc,
+                                              JSValueConst *argv);
     static JSValue nativeAction(JSContext *ctx, JSValueConst thisVal,
                                 int argc, JSValueConst *argv);
 

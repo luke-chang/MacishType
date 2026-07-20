@@ -1464,6 +1464,10 @@ void JsEngineHost::registerBridgeGlobals() {
            &JsEngineHost::nativeIntlNumberFormat, 3);
     define("__MacishTypeHost_intlNumberFormatToParts",
            &JsEngineHost::nativeIntlNumberFormatToParts, 3);
+    define("__MacishTypeHost_intlPluralSelect",
+           &JsEngineHost::nativeIntlPluralSelect, 4);
+    define("__MacishTypeHost_intlPluralCategories",
+           &JsEngineHost::nativeIntlPluralCategories, 2);
     define("__MacishTypeHost_action", &JsEngineHost::nativeAction, 1);
     JS_SetPropertyStr(ctx_, global.get(), "__MacishType_userAgent",
                       JS_NewString(ctx_, userAgent_.c_str()));

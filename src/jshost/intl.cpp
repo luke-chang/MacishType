@@ -369,6 +369,29 @@ const char *numberFieldType(int32_t field, UChar first) {
     }
 }
 
+// get-or-open a UPluralRules for (localeTag, type). `type` is a UPluralType
+// (0 cardinal, 1 ordinal).
+UPluralRules *pluralRules(IntlCache &cache, const std::string &localeTag,
+                          int type, int *errorOut) {
+    std::string key = localeTag + "\x01" + std::to_string(type);
+    if (void *cached = cache.get(IntlCache::kPluralRules, key)) {
+        return static_cast<UPluralRules *>(cached);
+    }
+    std::string icuLocale = toIcuLocale(localeTag);
+    UErrorCode status = U_ZERO_ERROR;
+    UPluralRules *rules = uplrules_openForType(
+        icuLocale.c_str(), static_cast<UPluralType>(type), &status);
+    if (U_FAILURE(status)) {
+        if (rules != nullptr) {
+            uplrules_close(rules);
+        }
+        *errorOut = status;
+        return nullptr;
+    }
+    cache.put(IntlCache::kPluralRules, key, rules);
+    return rules;
+}
+
 } // namespace
 
 JSValue JsEngineHost::nativeIntlSegment(JSContext *ctx, JSValueConst thisVal,
@@ -902,6 +925,104 @@ JSValue JsEngineHost::nativeIntlNumberFormatToParts(JSContext *ctx,
                  cursor, run);
         cursor = run;
     }
+    return array;
+}
+
+JSValue JsEngineHost::nativeIntlPluralSelect(JSContext *ctx,
+                                             JSValueConst thisVal, int argc,
+                                             JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    if (argc < 4) {
+        return JS_ThrowTypeError(ctx, "intlPluralSelect: expected 4 arguments");
+    }
+    std::string localeTag = qjs::toString(ctx, argv[0]);
+    int32_t type = 0;
+    JS_ToInt32(ctx, &type, argv[1]);
+    size_t skeletonLength = 0;
+    const uint16_t *skeleton =
+        JS_ToCStringLenUTF16(ctx, &skeletonLength, argv[2]);
+    if (skeleton == nullptr) {
+        return JS_EXCEPTION;
+    }
+    std::string number = qjs::toString(ctx, argv[3]);
+
+    IntlCache &cache = hostOf(ctx)->intlCache();
+    int error = U_ZERO_ERROR;
+    UNumberFormatter *formatter = numberFormatter(
+        cache, localeTag, reinterpret_cast<const UChar *>(skeleton),
+        static_cast<int32_t>(skeletonLength), &error);
+    JS_FreeCStringUTF16(ctx, skeleton);
+    if (formatter == nullptr) {
+        return JS_ThrowPlainError(ctx, "intlPluralSelect: number open failed "
+                                       "(%d)",
+                                  error);
+    }
+    UPluralRules *rules = pluralRules(cache, localeTag, type, &error);
+    if (rules == nullptr) {
+        return JS_ThrowPlainError(ctx, "intlPluralSelect: rules open failed "
+                                       "(%d)",
+                                  error);
+    }
+
+    // Select against the formatted number so min/max fraction digits shape the
+    // operands (e.g. "1.0" selects differently from "1").
+    UErrorCode status = U_ZERO_ERROR;
+    UFormattedNumber *result = unumf_openResult(&status);
+    unumf_formatDecimal(formatter, number.c_str(),
+                        static_cast<int32_t>(number.size()), result, &status);
+    UChar keyword[64];
+    int32_t length = uplrules_selectFormatted(rules, result, keyword,
+                                              sizeof(keyword) / sizeof(UChar),
+                                              &status);
+    unumf_closeResult(result);
+    if (U_FAILURE(status)) {
+        return JS_ThrowPlainError(ctx, "intlPluralSelect: select failed (%d)",
+                                  status);
+    }
+    return JS_NewStringUTF16(ctx,
+                             reinterpret_cast<const uint16_t *>(keyword),
+                             static_cast<size_t>(length));
+}
+
+JSValue JsEngineHost::nativeIntlPluralCategories(JSContext *ctx,
+                                                 JSValueConst thisVal, int argc,
+                                                 JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    if (argc < 2) {
+        return JS_ThrowTypeError(ctx, "intlPluralCategories: expected 2 "
+                                      "arguments");
+    }
+    std::string localeTag = qjs::toString(ctx, argv[0]);
+    int32_t type = 0;
+    JS_ToInt32(ctx, &type, argv[1]);
+
+    int error = U_ZERO_ERROR;
+    UPluralRules *rules =
+        pluralRules(hostOf(ctx)->intlCache(), localeTag, type, &error);
+    if (rules == nullptr) {
+        return JS_ThrowPlainError(ctx, "intlPluralCategories: rules open "
+                                       "failed (%d)",
+                                  error);
+    }
+
+    UErrorCode status = U_ZERO_ERROR;
+    UEnumeration *keywords = uplrules_getKeywords(rules, &status);
+    JSValue array = JS_NewArray(ctx);
+    if (U_FAILURE(status)) {
+        return array;
+    }
+    uint32_t index = 0;
+    for (;;) {
+        int32_t length = 0;
+        const char *keyword = uenum_next(keywords, &length, &status);
+        if (keyword == nullptr || U_FAILURE(status)) {
+            break;
+        }
+        JS_SetPropertyUint32(ctx, array, index++,
+                             JS_NewStringLen(ctx, keyword,
+                                             static_cast<size_t>(length)));
+    }
+    uenum_close(keywords);
     return array;
 }
 
