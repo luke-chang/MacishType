@@ -497,7 +497,7 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
     rebuildEngineSettings(*engine);
 
     auto *host = hostForEngine(*engine);
-    notifyReload(engine->displayName(), host != nullptr);
+    notifyReload(engineId, engine->displayName(), host != nullptr);
     if (host == nullptr) {
         return;
     }
@@ -511,7 +511,8 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
     }
 }
 
-void MacishTypeEngine::notifyReload(const std::string &displayName,
+void MacishTypeEngine::notifyReload(const std::string &engineId,
+                                    const std::string &displayName,
                                     bool succeeded) {
     auto *notifications = instance_->addonManager().addon("notifications",
                                                           true);
@@ -521,8 +522,11 @@ void MacishTypeEngine::notifyReload(const std::string &displayName,
     if (!*config_.notifyOnReload) {
         return;
     }
+    // Per-engine tip id: repeated reloads of one engine replace in place, but
+    // different engines each get their own notification so none is silently
+    // overwritten (they queue in the notification center rather than merge).
     notifications->call<fcitx::INotifications::showTip>(
-        "macishtype-reload", "MacishType", "input-keyboard",
+        "macishtype-reload-" + engineId, "MacishType", "input-keyboard",
         succeeded ? translated("Engine reloaded")
                   : translated("Engine failed to load"),
         succeeded ? displayName

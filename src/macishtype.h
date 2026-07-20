@@ -92,7 +92,8 @@ private:
     // Hot reload: tears down the engine's JS host and rebuilds the active
     // sessions so on-disk edits apply immediately.
     void reloadEngine(const std::string &engineId);
-    void notifyReload(const std::string &displayName, bool succeeded);
+    void notifyReload(const std::string &engineId,
+                      const std::string &displayName, bool succeeded);
 
     fcitx::Instance *instance_;
     MacishTypeConfig config_;
