@@ -70,12 +70,12 @@ inline std::string toString(JSContext *ctx, JSValueConst value) {
     return result;
 }
 
-// Takes the pending exception and renders "message\nstack".
-inline std::string exceptionText(JSContext *ctx) {
-    Value exception(ctx, JS_GetException(ctx));
-    std::string text = toString(ctx, exception.get());
-    if (JS_IsObject(exception.get())) {
-        Value stack(ctx, JS_GetPropertyStr(ctx, exception.get(), "stack"));
+// Renders an error value as "message\nstack" (stack appended when present).
+// Works for any thrown/rejected value, not just the pending exception.
+inline std::string errorText(JSContext *ctx, JSValueConst value) {
+    std::string text = toString(ctx, value);
+    if (JS_IsObject(value)) {
+        Value stack(ctx, JS_GetPropertyStr(ctx, value, "stack"));
         if (!stack.isUndefined() && !stack.isException()) {
             std::string stackText = toString(ctx, stack.get());
             if (!stackText.empty()) {
@@ -84,6 +84,12 @@ inline std::string exceptionText(JSContext *ctx) {
         }
     }
     return text;
+}
+
+// Takes the pending exception and renders "message\nstack".
+inline std::string exceptionText(JSContext *ctx) {
+    Value exception(ctx, JS_GetException(ctx));
+    return errorText(ctx, exception.get());
 }
 
 } // namespace macishtype::qjs

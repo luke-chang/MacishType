@@ -26,11 +26,20 @@ LOG_MATCH = -t fcitx5 -t org.fcitx.Fcitx5.desktop
 empty :=
 space := $(empty) $(empty)
 LOG_SOURCES = $(notdir $(wildcard src/*.cpp src/jshost/*.cpp))
-LOG_PATTERN = ($(subst $(space),|,$(strip $(LOG_SOURCES)))):[0-9]+\]
-# `-o cat` drops the journal prefix (its date/host/pid duplicate what the
-# fcitx line already carries); this trims the fcitx timestamp to
-# month-day + time: "07-19 04:22:33.418 I macishtype.cpp:86] ...".
-LOG_SIMPLIFY = sed -u -E 's/^([A-Z])[0-9]{4}-([0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3})[0-9]*/\2 \1/'
+LOG_SOURCES_RE = $(subst $(space),|,$(strip $(LOG_SOURCES)))
+# A fcitx log record starts at a level+timestamp header; a multi-line message
+# (a JS stack trace) wraps onto following lines that carry no prefix. Keep a
+# record together with those continuation lines, gated on the header naming one
+# of this repo's sources (or, for -js, an engine tag) — a plain per-line grep
+# would drop the stack frames. perl (not awk): mawk block-buffers stdin, which
+# stalls the `make log` follow stream; perl with $| stays line-buffered.
+LOG_SCOPE = perl -ne 'BEGIN{$$|=1} if(/^[A-Z][0-9]{4}-[0-9]{2}-[0-9]{2} /){$$k=/($(LOG_SOURCES_RE)):[0-9]+\]/} print if $$k'
+LOG_SCOPE_JS = perl -ne 'BEGIN{$$|=1} if(/^[A-Z][0-9]{4}-[0-9]{2}-[0-9]{2} /){$$k=/\] \[[a-z0-9_-]+\]/} print if $$k'
+# `-o cat` drops the journal prefix (its date/host/pid duplicate what the fcitx
+# line already carries). Rewrite the fcitx prefix to a balanced, brace-matched
+# form, trimming the timestamp to month-day + time:
+# "I2026-... enginehost.cpp:86]" -> "[07-19 04:22:33.418 I] enginehost.cpp:86".
+LOG_SIMPLIFY = sed -u -E 's/^([A-Z])[0-9]{4}-([0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3})[0-9]* ([A-Za-z0-9_]+\.cpp:[0-9]+)\]/[\2 \1] \3/'
 
 help:
 	@echo "fcitx5-macishtype development entry points:"
@@ -128,17 +137,17 @@ restart:
 # Live addon log stream from the user journal, both launch paths included.
 # For the full fcitx5 stream use journalctl directly.
 log:
-	@journalctl --user -f -o cat $(LOG_MATCH) | grep --line-buffered -E '$(LOG_PATTERN)' | $(LOG_SIMPLIFY)
+	@journalctl --user -f -o cat $(LOG_MATCH) | $(LOG_SCOPE) | $(LOG_SIMPLIFY)
 
 # JS-originated lines only: engine console.* arrives via the host's log
 # bridge, prefixed with the engine id in brackets.
 log-js:
-	@journalctl --user -f -o cat $(LOG_MATCH) | grep --line-buffered -E '\] \[[a-z0-9_-]+\]' \
-	    | $(LOG_SIMPLIFY) | sed -u -E 's/ [a-z]+\.cpp:[0-9]+\]//'
+	@journalctl --user -f -o cat $(LOG_MATCH) | $(LOG_SCOPE_JS) \
+	    | $(LOG_SIMPLIFY) | sed -u -E 's/ [A-Za-z0-9_]+\.cpp:[0-9]+//'
 
 log-history:
 	@journalctl --user --since "-$(LOG_SHOW_LAST)" -o cat $(LOG_MATCH) \
-	    | grep -E '$(LOG_PATTERN)' | $(LOG_SIMPLIFY) || true
+	    | $(LOG_SCOPE) | $(LOG_SIMPLIFY) || true
 
 # Removes a production install, using the manifest cmake wrote during the
 # last `make install`, and restarts fcitx5 so the removal takes effect —
@@ -167,6 +176,7 @@ test: build
 	test/number.sh
 	test/plural.sh
 	test/collator.sh
+	test/errorstack.sh
 	test/compositionend.sh
 	test/associated.sh
 

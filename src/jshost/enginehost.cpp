@@ -635,7 +635,7 @@ bool JsEngineHost::evaluateEntryModule() {
             qjs::Value reason(ctx_,
                               JS_PromiseResult(ctx_, evaluation.get()));
             MACISHTYPE_ERROR() << "Entry module rejected: "
-                               << qjs::toString(ctx_, reason.get());
+                               << qjs::errorText(ctx_, reason.get());
             return false;
         }
         default:
@@ -779,7 +779,7 @@ void JsEngineHost::rejectionTracker(JSContext *ctx, JSValueConst promise,
         host->pendingRejections_.erase(key);
         return;
     }
-    host->pendingRejections_[key] = qjs::toString(ctx, reason);
+    host->pendingRejections_[key] = qjs::errorText(ctx, reason);
 }
 
 void JsEngineHost::reportRejections() {
