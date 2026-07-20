@@ -119,6 +119,20 @@ status-area icon, state persisted per input method). The
 `outputToSimplified` system menu key proxies the same chttrans state, so
 engine-driven toggles and the chttrans hotkey flip one switch.
 
+The contract recommends `Intl.Segmenter` for counting extended grapheme
+clusters (so `"👨‍👩‍👧"` or a base plus combining marks counts as one
+character). On macOS the engine's JavaScript runtime (JavaScriptCore)
+provides it as a standard built-in, but quickjs-ng ships no `Intl` at all,
+so the addon supplies `Intl.Segmenter` itself. Only `grapheme` granularity
+is implemented — a UAX #29 segmenter over quickjs-ng's Unicode tables,
+covering combining marks, astral codepoints, emoji ZWJ sequences, regional-
+indicator flags, and conjoining Hangul jamo. `word` and `sentence` throw
+`RangeError`: they would need the locale word/sentence dictionaries this
+addon deliberately does not bundle, and a naive approximation would diverge
+from JavaScriptCore. The Prepend and SpacingMark break classes are folded
+into the default class, so clustering can differ from JavaScriptCore for
+Arabic and Indic scripts — no bundled engine targets those.
+
 ## Development
 
 ### Dependencies

@@ -161,6 +161,7 @@ test: build
 	test/storage.sh
 	test/settings.sh
 	test/orientation.sh
+	test/segmenter.sh
 	test/compositionend.sh
 	test/associated.sh
 

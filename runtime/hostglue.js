@@ -131,4 +131,64 @@
     };
     return event;
   };
+
+  // Intl.Segmenter. macOS engines get this from JavaScriptCore; quickjs-ng
+  // ships no Intl at all, so synthesize the standard API over the host's
+  // UAX #29 grapheme segmenter. Only "grapheme" is supported — word and
+  // sentence boundaries need locale dictionaries we do not bundle, so those
+  // granularities throw rather than silently approximate.
+  const intl = globalThis.Intl || (globalThis.Intl = {});
+
+  function makeSegments(input) {
+    const pieces = __MacishTypeHost_segmentGraphemes(input);
+    // Segment start offsets in UTF-16 code units (String#length units), so
+    // `index` matches JavaScriptCore's.
+    const starts = new Array(pieces.length);
+    let offset = 0;
+    for (let i = 0; i < pieces.length; i++) {
+      starts[i] = offset;
+      offset += pieces[i].length;
+    }
+    const record = (i) => ({ segment: pieces[i], index: starts[i], input });
+    return {
+      [Symbol.iterator]() {
+        let i = 0;
+        return {
+          next() {
+            return i < pieces.length
+              ? { value: record(i++), done: false }
+              : { value: undefined, done: true };
+          },
+        };
+      },
+      containing(index) {
+        const at = Math.trunc(Number(index) || 0);
+        if (at < 0 || at >= input.length) return undefined;
+        let found = 0;
+        for (let i = 0; i < pieces.length && starts[i] <= at; i++) {
+          found = i;
+        }
+        return record(found);
+      },
+    };
+  }
+
+  intl.Segmenter = function Segmenter(locales, options) {
+    if (!(this instanceof Segmenter)) {
+      throw new TypeError("Constructor Intl.Segmenter requires 'new'");
+    }
+    const granularity = (options && options.granularity) || "grapheme";
+    if (granularity !== "grapheme") {
+      throw new RangeError(
+        'Intl.Segmenter: only "grapheme" granularity is supported on this ' +
+          'platform (got "' +
+          granularity +
+          '")',
+      );
+    }
+    const requested = Array.isArray(locales) ? locales[0] : locales;
+    const locale = typeof requested === "string" ? requested : "en";
+    this.segment = (input) => makeSegments(String(input));
+    this.resolvedOptions = () => ({ locale, granularity });
+  };
 })();

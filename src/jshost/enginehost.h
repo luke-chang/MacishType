@@ -242,6 +242,11 @@ private:
                                         int argc, JSValueConst *argv);
     static JSValue nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
                                     int argc, JSValueConst *argv);
+    // Splits a string into Unicode grapheme clusters (UAX #29). The
+    // hostglue Intl.Segmenter builds on it; JavaScriptCore provides the
+    // real thing on macOS, quickjs-ng has no Intl at all.
+    static JSValue nativeSegmentGraphemes(JSContext *ctx, JSValueConst thisVal,
+                                          int argc, JSValueConst *argv);
     static JSValue nativeAction(JSContext *ctx, JSValueConst thisVal,
                                 int argc, JSValueConst *argv);
 
