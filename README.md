@@ -91,10 +91,12 @@ engine's own writes stay silent, per web semantics); the watch arms only
 while the engine holds storage listeners.
 
 Engines may declare the optional manifest `label` (short panel text;
-defaults to the display name's first character) and `icon` (an
-extensionless base name inside the engine folder, default `icon`). The
-addon probes `<icon>-symbolic.svg`, `<icon>.svg`, then `<icon>.png` and
-serves the first match to panels by absolute path — nothing is installed
+defaults to the full display name, which fcitx5 shortens per surface — one
+CJK glyph or two Latin letters in the status area, the full text in the
+input-method switch popup) and `icon` (an extensionless base name inside
+the engine folder, default `icon`). The addon probes
+`<icon>-symbolic.svg`, `<icon>.svg`, then `<icon>.png` and serves the
+first match to panels by absolute path — nothing is installed
 into an icon theme. A `-symbolic.svg` gets recolored to the panel
 foreground by the desktop; `scripts/generate-icon.py` bakes such a badge
 (macOS-style rounded rectangle with the glyph knocked out, carrying both

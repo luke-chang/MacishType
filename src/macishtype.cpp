@@ -66,12 +66,11 @@ std::string labelForEngine(const EngineInfo &engine) {
         fcitx::utf8::validate(engine.manifest.label)) {
         return engine.manifest.label;
     }
+    // No explicit label: hand the full display name to the host UI and let it
+    // shorten as it sees fit — fcitx5's status area shows one CJK glyph or two
+    // Latin letters, while the input-method switch popup shows it in full.
     std::string displayName = engine.displayName();
-    if (!fcitx::utf8::validate(displayName)) {
-        return engine.id.substr(0, 1);
-    }
-    auto firstCharBytes = fcitx::utf8::ncharByteLength(displayName.begin(), 1);
-    return displayName.substr(0, firstCharBytes);
+    return fcitx::utf8::validate(displayName) ? displayName : engine.id;
 }
 
 } // namespace
