@@ -13,25 +13,45 @@
 
 namespace macishtype {
 
-// Closes every cached ICU handle. Each map is closed with the matching ICU
-// close function; a kind whose service is not yet wired stays empty until its
-// phase lands, but the close call still anchors the ICU link.
+// Bounds the ICU handles cached per kind. The cache keys embed engine-
+// controlled locale/skeleton/pattern strings, so without a cap an engine could
+// mint unbounded distinct keys and leak one native handle per key for the
+// host's lifetime. A normal engine's locale/option set stays far below this.
+constexpr size_t kMaxHandlesPerKind = 512;
+
 IntlCache::~IntlCache() {
-    for (auto &[key, handle] : breakIterators_) {
-        ubrk_close(static_cast<UBreakIterator *>(handle));
+    closeAll(kBreak);
+    closeAll(kDateFormat);
+    closeAll(kNumberFormat);
+    closeAll(kCollator);
+    closeAll(kPluralRules);
+}
+
+// Closes every cached handle of `kind` with its matching ICU close function
+// and empties the map. Used at teardown and when the per-kind cap is hit.
+void IntlCache::closeAll(Kind kind) {
+    auto &store = mapFor(kind);
+    for (auto &[key, handle] : store) {
+        FCITX_UNUSED(key);
+        switch (kind) {
+        case kBreak:
+            ubrk_close(static_cast<UBreakIterator *>(handle));
+            break;
+        case kDateFormat:
+            udat_close(static_cast<UDateFormat *>(handle));
+            break;
+        case kNumberFormat:
+            unumf_close(static_cast<UNumberFormatter *>(handle));
+            break;
+        case kCollator:
+            ucol_close(static_cast<UCollator *>(handle));
+            break;
+        case kPluralRules:
+            uplrules_close(static_cast<UPluralRules *>(handle));
+            break;
+        }
     }
-    for (auto &[key, handle] : dateFormatters_) {
-        udat_close(static_cast<UDateFormat *>(handle));
-    }
-    for (auto &[key, handle] : numberFormatters_) {
-        unumf_close(static_cast<UNumberFormatter *>(handle));
-    }
-    for (auto &[key, handle] : collators_) {
-        ucol_close(static_cast<UCollator *>(handle));
-    }
-    for (auto &[key, handle] : pluralRules_) {
-        uplrules_close(static_cast<UPluralRules *>(handle));
-    }
+    store.clear();
 }
 
 std::map<std::string, void *> &IntlCache::mapFor(Kind kind) {
@@ -57,7 +77,18 @@ void *IntlCache::get(Kind kind, const std::string &key) {
 }
 
 void IntlCache::put(Kind kind, const std::string &key, void *handle) {
-    mapFor(kind)[key] = handle;
+    auto &store = mapFor(kind);
+    if (store.size() >= kMaxHandlesPerKind) {
+        // Cap reached: close and drop every handle of this kind, then start
+        // over. Only a pathological engine minting unbounded keys hits this.
+        // Safe because no Intl native touches a cached handle once engine JS
+        // may run: arguments are coerced to owned buffers before a handle is
+        // acquired, and ICU results are materialized into locals before the
+        // JS result is built — so no live handle (this call's, or a re-entrant
+        // outer frame's) can be among those closed here.
+        closeAll(kind);
+    }
+    store[key] = handle;
 }
 
 void *IntlCache::breakIterator(int type, const std::string &locale,
@@ -481,37 +512,43 @@ JSValue JsEngineHost::nativeIntlSegment(JSContext *ctx, JSValueConst thisVal,
                                   status);
     }
 
+    // Collect the boundaries (and word-like flags) into locals while the cached
+    // iterator is live: building the JS arrays below can run engine JS (a
+    // tampered Array.prototype setter), which under the handle cap could evict
+    // and close this iterator via re-entrancy. Materializing first means the
+    // iterator is never touched once JS may run.
     // boundaries[i]..boundaries[i+1] spans segment i; for the whole string it
     // runs [0, …, length], so the segment count is boundaries.length - 1.
-    JSValue boundaries = JS_NewArray(ctx);
-    JSValue wordLike = (type == UBRK_WORD) ? JS_NewArray(ctx) : JS_UNDEFINED;
-    uint32_t boundaryIndex = 0;
-    uint32_t wordLikeIndex = 0;
-
-    int32_t position = ubrk_first(iterator);
-    JS_SetPropertyUint32(ctx, boundaries, boundaryIndex++,
-                         JS_NewInt32(ctx, position));
+    std::vector<int32_t> boundaryOffsets;
+    std::vector<bool> wordLikeFlags;
+    boundaryOffsets.push_back(ubrk_first(iterator));
     for (int32_t next = ubrk_next(iterator); next != UBRK_DONE;
          next = ubrk_next(iterator)) {
-        JS_SetPropertyUint32(ctx, boundaries, boundaryIndex++,
-                             JS_NewInt32(ctx, next));
+        boundaryOffsets.push_back(next);
         if (type == UBRK_WORD) {
             // A rule status in the UBRK_WORD_NONE range marks whitespace and
             // punctuation runs; anything else (letters, numbers, kana, …) is
             // word-like, per ECMA-402's isWordLike.
             int32_t rule = ubrk_getRuleStatus(iterator);
-            bool isWordLike =
-                !(rule >= UBRK_WORD_NONE && rule < UBRK_WORD_NONE_LIMIT);
-            JS_SetPropertyUint32(ctx, wordLike, wordLikeIndex++,
-                                 JS_NewBool(ctx, isWordLike));
+            wordLikeFlags.push_back(
+                !(rule >= UBRK_WORD_NONE && rule < UBRK_WORD_NONE_LIMIT));
         }
     }
-
     JS_FreeCStringUTF16(ctx, text);
 
+    JSValue boundaries = JS_NewArray(ctx);
+    for (size_t i = 0; i < boundaryOffsets.size(); i++) {
+        JS_SetPropertyUint32(ctx, boundaries, static_cast<uint32_t>(i),
+                             JS_NewInt32(ctx, boundaryOffsets[i]));
+    }
     JSValue result = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, result, "boundaries", boundaries);
     if (type == UBRK_WORD) {
+        JSValue wordLike = JS_NewArray(ctx);
+        for (size_t i = 0; i < wordLikeFlags.size(); i++) {
+            JS_SetPropertyUint32(ctx, wordLike, static_cast<uint32_t>(i),
+                                 JS_NewBool(ctx, wordLikeFlags[i]));
+        }
         JS_SetPropertyStr(ctx, result, "wordLike", wordLike);
     }
     return result;
@@ -1056,22 +1093,31 @@ JSValue JsEngineHost::nativeIntlPluralCategories(JSContext *ctx,
 
     UErrorCode status = U_ZERO_ERROR;
     UEnumeration *keywords = uplrules_getKeywords(rules, &status);
-    JSValue array = JS_NewArray(ctx);
     if (U_FAILURE(status)) {
-        return array;
+        return JS_NewArray(ctx);
     }
-    uint32_t index = 0;
+    // Snapshot the keyword strings while the cached rules/enumeration are live,
+    // then build the array: JS_SetPropertyUint32 can run a tampered-prototype
+    // setter whose re-entrancy could evict and close `rules` under the handle
+    // cap, so the ICU handles must not be touched once JS may run.
+    std::vector<std::string> categories;
     for (;;) {
         int32_t length = 0;
         const char *keyword = uenum_next(keywords, &length, &status);
         if (keyword == nullptr || U_FAILURE(status)) {
             break;
         }
-        JS_SetPropertyUint32(ctx, array, index++,
-                             JS_NewStringLen(ctx, keyword,
-                                             static_cast<size_t>(length)));
+        categories.emplace_back(keyword, static_cast<size_t>(length));
     }
     uenum_close(keywords);
+
+    JSValue array = JS_NewArray(ctx);
+    uint32_t index = 0;
+    for (const auto &category : categories) {
+        JS_SetPropertyUint32(ctx, array, index++,
+                             JS_NewStringLen(ctx, category.c_str(),
+                                             category.size()));
+    }
     return array;
 }
 
@@ -1086,15 +1132,10 @@ JSValue JsEngineHost::nativeIntlCollatorCompare(JSContext *ctx,
     std::string localeTag = qjs::toString(ctx, argv[0]);
     std::string signature = qjs::toString(ctx, argv[1]);
 
-    int error = U_ZERO_ERROR;
-    UCollator *coll =
-        collator(hostOf(ctx)->intlCache(), localeTag, signature, &error);
-    if (coll == nullptr) {
-        return JS_ThrowPlainError(ctx, "intlCollatorCompare: ICU open failed "
-                                       "(%d)",
-                                  error);
-    }
-
+    // Coerce both operands to owned buffers BEFORE acquiring the cached
+    // collator. JS_ToCStringLenUTF16 can run engine toString/valueOf, which
+    // could re-enter Intl and evict (close) the very collator we would hold;
+    // acquiring last means no engine JS runs while `coll` is live.
     size_t leftLength = 0;
     size_t rightLength = 0;
     const uint16_t *left = JS_ToCStringLenUTF16(ctx, &leftLength, argv[2]);
@@ -1106,6 +1147,18 @@ JSValue JsEngineHost::nativeIntlCollatorCompare(JSContext *ctx,
         JS_FreeCStringUTF16(ctx, left);
         return JS_EXCEPTION;
     }
+
+    int error = U_ZERO_ERROR;
+    UCollator *coll =
+        collator(hostOf(ctx)->intlCache(), localeTag, signature, &error);
+    if (coll == nullptr) {
+        JS_FreeCStringUTF16(ctx, left);
+        JS_FreeCStringUTF16(ctx, right);
+        return JS_ThrowPlainError(ctx, "intlCollatorCompare: ICU open failed "
+                                       "(%d)",
+                                  error);
+    }
+
     UCollationResult order = ucol_strcoll(
         coll, reinterpret_cast<const UChar *>(left),
         static_cast<int32_t>(leftLength), reinterpret_cast<const UChar *>(right),

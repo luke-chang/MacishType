@@ -38,6 +38,8 @@ public:
 
 private:
     std::map<std::string, void *> &mapFor(Kind kind);
+    // Closes every ICU handle of `kind` and empties its map.
+    void closeAll(Kind kind);
 
     std::map<std::string, void *> breakIterators_;
     std::map<std::string, void *> dateFormatters_;
