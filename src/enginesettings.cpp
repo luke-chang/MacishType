@@ -1,5 +1,6 @@
 #include "enginesettings.h"
 
+#include <algorithm>
 #include <climits>
 #include <cmath>
 #include <cstdlib>
@@ -336,17 +337,43 @@ void EngineSettings::materializeField(const SettingsField &field) {
         auto defaultValue = numberFromJson(field.defaultJson);
         double step = field.step.value_or(1.0);
         if (defaultValue && isIntegral(*defaultValue) && isIntegral(step)) {
-            int low = field.min ? static_cast<int>(std::ceil(*field.min))
-                                : INT_MIN;
-            int high = field.max ? static_cast<int>(std::floor(*field.max))
-                                 : INT_MAX;
-            auto option = std::make_unique<NumberOption>(
-                this, field.key, label, static_cast<int>(*defaultValue),
-                fcitx::IntConstrain(low, high),
-                fcitx::DefaultMarshaller<int>{}, annotation);
-            bound.kind = Kind::Number;
-            bound.option = option.get();
-            options_.push_back(std::move(option));
+            // min/max are manifest-controlled doubles: clamp into int range
+            // before the cast, since an out-of-range cast is undefined
+            // behavior.
+            auto clampToInt = [](double value) -> int {
+                if (value <= static_cast<double>(INT_MIN)) {
+                    return INT_MIN;
+                }
+                if (value >= static_cast<double>(INT_MAX)) {
+                    return INT_MAX;
+                }
+                return static_cast<int>(value);
+            };
+            int low = field.min ? clampToInt(std::ceil(*field.min)) : INT_MIN;
+            int high = field.max ? clampToInt(std::floor(*field.max)) : INT_MAX;
+            int defaultInt = static_cast<int>(*defaultValue);
+            if (low > high) {
+                // An inconsistent range makes every value invalid.
+                MACISHTYPE_WARN()
+                    << "Number field with min > max hidden: " << field.key;
+            } else {
+                // fcitx's Option constructor throws when the default violates
+                // the constraint; keep the default in range so a bad manifest
+                // cannot crash the addon (and, via a watched reload, fcitx5).
+                int clamped = std::min(std::max(defaultInt, low), high);
+                if (clamped != defaultInt) {
+                    MACISHTYPE_WARN()
+                        << "Number field default out of [min, max], clamped: "
+                        << field.key;
+                }
+                auto option = std::make_unique<NumberOption>(
+                    this, field.key, label, clamped,
+                    fcitx::IntConstrain(low, high),
+                    fcitx::DefaultMarshaller<int>{}, annotation);
+                bound.kind = Kind::Number;
+                bound.option = option.get();
+                options_.push_back(std::move(option));
+            }
         } else {
             MACISHTYPE_WARN() << "Fractional number field hidden: "
                               << field.key;
