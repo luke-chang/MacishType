@@ -1048,6 +1048,9 @@ void JsEngineHost::dispatchStorageEvent(const std::string &key) {
     if (!JS_IsFunction(ctx_, dispatch.get())) {
         return;
     }
+    // Arm the watchdog and drain microtasks on unwind, like every other
+    // host->JS entry point; a storage listener is arbitrary engine code.
+    Entry entry(*this);
     JSValue keyValue = JS_NewStringLen(ctx_, key.c_str(), key.size());
     qjs::Value result(ctx_, JS_Call(ctx_, dispatch.get(), JS_UNDEFINED, 1,
                                     &keyValue));
@@ -1057,7 +1060,6 @@ void JsEngineHost::dispatchStorageEvent(const std::string &key) {
                            << "] storage event dispatch failed: "
                            << qjs::exceptionText(ctx_);
     }
-    drainJobs();
 }
 
 // Native bridge functions -------------------------------------------------
