@@ -128,7 +128,7 @@ parsing the data yourself. Each field is a boolean; `true` requests that module.
 | `wordFrequency` | boolean | Character → frequency count (e.g. `"的"` → `615175`), higher is more common. | count, or `0` |
 
 `symbolNames` / `wordFrequency` are static tables picked by the engine's
-*resolved* [`intendedLanguage`](#intendedlanguage) — the manifest field if
+*resolved* [`intendedLanguage`](#intendedlanguage-optional) — the manifest field if
 declared, otherwise the host's plist `TISIntendedLanguage`. `fontCoverage` is
 computed live from installed fonts (locale-independent) and stays current: when
 fonts are installed/removed `query` reflects the new coverage with no reload,
@@ -175,7 +175,8 @@ enable for the engine; they are host-only and **not** exposed on the JS global
 ```jsonc
 "capabilities": {
   "reverseLookup": true,
-  "fullwidthInput": true
+  "fullwidthInput": true,
+  "outputToSimplified": true
 }
 ```
 
@@ -252,6 +253,25 @@ an Option-modified key — `Option`+`a` → `ａ`, `Option`+`Shift`+`a` → `Ａ
 - On macOS the trigger is the one-shot `Option`+key; the capability is the
   portable contract, so a host on another platform can supply its own trigger
   (e.g. a full-width mode) without the engine changing.
+
+#### `outputToSimplified`
+
+Controls the Traditional→Simplified commit transform, a stateful host
+feature: the host owns the conversion, the persisted on/off value, and one
+fixed IME-menu entry (title, shortcut, and position are not customizable —
+another platform's host may surface the toggle elsewhere than a menu). The
+flag is tri-state:
+
+- **absent** — available when the engine's resolved language is `zh-Hant`
+  (the language gate).
+- **`true`** — available regardless of language.
+- **`false`** — unavailable even for `zh-Hant`.
+
+A malformed value is treated as undeclared (back to the language gate) and
+logged via OSLog. While available, the live value is readable and writable
+from JS via [`manifest.toggle`](#manifesttoggle), and changes from the IME
+menu fire [`togglechange`](#event-togglechange). There is no method to
+implement.
 
 ### `settings` (optional)
 
@@ -427,28 +447,33 @@ to permanently true — diff-check key references when renaming a field.
 
 ### `menu` (optional)
 
-Items for the engine's section of the IME menu (the input-source menu in
-the menu bar). A flat array — no sections. Declaring it is an
-all-or-nothing takeover:
+The engine's custom items in the IME menu (the input-source menu in the
+menu bar). A flat array of toggles and dividers, rendered in declared
+order; absent and `[]` are equivalent (no custom items).
 
-- **absent** — the host contributes its default items. For engines whose
-  resolved language is `zh-Hant` that's the Traditional→Simplified
-  conversion toggle; other languages get no items.
-- **`[]`** — no items at all, including the host defaults.
-- **non-empty** — exactly the declared items, in order. A `zh-Hant`
-  engine that declares a non-empty `menu` must list `outputToSimplified`
-  itself or the conversion toggle disappears.
+The host composes the full engine section itself: custom items first,
+then a divider, then the capability-derived entries (the Find Input Code
+command and the Traditional→Simplified toggle, each present only while
+its capability is available). The capability entries cannot be
+repositioned or restyled from the manifest — to remove the conversion
+toggle, declare [`capabilities.outputToSimplified`](#outputtosimplified)
+`false`. App-level items (Settings, About) stay pinned at the bottom.
 
 ```jsonc
 "menu": [
-  { "key": "outputToSimplified", "type": "system" },
-  { "type": "divider" },
   {
     "key": "strictMode",
     "type": "toggle",
     "label": { "en": "Strict matching", "zh-Hant": "嚴格比對" },
-    "default": false,
-    "disabledWhen": { "key": "outputToSimplified", "equals": true }
+    "default": false
+  },
+  { "type": "divider" },
+  {
+    "key": "verboseHints",
+    "type": "toggle",
+    "label": { "en": "Verbose hints", "zh-Hant": "詳細提示" },
+    "default": true,
+    "disabledWhen": { "key": "strictMode", "equals": true }
   }
 ]
 ```
@@ -468,26 +493,10 @@ schema as the settings [`toggle`](#toggle) minus `description`
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `key` | string | yes | Value key. Unique within `menu`; must not start with `settings.` (reserved for condition references). May collide with a `settings` key — the two are separate namespaces with separate storage. |
+| `key` | string | yes | Value key. Unique within `menu`; must not start with `settings.` (reserved for condition references). Custom keys are their own namespace, separate from `settings` keys and from capability-toggle keys — an identical spelling (even `outputToSimplified`) is an unrelated value with separate storage, never an alias of the host entry. |
 | `label` | Localizable | yes | Menu item title. |
 | `default` | boolean | yes | Initial value. |
 | `disabledWhen` / `hiddenWhen` | Condition | | See [conditions](#menu-conditions) below. |
-
-##### `system`
-
-Borrows a host-provided menu feature — the host supplies the title, the
-keyboard shortcut, and the storage:
-
-| Property | Type | Required | Notes |
-|---|---|---|---|
-| `key` | string | yes | Feature identifier. Currently the only supported value is `"outputToSimplified"` — the Traditional→Simplified commit transform. |
-| `label` | Localizable | | Overrides the host title. Providing it means taking over the presentation: the host keyboard shortcut is dropped too. Omit to keep the host title and shortcut. |
-| `default` | boolean | | Initial value applied the first time this engine loads, before the user has made a choice. |
-| `disabledWhen` / `hiddenWhen` | Condition | | See [conditions](#menu-conditions) below. |
-
-Declaring `outputToSimplified` also lifts its language gate: the feature
-works regardless of the engine's resolved language (without a declared
-`menu` it only applies to `zh-Hant`).
 
 ##### `divider`
 
@@ -848,8 +857,9 @@ for engine-folder resources, not network access.
 
 #### Global events
 
-Host-emitted events (`storage`, `settingschange`, `languagechange`,
-`fontcoveragechange`) follow DOM conventions on `globalThis`:
+Host-emitted events (`storage`, `settingschange`, `menuchange`,
+`togglechange`, `languagechange`, `fontcoveragechange`) follow DOM
+conventions on `globalThis`:
 
 ```js
 addEventListener(type, callback, options?);
@@ -1025,8 +1035,8 @@ Live values of the manifest-declared [`menu`](#menu-optional) items,
 keyed by item key (dividers carry no value). Read/write:
 
 ```js
-manifest.menu.outputToSimplified;         // current value
-manifest.menu.outputToSimplified = true;  // flip it
+manifest.menu.strictMode;         // current value
+manifest.menu.strictMode = true;  // flip it
 ```
 
 **Writes act immediately** — the very next commit reflects them — and
@@ -1048,6 +1058,44 @@ Fired when the **user** flips a menu item from the IME menu. Read
 ```js
 addEventListener('menuchange', () => {
   applyMode(manifest.menu.strictMode);
+});
+```
+
+##### `manifest.toggle`
+
+Live values of the host's capability-backed toggles. Unlike `menu` /
+`settings` / `candidateWindow` there is no `manifest.json` key named
+`toggle` — the key set is derived from the [`capabilities`
+declarations](#capabilities-optional) and the host's availability rules.
+Every key is optional: a declared capability does not by itself
+guarantee the key exists — availability is host-dependent. Currently
+the only key is `outputToSimplified`, present while [its
+capability](#outputtosimplified) resolves to available. Read/write:
+
+```js
+manifest.toggle.outputToSimplified;         // current value
+manifest.toggle.outputToSimplified = true;  // flip it
+```
+
+**Writes act immediately** and persist across sessions, same as
+`manifest.menu` — the value is engine-global state shared with the IME
+menu's checkmark. Reads of unavailable keys return `undefined`; writes to
+them (or non-boolean writes) are logged via OSLog and silently ignored.
+
+##### Event: `togglechange`
+
+Fired when a capability toggle changes from the host side — the user
+flipping the IME-menu entry. The callback receives
+`{ type: "togglechange", key }` where `key` names the toggle that
+changed; read `manifest.toggle` for the new value. The engine's own
+writes to `manifest.toggle` do not fire it — engines never hear their
+own echo.
+
+```js
+addEventListener('togglechange', (event) => {
+  if (event.key === 'outputToSimplified') {
+    updateIndicator(manifest.toggle.outputToSimplified);
+  }
 });
 ```
 

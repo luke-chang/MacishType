@@ -151,22 +151,20 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         manifest?.intendedLanguage ?? super.intendedLanguage
     }
 
-    /// Maps a system feature identifier to the InputEngine subKey storing
-    /// its value. When adding a new feature: also update
-    /// `JSExternalEngine.clearStoredSettings` to clear on folder swap
-    /// (`outputToSimplified` is covered by `resettableBaseSubKeys`).
+    /// Maps a system settings-field identifier to the InputEngine subKey
+    /// storing its value. When adding a new feature: also update
+    /// `JSExternalEngine.clearStoredSettings` to clear on folder swap.
     private static func systemFeatureSubKey(_ feature: String) -> String? {
         switch feature {
         case "enableAssociatedMode": return InputEngine.enableAssociatedModeSubKey
-        case InputEngine.outputToSimplifiedSubKey: return InputEngine.outputToSimplifiedSubKey
         default: return nil
         }
     }
 
-    /// Whether the host can actually back a system feature for this engine's
-    /// resolved language. A feature whose backing resource is missing is
-    /// treated as if the manifest never declared it: hidden in Settings, no
-    /// default written, not pushed to JS.
+    /// Whether the host can back a feature for this engine. A settings
+    /// system field whose feature is unavailable is treated as undeclared:
+    /// hidden in Settings, no default written, not pushed to JS. For
+    /// capability toggles it gates the `manifest.toggle` key set.
     func systemFeatureAvailable(_ feature: String) -> Bool {
         switch feature {
         case "enableAssociatedMode":
@@ -179,29 +177,23 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         }
     }
 
-    /// A menu-declared conversion item is an explicit opt-in that lifts
-    /// the base language gate. Every consumer (menu item, commit
+    /// `capabilities.outputToSimplified` overrides the base language gate
+    /// in both directions: true force-enables, false force-disables,
+    /// absent falls back to the gate. Every consumer (menu item, commit
     /// transform, JS access) keys on this one property.
     override var supportsSimplifiedConversion: Bool {
-        if declaredMenuItem(InputEngine.outputToSimplifiedSubKey) != nil { return true }
+        if let declared = manifest?.capabilities?.outputToSimplified { return declared }
         return super.supportsSimplifiedConversion
     }
 
-    /// First-time default for each `"type": "system"` field (settings
-    /// sections and menu items alike) with a `"default"` declared. Only
-    /// writes when the standalone key has no stored value.
+    /// First-time default for each `"type": "system"` settings field with
+    /// a `"default"` declared. Only writes when the standalone key has no
+    /// stored value.
     private func applySystemFieldDefaults(_ manifest: Manifest) {
-        var declared: [(key: String, defaultValue: Bool?)] = []
         for case .system(let sf) in (manifest.settings ?? []).flatMap(\.fields) {
-            declared.append((sf.key, sf.defaultValue))
-        }
-        for case .system(let item) in manifest.menu ?? [] {
-            declared.append((item.key, item.defaultValue))
-        }
-        for (key, defaultValue) in declared {
-            guard systemFeatureAvailable(key),
-                  let defaultValue,
-                  let subKey = Self.systemFeatureSubKey(key) else { continue }
+            guard systemFeatureAvailable(sf.key),
+                  let defaultValue = sf.defaultValue,
+                  let subKey = Self.systemFeatureSubKey(sf.key) else { continue }
             let storageKey = InputEngine.composedKey(engineID: engineID, subKey: subKey)
             if UserDefaults.standard.object(forKey: storageKey) == nil {
                 UserDefaults.standard.set(defaultValue, forKey: storageKey)
@@ -308,8 +300,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // Apply defaults before sanitize so the standalone keys are populated
         // for the first read.
         if let m = manifest { applySystemFieldDefaults(m) }
-        // Menu values act immediately: pick up a default applied above (or
-        // a key cleared by a folder swap) now, not at next activate.
+        // Toggle values act immediately: pick up a key cleared by a folder
+        // swap now, not at next activate.
         outputToSimplified = defaultsValue(
             Self.outputToSimplifiedSubKey, fallback: Self.defaultOutputToSimplified)
         seedMenuToggleCache()
@@ -708,38 +700,12 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             menuToggleCache.mapValues { JSONValue.bool($0) }, forKey: storageKey)
     }
 
-    /// nil only for keys decode should have rejected.
-    private func readSystemMenuValue(_ key: String) -> Bool? {
-        switch key {
-        case InputEngine.outputToSimplifiedSubKey: return outputToSimplified
-        default: return nil
-        }
-    }
-
-    private func setSystemMenuValue(_ key: String, _ value: Bool) {
-        switch key {
-        case InputEngine.outputToSimplifiedSubKey:
-            setOutputToSimplified(value)
-        default:
-            Logger.javaScriptEngine.fault(
-                "system menu key '\(key, privacy: .public)' has no setter — decode allowed a key the host can't write"
-            )
-        }
-    }
-
     /// Lookup dict for menu `disabledWhen` / `hiddenWhen`: bare keys are
     /// the menu's own items, `settings.<key>` reaches the settings snapshot.
     private func menuConditionValues() -> [String: JSONValue] {
         var values: [String: JSONValue] = [:]
-        for item in manifest?.menu ?? [] {
-            switch item {
-            case .system(let sys):
-                if let isOn = readSystemMenuValue(sys.key) { values[sys.key] = .bool(isOn) }
-            case .toggle(let field):
-                values[field.key] = .bool(menuToggleCache[field.key] ?? field.default)
-            case .divider:
-                break
-            }
+        for case .toggle(let field) in manifest?.menu ?? [] {
+            values[field.key] = .bool(menuToggleCache[field.key] ?? field.default)
         }
         for (key, value) in settings {
             values["settings.\(key)"] = value
@@ -747,11 +713,10 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         return values
     }
 
-    /// Absent menu → host default section; declared (even empty) → the
-    /// manifest takes over the toggle items, with the host-owned
-    /// reverse-lookup command appended after them.
-    override func menuItems() -> [MenuItemDescriptor] {
-        guard let declared = manifest?.menu else { return super.menuItems() }
+    /// The manifest-declared custom section; the capability items come
+    /// from the base arrangement.
+    override func customMenuItems() -> [MenuItemDescriptor] {
+        guard let declared = manifest?.menu else { return [] }
         let conditionValues = menuConditionValues()
         var items: [MenuItemDescriptor] = []
         for item in declared {
@@ -760,20 +725,6 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             switch item {
             case .divider:
                 items.append(.divider)
-            case .system(let sys):
-                guard systemFeatureAvailable(sys.key),
-                      let feature = InputEngine.systemMenuFeature(sys.key),
-                      let isOn = readSystemMenuValue(sys.key) else { continue }
-                // A label override takes over the presentation, host
-                // shortcut included.
-                let title = sys.label?.resolved()
-                items.append(.toggle(MenuToggleDescriptor(
-                    key: sys.key,
-                    title: title ?? feature.title,
-                    isOn: isOn,
-                    isEnabled: !disabled,
-                    keyEquivalent: title == nil ? feature.keyEquivalent : "",
-                    modifiers: title == nil ? feature.modifiers : [])))
             case .toggle(let field):
                 items.append(.toggle(MenuToggleDescriptor(
                     key: field.key,
@@ -782,29 +733,25 @@ class JavaScriptEngine: InputEngine, ObservableObject {
                     isEnabled: !disabled)))
             }
         }
-        if let lookup = reverseLookupMenuItem() {
-            if !items.isEmpty { items.append(.divider) }
-            items.append(lookup)
-        }
         return items
     }
 
     /// IME-menu click. Only host-originated changes dispatch `menuchange`
-    /// — JS self-writes don't, so engines never hear their own echo.
-    override func toggleMenuItem(key: String) {
-        guard let item = declaredMenuItem(key) else {
-            super.toggleMenuItem(key: key)
-            return
-        }
-        switch item {
-        case .system(let sys):
-            super.toggleMenuItem(key: sys.key)
-        case .toggle(let field):
+    /// / `togglechange` — JS self-writes don't, so engines never hear
+    /// their own echo.
+    override func toggleMenuItem(kind: MenuToggleKind, key: String) {
+        switch kind {
+        case .custom:
+            guard case .toggle(let field)? = declaredMenuItem(key) else {
+                super.toggleMenuItem(kind: kind, key: key)
+                return
+            }
             writeMenuToggle(field.key, !(menuToggleCache[field.key] ?? field.default))
-        case .divider:
-            return
+            dispatchMenuChange()
+        case .capability:
+            super.toggleMenuItem(kind: kind, key: key)
+            if listToggleKeys().contains(key) { dispatchToggleChange(key: key) }
         }
-        dispatchMenuChange()
     }
 
     // MARK: menu values → JS bridge
@@ -822,18 +769,9 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             )
             return
         }
-        let value = jsValue.toBool()
         switch item {
-        case .system(let sys):
-            guard systemFeatureAvailable(sys.key) else {
-                Logger.javaScriptEngine.notice(
-                    "manifest.menu.\(key, privacy: .public) write ignored — feature unavailable"
-                )
-                return
-            }
-            setSystemMenuValue(sys.key, value)
         case .toggle:
-            writeMenuToggle(key, value)
+            writeMenuToggle(key, jsValue.toBool())
         case .divider:
             break  // unreachable: dividers decode with no key
         }
@@ -842,9 +780,6 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     private func readMenuValue(_ key: String) -> Any? {
         guard let item = declaredMenuItem(key) else { return nil }
         switch item {
-        case .system(let sys):
-            guard systemFeatureAvailable(sys.key) else { return nil }
-            return readSystemMenuValue(sys.key)
         case .toggle(let field):
             return menuToggleCache[field.key] ?? field.default
         case .divider:
@@ -853,11 +788,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 
     private func listMenuKeys() -> [String] {
-        (manifest?.menu ?? []).compactMap { item in
-            guard let key = item.key else { return nil }
-            if case .system(let sys) = item, !systemFeatureAvailable(sys.key) { return nil }
-            return key
-        }
+        (manifest?.menu ?? []).compactMap { $0.key }
     }
 
     private func dispatchMenuChange() {
@@ -865,6 +796,63 @@ class JavaScriptEngine: InputEngine, ObservableObject {
               let fn = context.objectForKeyedSubscript("__MacishType_dispatchGlobal"),
               fn.isObject else { return }
         fn.call(withArguments: [["type": "menuchange"]])
+    }
+
+    // MARK: capability toggle values → JS bridge
+
+    /// Keys exposed on `manifest.toggle`: the capability-backed toggles
+    /// the host can serve for this engine.
+    private func listToggleKeys() -> [String] {
+        systemFeatureAvailable(InputEngine.outputToSimplifiedSubKey)
+            ? [InputEngine.outputToSimplifiedSubKey] : []
+    }
+
+    /// nil only for keys `listToggleKeys` should have filtered.
+    private func readToggleState(_ key: String) -> Bool? {
+        switch key {
+        case InputEngine.outputToSimplifiedSubKey: return outputToSimplified
+        default: return nil
+        }
+    }
+
+    private func writeToggleState(_ key: String, _ value: Bool) {
+        switch key {
+        case InputEngine.outputToSimplifiedSubKey:
+            setOutputToSimplified(value)
+        default:
+            Logger.javaScriptEngine.fault(
+                "capability toggle '\(key, privacy: .public)' has no setter — listToggleKeys allowed a key the host can't write"
+            )
+        }
+    }
+
+    /// JS write path; never dispatches `togglechange` (no self-echo).
+    private func applyToggleValue(_ key: String, _ jsValue: JSValue) {
+        guard listToggleKeys().contains(key) else {
+            Logger.javaScriptEngine.notice(
+                "manifest.toggle.\(key, privacy: .public) is not an available toggle — write ignored"
+            )
+            return
+        }
+        guard jsValue.isBoolean else {
+            Logger.javaScriptEngine.notice(
+                "manifest.toggle.\(key, privacy: .public) write ignored — must be boolean; got \(jsValue.toString() ?? "(unknown)", privacy: .public)"
+            )
+            return
+        }
+        writeToggleState(key, jsValue.toBool())
+    }
+
+    private func readToggleValue(_ key: String) -> Any? {
+        guard listToggleKeys().contains(key) else { return nil }
+        return readToggleState(key)
+    }
+
+    private func dispatchToggleChange(key: String) {
+        guard let context = jsContext,
+              let fn = context.objectForKeyedSubscript("__MacishType_dispatchGlobal"),
+              fn.isObject else { return }
+        fn.call(withArguments: [["type": "togglechange", "key": key]])
     }
 
     // MARK: localStorage bridge
@@ -1301,6 +1289,22 @@ class JavaScriptEngine: InputEngine, ObservableObject {
             self?.listMenuKeys() ?? []
         }
         context.setObject(listMenuKeysFn, forKeyedSubscript: "__MacishType_menuKeys" as NSString)
+
+        // capability-toggle Proxy bridges — same ordering constraint.
+        let setToggleValue: @convention(block) (String, JSValue) -> Void = { [weak self] key, jsValue in
+            self?.applyToggleValue(key, jsValue)
+        }
+        context.setObject(setToggleValue, forKeyedSubscript: "__MacishType_setToggleValue" as NSString)
+
+        let getToggleValue: @convention(block) (String) -> Any = { [weak self] key in
+            self?.readToggleValue(key) ?? NSNull()
+        }
+        context.setObject(getToggleValue, forKeyedSubscript: "__MacishType_getToggleValue" as NSString)
+
+        let listToggleKeysFn: @convention(block) () -> [String] = { [weak self] in
+            self?.listToggleKeys() ?? []
+        }
+        context.setObject(listToggleKeysFn, forKeyedSubscript: "__MacishType_toggleKeys" as NSString)
 
         // manifest.name bridge — authored name, or NSNull (→ JS undefined)
         // when `name` is absent. Read lazily by the runtime.js getter.

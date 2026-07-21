@@ -713,9 +713,17 @@ class InputEngine {
         case divider
     }
 
+    /// Which namespace a toggle's click dispatches through. Custom and
+    /// capability toggles never collide, even under the same key.
+    enum MenuToggleKind {
+        case custom
+        case capability
+    }
+
     /// Rendering data for a toggle menu entry; empty `keyEquivalent` =
     /// no shortcut.
     struct MenuToggleDescriptor {
+        var kind: MenuToggleKind = .custom
         let key: String
         let title: String
         let isOn: Bool
@@ -737,26 +745,6 @@ class InputEngine {
         let title: String
         var keyEquivalent: String = ""
         var modifiers: NSEvent.ModifierFlags = []
-    }
-
-    /// A host-provided menu feature, central so every engine type renders
-    /// the same title and shortcut.
-    struct SystemMenuFeature {
-        let title: String
-        let keyEquivalent: String
-        let modifiers: NSEvent.ModifierFlags
-    }
-
-    static func systemMenuFeature(_ key: String) -> SystemMenuFeature? {
-        switch key {
-        case outputToSimplifiedSubKey:
-            return SystemMenuFeature(
-                title: String(localized: "Convert to Simplified Chinese"),
-                keyEquivalent: "g",
-                modifiers: [.command, .control])
-        default:
-            return nil
-        }
     }
 
     /// Engine-specific menu entries, placed ahead of the capability
@@ -781,14 +769,14 @@ class InputEngine {
         if let lookup = reverseLookupMenuItem() {
             items.append(lookup)
         }
-        if supportsSimplifiedConversion,
-           let feature = Self.systemMenuFeature(Self.outputToSimplifiedSubKey) {
+        if supportsSimplifiedConversion {
             items.append(.toggle(MenuToggleDescriptor(
+                kind: .capability,
                 key: Self.outputToSimplifiedSubKey,
-                title: feature.title,
+                title: String(localized: "Convert to Simplified Chinese"),
                 isOn: outputToSimplified,
-                keyEquivalent: feature.keyEquivalent,
-                modifiers: feature.modifiers)))
+                keyEquivalent: "g",
+                modifiers: [.command, .control])))
         }
         return items
     }
@@ -805,15 +793,23 @@ class InputEngine {
         return custom + [.divider] + capabilities
     }
 
-    /// Flips the menu entry for `key` (IME-menu click). Base handles
-    /// host-provided keys; subclasses extend for their own.
-    func toggleMenuItem(key: String) {
-        switch key {
-        case Self.outputToSimplifiedSubKey:
-            toggleOutputToSimplified()
-        default:
+    /// Flips the menu entry for `key` (IME-menu click). Base handles the
+    /// capability toggles; subclasses with custom items override the
+    /// `.custom` route.
+    func toggleMenuItem(kind: MenuToggleKind, key: String) {
+        switch kind {
+        case .capability:
+            switch key {
+            case Self.outputToSimplifiedSubKey:
+                toggleOutputToSimplified()
+            default:
+                Logger.inputEngine.error(
+                    "no capability toggle for key '\(key, privacy: .public)'"
+                )
+            }
+        case .custom:
             Logger.inputEngine.error(
-                "no menu entry for key '\(key, privacy: .public)'"
+                "no custom menu entry for key '\(key, privacy: .public)'"
             )
         }
     }

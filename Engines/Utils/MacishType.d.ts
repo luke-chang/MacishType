@@ -484,20 +484,44 @@ export interface MenuChangeEvent {
 }
 
 /**
+ * Fired on `globalThis` when a capability toggle changes from the host
+ * side (the user flipping its IME-menu entry). Read `manifest.toggle`
+ * for the new value. The engine's own writes do NOT fire it — engines
+ * never hear their own echo.
+ */
+export interface ToggleChangeEvent {
+  readonly type: "togglechange";
+  /** The toggle that changed, e.g. `"outputToSimplified"`. */
+  readonly key: string;
+}
+
+/**
  * Live values of the manifest-declared `menu` items, keyed by item
  * `key` (dividers carry no value). Engine-global: persisted host-side
  * and shared with the IME menu's checkmarks.
  *
  * Unlike `manifest.candidateWindow`, writes act immediately — the very
- * next commit reflects them. Undeclared / unavailable keys read
- * `undefined`; writes to them are logged via OSLog and ignored.
- *
- * `outputToSimplified` (the Traditional→Simplified commit transform)
- * is language-gated only while the manifest declares no `menu`;
- * declaring the item lifts the gate.
+ * next commit reflects them. Undeclared keys read `undefined`; writes
+ * to them are logged via OSLog and ignored.
  */
 export interface Menu {
   [key: string]: boolean | undefined;
+}
+
+/**
+ * Live values of the host's capability-backed toggles. The key set is
+ * derived from the manifest `capabilities` declarations and the host's
+ * availability rules, not from a manifest.json key. Every property is
+ * optional — a declared capability does not by itself guarantee the
+ * toggle exists on a given host.
+ *
+ * Writes act immediately and persist host-side, shared with the IME
+ * menu's checkmark. Unavailable keys read `undefined`; writes to them
+ * are logged via OSLog and ignored.
+ */
+export interface Toggle {
+  /** Traditional→Simplified commit transform. */
+  outputToSimplified?: boolean;
 }
 
 /**
@@ -598,6 +622,11 @@ export interface Manifest {
    * Live menu-item values, read/write. See `Menu` for details.
    */
   readonly menu: Menu;
+
+  /**
+   * Live capability-toggle values, read/write. See `Toggle` for details.
+   */
+  readonly toggle: Toggle;
 }
 
 /**
@@ -684,6 +713,11 @@ declare global {
     options?: { once?: boolean }
   ): void;
   function addEventListener(
+    type: "togglechange",
+    callback: EventListenerOrObject<ToggleChangeEvent>,
+    options?: { once?: boolean }
+  ): void;
+  function addEventListener(
     type: "languagechange",
     callback: EventListenerOrObject<LanguageChangeEvent>,
     options?: { once?: boolean }
@@ -704,6 +738,10 @@ declare global {
   function removeEventListener(
     type: "menuchange",
     callback: EventListenerOrObject<MenuChangeEvent>
+  ): void;
+  function removeEventListener(
+    type: "togglechange",
+    callback: EventListenerOrObject<ToggleChangeEvent>
   ): void;
   function removeEventListener(
     type: "languagechange",

@@ -22,8 +22,9 @@ extension JavaScriptEngine {
         let modules: Modules?
         let capabilities: Capabilities?
         let settings: [SettingsSection]?
-        // nil = undeclared (host default items apply); non-nil takes full
-        // control of the IME-menu items, [] included ("no items").
+        // The engine's custom menu section (toggles / dividers) only.
+        // Capability-derived entries are composed by the host and are not
+        // controlled here; nil and [] are equivalent (no custom items).
         let menu: [MenuItem]?
 
         private enum CodingKeys: String, CodingKey {
@@ -336,15 +337,19 @@ extension JavaScriptEngine {
         struct Capabilities: Decodable {
             var reverseLookup: Bool?
             var fullwidthInput: Bool?
+            // Tri-state: true force-enables, false force-disables, and
+            // nil — absent or malformed — falls back to the language gate.
+            var outputToSimplified: Bool?
 
             private enum CodingKeys: String, CodingKey {
-                case reverseLookup, fullwidthInput
+                case reverseLookup, fullwidthInput, outputToSimplified
             }
 
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
                 reverseLookup = Self.tolerant(c, .reverseLookup)
                 fullwidthInput = Self.tolerant(c, .fullwidthInput)
+                outputToSimplified = Self.tolerant(c, .outputToSimplified)
             }
 
             private static func tolerant(
@@ -661,14 +666,12 @@ extension JavaScriptEngine {
 
         /// One manifest-declared IME-menu entry.
         enum MenuItem: Decodable {
-            case system(SystemMenuItem)
             case toggle(ToggleField)
             case divider(DividerMenuItem)
 
             /// nil for dividers — they carry no value.
             var key: String? {
                 switch self {
-                case .system(let item):  return item.key
                 case .toggle(let field): return field.key
                 case .divider:           return nil
                 }
@@ -676,7 +679,6 @@ extension JavaScriptEngine {
 
             var hiddenWhen: Condition? {
                 switch self {
-                case .system(let item):  return item.hiddenWhen
                 case .toggle(let field): return field.hiddenWhen
                 case .divider(let item): return item.hiddenWhen
                 }
@@ -684,7 +686,6 @@ extension JavaScriptEngine {
 
             var disabledWhen: Condition? {
                 switch self {
-                case .system(let item):  return item.disabledWhen
                 case .toggle(let field): return field.disabledWhen
                 case .divider:           return nil
                 }
@@ -696,7 +697,6 @@ extension JavaScriptEngine {
                 let c = try decoder.container(keyedBy: TypeKey.self)
                 let type = try c.decode(String.self, forKey: .type)
                 switch type {
-                case "system":  self = .system(try SystemMenuItem(from: decoder))
                 case "toggle":  self = .toggle(try ToggleField(from: decoder))
                 case "divider": self = .divider(try DividerMenuItem(from: decoder))
                 default:
@@ -705,42 +705,6 @@ extension JavaScriptEngine {
                         debugDescription: "unknown menu item type: \(type)"
                     )
                 }
-            }
-        }
-
-        /// Borrows a host-provided menu feature; unknown keys throw at
-        /// decode. Key set deliberately separate from `SystemField`'s so
-        /// the two surfaces can't leak into each other. A `label` override
-        /// takes over the presentation, dropping the host shortcut too.
-        struct SystemMenuItem: Decodable {
-            static let supportedKeys: Set<String> = [
-                InputEngine.outputToSimplifiedSubKey,
-            ]
-
-            let key: String
-            let label: Localizable?
-            let defaultValue: Bool?
-            let disabledWhen: Condition?
-            let hiddenWhen: Condition?
-
-            private enum CodingKeys: String, CodingKey {
-                case key, label, defaultValue = "default", disabledWhen, hiddenWhen
-            }
-
-            init(from decoder: Decoder) throws {
-                let c = try decoder.container(keyedBy: CodingKeys.self)
-                let parsedKey = try c.decode(String.self, forKey: .key)
-                guard Self.supportedKeys.contains(parsedKey) else {
-                    throw DecodingError.dataCorruptedError(
-                        forKey: CodingKeys.key, in: c,
-                        debugDescription: "unknown system menu item key: \(parsedKey)"
-                    )
-                }
-                key = parsedKey
-                label = try c.decodeIfPresent(Localizable.self, forKey: .label)
-                defaultValue = try c.decodeIfPresent(Bool.self, forKey: .defaultValue)
-                disabledWhen = try c.decodeIfPresent(Condition.self, forKey: .disabledWhen)
-                hiddenWhen = try c.decodeIfPresent(Condition.self, forKey: .hiddenWhen)
             }
         }
 

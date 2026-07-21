@@ -259,6 +259,43 @@ function __MacishType_dispatchGlobal(event) {
     configurable: false,
   });
 
+  // manifest.toggle — Proxy-backed capability-toggle values, read/write,
+  // same forwarding model as menu above. Keys come from the host's
+  // capability availability, not a manifest.json declaration. IME-menu
+  // changes dispatch "togglechange" carrying the changed key; writes
+  // made here never echo one.
+  const toggleProxy = new Proxy({}, {
+    get(_, prop) {
+      if (typeof prop !== "string") return undefined;
+      const value = __MacishType_getToggleValue(prop);
+      return value === null ? undefined : value;
+    },
+    set(_, prop, value) {
+      if (typeof prop === "string") {
+        __MacishType_setToggleValue(prop, value);
+      }
+      return true;
+    },
+    has(_, prop) {
+      if (typeof prop !== "string") return false;
+      return __MacishType_getToggleValue(prop) !== null;
+    },
+    ownKeys() {
+      return __MacishType_toggleKeys();
+    },
+    getOwnPropertyDescriptor(_, prop) {
+      if (typeof prop !== "string") return undefined;
+      const value = __MacishType_getToggleValue(prop);
+      if (value === null) return undefined;
+      return { value, writable: true, enumerable: true, configurable: true };
+    },
+  });
+  Object.defineProperty(globalThis.manifest, "toggle", {
+    get() { return toggleProxy; },
+    enumerable: true,
+    configurable: false,
+  });
+
   function deepFreeze(v) {
     if (v === null || typeof v !== "object" || Object.isFrozen(v)) return v;
     for (const k of Object.keys(v)) deepFreeze(v[k]);

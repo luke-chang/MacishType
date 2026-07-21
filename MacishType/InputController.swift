@@ -12,11 +12,12 @@ class InputController: IMKInputController {
     private var engineContext: InputEngineContext!
     private var appearanceStale = true
 
-    // Toggle keys for the menu items built by the latest `menu()`, indexed
-    // by the item's tag. The tag (a plain Int) survives whatever marshaling
-    // IMKit applies to menu items, which `representedObject` does not
-    // guarantee, so the key rides in this side table instead.
-    private var menuToggleKeys: [String] = []
+    // Dispatch routes for the toggle items built by the latest `menu()`,
+    // indexed by the item's tag. The tag (a plain Int) survives whatever
+    // marshaling IMKit applies to menu items, which `representedObject`
+    // does not guarantee, so the (kind, key) pair rides in this side
+    // table instead.
+    private var menuToggles: [(kind: InputEngine.MenuToggleKind, key: String)] = []
 
     // Built fresh each call so per-engine items and their checkmark state
     // reflect the active engine. The engine owns the section's arrangement
@@ -27,7 +28,7 @@ class InputController: IMKInputController {
         // Auto-enablement would override engine items' explicit isEnabled.
         menu.autoenablesItems = false
 
-        menuToggleKeys.removeAll()
+        menuToggles.removeAll()
         for descriptor in engine?.menuItems() ?? [] {
             switch descriptor {
             case .divider:
@@ -42,8 +43,8 @@ class InputController: IMKInputController {
                 item.target = self
                 item.state = toggle.isOn ? .on : .off
                 item.isEnabled = toggle.isEnabled
-                item.tag = menuToggleKeys.count
-                menuToggleKeys.append(toggle.key)
+                item.tag = menuToggles.count
+                menuToggles.append((toggle.kind, toggle.key))
                 menu.addItem(item)
             case .command(let command):
                 let item = NSMenuItem(
@@ -93,8 +94,9 @@ class InputController: IMKInputController {
 
     @objc private func toggleMenuItem(_ sender: Any?) {
         guard let item = Self.commandMenuItem(from: sender),
-              menuToggleKeys.indices.contains(item.tag) else { return }
-        engine?.toggleMenuItem(key: menuToggleKeys[item.tag])
+              menuToggles.indices.contains(item.tag) else { return }
+        let toggle = menuToggles[item.tag]
+        engine?.toggleMenuItem(kind: toggle.kind, key: toggle.key)
     }
 
     /// IMKit dispatches menu-item actions with the command infoDictionary as
