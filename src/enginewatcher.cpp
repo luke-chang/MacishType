@@ -14,7 +14,7 @@ namespace {
 
 constexpr uint64_t kDebounceMicroseconds = 300 * 1000;
 constexpr uint32_t kWatchMask = IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM |
-                                IN_CREATE | IN_DELETE;
+                                IN_CREATE | IN_DELETE | IN_DONT_FOLLOW;
 
 bool isNoiseName(const std::string &name) {
     if (name.empty() || name[0] == '.') {
@@ -110,6 +110,12 @@ void EngineWatcher::watchDirectoryTree(
         return;
     }
     for (const auto &entry : iterator) {
+        // Never follow a symlink: a bundled directory symlink could escape the
+        // engine folder (exhausting the inotify budget) or point back inside
+        // it and recurse forever. Only real subdirectories are watched.
+        if (entry.is_symlink(errorCode)) {
+            continue;
+        }
         if (entry.is_directory(errorCode) &&
             !isNoiseName(entry.path().filename().string())) {
             watchDirectoryTree(engineId, entry.path());
@@ -160,10 +166,18 @@ void EngineWatcher::scheduleCallback(const std::string &engineId,
         CLOCK_MONOTONIC, fcitx::now(CLOCK_MONOTONIC) + kDebounceMicroseconds,
         0,
         [this, engineId, slot, storage](fcitx::EventSourceTime *, uint64_t) {
-            pending_.erase(slot);
-            auto changed = std::move(pendingPaths_[slot]);
-            pendingPaths_.erase(slot);
-            (storage ? storageCallback_ : callback_)(engineId, changed);
+            // Erasing pending_[slot] destroys the unique_ptr that owns this
+            // very closure, taking its captures with it. Move everything
+            // needed onto the stack first; after the erase, touch only locals
+            // and the still-live EngineWatcher (reached through `self`).
+            EngineWatcher *self = this;
+            const bool isStorage = storage;
+            std::string localEngineId = engineId;
+            auto changed = std::move(self->pendingPaths_[slot]);
+            self->pendingPaths_.erase(slot);
+            self->pending_.erase(slot);
+            (isStorage ? self->storageCallback_
+                       : self->callback_)(localEngineId, changed);
             return true;
         });
 }
