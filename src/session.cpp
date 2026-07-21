@@ -537,10 +537,17 @@ void EngineSession::applyActions(std::vector<Action> actions) {
                         size_t index = highlightSuspended_
                                            ? static_cast<size_t>(pageStart_)
                                            : static_cast<size_t>(highlight_);
-                        confirmCandidate(candidates_[index],
-                                         highlightSuspended_
-                                             ? -1
-                                             : static_cast<int>(index));
+                        // Copy: confirmCandidate re-enters the engine, which
+                        // may replace candidates_ while we still need this
+                        // entry (mirrors confirmCandidateAt).
+                        CandidateData copy = copyCandidate(
+                            host_->context(), candidates_[index]);
+                        confirmCandidate(copy, highlightSuspended_
+                                                   ? -1
+                                                   : static_cast<int>(index));
+                        if (copy.hasPayload) {
+                            JS_FreeValue(host_->context(), copy.payload);
+                        }
                     }
                 } else if constexpr (std::is_same_v<T, CommitAtIndexAction>) {
                     if (candidatesVisible_ && value.index >= 0 &&
