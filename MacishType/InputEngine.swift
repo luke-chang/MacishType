@@ -709,6 +709,7 @@ class InputEngine {
     /// One engine-contributed entry in the IME menu.
     enum MenuItemDescriptor {
         case toggle(MenuToggleDescriptor)
+        case command(MenuCommandDescriptor)
         case divider
     }
 
@@ -719,6 +720,21 @@ class InputEngine {
         let title: String
         let isOn: Bool
         var isEnabled: Bool = true
+        var keyEquivalent: String = ""
+        var modifiers: NSEvent.ModifierFlags = []
+    }
+
+    /// Host action a `.command` menu entry triggers; an enum so the
+    /// controller's selector dispatch stays exhaustive at compile time.
+    enum MenuCommandID {
+        case reverseLookup
+    }
+
+    /// Rendering data for a host-action menu entry; the controller maps
+    /// `id` to its selector.
+    struct MenuCommandDescriptor {
+        let id: MenuCommandID
+        let title: String
         var keyEquivalent: String = ""
         var modifiers: NSEvent.ModifierFlags = []
     }
@@ -743,17 +759,50 @@ class InputEngine {
         }
     }
 
-    /// IME-menu entries, queried on every menu open. Base contributes the
-    /// host default items; subclasses override to take full control.
+    /// Engine-specific menu entries, placed ahead of the capability
+    /// section by the default `menuItems` arrangement. Base has none.
+    func customMenuItems() -> [MenuItemDescriptor] { [] }
+
+    /// The reverse-lookup window entry. Omitting it also disables its
+    /// keyboard shortcut for this engine.
+    func reverseLookupMenuItem() -> MenuItemDescriptor? {
+        guard supportsReverseLookup else { return nil }
+        return .command(MenuCommandDescriptor(
+            id: .reverseLookup,
+            title: String(localized: "Find Input Code"),
+            keyEquivalent: "l",
+            modifiers: [.command, .control]))
+    }
+
+    /// Entries derived from the engine's capability declarations, so
+    /// every engine type renders them identically.
+    func capabilityMenuItems() -> [MenuItemDescriptor] {
+        var items: [MenuItemDescriptor] = []
+        if let lookup = reverseLookupMenuItem() {
+            items.append(lookup)
+        }
+        if supportsSimplifiedConversion,
+           let feature = Self.systemMenuFeature(Self.outputToSimplifiedSubKey) {
+            items.append(.toggle(MenuToggleDescriptor(
+                key: Self.outputToSimplifiedSubKey,
+                title: feature.title,
+                isOn: outputToSimplified,
+                keyEquivalent: feature.keyEquivalent,
+                modifiers: feature.modifiers)))
+        }
+        return items
+    }
+
+    /// The engine's full menu section, queried on every menu open:
+    /// custom items first, then the capability items. Subclasses
+    /// override to take over the arrangement; the app-level items
+    /// stay with the controller.
     func menuItems() -> [MenuItemDescriptor] {
-        guard supportsSimplifiedConversion,
-              let feature = Self.systemMenuFeature(Self.outputToSimplifiedSubKey) else { return [] }
-        return [.toggle(MenuToggleDescriptor(
-            key: Self.outputToSimplifiedSubKey,
-            title: feature.title,
-            isOn: outputToSimplified,
-            keyEquivalent: feature.keyEquivalent,
-            modifiers: feature.modifiers))]
+        let custom = customMenuItems()
+        let capabilities = capabilityMenuItems()
+        if custom.isEmpty { return capabilities }
+        if capabilities.isEmpty { return custom }
+        return custom + [.divider] + capabilities
     }
 
     /// Flips the menu entry for `key` (IME-menu click). Base handles

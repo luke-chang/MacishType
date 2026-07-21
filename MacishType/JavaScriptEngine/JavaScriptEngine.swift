@@ -747,8 +747,9 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         return values
     }
 
-    /// Absent menu → host default items; declared (even empty) → the
-    /// manifest takes full control.
+    /// Absent menu → host default section; declared (even empty) → the
+    /// manifest takes over the toggle items, with the host-owned
+    /// reverse-lookup command appended after them.
     override func menuItems() -> [MenuItemDescriptor] {
         guard let declared = manifest?.menu else { return super.menuItems() }
         let conditionValues = menuConditionValues()
@@ -780,6 +781,10 @@ class JavaScriptEngine: InputEngine, ObservableObject {
                     isOn: menuToggleCache[field.key] ?? field.default,
                     isEnabled: !disabled)))
             }
+        }
+        if let lookup = reverseLookupMenuItem() {
+            if !items.isEmpty { items.append(.divider) }
+            items.append(lookup)
         }
         return items
     }

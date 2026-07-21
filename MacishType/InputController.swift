@@ -19,30 +19,19 @@ class InputController: IMKInputController {
     private var menuToggleKeys: [String] = []
 
     // Built fresh each call so per-engine items and their checkmark state
-    // reflect the active engine.
+    // reflect the active engine. The engine owns the section's arrangement
+    // (via menuItems()); this method only renders descriptors and pins the
+    // app-level items at the bottom.
     override func menu() -> NSMenu! {
         let menu = NSMenu()
         // Auto-enablement would override engine items' explicit isEnabled.
         menu.autoenablesItems = false
 
-        // Omitting the item also disables its keyboard shortcut for this engine.
-        if engine?.supportsReverseLookup == true {
-            let lookupItem = NSMenuItem(
-                title: String(localized: "Find Input Code"),
-                action: #selector(showCodeLookup(_:)),
-                keyEquivalent: "l"
-            )
-            lookupItem.keyEquivalentModifierMask = [.command, .control]
-            lookupItem.target = self
-            menu.addItem(lookupItem)
-        }
-
-        let engineItems = engine?.menuItems() ?? []
         menuToggleKeys.removeAll()
-        for descriptor in engineItems {
+        for descriptor in engine?.menuItems() ?? [] {
             switch descriptor {
             case .divider:
-                menu.addItem(.separator())
+                addSeparatorIfNeeded(menu)
             case .toggle(let toggle):
                 let item = NSMenuItem(
                     title: toggle.title,
@@ -56,11 +45,18 @@ class InputController: IMKInputController {
                 item.tag = menuToggleKeys.count
                 menuToggleKeys.append(toggle.key)
                 menu.addItem(item)
+            case .command(let command):
+                let item = NSMenuItem(
+                    title: command.title,
+                    action: Self.selector(for: command.id),
+                    keyEquivalent: command.keyEquivalent
+                )
+                item.keyEquivalentModifierMask = command.modifiers
+                item.target = self
+                menu.addItem(item)
             }
         }
-        if !menu.items.isEmpty {
-            menu.addItem(.separator())
-        }
+        addSeparatorIfNeeded(menu)
 
         let settingsItem = NSMenuItem(
             title: String(localized: "Settings…"),
@@ -80,6 +76,19 @@ class InputController: IMKInputController {
         menu.addItem(aboutItem)
 
         return menu
+    }
+
+    /// Skips the separator when the menu is empty or already ends with
+    /// one, so engine dividers and section boundaries never stack.
+    private func addSeparatorIfNeeded(_ menu: NSMenu) {
+        guard let last = menu.items.last, !last.isSeparatorItem else { return }
+        menu.addItem(.separator())
+    }
+
+    private static func selector(for id: InputEngine.MenuCommandID) -> Selector {
+        switch id {
+        case .reverseLookup: return #selector(showCodeLookup(_:))
+        }
     }
 
     @objc private func toggleMenuItem(_ sender: Any?) {
