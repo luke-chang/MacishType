@@ -25,6 +25,13 @@ constexpr std::string_view kEngineUrlPrefix = "engine:///";
 constexpr auto kWatchdogTimeout = std::chrono::seconds(3);
 constexpr size_t kStorageMaxEncodedKeyBytes = 200;
 constexpr size_t kStorageMaxValueBytes = 10 * 1024 * 1024;
+// Per-engine JS heap ceiling. Without it a malicious or buggy engine that
+// allocates without bound grows until the kernel OOM-killer fires, taking
+// fcitx5 (and possibly the desktop) down with it; the cap turns that into a JS
+// out-of-memory exception confined to the offending engine. Sized far above
+// any realistic input-method engine's footprint; raise it if a legitimate
+// engine ever logs an out-of-memory failure.
+constexpr size_t kRuntimeMemoryLimit = 512 * 1024 * 1024;
 
 // navigator.userAgent platform segment helpers. Each host info axis is
 // resolved independently so a missing source drops only its own token.
@@ -266,6 +273,7 @@ bool JsEngineHost::initialize() {
     loadedFilePaths_.insert((canonicalRoot_ / "manifest.json").string());
 
     runtime_ = JS_NewRuntime();
+    JS_SetMemoryLimit(runtime_, kRuntimeMemoryLimit);
     ctx_ = JS_NewContext(runtime_);
     JS_SetContextOpaque(ctx_, this);
     JS_SetInterruptHandler(runtime_, &JsEngineHost::interruptHandler, this);
