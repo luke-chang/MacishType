@@ -961,6 +961,32 @@ JsEngineHost::storagePathForKey(const std::string &key) const {
     return storageRoot_ / (kStorageFilenamePrefix + encodeStorageKey(key));
 }
 
+bool JsEngineHost::storageRootUsable() const {
+    std::error_code errorCode;
+    if (std::filesystem::is_symlink(storageRoot_, errorCode)) {
+        MACISHTYPE_ERROR() << "[" << engineId_
+                           << "] storage root is a symlink; refusing access: "
+                           << storageRoot_;
+        return false;
+    }
+    return true;
+}
+
+std::optional<std::filesystem::path>
+JsEngineHost::safeStoragePath(const std::string &key) const {
+    if (!storageRootUsable()) {
+        return std::nullopt;
+    }
+    auto path = storagePathForKey(key);
+    std::error_code errorCode;
+    if (std::filesystem::is_symlink(path, errorCode)) {
+        MACISHTYPE_WARN() << "[" << engineId_
+                          << "] refusing symlinked storage file: " << path;
+        return std::nullopt;
+    }
+    return path;
+}
+
 JsEngineHost::StorageFileState
 JsEngineHost::statStorageFile(const std::filesystem::path &path) {
     struct stat buffer;
@@ -987,6 +1013,9 @@ void JsEngineHost::setStorageListeningObserver(
 
 void JsEngineHost::handleStorageChanges(
     const std::set<std::string> &changedPaths) {
+    if (!storageRootUsable()) {
+        return;
+    }
     std::set<std::string> keys;
     for (const auto &path : changedPaths) {
         if (auto found = recentSelfWrites_.find(path);
@@ -1209,8 +1238,11 @@ JSValue JsEngineHost::nativeStorageGetItem(JSContext *ctx,
     if (argc < 1) {
         return JS_NULL;
     }
-    auto content =
-        readFile(host->storagePathForKey(qjs::toString(ctx, argv[0])));
+    auto path = host->safeStoragePath(qjs::toString(ctx, argv[0]));
+    if (!path) {
+        return JS_NULL;
+    }
+    auto content = readFile(*path);
     if (!content) {
         return JS_NULL;
     }
@@ -1240,16 +1272,19 @@ JSValue JsEngineHost::nativeStorageSetItem(JSContext *ctx,
                                   "localStorage: value exceeds %zu bytes",
                                   kStorageMaxValueBytes);
     }
-    auto path = host->storagePathForKey(key);
+    auto path = host->safeStoragePath(key);
+    if (!path) {
+        return JS_UNDEFINED;
+    }
     std::error_code errorCode;
-    std::filesystem::create_directories(path.parent_path(), errorCode);
+    std::filesystem::create_directories(path->parent_path(), errorCode);
     {
-        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+        std::ofstream stream(*path, std::ios::binary | std::ios::trunc);
         if (!stream || !(stream << value)) {
-            MACISHTYPE_ERROR() << "localStorage: cannot write " << path;
+            MACISHTYPE_ERROR() << "localStorage: cannot write " << *path;
         }
     }
-    host->recordSelfWrite(path);
+    host->recordSelfWrite(*path);
     return JS_UNDEFINED;
 }
 
@@ -1261,10 +1296,13 @@ JSValue JsEngineHost::nativeStorageRemoveItem(JSContext *ctx,
     if (argc < 1) {
         return JS_UNDEFINED;
     }
-    auto path = host->storagePathForKey(qjs::toString(ctx, argv[0]));
+    auto path = host->safeStoragePath(qjs::toString(ctx, argv[0]));
+    if (!path) {
+        return JS_UNDEFINED;
+    }
     std::error_code errorCode;
-    std::filesystem::remove(path, errorCode);
-    host->recordSelfWrite(path);
+    std::filesystem::remove(*path, errorCode);
+    host->recordSelfWrite(*path);
     return JS_UNDEFINED;
 }
 
@@ -1274,6 +1312,9 @@ JSValue JsEngineHost::nativeStorageClear(JSContext *ctx, JSValueConst thisVal,
     FCITX_UNUSED(argc);
     FCITX_UNUSED(argv);
     auto *host = hostOf(ctx);
+    if (!host->storageRootUsable()) {
+        return JS_UNDEFINED;
+    }
     // File-by-file rather than remove_all: deleting the directory itself
     // would kill the inotify watch serving storage events. Only files
     // carrying the storage prefix are ours to clear.
@@ -1300,6 +1341,9 @@ JSValue JsEngineHost::nativeStorageKeys(JSContext *ctx, JSValueConst thisVal,
     FCITX_UNUSED(argv);
     auto *host = hostOf(ctx);
     JSValue array = JS_NewArray(ctx);
+    if (!host->storageRootUsable()) {
+        return array;
+    }
     uint32_t index = 0;
     std::error_code errorCode;
     std::filesystem::directory_iterator iterator(host->storageRoot_,

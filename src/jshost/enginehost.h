@@ -202,6 +202,14 @@ private:
 
     std::filesystem::path storagePathForKey(const std::string &key) const;
 
+    // Storage containment: localStorage files are regular files the host
+    // writes directly inside storageRoot_. A symlink there (the root itself or
+    // a key file) can only have been planted in the engine bundle, so refuse
+    // to traverse one — extending the engine:/// path containment to storage.
+    bool storageRootUsable() const;
+    std::optional<std::filesystem::path>
+    safeStoragePath(const std::string &key) const;
+
     // Native callbacks (dispatch through JS_GetContextOpaque) ------------
 
     static JSValue nativeLog(JSContext *ctx, JSValueConst thisVal, int argc,
