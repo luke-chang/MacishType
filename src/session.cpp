@@ -17,6 +17,12 @@ namespace macishtype {
 
 namespace {
 
+// An engine can hand us a sparse JS array whose `length` is up to UINT32_MAX
+// while holding no elements; the loops that materialize such arrays run in a
+// native callback the JS watchdog cannot interrupt, so cap the count. No real
+// candidate or associated-word list approaches this bound.
+constexpr uint32_t kMaxListItems = 100000;
+
 // Character indices in the JS contract count grapheme clusters; code points
 // approximate that (correct for the CJK text engines emit; ZWJ sequences
 // and combining marks would need a real segmenter).
@@ -423,6 +429,12 @@ void EngineSession::queueAction(const std::string &name, int argc,
                               JS_GetPropertyStr(ctx, argv[0], "length"));
             uint32_t count = 0;
             JS_ToUint32(ctx, &count, length.get());
+            if (count > kMaxListItems) {
+                MACISHTYPE_WARN() << host_->engineId()
+                                  << ": candidate list truncated from "
+                                  << count << " to " << kMaxListItems;
+                count = kMaxListItems;
+            }
             for (uint32_t i = 0; i < count; i++) {
                 qjs::Value item(ctx, JS_GetPropertyUint32(ctx, argv[0], i));
                 action.items.push_back(candidateFromValue(item.get()));
@@ -500,6 +512,12 @@ void EngineSession::queueAction(const std::string &name, int argc,
                               JS_GetPropertyStr(ctx, argv[1], "length"));
             uint32_t count = 0;
             JS_ToUint32(ctx, &count, length.get());
+            if (count > kMaxListItems) {
+                MACISHTYPE_WARN() << host_->engineId()
+                                  << ": associated list truncated from "
+                                  << count << " to " << kMaxListItems;
+                count = kMaxListItems;
+            }
             for (uint32_t i = 0; i < count; i++) {
                 qjs::Value item(ctx, JS_GetPropertyUint32(ctx, argv[1], i));
                 candidates.push_back(qjs::toString(ctx, item.get()));
