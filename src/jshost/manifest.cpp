@@ -15,6 +15,21 @@ namespace macishtype {
 
 namespace {
 
+// Owns a throwaway QuickJS runtime+context for manifest parsing and frees both
+// on any exit, including a C++ exception unwinding out of the parse (building
+// the parsed data can drive std::bad_alloc on a hostile/oversized manifest).
+struct ScopedRuntime {
+    JSRuntime *runtime = JS_NewRuntime();
+    JSContext *context = JS_NewContext(runtime);
+    ScopedRuntime() = default;
+    ScopedRuntime(const ScopedRuntime &) = delete;
+    ScopedRuntime &operator=(const ScopedRuntime &) = delete;
+    ~ScopedRuntime() {
+        JS_FreeContext(context);
+        JS_FreeRuntime(runtime);
+    }
+};
+
 std::optional<std::string> readFile(const std::filesystem::path &path) {
     std::ifstream stream(path, std::ios::binary);
     if (!stream) {
@@ -493,8 +508,8 @@ parseManifest(const std::filesystem::path &manifestPath,
         return std::nullopt;
     }
 
-    JSRuntime *runtime = JS_NewRuntime();
-    JSContext *ctx = JS_NewContext(runtime);
+    ScopedRuntime scoped;
+    JSContext *ctx = scoped.context;
     std::optional<ManifestData> result;
 
     {
@@ -628,8 +643,6 @@ parseManifest(const std::filesystem::path &manifestPath,
         }
     }
 
-    JS_FreeContext(ctx);
-    JS_FreeRuntime(runtime);
     return result;
 }
 
