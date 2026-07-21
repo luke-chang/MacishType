@@ -73,6 +73,15 @@ std::string labelForEngine(const EngineInfo &engine) {
     return fcitx::utf8::validate(displayName) ? displayName : engine.id;
 }
 
+// The display name reaches fcitx's D-Bus surface (the input-method entry and
+// the reload notification), which requires valid UTF-8; a manifest may carry a
+// lone surrogate, so fall back to the id when it is not valid UTF-8 (matching
+// labelForEngine).
+std::string safeDisplayName(const EngineInfo &engine) {
+    std::string name = engine.displayName();
+    return fcitx::utf8::validate(name) ? name : engine.id;
+}
+
 } // namespace
 
 MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
@@ -110,7 +119,7 @@ std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {
     std::vector<fcitx::InputMethodEntry> entries;
     for (const auto &engine : engines_) {
         fcitx::InputMethodEntry entry(uniqueNameForEngine(engine),
-                                      engine.displayName(),
+                                      safeDisplayName(engine),
                                       engine.manifest.languageCode,
                                       "macishtype");
         entry.setLabel(labelForEngine(engine));
@@ -511,7 +520,7 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
     rebuildEngineSettings(*engine);
 
     auto *host = hostForEngine(*engine);
-    notifyReload(engineId, engine->displayName(), host != nullptr);
+    notifyReload(engineId, safeDisplayName(*engine), host != nullptr);
     if (host == nullptr) {
         return;
     }
