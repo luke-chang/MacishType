@@ -240,11 +240,11 @@ test("a modified control key is inert while composing (bare-key gate)", () => {
   assert.equal(shiftBack.last("resetContext"), undefined);
 });
 
-test("Option + printable commits the full-width form when idle", () => {
+test("Option + printable is delegated to the host fullwidth capability", () => {
   const engine = freshEngine();
   const event = makeEvent({ key: "!", keyIgnoringModifiers: "!", altKey: true });
-  engine.handleKey(event);
-  assert.equal(event.last("flushStaged").args[0], "！");
+  assert.equal(engine.handleKey(event), false);
+  assert.equal(event.last("flushStaged"), undefined);
 });
 
 test("a symbol prefix shows a vertical group menu", () => {
