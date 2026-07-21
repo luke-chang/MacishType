@@ -104,19 +104,26 @@ std::string resolveLocalizedName(JSContext *ctx, JSValueConst nameValue,
     if (auto name = tryKey("en")) {
         return *name;
     }
-    // Fall back to the first declared localization.
+    // Fall back to the lowest-sorted declared localization (deterministic,
+    // independent of declaration order).
     JSPropertyEnum *properties = nullptr;
     uint32_t count = 0;
     std::string result;
     if (JS_GetOwnPropertyNames(ctx, &properties, &count, nameValue,
                                JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) == 0) {
-        if (count > 0) {
-            const char *key = JS_AtomToCString(ctx, properties[0].atom);
+        std::optional<std::string> lowestKey;
+        for (uint32_t i = 0; i < count; i++) {
+            const char *key = JS_AtomToCString(ctx, properties[i].atom);
             if (key != nullptr) {
-                if (auto name = tryKey(key)) {
-                    result = *name;
+                if (!lowestKey || std::string(key) < *lowestKey) {
+                    lowestKey = key;
                 }
                 JS_FreeCString(ctx, key);
+            }
+        }
+        if (lowestKey) {
+            if (auto name = tryKey(*lowestKey)) {
+                result = *name;
             }
         }
         JS_FreePropertyEnum(ctx, properties, count);
@@ -257,11 +264,15 @@ std::string conditionToText(JSContext *ctx, JSValueConst condition,
         return joined;
     };
 
-    qjs::Value allOf(ctx, JS_GetPropertyStr(ctx, condition, "and"));
+    // A bare array at the top level is an implicit allOf.
+    if (JS_IsArray(condition)) {
+        return joinChildren(condition, translated(" and "));
+    }
+    qjs::Value allOf(ctx, JS_GetPropertyStr(ctx, condition, "allOf"));
     if (JS_IsArray(allOf.get())) {
         return joinChildren(allOf.get(), translated(" and "));
     }
-    qjs::Value anyOf(ctx, JS_GetPropertyStr(ctx, condition, "or"));
+    qjs::Value anyOf(ctx, JS_GetPropertyStr(ctx, condition, "anyOf"));
     if (JS_IsArray(anyOf.get())) {
         return joinChildren(anyOf.get(), translated(" or "));
     }

@@ -180,6 +180,7 @@ test: build
 	test/fullwidth.sh
 	test/compositionend.sh
 	test/associated.sh
+	test/contract.sh
 
 clean:
 	rm -rf $(BUILD_DIR)

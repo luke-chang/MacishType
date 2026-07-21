@@ -3,6 +3,7 @@
 #include <sys/stat.h>
 #include <sys/utsname.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -844,6 +845,15 @@ char *JsEngineHost::moduleNormalize(JSContext *ctx, const char *baseName,
     if (name.rfind(kEngineUrlPrefix, 0) == 0) {
         return js_strdup(ctx, name.c_str());
     }
+    if (name.rfind('/', 0) == 0) {
+        // Engine-root-absolute specifier ("/util.js" → engine folder root).
+        auto normalized = normalizeRelativePath(name.substr(1));
+        if (!normalized || normalized->empty()) {
+            return js_strdup(ctx, name.c_str());
+        }
+        std::string resolved = std::string(kEngineUrlPrefix) + *normalized;
+        return js_strdup(ctx, resolved.c_str());
+    }
     if (name.rfind("./", 0) != 0 && name.rfind("../", 0) != 0) {
         // Bare specifiers have no resolution scheme here; hand back as-is so
         // the loader rejects with a clear error.
@@ -941,6 +951,11 @@ void JsEngineHost::setCandidateWindowField(const std::string &field,
                               << ": expected positive number, write ignored";
             return;
         }
+        if (field == "pageSize" && number > 11) {
+            MACISHTYPE_WARN() << "candidateWindow.pageSize: out of range "
+                                 "(1-11), write ignored";
+            return;
+        }
         engineCandidateWindow_[field] = number;
         return;
     }
@@ -957,6 +972,16 @@ void JsEngineHost::setCandidateWindowField(const std::string &field,
                 << "candidateWindow.layoutDirection: invalid value ignored: "
                 << text;
             return;
+        }
+        if (field == "indexLabels") {
+            for (unsigned char ch : text) {
+                if (ch < 0x20 || ch > 0x7E) {
+                    MACISHTYPE_WARN()
+                        << "candidateWindow.indexLabels: expected ASCII "
+                           "printable (0x20-0x7E), write ignored";
+                    return;
+                }
+            }
         }
         engineCandidateWindow_[field] = std::move(text);
         return;
@@ -1354,23 +1379,29 @@ JSValue JsEngineHost::nativeStorageKeys(JSContext *ctx, JSValueConst thisVal,
     if (!host->storageRootUsable()) {
         return array;
     }
-    uint32_t index = 0;
     std::error_code errorCode;
     std::filesystem::directory_iterator iterator(host->storageRoot_,
                                                  errorCode);
     if (errorCode) {
         return array;
     }
+    // key(index) reports keys sorted alphabetically; the directory iterator
+    // order is filesystem-defined, so collect and sort.
+    std::vector<std::string> keys;
     for (const auto &fileEntry : iterator) {
         if (!fileEntry.is_regular_file(errorCode)) {
             continue;
         }
-        auto key = decodeStorageKey(fileEntry.path().filename().string());
-        if (key) {
-            JS_SetPropertyUint32(ctx, array, index++,
-                                 JS_NewStringLen(ctx, key->c_str(),
-                                                 key->size()));
+        if (auto key = decodeStorageKey(fileEntry.path().filename().string())) {
+            keys.push_back(std::move(*key));
         }
+    }
+    std::sort(keys.begin(), keys.end());
+    uint32_t index = 0;
+    for (const auto &key : keys) {
+        JS_SetPropertyUint32(
+            ctx, array, index++,
+            JS_NewStringLen(ctx, key.c_str(), key.size()));
     }
     return array;
 }
@@ -1398,8 +1429,24 @@ JSValue JsEngineHost::nativeGetLanguages(JSContext *ctx, JSValueConst thisVal,
     FCITX_UNUSED(argv);
     auto *host = hostOf(ctx);
     JSValue array = JS_NewArray(ctx);
-    uint32_t index = 0;
+    // Each region-tagged entry is followed by its base form so first-match
+    // lookups get a natural fallback chain (e.g. [zh-TW, zh, en-US, en]).
+    std::vector<std::string> expanded;
+    auto push = [&](const std::string &tag) {
+        if (!tag.empty() && std::find(expanded.begin(), expanded.end(), tag) ==
+                                expanded.end()) {
+            expanded.push_back(tag);
+        }
+    };
     for (const auto &language : host->languages_) {
+        push(language);
+        auto dash = language.find('-');
+        if (dash != std::string::npos) {
+            push(language.substr(0, dash));
+        }
+    }
+    uint32_t index = 0;
+    for (const auto &language : expanded) {
         JS_SetPropertyUint32(ctx, array, index++,
                              JS_NewString(ctx, language.c_str()));
     }
