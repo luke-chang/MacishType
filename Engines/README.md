@@ -23,6 +23,8 @@ importing file. Static `import` is supported; dynamic `import()` is not.
 {
   "entry": "index.js",
   "name": "My Engine",           // optional display name, Localizable
+  "label": "例",                 // optional short panel text
+  "icon": "icon",                // optional icon base name (this is the default)
   "intendedLanguage": "zh-Hant", // optional language override
   "candidateWindow": { … },      // optional appearance overrides
   "modules": { … },              // optional host-provided data tables
@@ -53,6 +55,31 @@ Accepts a literal string or a [Localizable](#localizable) locale map:
 
 Also readable at runtime as `manifest.name` (already resolved to the active
 locale, or `undefined` when undeclared).
+
+### `label` (optional)
+
+Short text identifying the engine in space-constrained host UI (status
+areas, panels). A plain string, not a `Localizable` map. Hosts that need a
+label and find none fall back to the resolved `name` and shorten it to fit
+the surface — e.g. fcitx5's status area shows one CJK glyph or two Latin
+letters, while its input-method switch popup shows the full text.
+
+Currently only supported by fcitx5-macishtype.
+
+### `icon` (optional)
+
+Extensionless base name (relative to the manifest) of the images
+identifying the engine. Defaults to `icon`. Hosts append their platform's
+suffixes and use the first match, so one engine can ship several variants
+side by side. Files must resolve inside the engine folder; hosts reject
+escaping paths.
+
+fcitx5-macishtype probes `<icon>-symbolic.svg`, `<icon>.svg`, then
+`<icon>.png`. A monochrome `-symbolic.svg` is recolored to the panel
+foreground, so one file works on light and dark panels alike; other files
+render as-is. A Windows host would probe `<icon>.ico`.
+
+Currently only supported by fcitx5-macishtype.
 
 ### `intendedLanguage` (optional)
 
@@ -276,6 +303,12 @@ implement.
 ### `settings` (optional)
 
 Array of sections rendered in the engine's Settings tab. Each section:
+
+> fcitx5-macishtype currently renders `toggle`, `textField`, integer
+> `number`, and `picker` fields; `multiSelect`, fractional `number`,
+> section grouping, and condition evaluation are not supported there yet
+> (unsupported fields keep their defaults, and conditions render as
+> tooltip text).
 
 ```jsonc
 {
@@ -852,8 +885,17 @@ The host injects `console`, `manifest`, `navigator`, `localStorage`,
 and `fetch` into the engine's global scope.
 
 No `require`, `process`, `setTimeout`, or network APIs are exposed.
-Engines run inside JavaScriptCore. `fetch` is a read-only file API
-for engine-folder resources, not network access.
+Engines run inside JavaScriptCore on macOS and QuickJS on other platforms
+(fcitx5-macishtype). `fetch` is a read-only file API for engine-folder
+resources, not network access.
+
+`Intl` is available on both platforms — native on macOS (JavaScriptCore),
+host-provided on QuickJS. Rely on `Intl.Segmenter` (`grapheme`, `word`,
+`sentence`), `Intl.DateTimeFormat`, `Intl.NumberFormat`, `Intl.PluralRules`,
+and `Intl.Collator`, using their common options; a host may implement only a
+subset of each, and output can vary with the platform's ICU version.
+`Intl.Locale`, `Intl.getCanonicalLocales`, and `Intl.supportedValuesOf` are
+not guaranteed.
 
 #### Global events
 
@@ -1107,7 +1149,7 @@ Web-aligned host info and locale preferences.
 |---|---|
 | `navigator.language` | Most preferred language, BCP 47 (e.g. `"zh-TW"`). `""` if no preference. |
 | `navigator.languages` | Frozen `ReadonlyArray<string>` of BCP 47 preferences, most preferred first. |
-| `navigator.userAgent` | Static host identifier in the form `MacishType/{appVer} (macOS {osVer}) JavaScriptCore/{jscVer}`, e.g. `"MacishType/0.1.0 (macOS 26.5.0) JavaScriptCore/21624"`. Future engine ports may replace the trailing `JavaScriptCore/...` segment. |
+| `navigator.userAgent` | Static host identifier, e.g. `"MacishType/0.1.0 (macOS 26.5.0) JavaScriptCore/21624"`. See [`navigator.userAgent`](#navigatoruseragent) below for the cross-platform format. |
 
 Tags are web-style BCP 47 (lowercase language, uppercase region,
 script dropped when redundant). Each region-tagged entry is followed
@@ -1150,6 +1192,28 @@ already reflects the new coverage, so most engines (which query it live
 per render) need not listen — attach only to invalidate caches derived
 from coverage. Deduplicated: a font change that leaves coverage
 identical doesn't fire.
+
+##### `navigator.userAgent`
+
+Static host identifier, resolved once at load. Space-separated segments —
+product, platform, optional host framework, JS engine:
+
+```
+MacishType/0.1.0 (macOS 26.5.0) JavaScriptCore/21624
+MacishType/0.1.0 (Wayland; Linux x86_64; Ubuntu 26.04) fcitx5/5.1.19 quickjs-ng/0.15.1
+```
+
+- **Product** (`MacishType/{ver}`) — stable across ports. `{ver}` is the
+  host build's version.
+- **Platform** (`(…)`) — OS and environment, `; `-separated. macOS emits
+  `macOS {osVer}`; fcitx5-macishtype emits `{displayServer}; Linux {arch};
+  {distro}`, where `displayServer` (`Wayland`/`X11`) and `distro` may be
+  absent but the literal `Linux` is always present.
+- **Host framework** (`{name}/{ver}`) — present only when the host is an
+  add-on to a separate framework (e.g. `fcitx5/5.1.19`); omitted on macOS,
+  where the host app itself is the product.
+- **JS engine** (`{name}/{ver}`) — `JavaScriptCore` on macOS,
+  `quickjs-ng` under fcitx5-macishtype.
 
 #### `fetch(path)`
 

@@ -760,7 +760,7 @@ declare global {
     readonly language: string;
     /** Frozen list of BCP 47 preferences, most preferred first. */
     readonly languages: ReadonlyArray<string>;
-    /** Static host identifier, e.g. `"MacishType/0.1.0 (macOS 26.5.0) JavaScriptCore/21624"`. */
+    /** Static host identifier. See `Engines/README.md` for the full format. */
     readonly userAgent: string;
   }
 
