@@ -59,19 +59,36 @@ let phraseTable = new Map();
 const { fontCoverage, symbolNames, wordFrequency } = manifest.modules;
 
 // Iterate the data rows of a tab-separated table, skipping comment and blank
-// lines and rows without a non-empty code and value.
+// lines and rows without a non-empty code and value; fn receives the first
+// two fields. A manual cursor walk instead of split(): on an interpreter the
+// per-line allocations (the line array, per-line field arrays) dominate
+// table-load time, so only the code and value substrings are ever created.
 function forEachRow(text, fn) {
-  for (const rawLine of text.split(/\r?\n/)) {
-    if (!rawLine || rawLine.startsWith("#")) continue;
-    const fields = rawLine.split("\t");
-    if (fields.length < 2 || !fields[0] || !fields[1]) continue;
-    fn(fields);
+  const length = text.length;
+  let i = 0;
+  while (i < length) {
+    let lineEnd = text.indexOf("\n", i);
+    if (lineEnd === -1) lineEnd = length;
+    let end = lineEnd;
+    if (end > i && text.charCodeAt(end - 1) === 0x0d /* '\r' */) end--;
+    if (end > i && text.charCodeAt(i) !== 0x23 /* '#' */) {
+      const tab = text.indexOf("\t", i);
+      if (tab > i && tab < end) {
+        // The value is the second field only, matching split("\t")[1].
+        let valueEnd = text.indexOf("\t", tab + 1);
+        if (valueEnd === -1 || valueEnd > end) valueEnd = end;
+        if (valueEnd > tab + 1) {
+          fn(text.slice(i, tab), text.slice(tab + 1, valueEnd));
+        }
+      }
+    }
+    i = lineEnd + 1;
   }
 }
 
 // Load code -> [value, ...] in file order.
 function loadTable(text, table) {
-  forEachRow(text, ([code, value]) => {
+  forEachRow(text, (code, value) => {
     const list = table.get(code);
     if (list) list.push(value);
     else table.set(code, [value]);
@@ -105,7 +122,7 @@ const tablesReady = Promise.all([
   }),
   loadFile("./ArrayShortCode.txt", (text) => {
     const next = new Map();
-    forEachRow(text, ([codeWithSlot, value]) => {
+    forEachRow(text, (codeWithSlot, value) => {
       if (codeWithSlot.length < 2) return;
       const label = codeWithSlot[codeWithSlot.length - 1];
       const code = codeWithSlot.slice(0, -1);
