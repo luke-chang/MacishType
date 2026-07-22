@@ -61,8 +61,13 @@ dbus-run-session -- sh -c '
     sleep 2
     log_file="$1"
     shift
-    python3 "$0" "$@" || { echo "--- fcitx5 log tail ---" >&2; tail -30 "$log_file" >&2; }
-    status=$?
+    if python3 "$0" "$@"; then
+        status=0
+    else
+        status=$?
+        echo "--- fcitx5 log tail ---" >&2
+        tail -30 "$log_file" >&2
+    fi
     kill "$fcitx_pid" 2>/dev/null
     wait "$fcitx_pid" 2>/dev/null
     exit $status
