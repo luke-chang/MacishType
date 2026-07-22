@@ -27,14 +27,26 @@ namespace macishtype {
 // first activate of the corresponding input method.
 class JsEngineHost {
 public:
+    // Backs one `manifest.toggle` key with host-side state (e.g. the shared
+    // Chinese conversion toggle). The key set is host availability, not a
+    // manifest declaration: a key exists exactly while a delegate is
+    // installed.
+    struct ToggleDelegate {
+        std::function<bool()> get;
+        std::function<void(bool)> set;
+    };
+
     // `settingsValuesJson` is the sanitized settings object the engine
     // observes as manifest.settings; it must be final before load because
-    // engines read it while their entry module evaluates.
+    // engines read it while their entry module evaluates. The same holds
+    // for `toggleDelegates` (macOS exposes toggle availability from the
+    // first evaluated statement).
     static std::unique_ptr<JsEngineHost>
     load(const std::string &engineId, const std::filesystem::path &engineRoot,
          const std::filesystem::path &storageRoot,
          const std::string &settingsValuesJson, const ManifestData &manifest,
          const std::vector<std::string> &languages,
+         std::map<std::string, ToggleDelegate> toggleDelegates,
          fcitx::EventLoop *eventLoop, fcitx::EventDispatcher *dispatcher);
 
     ~JsEngineHost();
@@ -120,14 +132,9 @@ public:
     std::optional<FieldValue>
     candidateWindowField(const std::string &field) const;
 
-    // Backs a manifest-declared system menu key with host-side state (e.g.
-    // the shared Chinese conversion toggle) instead of the plain in-memory
-    // value.
-    struct MenuDelegate {
-        std::function<bool()> get;
-        std::function<void(bool)> set;
-    };
-    void setMenuDelegate(const std::string &key, MenuDelegate delegate);
+    // Fires the `togglechange` global event for a host-side flip of `key`.
+    // JS self-writes must not come through here (no self-echo).
+    void dispatchToggleChange(const std::string &key);
 
     // Receiver for the event-object mutator dispatcher
     // (__MacishTypeHost_action). Scoped to the active session invocation.
@@ -168,6 +175,7 @@ private:
                  std::filesystem::path storageRoot,
                  std::string settingsValuesJson, ManifestData manifest,
                  std::vector<std::string> languages,
+                 std::map<std::string, ToggleDelegate> toggleDelegates,
                  fcitx::EventLoop *eventLoop, fcitx::EventDispatcher *dispatcher);
 
     // One queued fetch(): path resolved (and reload tracking recorded) at
@@ -270,6 +278,12 @@ private:
                                       int argc, JSValueConst *argv);
     static JSValue nativeMenuKeys(JSContext *ctx, JSValueConst thisVal,
                                   int argc, JSValueConst *argv);
+    static JSValue nativeGetToggleValue(JSContext *ctx, JSValueConst thisVal,
+                                        int argc, JSValueConst *argv);
+    static JSValue nativeSetToggleValue(JSContext *ctx, JSValueConst thisVal,
+                                        int argc, JSValueConst *argv);
+    static JSValue nativeToggleKeys(JSContext *ctx, JSValueConst thisVal,
+                                    int argc, JSValueConst *argv);
     static JSValue nativeStorageGetItem(JSContext *ctx, JSValueConst thisVal,
                                         int argc, JSValueConst *argv);
     static JSValue nativeStorageSetItem(JSContext *ctx, JSValueConst thisVal,
@@ -383,7 +397,7 @@ private:
     std::map<std::string, FieldValue> manifestCandidateWindow_;
     std::map<std::string, FieldValue> engineCandidateWindow_;
     std::map<std::string, bool> menuValues_;
-    std::map<std::string, MenuDelegate> menuDelegates_;
+    std::map<std::string, ToggleDelegate> toggleDelegates_;
 
     std::map<uint64_t, JSValue> instances_;
     uint64_t nextInstanceId_ = 1;

@@ -1,0 +1,6 @@
+{
+  "entry": "index.js",
+  "name": { "en": "Toggle Fixture" },
+  "intendedLanguage": "zh-Hant",
+  "capabilities": { "outputToSimplified": true }
+}

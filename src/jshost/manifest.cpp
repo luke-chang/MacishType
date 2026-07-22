@@ -633,14 +633,30 @@ parseManifest(const std::filesystem::path &manifestPath,
             }
 
             // capabilities: {fullwidthInput: true, ...} — host-only behavior
-            // flags, not surfaced on the JS `manifest`.
+            // flags, not surfaced on the JS `manifest`. A declared non-
+            // boolean value is treated as undeclared (spec: back to the
+            // default/language gate) and warned about.
             qjs::Value capabilities(
                 ctx, JS_GetPropertyStr(ctx, root.get(), "capabilities"));
             if (JS_IsObject(capabilities.get())) {
-                qjs::Value fullwidth(
-                    ctx, JS_GetPropertyStr(ctx, capabilities.get(),
-                                           "fullwidthInput"));
-                data.fullwidthInput = JS_ToBool(ctx, fullwidth.get()) == 1;
+                auto capabilityFlag =
+                    [&](const char *name) -> std::optional<bool> {
+                    qjs::Value flag(
+                        ctx, JS_GetPropertyStr(ctx, capabilities.get(), name));
+                    if (JS_IsBool(flag.get())) {
+                        return JS_ToBool(ctx, flag.get()) == 1;
+                    }
+                    if (!JS_IsUndefined(flag.get())) {
+                        MACISHTYPE_WARN()
+                            << "capabilities." << name
+                            << " must be a boolean, treated as undeclared: "
+                            << manifestPath;
+                    }
+                    return std::nullopt;
+                };
+                data.fullwidthInput =
+                    capabilityFlag("fullwidthInput").value_or(false);
+                data.outputToSimplified = capabilityFlag("outputToSimplified");
             }
 
             if (data.entry.empty()) {

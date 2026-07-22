@@ -37,4 +37,6 @@ check "pageSize 11 is accepted" "$out" \
     'pagesize-boundary 11'
 check "a pageSize above 11 is rejected, keeping the prior value" "$out" \
     'pagesize-after-bad 11'
+check "outputToSimplified stays unavailable without a Traditional-Chinese language" \
+    "$out" 'toggle-nonchinese value=undefined keys=[]'
 echo "Contract conformance checks passed."

@@ -227,12 +227,13 @@ JsEngineHost::load(const std::string &engineId,
                    const std::string &settingsValuesJson,
                    const ManifestData &manifest,
                    const std::vector<std::string> &languages,
+                   std::map<std::string, ToggleDelegate> toggleDelegates,
                    fcitx::EventLoop *eventLoop,
                    fcitx::EventDispatcher *dispatcher) {
     std::unique_ptr<JsEngineHost> host(
         new JsEngineHost(engineId, engineRoot, storageRoot,
-                         settingsValuesJson, manifest, languages, eventLoop,
-                         dispatcher));
+                         settingsValuesJson, manifest, languages,
+                         std::move(toggleDelegates), eventLoop, dispatcher));
     if (!host->initialize()) {
         return nullptr;
     }
@@ -245,6 +246,7 @@ JsEngineHost::JsEngineHost(std::string engineId,
                            std::string settingsValuesJson,
                            ManifestData manifest,
                            std::vector<std::string> languages,
+                           std::map<std::string, ToggleDelegate> toggleDelegates,
                            fcitx::EventLoop *eventLoop,
                            fcitx::EventDispatcher *dispatcher)
     : engineId_(std::move(engineId)), engineRoot_(std::move(engineRoot)),
@@ -253,7 +255,8 @@ JsEngineHost::JsEngineHost(std::string engineId,
                                                      : std::move(
                                                            settingsValuesJson)),
       manifest_(std::move(manifest)), languages_(std::move(languages)),
-      eventLoop_(eventLoop), dispatcher_(dispatcher) {}
+      toggleDelegates_(std::move(toggleDelegates)), eventLoop_(eventLoop),
+      dispatcher_(dispatcher) {}
 
 JsEngineHost::~JsEngineHost() {
     // Async-fetch teardown, strictly before the JS context dies:
@@ -1424,14 +1427,32 @@ JSValue JsEngineHost::nativeCandidateWindowFields(JSContext *ctx,
     return array;
 }
 
-void JsEngineHost::setMenuDelegate(const std::string &key,
-                                   MenuDelegate delegate) {
-    if (menuValues_.count(key) == 0) {
-        MACISHTYPE_WARN() << "menu delegate for undeclared key ignored: "
-                          << key;
+void JsEngineHost::dispatchToggleChange(const std::string &key) {
+    if (toggleDelegates_.count(key) == 0) {
         return;
     }
-    menuDelegates_[key] = std::move(delegate);
+    qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
+    qjs::Value dispatch(ctx_,
+                        JS_GetPropertyStr(ctx_, global.get(),
+                                          "__MacishType_dispatchGlobal"));
+    if (!JS_IsFunction(ctx_, dispatch.get())) {
+        return;
+    }
+    // Arm the watchdog and drain microtasks on unwind, like every other
+    // host->JS entry point; a togglechange listener is arbitrary engine code.
+    Entry entry(*this);
+    JSValue event = JS_NewObject(ctx_);
+    JS_SetPropertyStr(ctx_, event, "type", JS_NewString(ctx_, "togglechange"));
+    JS_SetPropertyStr(ctx_, event, "key",
+                      JS_NewStringLen(ctx_, key.c_str(), key.size()));
+    qjs::Value result(ctx_, JS_Call(ctx_, dispatch.get(), JS_UNDEFINED, 1,
+                                    &event));
+    JS_FreeValue(ctx_, event);
+    if (result.isException()) {
+        MACISHTYPE_ERROR() << "[" << engineId_
+                           << "] togglechange dispatch failed: "
+                           << qjs::exceptionText(ctx_);
+    }
 }
 
 JSValue JsEngineHost::nativeGetMenuValue(JSContext *ctx, JSValueConst thisVal,
@@ -1445,10 +1466,6 @@ JSValue JsEngineHost::nativeGetMenuValue(JSContext *ctx, JSValueConst thisVal,
     auto found = host->menuValues_.find(key);
     if (found == host->menuValues_.end()) {
         return JS_NULL;
-    }
-    if (auto delegate = host->menuDelegates_.find(key);
-        delegate != host->menuDelegates_.end()) {
-        return JS_NewBool(ctx, delegate->second.get());
     }
     return JS_NewBool(ctx, found->second);
 }
@@ -1471,12 +1488,7 @@ JSValue JsEngineHost::nativeSetMenuValue(JSContext *ctx, JSValueConst thisVal,
                           << ": expected boolean, write ignored";
         return JS_UNDEFINED;
     }
-    bool value = JS_ToBool(ctx, argv[1]) == 1;
-    found->second = value;
-    if (auto delegate = host->menuDelegates_.find(key);
-        delegate != host->menuDelegates_.end()) {
-        delegate->second.set(value);
-    }
+    found->second = JS_ToBool(ctx, argv[1]) == 1;
     return JS_UNDEFINED;
 }
 
@@ -1490,6 +1502,62 @@ JSValue JsEngineHost::nativeMenuKeys(JSContext *ctx, JSValueConst thisVal,
     uint32_t index = 0;
     for (const auto &[key, value] : host->menuValues_) {
         FCITX_UNUSED(value);
+        JS_SetPropertyUint32(ctx, array, index++,
+                             JS_NewString(ctx, key.c_str()));
+    }
+    return array;
+}
+
+JSValue JsEngineHost::nativeGetToggleValue(JSContext *ctx,
+                                           JSValueConst thisVal, int argc,
+                                           JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    auto *host = hostOf(ctx);
+    if (argc < 1) {
+        return JS_NULL;
+    }
+    std::string key = qjs::toString(ctx, argv[0]);
+    auto found = host->toggleDelegates_.find(key);
+    if (found == host->toggleDelegates_.end()) {
+        return JS_NULL;
+    }
+    return JS_NewBool(ctx, found->second.get());
+}
+
+JSValue JsEngineHost::nativeSetToggleValue(JSContext *ctx,
+                                           JSValueConst thisVal, int argc,
+                                           JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    auto *host = hostOf(ctx);
+    if (argc < 2) {
+        return JS_UNDEFINED;
+    }
+    std::string key = qjs::toString(ctx, argv[0]);
+    auto found = host->toggleDelegates_.find(key);
+    if (found == host->toggleDelegates_.end()) {
+        MACISHTYPE_WARN() << "toggle: write to unavailable key ignored: "
+                          << key;
+        return JS_UNDEFINED;
+    }
+    if (!JS_IsBool(argv[1])) {
+        MACISHTYPE_WARN() << "toggle." << key
+                          << ": expected boolean, write ignored";
+        return JS_UNDEFINED;
+    }
+    found->second.set(JS_ToBool(ctx, argv[1]) == 1);
+    return JS_UNDEFINED;
+}
+
+JSValue JsEngineHost::nativeToggleKeys(JSContext *ctx, JSValueConst thisVal,
+                                       int argc, JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    FCITX_UNUSED(argc);
+    FCITX_UNUSED(argv);
+    auto *host = hostOf(ctx);
+    JSValue array = JS_NewArray(ctx);
+    uint32_t index = 0;
+    for (const auto &[key, delegate] : host->toggleDelegates_) {
+        FCITX_UNUSED(delegate);
         JS_SetPropertyUint32(ctx, array, index++,
                              JS_NewString(ctx, key.c_str()));
     }
@@ -1795,6 +1863,11 @@ void JsEngineHost::registerBridgeGlobals() {
     define("__MacishType_getMenuValue", &JsEngineHost::nativeGetMenuValue, 1);
     define("__MacishType_setMenuValue", &JsEngineHost::nativeSetMenuValue, 2);
     define("__MacishType_menuKeys", &JsEngineHost::nativeMenuKeys, 0);
+    define("__MacishType_getToggleValue", &JsEngineHost::nativeGetToggleValue,
+           1);
+    define("__MacishType_setToggleValue", &JsEngineHost::nativeSetToggleValue,
+           2);
+    define("__MacishType_toggleKeys", &JsEngineHost::nativeToggleKeys, 0);
     define("__MacishType_storageGetItem",
            &JsEngineHost::nativeStorageGetItem, 1);
     define("__MacishType_storageSetItem",

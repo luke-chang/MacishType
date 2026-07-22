@@ -9,6 +9,8 @@
 
 #include <fcitx-config/configuration.h>
 #include <fcitx-config/option.h>
+#include <fcitx-utils/event.h>
+#include <fcitx-utils/signals.h>
 #include <fcitx/addonfactory.h>
 #include <fcitx/addoninstance.h>
 #include <fcitx/inputcontext.h>
@@ -77,6 +79,26 @@ private:
     // same state its hotkey toggles and persists).
     bool chttransEnabled(const std::string &inputMethodName);
     void setChttransEnabled(const std::string &inputMethodName, bool enabled);
+    // Whether the host can deliver `outputToSimplified` for this engine.
+    // chttrans only converts Traditional→Simplified on IMs it classifies
+    // as Traditional Chinese (zh_TW / zh_HK); on Simplified-Chinese IMs it
+    // converts the other way and elsewhere it is inert, so both count as
+    // unsupported regardless of the declared capability.
+    bool outputToSimplifiedAvailable(const EngineInfo &engine);
+    // Observes chttrans's toggle action so user flips (hotkey or menu
+    // entry, which both end in Action::update) reach engines as
+    // `togglechange`.
+    void watchChttransToggle();
+    // Defers the reconcile to the next loop iteration: the Update signal
+    // can fire while another engine's JS is on the stack (a manifest.toggle
+    // write ends in action->update), and a nested togglechange handler
+    // would run inside that host's armed watchdog window.
+    void scheduleChttransReconcile();
+    // Compares every tracked engine's chttrans state against the last
+    // known value and dispatches `togglechange` on real deltas. JS
+    // self-writes record the new value first, so their action-update echo
+    // produces none.
+    void reconcileChttransToggles();
 
     // Scopes hot reloads to relevant changes, mirroring the macOS host's
     // tracked-file set: while an engine is live, only files it expressed
@@ -107,6 +129,16 @@ private:
     std::map<std::string, bool> failedHosts_;
     std::map<fcitx::InputContext *, std::unique_ptr<EngineSession>> sessions_;
     std::unique_ptr<EngineWatcher> watcher_;
+    // Last chttrans enablement pushed to / observed for each engine with an
+    // available outputToSimplified toggle, keyed by engine id; the delta
+    // detector behind reconcileChttransToggles().
+    struct ChttransToggleState {
+        std::string inputMethodName;
+        bool enabled = false;
+    };
+    std::map<std::string, ChttransToggleState> chttransToggleStates_;
+    std::unique_ptr<fcitx::EventSource> chttransReconcileDefer_;
+    fcitx::ScopedConnection chttransUpdateConnection_;
 };
 
 class MacishTypeAddonFactory : public fcitx::AddonFactory {

@@ -81,6 +81,11 @@ struct ManifestData {
     // toggle in the engine's status area — the portable stand-in for macOS's
     // Option+key full-width trigger.
     bool fullwidthInput = false;
+    // Tri-state manifest `capabilities.outputToSimplified`: true force-
+    // enables, false force-disables, nullopt (absent or malformed) falls
+    // back to the language gate. Host-only; the addon resolves availability
+    // against what chttrans can actually deliver.
+    std::optional<bool> outputToSimplified;
 };
 
 // Parses and validates manifest.json using a throwaway QuickJS context.

@@ -182,6 +182,7 @@ test: build
 	test/associated.sh
 	test/contract.sh
 	test/asyncfetch.sh
+	test/toggle.sh
 
 clean:
 	rm -rf $(BUILD_DIR)

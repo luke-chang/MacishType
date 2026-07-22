@@ -75,6 +75,13 @@ def main():
         if spec.startswith("switchim:"):
             keys.append(("switchim", spec[len("switchim:"):]))
             continue
+        # "setaddonconfig:ADDON:KEY=V1[,V2...]" writes one list option of an
+        # addon's config through DBus SetConfig (e.g. chttrans EnabledIM).
+        if spec.startswith("setaddonconfig:"):
+            addon, _, assignment = spec[len("setaddonconfig:"):].partition(":")
+            key, _, value = assignment.partition("=")
+            keys.append(("setaddonconfig", addon, key, value))
+            continue
         # "setconfig:KEY=VALUE" writes one option through DBus SetConfig.
         if spec.startswith("setconfig:"):
             key, _, value = spec[len("setconfig:"):].partition("=")
@@ -203,6 +210,24 @@ def main():
                         (f"fcitx://config/inputmethod/{im_name}", raw)),
                     None, Gio.DBusCallFlags.NONE, 5000, None)
                 emit({"event": "config-set", "key": key, "value": value})
+                continue
+            if entry[0] == "setaddonconfig":
+                _kind, addon, key, value = entry
+                # A RawConfig list travels as a nested a{sv} keyed by index;
+                # an empty value writes an empty list.
+                items = [item for item in value.split(",") if item]
+                inner = GLib.Variant("a{sv}", {
+                    str(i): GLib.Variant("s", item)
+                    for i, item in enumerate(items)
+                })
+                raw = GLib.Variant("a{sv}", {key: inner})
+                bus.call_sync(
+                    BUS_NAME, "/controller", "org.fcitx.Fcitx.Controller1",
+                    "SetConfig",
+                    GLib.Variant("(sv)", (f"fcitx://config/addon/{addon}", raw)),
+                    None, Gio.DBusCallFlags.NONE, 5000, None)
+                emit({"event": "addon-config-set", "addon": addon, "key": key,
+                      "value": value})
                 continue
             if entry[0] == "iminfo":
                 reply = bus.call_sync(

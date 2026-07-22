@@ -111,15 +111,18 @@ display-name changes, which fcitx5 only picks up on restart (its input
 method list cannot be updated at runtime). Reloads are scoped to the files
 the engine expressed interest in — manifest, entry, imported modules,
 fetched data, icon candidates — so unrelated files in the folder don't
-trigger one; an engine that failed to load retries on any change. All `manifest.modules` data
-sources are fed: wordFrequency and symbolNames from the corpora pinned in
-`scripts/external-resources.lock`, fontCoverage from fontconfig.
+trigger one; an engine that failed to load retries on any change. All
+`manifest.modules` data sources are fed: wordFrequency and symbolNames
+from the corpora pinned in `scripts/external-resources.lock`, fontCoverage
+from fontconfig.
 
-Traditional→Simplified output is delegated to fcitx5's own chttrans module
-(attached automatically for Chinese engines, toggled with its hotkey /
-status-area icon, state persisted per input method). The
-`outputToSimplified` system menu key proxies the same chttrans state, so
-engine-driven toggles and the chttrans hotkey flip one switch.
+Traditional→Simplified output is delegated to fcitx5's own chttrans
+module, attached while `capabilities.outputToSimplified` resolves
+available: not declared `false`, a Traditional-Chinese language code
+(elsewhere chttrans converts the other way or not at all), and chttrans
+installed. `manifest.toggle.outputToSimplified` reads and writes the
+same chttrans state, a user flip (its hotkey / status-area icon) reaches
+the engine as `togglechange`, and the value persists per input method.
 
 An engine declaring the `capabilities.fullwidthInput` contract flag gets
 fcitx5's own fullwidth module attached to its status area. On macOS the flag

@@ -8,6 +8,10 @@
 //   key-order         - localStorage.key(index) reports keys alphabetically
 //   indexlabels-*     - a non-ASCII indexLabels write is rejected
 //   pagesize-*        - a pageSize outside 1-11 is rejected, 11 is accepted
+//   toggle-nonchinese - capability outputToSimplified true cannot make the
+//                       toggle available when the host has no
+//                       Traditional->Simplified transform for the engine's
+//                       language (this manifest declares none)
 import { MARKER } from "/util.js";
 
 console.log(`nav-languages ${JSON.stringify(navigator.languages)}`);
@@ -33,5 +37,10 @@ manifest.candidateWindow.pageSize = 11; // boundary, valid
 console.log(`pagesize-boundary ${manifest.candidateWindow.pageSize}`);
 manifest.candidateWindow.pageSize = 20; // out of range (1-11) -> ignored
 console.log(`pagesize-after-bad ${manifest.candidateWindow.pageSize}`);
+
+console.log(
+  `toggle-nonchinese value=${String(manifest.toggle.outputToSimplified)} ` +
+    `keys=${JSON.stringify(Object.keys(manifest.toggle))}`,
+);
 
 export default class {}

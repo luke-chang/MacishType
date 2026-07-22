@@ -240,16 +240,20 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
     session->invokeActivateHook();
     sessions_[inputContext] = std::move(session);
 
-    // Chinese engines opt into the shared Simplified/Traditional conversion
-    // (chttrans is OnDemand and registers its toggle action on load); the
-    // status-area action also arms its hotkey and commit filter.
-    if (entry.languageCode().compare(0, 3, "zh_") == 0) {
-        instance_->addonManager().addon("chttrans", true);
+    // The shared Traditional→Simplified conversion follows the resolved
+    // outputToSimplified capability (chttrans is OnDemand and registers its
+    // toggle action on load); the status-area action also arms its hotkey
+    // and commit filter.
+    if (outputToSimplifiedAvailable(*engine)) {
         if (auto *action =
                 instance_->userInterfaceManager().lookupAction("chttrans")) {
             inputContext->statusArea().addAction(
                 fcitx::StatusGroup::InputMethod, action);
         }
+        // Config edits that bypass the toggle action (e.g. fcitx5-configtool
+        // writing chttrans's EnabledIM) raise no Action::Update; catch up at
+        // the session boundary.
+        reconcileChttransToggles();
     }
 
     // Engines declaring the `fullwidthInput` capability get fcitx5's
@@ -315,17 +319,46 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
         return nullptr;
     }
     auto settings = engineSettings_.find(engine.id);
+    // `manifest.toggle.outputToSimplified` proxies chttrans while the
+    // capability resolves available, so the engine's writes and the
+    // chttrans hotkey flip one switch. Installed before load because
+    // engines may read the toggle while their entry module evaluates.
+    // Manifest `menu` keys are a separate namespace and never alias it.
+    std::map<std::string, JsEngineHost::ToggleDelegate> toggleDelegates;
+    if (outputToSimplifiedAvailable(engine)) {
+        std::string inputMethodName = uniqueNameForEngine(engine);
+        chttransToggleStates_[engine.id] = ChttransToggleState{
+            inputMethodName, chttransEnabled(inputMethodName)};
+        toggleDelegates.emplace(
+            "outputToSimplified",
+            JsEngineHost::ToggleDelegate{
+                [this, inputMethodName]() {
+                    return chttransEnabled(inputMethodName);
+                },
+                [this, engineId = engine.id, inputMethodName](bool enabled) {
+                    // Record before writing so the action-update echo is
+                    // not re-dispatched as togglechange (no self-echo).
+                    if (auto state = chttransToggleStates_.find(engineId);
+                        state != chttransToggleStates_.end()) {
+                        state->second.enabled = enabled;
+                    }
+                    setChttransEnabled(inputMethodName, enabled);
+                },
+            });
+        watchChttransToggle();
+    }
     auto host = JsEngineHost::load(
         engine.id, engine.root, engine.storageRoot,
         settings != engineSettings_.end() ? settings->second->valuesToJson()
                                           : std::string("{}"),
-        engine.manifest, languages_, &instance_->eventLoop(),
-        &instance_->eventDispatcher());
+        engine.manifest, languages_, std::move(toggleDelegates),
+        &instance_->eventLoop(), &instance_->eventDispatcher());
     if (!host) {
         MACISHTYPE_ERROR() << "Engine failed to load, disabled until it "
                               "changes on disk: "
                            << engine.id;
         failedHosts_[engine.id] = true;
+        chttransToggleStates_.erase(engine.id);
         return nullptr;
     }
     auto [inserted, unused] = hosts_.emplace(engine.id, std::move(host));
@@ -354,24 +387,63 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
             }
         });
 
-    // The outputToSimplified system menu key proxies chttrans, so the
-    // engine's own toggle command and the chttrans hotkey flip one switch.
-    const auto &menuKeys = engine.manifest.menuKeys;
-    if (std::find(menuKeys.begin(), menuKeys.end(), "outputToSimplified") !=
-        menuKeys.end()) {
-        std::string inputMethodName = uniqueNameForEngine(engine);
-        loadedHost->setMenuDelegate(
-            "outputToSimplified",
-            JsEngineHost::MenuDelegate{
-                [this, inputMethodName]() {
-                    return chttransEnabled(inputMethodName);
-                },
-                [this, inputMethodName](bool enabled) {
-                    setChttransEnabled(inputMethodName, enabled);
-                },
-            });
-    }
     return loadedHost;
+}
+
+bool MacishTypeEngine::outputToSimplifiedAvailable(const EngineInfo &engine) {
+    if (engine.manifest.outputToSimplified.has_value() &&
+        !*engine.manifest.outputToSimplified) {
+        return false;
+    }
+    // chttrans classifies IMs by fcitx language code; only the Traditional
+    // Chinese codes get the Traditional→Simplified direction this toggle
+    // promises, so the spec's "true lifts the language gate" arm cannot
+    // widen availability on this host.
+    const auto &language = engine.manifest.languageCode;
+    if (language != "zh_TW" && language != "zh_HK") {
+        return false;
+    }
+    return instance_->addonManager().addon("chttrans", true) != nullptr;
+}
+
+void MacishTypeEngine::watchChttransToggle() {
+    if (chttransUpdateConnection_.connected()) {
+        return;
+    }
+    auto *action = instance_->userInterfaceManager().lookupAction("chttrans");
+    if (action == nullptr) {
+        return;
+    }
+    // Both user paths (hotkey and menu entry) funnel through chttrans's
+    // toggle(), which always fires Action::Update on its action.
+    chttransUpdateConnection_ = action->connect<fcitx::Action::Update>(
+        [this](fcitx::InputContext *) { scheduleChttransReconcile(); });
+}
+
+void MacishTypeEngine::scheduleChttransReconcile() {
+    if (chttransReconcileDefer_) {
+        return;
+    }
+    chttransReconcileDefer_ =
+        instance_->eventLoop().addDeferEvent([this](fcitx::EventSource *) {
+            auto *self = this;
+            self->chttransReconcileDefer_.reset();
+            self->reconcileChttransToggles();
+            return true;
+        });
+}
+
+void MacishTypeEngine::reconcileChttransToggles() {
+    for (auto &[engineId, state] : chttransToggleStates_) {
+        bool enabled = chttransEnabled(state.inputMethodName);
+        if (enabled == state.enabled) {
+            continue;
+        }
+        state.enabled = enabled;
+        if (auto host = hosts_.find(engineId); host != hosts_.end()) {
+            host->second->dispatchToggleChange("outputToSimplified");
+        }
+    }
 }
 
 bool MacishTypeEngine::chttransEnabled(const std::string &inputMethodName) {
@@ -493,6 +565,9 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
         endSession(inputContext);
     }
     hosts_.erase(engineId);
+    // hostForEngine re-seeds this when the reloaded manifest still
+    // resolves the toggle available.
+    chttransToggleStates_.erase(engineId);
 
     EngineInfo *engine = nullptr;
     for (auto &candidate : engines_) {
