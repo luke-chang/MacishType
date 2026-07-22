@@ -638,6 +638,14 @@ globalThis.TextDecoder = class TextDecoder {
     if (!this.#doNotFlush) {
       this.#resetDecoder();
       this.#bomSeen = false;
+      // Optional host fast path for whole, non-streaming decodes. The hook
+      // returns the decoded string, or null to decline (e.g. invalid UTF-8,
+      // which the state machine below handles).
+      if (!options?.stream &&
+          typeof __MacishType_decodeUTF8 === "function") {
+        const decoded = __MacishType_decodeUTF8(bytes, this.#ignoreBOM);
+        if (typeof decoded === "string") return decoded;
+      }
     }
     this.#doNotFlush = Boolean(options?.stream);
 
@@ -722,6 +730,10 @@ globalThis.TextEncoder = class TextEncoder {
 
   encode(input = "") {
     const str = String(input);
+    // Optional host fast path; must implement the full WHATWG semantics.
+    if (typeof __MacishType_encodeUTF8 === "function") {
+      return __MacishType_encodeUTF8(str);
+    }
     const bytes = [];
     for (let i = 0; i < str.length; i++) {
       let codePoint = str.codePointAt(i);

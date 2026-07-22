@@ -219,6 +219,76 @@ struct TextCodecTests {
         #expect(string("new TextDecoder().decode(new TextEncoder().encode(\(jsString(sample))))") == sample)
     }
 
+    // MARK: optional host fast-path hooks
+    //
+    // Feature-detected per call, so JS stubs can exercise the contract
+    // (this bridge itself registers neither hook).
+
+    @Test func decodeHookHandlesWholeNonStreamingDecodes() {
+        context.evaluateScript("""
+            globalThis.__hookCalls = [];
+            globalThis.__MacishType_decodeUTF8 = (bytes, ignoreBOM) => {
+                __hookCalls.push([Array.from(bytes), ignoreBOM]);
+                return "HOOKED";
+            };
+            """)
+        #expect(string("new TextDecoder().decode(\(u([0x41, 0x42])))") == "HOOKED")
+        #expect(string("JSON.stringify(__hookCalls[0])") == "[[65,66],false]")
+        #expect(string("new TextDecoder('utf-8', {ignoreBOM: true}).decode(\(u([0x41])))") == "HOOKED")
+        #expect(string("JSON.stringify(__hookCalls[1])") == "[[65],true]")
+    }
+
+    @Test func decodeHookDeclineFallsBackToTheStateMachine() {
+        // Anything but a string falls back to the pure-JS path.
+        context.evaluateScript("globalThis.__MacishType_decodeUTF8 = () => null;")
+        #expect(codePoints("new TextDecoder().decode(\(u([0x41, 0x80, 0x42])))") == [0x41, 0xFFFD, 0x42])
+        context.evaluateScript("globalThis.__MacishType_decodeUTF8 = () => undefined;")
+        #expect(string("new TextDecoder().decode(\(u([0x41])))") == "A")
+    }
+
+    @Test func decodeHookSkipsStreamChunksAndContinuations() {
+        context.evaluateScript("""
+            globalThis.__hookCalls = 0;
+            globalThis.__MacishType_decodeUTF8 = () => { __hookCalls++; return "X"; };
+            """)
+        #expect(string("""
+            (function(){const d=new TextDecoder();
+            const a=d.decode(\(u([0xE6, 0xB8])), {stream: true});
+            const b=d.decode(\(u([0xAC])));
+            return __hookCalls + '|' + a + b;})()
+            """) == "0|測")
+        // A continuation with no pending bytes stays gated; the next whole
+        // decode takes the hook again.
+        #expect(string("""
+            (function(){const d=new TextDecoder();
+            d.decode(\(u([0xE6, 0xB8, 0xAC])), {stream: true});
+            const flushed = d.decode(\(u([0x41])));
+            const gated = __hookCalls;
+            return gated + '|' + flushed + '|' + d.decode(\(u([0x42])));})()
+            """) == "0|A|X")
+    }
+
+    @Test func decodeHookServesFatalModeDecodes() {
+        // Fatal decodes flow through the hook too — hence the contract:
+        // hooks decline invalid input, never substitute U+FFFD.
+        context.evaluateScript("globalThis.__MacishType_decodeUTF8 = () => 'X';")
+        #expect(string("new TextDecoder('utf-8', {fatal: true}).decode(\(u([0x41])))") == "X")
+    }
+
+    @Test func encodeHookProvidesTheEncoding() {
+        context.evaluateScript("""
+            globalThis.__encodeInputs = [];
+            globalThis.__MacishType_encodeUTF8 = (str) => {
+                __encodeInputs.push(str);
+                return new Uint8Array([1, 2, 3]);
+            };
+            """)
+        #expect(bytes("new TextEncoder().encode('hi')") == [1, 2, 3])
+        // The hook receives the String()-coerced input.
+        #expect(bytes("new TextEncoder().encode(42)") == [1, 2, 3])
+        #expect(string("__encodeInputs.join('|')") == "hi|42")
+    }
+
     /// JSON-quote a string for safe embedding in an evaluated expression.
     private func jsString(_ value: String) -> String {
         let data = try! JSONSerialization.data(withJSONObject: [value])
