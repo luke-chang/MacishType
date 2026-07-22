@@ -843,4 +843,49 @@ declare global {
    *   any non-undefined value emits a runtime `console.warn`.
    */
   function fetch(input: string, init?: unknown): Promise<FetchResponse>;
+
+  /**
+   * A UTF-8-only subset of the WHATWG Encoding Standard's `TextDecoder`.
+   * Converts bytes to text — typically a slice of a binary format read via
+   * `fetch(...).arrayBuffer()`. For whole-file text prefer `Response.text()`
+   * (decoded off the main thread by the host).
+   */
+  interface TextDecoder {
+    readonly encoding: "utf-8";
+    readonly fatal: boolean;
+    readonly ignoreBOM: boolean;
+    /**
+     * Decode a buffer source to a string. A view's byte offset and length
+     * are honored; omitting `input` decodes nothing. Invalid sequences
+     * become U+FFFD unless `fatal` is set (then throws `TypeError`); a
+     * leading BOM is stripped unless `ignoreBOM` is set. `stream: true`
+     * holds an incomplete trailing sequence for the next call. Non-buffer
+     * input throws `TypeError`.
+     */
+    decode(input?: ArrayBuffer | ArrayBufferView, options?: { stream?: boolean }): string;
+  }
+
+  /**
+   * `label` accepts only the standard UTF-8 labels (`"utf-8"`, `"utf8"`,
+   * `"unicode-1-1-utf-8"`, …); any other label throws `RangeError`, since
+   * no other encoding is implemented yet.
+   */
+  // eslint-disable-next-line no-var
+  var TextDecoder: {
+    prototype: TextDecoder;
+    new (label?: string, options?: { fatal?: boolean; ignoreBOM?: boolean }): TextDecoder;
+  };
+
+  /** A UTF-8-only subset of the WHATWG Encoding Standard's `TextEncoder`. */
+  interface TextEncoder {
+    readonly encoding: "utf-8";
+    /** Encode a string to UTF-8. Unpaired surrogates become U+FFFD. */
+    encode(input?: string): Uint8Array;
+  }
+
+  // eslint-disable-next-line no-var
+  var TextEncoder: {
+    prototype: TextEncoder;
+    new (): TextEncoder;
+  };
 }

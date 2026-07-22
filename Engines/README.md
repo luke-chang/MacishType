@@ -882,7 +882,7 @@ const characterCount = [...seg.segment(markedText)].length;
 ### Runtime globals
 
 The host injects `console`, `manifest`, `navigator`, `localStorage`,
-and `fetch` into the engine's global scope.
+`fetch`, `TextDecoder`, and `TextEncoder` into the engine's global scope.
 
 No `require`, `process`, `setTimeout`, or network APIs are exposed.
 Engines run inside JavaScriptCore on macOS and QuickJS on other platforms
@@ -1274,6 +1274,50 @@ const sibling = await fetch(baseURL + 'sibling.txt').then(r => r.text());
 
 `import.meta.url` is a synthetic `engine:///<path>` URL — it doesn't leak the
 user's filesystem location, and `Response.url` follows the same scheme.
+
+#### TextDecoder / TextEncoder
+
+A **UTF-8-only** subset of the [WHATWG Encoding
+Standard](https://encoding.spec.whatwg.org/). Use them to convert between
+bytes and text — most often on a slice of a binary format read via
+[`fetch(...).arrayBuffer()`](#fetchpath):
+
+```js
+const buffer = await fetch('./table.bin').then((r) => r.arrayBuffer());
+const view = new Uint8Array(buffer);
+const label = new TextDecoder().decode(view.subarray(4, 12));
+```
+
+For whole-file text, prefer `Response.text()` — the host decodes it off the
+main thread. `TextDecoder` is for the embedded-string case where you already
+hold the bytes.
+
+**`TextDecoder`**
+
+- `new TextDecoder(label = "utf-8", options = {})`. `label` accepts the
+  standard UTF-8 labels (`"utf-8"`, `"utf8"`, `"unicode-1-1-utf-8"`,
+  `"unicode11utf8"`, `"unicode20utf8"`, `"x-unicode20utf8"`; case- and
+  surrounding-whitespace-insensitive). **Any other label throws
+  `RangeError`** — other encodings are not implemented yet.
+- `options`: `fatal` (default `false`) and `ignoreBOM` (default `false`).
+- Properties: `encoding` (always `"utf-8"`), `fatal`, `ignoreBOM`.
+- `decode(input?, options?)` → string. `input` is an `ArrayBuffer` or any
+  view (`Uint8Array`, `DataView`, …); a view's byte offset and length are
+  honored. Omitting it decodes nothing. A non-buffer input throws
+  `TypeError`.
+  - Invalid sequences become U+FFFD (replacement) unless `fatal: true`, which
+    throws `TypeError`. A leading byte-order mark is stripped unless
+    `ignoreBOM: true`.
+  - `decode(chunk, { stream: true })` holds an incomplete trailing sequence
+    until the next call; a final `decode()` (no `stream`) flushes it. Without
+    `stream`, an incomplete trailing sequence is flushed immediately (U+FFFD,
+    or `TypeError` under `fatal`).
+
+**`TextEncoder`**
+
+- `new TextEncoder()` (arguments ignored); `encoding` is always `"utf-8"`.
+- `encode(input = "")` → `Uint8Array`. Unpaired surrogates in `input`
+  serialize to U+FFFD. There is no `encodeInto()`.
 
 #### Module import resolution
 
