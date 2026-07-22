@@ -109,11 +109,16 @@ void setIntField(JSContext *ctx, JSValueConst object, const char *name,
 EngineSession::EngineSession(JsEngineHost *host,
                              fcitx::InputContext *inputContext)
     : host_(host), inputContext_(inputContext) {
+    // Unconditional, paired with the dtor's decrement: an invalid session
+    // (createInstance fails below) is still destroyed by the caller, and an
+    // unbalanced count would keep the host's fetch pipeline armed forever.
+    host_->incrementActive();
     instanceId_ = host_->createInstance();
     windowConfig_ = sessionWindowConfig();
 }
 
 EngineSession::~EngineSession() {
+    host_->decrementActive();
     freeCandidates(candidates_);
     if (instanceId_ != 0) {
         host_->destroyInstance(instanceId_);

@@ -181,6 +181,7 @@ test: build
 	test/compositionend.sh
 	test/associated.sh
 	test/contract.sh
+	test/asyncfetch.sh
 
 clean:
 	rm -rf $(BUILD_DIR)

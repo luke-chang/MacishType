@@ -226,10 +226,13 @@ JsEngineHost::load(const std::string &engineId,
                    const std::filesystem::path &storageRoot,
                    const std::string &settingsValuesJson,
                    const ManifestData &manifest,
-                   const std::vector<std::string> &languages) {
+                   const std::vector<std::string> &languages,
+                   fcitx::EventLoop *eventLoop,
+                   fcitx::EventDispatcher *dispatcher) {
     std::unique_ptr<JsEngineHost> host(
         new JsEngineHost(engineId, engineRoot, storageRoot,
-                         settingsValuesJson, manifest, languages));
+                         settingsValuesJson, manifest, languages, eventLoop,
+                         dispatcher));
     if (!host->initialize()) {
         return nullptr;
     }
@@ -241,16 +244,37 @@ JsEngineHost::JsEngineHost(std::string engineId,
                            std::filesystem::path storageRoot,
                            std::string settingsValuesJson,
                            ManifestData manifest,
-                           std::vector<std::string> languages)
+                           std::vector<std::string> languages,
+                           fcitx::EventLoop *eventLoop,
+                           fcitx::EventDispatcher *dispatcher)
     : engineId_(std::move(engineId)), engineRoot_(std::move(engineRoot)),
       storageRoot_(std::move(storageRoot)),
       settingsValuesJson_(settingsValuesJson.empty() ? "{}"
                                                      : std::move(
                                                            settingsValuesJson)),
-      manifest_(std::move(manifest)), languages_(std::move(languages)) {}
+      manifest_(std::move(manifest)), languages_(std::move(languages)),
+      eventLoop_(eventLoop), dispatcher_(dispatcher) {}
 
 JsEngineHost::~JsEngineHost() {
+    // Async-fetch teardown, strictly before the JS context dies:
+    // cancel pending event sources, then join the worker (after which no
+    // thread can touch this host), then invalidate the liveness token so a
+    // completion closure already queued on the main loop becomes a pure
+    // drop — it must not call JS_FreeValue on its batch's handles (the
+    // context is about to be freed); those dup'd refs are reclaimed
+    // wholesale by JS_FreeRuntime below.
+    deferredSettle_.reset();
+    if (fetchWorker_.joinable()) {
+        fetchWorker_.join();
+    }
+    aliveToken_.reset();
     if (ctx_ != nullptr) {
+        for (auto &fetch : pendingFetches_) {
+            JS_FreeValue(ctx_, fetch.resolve);
+            JS_FreeValue(ctx_, fetch.reject);
+        }
+        pendingFetches_.clear();
+        JS_FreeValue(ctx_, makeResponse_);
         for (auto &[id, instance] : instances_) {
             JS_FreeValue(ctx_, instance);
         }
@@ -637,6 +661,18 @@ bool JsEngineHost::evaluateEntryModule() {
     drainJobs();
 
     if (JS_IsPromise(evaluation.get())) {
+        // The module top-level awaits a fetch. Deferred reads would leave
+        // the module promise pending forever (load fails before any session
+        // could arm the pipeline), so settle the queued fetches inline — the
+        // engine opted into paying its read+parse during load by awaiting.
+        // Loop: each settled generation can resume the module far enough to
+        // queue the next dependent fetch; a module that is still pending
+        // without queueing anything falls through to the error below.
+        while (JS_PromiseState(ctx_, evaluation.get()) == JS_PROMISE_PENDING &&
+               !pendingFetches_.empty()) {
+            flushPendingFetchesSync();
+            drainJobs();
+        }
         switch (JS_PromiseState(ctx_, evaluation.get())) {
         case JS_PROMISE_FULFILLED:
             break;
@@ -789,6 +825,201 @@ void JsEngineHost::rejectionTracker(JSContext *ctx, JSValueConst promise,
         return;
     }
     host->pendingRejections_[key] = qjs::errorText(ctx, reason);
+}
+
+// Async fetch pipeline ---------------------------------------------------
+//
+// fetch() resolves the path synchronously (spec: invalid paths reject at
+// fetch() time) but the disk read runs on a worker thread and the promise
+// settles — where the engine's .then/JSON.parse runs — on a later main-loop
+// turn, as soon as the bytes arrive. No artificial delay: this mirrors the
+// macOS host (GCD background read, main-thread settle) and the web, where
+// only the I/O is off-thread. The active gate exists for correctness, not
+// pacing: while a module load runs (no session yet) fetches stay queued so
+// the top-level-await fallback can read them inline.
+//
+// Hard invariants (each PendingFetch is settled and freed exactly once):
+// - dispatchToWorker moves out only not-yet-read items (bytes == nullopt);
+//   staged results never reach the worker again.
+// - The deferred-settle path moves out only staged items (bytes present).
+// - settleFetches owns its batch; items never return to the queue.
+// The two paths operate on disjoint subsets.
+
+void JsEngineHost::incrementActive() {
+    ++activeCount_;
+    if (activeCount_ == 1) {
+        dispatchToWorker();
+        scheduleDeferredSettle();
+    }
+}
+
+void JsEngineHost::decrementActive() {
+    --activeCount_;
+    if (activeCount_ <= 0) {
+        // Queued items and staged bytes survive for the next activation; an
+        // in-flight worker read finishes harmlessly off-loop and its results
+        // are staged by the (inactive) completion.
+        deferredSettle_.reset();
+    }
+}
+
+void JsEngineHost::dispatchToWorker() {
+    if (workerBusy_ || dispatcher_ == nullptr || activeCount_ <= 0) {
+        return;
+    }
+    std::vector<PendingFetch> batch;
+    auto it = pendingFetches_.begin();
+    while (it != pendingFetches_.end()) {
+        if (!it->bytes) {
+            batch.push_back(std::move(*it));
+            it = pendingFetches_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (batch.empty()) {
+        return;
+    }
+    workerBusy_ = true;
+    if (fetchWorker_.joinable()) {
+        // The previous worker already scheduled its completion; reclaim it.
+        fetchWorker_.join();
+    }
+    // The worker touches only the moved batch's paths/bytes — never the
+    // JSContext or other host state. It must always schedule the completion
+    // (even on failure), or workerBusy_ would stay stuck.
+    fetchWorker_ = std::thread([this, alive = std::weak_ptr<char>(aliveToken_),
+                                dispatcher = dispatcher_,
+                                batch = std::move(batch)]() mutable {
+        for (auto &fetch : batch) {
+            try {
+                fetch.bytes = readFile(fetch.fileSystemPath);
+            } catch (...) {
+                fetch.bytes = std::nullopt;
+            }
+        }
+        dispatcher->schedule([this, alive = std::move(alive),
+                              batch = std::move(batch)]() mutable {
+            if (alive.expired()) {
+                // Host died first: pure drop. No JS_* calls — the context is
+                // gone and JS_FreeRuntime reclaimed the batch's dup'd refs.
+                return;
+            }
+            completeWorkerBatch(std::move(batch));
+        });
+    });
+}
+
+void JsEngineHost::completeWorkerBatch(std::vector<PendingFetch> batch) {
+    workerBusy_ = false;
+    if (activeCount_ > 0) {
+        settleFetches(std::move(batch));
+    } else {
+        // Inactive: stage successful reads for the next activation (the read
+        // is not repeated), but reject failures right away — a nullopt is
+        // only distinguishable as "failed" inside a completed batch.
+        std::vector<PendingFetch> failures;
+        for (auto &fetch : batch) {
+            if (fetch.bytes) {
+                pendingFetches_.push_back(std::move(fetch));
+            } else {
+                failures.push_back(std::move(fetch));
+            }
+        }
+        if (!failures.empty()) {
+            settleFetches(std::move(failures));
+        }
+    }
+    // Anything enqueued while the worker ran.
+    dispatchToWorker();
+}
+
+void JsEngineHost::scheduleDeferredSettle() {
+    if (deferredSettle_ || eventLoop_ == nullptr) {
+        return;
+    }
+    bool hasStaged = std::any_of(
+        pendingFetches_.begin(), pendingFetches_.end(),
+        [](const PendingFetch &fetch) { return fetch.bytes.has_value(); });
+    if (!hasStaged) {
+        return;
+    }
+    // Never settle synchronously here: incrementActive runs inside
+    // activate(), and settling would put the parse back on the activate
+    // turn — the stall this pipeline exists to remove.
+    deferredSettle_ = eventLoop_->addDeferEvent([this](fcitx::EventSource *) {
+        auto *self = this;
+        self->deferredSettle_.reset();
+        std::vector<PendingFetch> staged;
+        auto it = self->pendingFetches_.begin();
+        while (it != self->pendingFetches_.end()) {
+            if (it->bytes.has_value()) {
+                staged.push_back(std::move(*it));
+                it = self->pendingFetches_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        self->settleFetches(std::move(staged));
+        return true;
+    });
+}
+
+void JsEngineHost::settleFetches(std::vector<PendingFetch> batch) {
+    for (auto &fetch : batch) {
+        // One Entry per fetch: each settle (and the .then/parse chain that
+        // drains when it unwinds) gets its own watchdog window, matching the
+        // per-invokeHook granularity runtime fetches had when synchronous.
+        Entry entry(*this);
+        bool resolved = false;
+        if (fetch.bytes && !JS_IsUndefined(makeResponse_)) {
+            JSValue url = JS_NewString(ctx_, fetch.url.c_str());
+            JSValue buffer = JS_NewArrayBufferCopy(
+                ctx_, reinterpret_cast<const uint8_t *>(fetch.bytes->data()),
+                fetch.bytes->size());
+            JSValue args[2] = {url, buffer};
+            JSValue response =
+                JS_Call(ctx_, makeResponse_, JS_UNDEFINED, 2, args);
+            JS_FreeValue(ctx_, url);
+            JS_FreeValue(ctx_, buffer);
+            if (JS_IsException(response)) {
+                MACISHTYPE_ERROR() << engineId_ << ": fetch response failed: "
+                                   << qjs::exceptionText(ctx_);
+            } else {
+                JSValue result =
+                    JS_Call(ctx_, fetch.resolve, JS_UNDEFINED, 1, &response);
+                JS_FreeValue(ctx_, result);
+                resolved = true;
+            }
+            JS_FreeValue(ctx_, response);
+        }
+        if (!resolved) {
+            std::string message = "fetch: cannot read " + fetch.url;
+            JSValue error = JS_NewError(ctx_);
+            JS_SetPropertyStr(ctx_, error, "message",
+                              JS_NewStringLen(ctx_, message.c_str(),
+                                              message.size()));
+            JSValue result =
+                JS_Call(ctx_, fetch.reject, JS_UNDEFINED, 1, &error);
+            JS_FreeValue(ctx_, error);
+            JS_FreeValue(ctx_, result);
+        }
+        JS_FreeValue(ctx_, fetch.resolve);
+        JS_FreeValue(ctx_, fetch.reject);
+        fetch.resolve = JS_UNDEFINED;
+        fetch.reject = JS_UNDEFINED;
+    }
+}
+
+void JsEngineHost::flushPendingFetchesSync() {
+    std::vector<PendingFetch> batch;
+    batch.swap(pendingFetches_);
+    for (auto &fetch : batch) {
+        if (!fetch.bytes) {
+            fetch.bytes = readFile(fetch.fileSystemPath);
+        }
+    }
+    settleFetches(std::move(batch));
 }
 
 void JsEngineHost::reportRejections() {
@@ -1453,36 +1684,63 @@ JSValue JsEngineHost::nativeGetLanguages(JSContext *ctx, JSValueConst thisVal,
     return array;
 }
 
-JSValue JsEngineHost::nativeReadEngineFile(JSContext *ctx,
-                                           JSValueConst thisVal, int argc,
-                                           JSValueConst *argv) {
+JSValue JsEngineHost::nativeBeginFetch(JSContext *ctx, JSValueConst thisVal,
+                                       int argc, JSValueConst *argv) {
     FCITX_UNUSED(thisVal);
     auto *host = hostOf(ctx);
-    if (argc < 1) {
-        return JS_ThrowTypeError(ctx, "fetch: missing path");
+    if (argc < 3 || !JS_IsFunction(ctx, argv[1]) ||
+        !JS_IsFunction(ctx, argv[2])) {
+        return JS_ThrowTypeError(ctx,
+                                 "beginFetch: expected (path, resolve, "
+                                 "reject)");
     }
     auto resolved = host->resolveEnginePath(qjs::toString(ctx, argv[0]));
-    if (auto *error = std::get_if<std::string>(&resolved)) {
-        return JS_ThrowPlainError(ctx, "fetch: %s", error->c_str());
+    if (auto *errorText = std::get_if<std::string>(&resolved)) {
+        // Path-level failures reject at fetch() time (the spec's "background
+        // stat" semantics); only the disk read is deferred. Call the reject
+        // function directly — the JS wrapper is a thin forwarder with no
+        // try/catch left around this native.
+        std::string message = "fetch: " + *errorText;
+        JSValue error = JS_NewError(ctx);
+        JS_SetPropertyStr(
+            ctx, error, "message",
+            JS_NewStringLen(ctx, message.c_str(), message.size()));
+        JSValue result = JS_Call(ctx, argv[2], JS_UNDEFINED, 1, &error);
+        JS_FreeValue(ctx, error);
+        JS_FreeValue(ctx, result);
+        return JS_UNDEFINED;
     }
     auto &filePath = std::get<ResolvedPath>(resolved);
     // A fetch alone expresses interest in the file; record it before the
-    // read so a later edit reloads even when this read fails.
+    // read so a later edit reloads even when the read fails.
     host->loadedFilePaths_.insert(filePath.fileSystemPath.string());
-    auto content = readFile(filePath.fileSystemPath);
-    if (!content) {
-        return JS_ThrowPlainError(ctx, "fetch: cannot read %s",
-                                  filePath.url.c_str());
+    PendingFetch fetch;
+    fetch.fileSystemPath = filePath.fileSystemPath;
+    fetch.url = filePath.url;
+    fetch.resolve = JS_DupValue(ctx, argv[1]);
+    fetch.reject = JS_DupValue(ctx, argv[2]);
+    host->pendingFetches_.push_back(std::move(fetch));
+    // Reads start right away for runtime fetches. During a module load there
+    // is no session yet (inactive), so the item stays queued — either for
+    // the top-level-await fallback to read inline, or for the first
+    // session's incrementActive to dispatch.
+    host->dispatchToWorker();
+    return JS_UNDEFINED;
+}
+
+JSValue JsEngineHost::nativeRegisterMakeResponse(JSContext *ctx,
+                                                 JSValueConst thisVal,
+                                                 int argc,
+                                                 JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    auto *host = hostOf(ctx);
+    if (argc < 1 || !JS_IsFunction(ctx, argv[0])) {
+        return JS_ThrowTypeError(ctx,
+                                 "registerMakeResponse: expected a function");
     }
-    JSValue result = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, result, "url",
-                      JS_NewString(ctx, filePath.url.c_str()));
-    JS_SetPropertyStr(
-        ctx, result, "buffer",
-        JS_NewArrayBufferCopy(
-            ctx, reinterpret_cast<const uint8_t *>(content->data()),
-            content->size()));
-    return result;
+    JS_FreeValue(ctx, host->makeResponse_);
+    host->makeResponse_ = JS_DupValue(ctx, argv[0]);
+    return JS_UNDEFINED;
 }
 
 JSValue JsEngineHost::nativeAction(JSContext *ctx, JSValueConst thisVal,
@@ -1548,8 +1806,9 @@ void JsEngineHost::registerBridgeGlobals() {
     define("__MacishType_setStorageListening",
            &JsEngineHost::nativeSetStorageListening, 1);
     define("__MacishType_getLanguages", &JsEngineHost::nativeGetLanguages, 0);
-    define("__MacishTypeHost_readEngineFile",
-           &JsEngineHost::nativeReadEngineFile, 1);
+    define("__MacishTypeHost_beginFetch", &JsEngineHost::nativeBeginFetch, 3);
+    define("__MacishTypeHost_registerMakeResponse",
+           &JsEngineHost::nativeRegisterMakeResponse, 1);
     define("__MacishTypeHost_utf8Decode", &JsEngineHost::nativeUtf8Decode, 1);
     define("__MacishTypeHost_intlSegment",
            &JsEngineHost::nativeIntlSegment, 3);

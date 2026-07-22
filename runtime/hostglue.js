@@ -42,15 +42,13 @@
     };
   }
 
+  // The host owns fetch scheduling: the native resolves the path now
+  // (invalid paths reject immediately) but reads the file on a worker
+  // thread later, then calls makeResponse + resolve back on the JS thread.
+  __MacishTypeHost_registerMakeResponse(makeResponse);
+
   globalThis.__MacishType_fetch = function (input, resolve, reject) {
-    let file;
-    try {
-      file = __MacishTypeHost_readEngineFile(String(input));
-    } catch (error) {
-      reject(error);
-      return;
-    }
-    resolve(makeResponse(file.url, file.buffer));
+    __MacishTypeHost_beginFetch(String(input), resolve, reject);
   };
 
   // Assembles the event object handed to engine hooks. `data` is built by

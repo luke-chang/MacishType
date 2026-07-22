@@ -319,7 +319,8 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
         engine.id, engine.root, engine.storageRoot,
         settings != engineSettings_.end() ? settings->second->valuesToJson()
                                           : std::string("{}"),
-        engine.manifest, languages_);
+        engine.manifest, languages_, &instance_->eventLoop(),
+        &instance_->eventDispatcher());
     if (!host) {
         MACISHTYPE_ERROR() << "Engine failed to load, disabled until it "
                               "changes on disk: "

@@ -9,9 +9,12 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <thread>
 #include <variant>
 #include <vector>
 
+#include <fcitx-utils/event.h>
+#include <fcitx-utils/eventdispatcher.h>
 #include <quickjs.h>
 
 #include "intl.h"
@@ -31,7 +34,8 @@ public:
     load(const std::string &engineId, const std::filesystem::path &engineRoot,
          const std::filesystem::path &storageRoot,
          const std::string &settingsValuesJson, const ManifestData &manifest,
-         const std::vector<std::string> &languages);
+         const std::vector<std::string> &languages,
+         fcitx::EventLoop *eventLoop, fcitx::EventDispatcher *dispatcher);
 
     ~JsEngineHost();
     JsEngineHost(const JsEngineHost &) = delete;
@@ -52,6 +56,15 @@ public:
 
     JSContext *context() const { return ctx_; }
     const std::string &engineId() const { return engineId_; }
+
+    // Active-session refcount, driven by EngineSession's ctor/dtor. While
+    // active (> 0) queued fetches are read on a worker thread right away and
+    // settled on the main loop as soon as the bytes arrive, matching the
+    // macOS host's timing. While inactive (module load, or the engine was
+    // switched away from) items stay queued and completed reads are staged,
+    // settling on the next activation without re-reading.
+    void incrementActive();
+    void decrementActive();
 
     // Canonical paths of files the engine expressed interest in: manifest,
     // entry, every imported module, every fetched resource. Consumed by
@@ -154,7 +167,33 @@ private:
     JsEngineHost(std::string engineId, std::filesystem::path engineRoot,
                  std::filesystem::path storageRoot,
                  std::string settingsValuesJson, ManifestData manifest,
-                 std::vector<std::string> languages);
+                 std::vector<std::string> languages,
+                 fcitx::EventLoop *eventLoop, fcitx::EventDispatcher *dispatcher);
+
+    // One queued fetch(): path resolved (and reload tracking recorded) at
+    // fetch() time, disk read deferred to the worker, promise settled on the
+    // main loop. `bytes` is the worker's result inside a completed batch
+    // (nullopt there = read failed); in pendingFetches_ a nullopt means
+    // not-read-yet while a present value is a staged result awaiting an
+    // active session. resolve/reject hold dup'd refs freed exactly once when
+    // the fetch settles (or wholesale by JS_FreeRuntime at teardown).
+    struct PendingFetch {
+        std::filesystem::path fileSystemPath;
+        std::string url;
+        JSValue resolve = JS_UNDEFINED;
+        JSValue reject = JS_UNDEFINED;
+        std::optional<std::string> bytes;
+    };
+
+    // Async-fetch pipeline (all on the main loop except the worker body).
+    void dispatchToWorker();
+    void completeWorkerBatch(std::vector<PendingFetch> batch);
+    void settleFetches(std::vector<PendingFetch> batch);
+    void scheduleDeferredSettle();
+    // Synchronous fallback for entry modules that top-level-await a fetch:
+    // reads and settles every queued fetch inline so the module promise can
+    // fulfill during load, matching the old synchronous behavior.
+    void flushPendingFetchesSync();
 
     // Snapshot of a storage file's on-disk identity, recorded after the
     // host's own writes so their inotify echoes can be told apart from
@@ -247,8 +286,11 @@ private:
                                              JSValueConst *argv);
     static JSValue nativeGetLanguages(JSContext *ctx, JSValueConst thisVal,
                                       int argc, JSValueConst *argv);
-    static JSValue nativeReadEngineFile(JSContext *ctx, JSValueConst thisVal,
-                                        int argc, JSValueConst *argv);
+    static JSValue nativeBeginFetch(JSContext *ctx, JSValueConst thisVal,
+                                    int argc, JSValueConst *argv);
+    static JSValue nativeRegisterMakeResponse(JSContext *ctx,
+                                              JSValueConst thisVal, int argc,
+                                              JSValueConst *argv);
     static JSValue nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
                                     int argc, JSValueConst *argv);
     // Segments a string via ICU (UAX #29) at grapheme/word/sentence
@@ -354,6 +396,21 @@ private:
     // ICU-backed Intl handle cache; created lazily on the first Intl native
     // call, closed with this host. ICU types stay confined to intl.cpp.
     std::unique_ptr<IntlCache> intlCache_;
+
+    // Async-fetch pipeline state (owned by the main loop; the worker only
+    // touches the batch moved into it).
+    fcitx::EventLoop *eventLoop_ = nullptr;
+    fcitx::EventDispatcher *dispatcher_ = nullptr;
+    std::vector<PendingFetch> pendingFetches_;
+    std::unique_ptr<fcitx::EventSource> deferredSettle_;
+    std::thread fetchWorker_;
+    bool workerBusy_ = false;
+    int activeCount_ = 0;
+    // Liveness token for worker completion closures scheduled onto the main
+    // loop: the closure holds a weak_ptr and becomes a pure drop (zero JS_*
+    // calls) when the host died first.
+    std::shared_ptr<char> aliveToken_ = std::make_shared<char>('\0');
+    JSValue makeResponse_ = JS_UNDEFINED;
 };
 
 // Whether an associated-mode dictionary is bundled for `intendedLanguage`.
