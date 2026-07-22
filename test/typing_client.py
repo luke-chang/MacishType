@@ -82,6 +82,28 @@ def main():
             key, _, value = assignment.partition("=")
             keys.append(("setaddonconfig", addon, key, value))
             continue
+        # "setaddonopt:ADDON:KEY=VALUE" writes one scalar option of an
+        # addon's config (booleans travel as "True"/"False").
+        if spec.startswith("setaddonopt:"):
+            addon, _, assignment = spec[len("setaddonopt:"):].partition(":")
+            key, _, value = assignment.partition("=")
+            keys.append(("setaddonopt", addon, key, value))
+            continue
+        # "checkupdate" asks the controller whether newly installed input
+        # methods or addons are pending; emits the boolean.
+        if spec == "checkupdate":
+            keys.append(("checkupdate",))
+            continue
+        # "refresh" loads newly installed input methods and addons (what
+        # configtool's Update button does).
+        if spec == "refresh":
+            keys.append(("refresh",))
+            continue
+        # "setgroupims:NAME1,NAME2,..." replaces the Default group's input
+        # method list (SetCurrentIM silently ignores IMs outside the group).
+        if spec.startswith("setgroupims:"):
+            keys.append(("setgroupims", spec[len("setgroupims:"):]))
+            continue
         # "setconfig:KEY=VALUE" writes one option through DBus SetConfig.
         if spec.startswith("setconfig:"):
             key, _, value = spec[len("setconfig:"):].partition("=")
@@ -162,7 +184,15 @@ def main():
     def send_keys():
         for entry in keys:
             if entry[0] == "sleep":
-                time.sleep(entry[1] / 1000)
+                # Pump the main context while waiting so queued DBus
+                # signals (commit/preedit) reach stdout before the next
+                # action — event-driven tests react to those lines.
+                deadline = time.monotonic() + entry[1] / 1000
+                context = GLib.MainContext.default()
+                while time.monotonic() < deadline:
+                    while context.iteration(False):
+                        pass
+                    time.sleep(0.02)
                 continue
             if entry[0] == "refocus":
                 ic_call("FocusOut")
@@ -180,11 +210,13 @@ def main():
                 emit({"event": "was-reset"})
                 continue
             if entry[0] == "switchim":
+                # 30s like the initial switch: selecting a macishtype IM
+                # loads its JS engine synchronously on the fcitx main loop.
                 bus.call_sync(
                     BUS_NAME, "/controller",
                     "org.fcitx.Fcitx.Controller1", "SetCurrentIM",
                     GLib.Variant("(s)", (entry[1],)), None,
-                    Gio.DBusCallFlags.NONE, 5000, None)
+                    Gio.DBusCallFlags.NONE, 30000, None)
                 emit({"event": "im-switched-away", "to": entry[1]})
                 continue
             if entry[0] == "getconfig":
@@ -210,6 +242,41 @@ def main():
                         (f"fcitx://config/inputmethod/{im_name}", raw)),
                     None, Gio.DBusCallFlags.NONE, 5000, None)
                 emit({"event": "config-set", "key": key, "value": value})
+                continue
+            if entry[0] == "checkupdate":
+                reply = bus.call_sync(
+                    BUS_NAME, "/controller", "org.fcitx.Fcitx.Controller1",
+                    "CheckUpdate", None, GLib.VariantType("(b)"),
+                    Gio.DBusCallFlags.NONE, 5000, None)
+                emit({"event": "checkupdate", "value": reply.unpack()[0]})
+                continue
+            if entry[0] == "refresh":
+                bus.call_sync(
+                    BUS_NAME, "/controller", "org.fcitx.Fcitx.Controller1",
+                    "Refresh", None, None,
+                    Gio.DBusCallFlags.NONE, 5000, None)
+                emit({"event": "refreshed"})
+                continue
+            if entry[0] == "setgroupims":
+                _kind, value = entry
+                ims = [(name, "") for name in value.split(",") if name]
+                bus.call_sync(
+                    BUS_NAME, "/controller", "org.fcitx.Fcitx.Controller1",
+                    "SetInputMethodGroupInfo",
+                    GLib.Variant("(ssa(ss))", ("Default", "us", ims)),
+                    None, Gio.DBusCallFlags.NONE, 5000, None)
+                emit({"event": "group-set", "ims": [name for name, _ in ims]})
+                continue
+            if entry[0] == "setaddonopt":
+                _kind, addon, key, value = entry
+                raw = GLib.Variant("a{sv}", {key: GLib.Variant("s", value)})
+                bus.call_sync(
+                    BUS_NAME, "/controller", "org.fcitx.Fcitx.Controller1",
+                    "SetConfig",
+                    GLib.Variant("(sv)", (f"fcitx://config/addon/{addon}", raw)),
+                    None, Gio.DBusCallFlags.NONE, 5000, None)
+                emit({"event": "addon-opt-set", "addon": addon, "key": key,
+                      "value": value})
                 continue
             if entry[0] == "setaddonconfig":
                 _kind, addon, key, value = entry

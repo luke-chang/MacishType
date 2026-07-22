@@ -22,9 +22,11 @@ public:
         const std::string &engineId, const std::set<std::string> &changed)>;
 
     // `callback` serves reload decisions; `storageCallback` receives
-    // changes inside a storage directory armed via watchStorage.
+    // changes inside a storage directory armed via watchStorage;
+    // `rootCallback` receives folder-level churn inside an engines root
+    // armed via watchEnginesRoot (first argument is the folder name).
     EngineWatcher(fcitx::EventLoop *eventLoop, Callback callback,
-                  Callback storageCallback);
+                  Callback storageCallback, Callback rootCallback);
     ~EngineWatcher();
     EngineWatcher(const EngineWatcher &) = delete;
     EngineWatcher &operator=(const EngineWatcher &) = delete;
@@ -32,6 +34,12 @@ public:
     // Idempotent; re-watching an engine refreshes its directory set.
     void watchEngine(const std::string &engineId,
                      const std::filesystem::path &root);
+
+    // Watches an engines parent directory (one XDG layer) for folders
+    // appearing and vanishing. Flat, non-recursive; the directory must
+    // exist. Receivers reconcile against disk state, so events are not
+    // typed and symlinked folders (no IN_ISDIR) count too.
+    void watchEnginesRoot(const std::filesystem::path &directory);
 
     // Storage watches are armed on demand (the engine has `storage`
     // listeners) and flat — key files only, no subdirectories. Creates
@@ -41,10 +49,15 @@ public:
     void unwatchStorage(const std::string &engineId);
 
 private:
+    // Which stream a watch feeds: engine trees debounce into the reload
+    // callback, storage dirs into the storage callback, and engines roots
+    // (keyed by folder name, empty engineId) into the root callback.
+    enum class WatchKind { Engine, Storage, Root };
+
     struct Watch {
         std::string engineId;
         std::filesystem::path directory;
-        bool storage = false;
+        WatchKind kind = WatchKind::Engine;
     };
 
     void watchDirectoryTree(const std::string &engineId,
@@ -52,11 +65,12 @@ private:
     void handleEvents();
     void scheduleCallback(const std::string &engineId,
                           const std::filesystem::path &changedPath,
-                          bool storage);
+                          WatchKind kind);
 
     fcitx::EventLoop *eventLoop_;
     Callback callback_;
     Callback storageCallback_;
+    Callback rootCallback_;
     int inotifyFd_ = -1;
     std::unique_ptr<fcitx::EventSourceIO> ioSource_;
     std::map<int, Watch> watches_;

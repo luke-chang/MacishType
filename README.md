@@ -107,14 +107,27 @@ theme-name lookup only, so path-served icons do not show there.
 Engine folders hot-reload:
 editing an engine's files (or fixing a broken one) applies on the next
 keystroke with a desktop notification, no fcitx5 restart needed — except
-display-name changes, which fcitx5 only picks up on restart (its input
-method list cannot be updated at runtime). Reloads are scoped to the files
-the engine expressed interest in — manifest, entry, imported modules,
-fetched data, icon candidates — so unrelated files in the folder don't
-trigger one; an engine that failed to load retries on any change. All
+display-name changes, which fcitx5 only picks up on restart (its list
+entries cannot be updated or removed at runtime). Turning off the addon
+option "Reload an engine automatically when its files are edited" defers
+edits instead: fcitx5's configuration tool notices pending updates and
+its Update button applies them. Reloads are scoped to the files the
+engine expressed interest in — manifest, entry, imported modules, fetched
+data, icon candidates — so unrelated files in the folder don't trigger
+one; an engine that failed to load retries on any change. All
 `manifest.modules` data sources are fed: wordFrequency and symbolNames
 from the corpora pinned in `scripts/external-resources.lock`, fontCoverage
 from fontconfig.
+
+Whole folders come and go at runtime too. A new engine folder surfaces
+the way any fcitx5 input method package does: the configuration tool
+notices pending updates, and its Update button adds the engine to the
+available list (joining an input method group stays a manual step).
+Deleting a live engine's folder parks it with a desktop notification, and
+typing on it shows "Engine load failed" in the composing area instead of
+leaking keystrokes into the application; restoring the folder recovers it
+automatically. A rename is a removal plus a new folder, and the stale
+list entry clears on the next restart.
 
 Traditional→Simplified output is delegated to fcitx5's own chttrans
 module, attached while `capabilities.outputToSimplified` resolves

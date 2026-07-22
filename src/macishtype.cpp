@@ -11,10 +11,15 @@
 #include <fcitx-config/rawconfig.h>
 #include <notifications_public.h>
 #include <fcitx-utils/i18n.h>
+#include <fcitx-utils/key.h>
+#include <fcitx-utils/standardpaths.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/action.h>
 #include <fcitx/addonmanager.h>
+#include <fcitx/event.h>
+#include <fcitx/inputpanel.h>
 #include <fcitx/statusarea.h>
+#include <fcitx/text.h>
 #include <fcitx/userinterfacemanager.h>
 
 #include "i18n.h"
@@ -97,8 +102,37 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
         &instance_->eventLoop(),
         [this](const std::string &engineId,
                const std::set<std::string> &changedPaths) {
-            if (shouldReload(engineId, changedPaths)) {
+            const auto *engine = engineById(engineId);
+            if (engine == nullptr) {
+                return;
+            }
+            // Folder-level transitions belong to the root reconcile:
+            // rm -rf raises file deletions here first, and reloading a
+            // vanished folder would emit an "Engine load failed" tip
+            // that contradicts the removal tip that follows.
+            std::error_code errorCode;
+            if (!std::filesystem::is_directory(engine->root, errorCode)) {
+                return;
+            }
+            // A parked engine (torn down when its folder vanished, or a
+            // prior load failure) getting file changes is a recovery, not
+            // an edit: reconcile re-resolves the winning layer (fixing a
+            // stale storage root) and reloads unconditionally, never gated
+            // on the edit option — the removal tip promised recovery.
+            if (failedHosts_.count(engineId) != 0) {
+                reconcileEngineFolder(engineId);
+                return;
+            }
+            if (!shouldReload(engineId, changedPaths)) {
+                return;
+            }
+            if (*config_.autoReloadEngines) {
                 reloadEngine(engineId);
+            } else {
+                pendingReloads_.insert(engineId);
+                MACISHTYPE_INFO() << "Engine changed on disk, reload "
+                                     "deferred to the next update: "
+                                  << engineId;
             }
         },
         [this](const std::string &engineId,
@@ -106,6 +140,9 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
             if (auto found = hosts_.find(engineId); found != hosts_.end()) {
                 found->second->handleStorageChanges(changedPaths);
             }
+        },
+        [this](const std::string &name, const std::set<std::string> &) {
+            reconcileEngineFolder(name);
         });
     // Watch every discovered engine from the start, so manifest edits apply
     // even for engines that have not been activated yet (and a failing one
@@ -113,9 +150,50 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     for (const auto &engine : engines_) {
         watcher_->watchEngine(engine.id, engine.root);
     }
+    // Folder-level lifecycle: create the user layer so it is always
+    // watchable, then watch every existing engines layer. This must
+    // precede the CheckUpdate baseline below — a directory created after
+    // the baseline would read as a permanent pending update.
+    const auto &paths = fcitx::StandardPaths::global();
+    auto userEngines =
+        paths.userDirectory(fcitx::StandardPathsType::PkgData) /
+        "macishtype/engines";
+    std::error_code errorCode;
+    std::filesystem::create_directories(userEngines, errorCode);
+    if (errorCode) {
+        MACISHTYPE_WARN() << "Cannot create user engines directory "
+                          << userEngines << ": " << errorCode.message();
+    }
+    for (const auto &dataDir :
+         paths.directories(fcitx::StandardPathsType::PkgData)) {
+        auto enginesDir = dataDir / "macishtype/engines";
+        if (std::filesystem::is_directory(enginesDir, errorCode)) {
+            watcher_->watchEnginesRoot(enginesDir);
+        }
+    }
+    enginesTimestamp_ = paths.timestamp(fcitx::StandardPathsType::PkgData,
+                                        "macishtype/engines");
+    // Runtime additions are pull-based, matching how any fcitx IM package
+    // surfaces: this accept makes configtool show its native "Found
+    // updates" banner, whose Update button refreshes the IM list and
+    // re-enters listInputMethods.
+    checkUpdateWatcher_ = instance_->watchEvent(
+        fcitx::EventType::CheckUpdate, fcitx::EventWatcherPhase::Default,
+        [this](fcitx::Event &event) {
+            if (!pendingReloads_.empty() || enginesHaveUnparsableManifest_ ||
+                fcitx::StandardPaths::global().timestamp(
+                    fcitx::StandardPathsType::PkgData,
+                    "macishtype/engines") > enginesTimestamp_) {
+                event.accept();
+            }
+        });
 }
 
 std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {
+    // fcitx re-invokes this on Instance::refresh (the configtool Update
+    // button); rescanning here is what lets folders dropped in at runtime
+    // join the list without a restart.
+    rescanEngineFolders();
     std::vector<fcitx::InputMethodEntry> entries;
     for (const auto &engine : engines_) {
         fcitx::InputMethodEntry entry(uniqueNameForEngine(engine),
@@ -199,14 +277,130 @@ MacishTypeEngine::subModeLabelImpl(const fcitx::InputMethodEntry &entry,
     return engine != nullptr ? labelForEngine(*engine) : std::string();
 }
 
+namespace {
+
+// Sets (or clears, with an empty Text) the load-failure prompt, following
+// the same capability dispatch the session uses for real preedit.
+void applyPromptPreedit(fcitx::InputContext *inputContext,
+                        fcitx::Text preedit) {
+    auto &inputPanel = inputContext->inputPanel();
+    if (inputContext->capabilityFlags().test(fcitx::CapabilityFlag::Preedit)) {
+        inputPanel.setClientPreedit(preedit);
+        inputContext->updatePreedit();
+    } else {
+        inputPanel.setPreedit(preedit);
+        inputContext->updateUserInterface(
+            fcitx::UserInterfaceComponent::InputPanel);
+    }
+}
+
+} // namespace
+
 void MacishTypeEngine::keyEvent(const fcitx::InputMethodEntry &entry,
                                 fcitx::KeyEvent &keyEvent) {
-    FCITX_UNUSED(entry);
     auto found = sessions_.find(keyEvent.inputContext());
     if (found == sessions_.end()) {
+        if (const auto *engine = engineForEntry(entry)) {
+            handleSessionlessKey(*engine, keyEvent);
+        }
         return;
     }
     found->second->handleKey(keyEvent);
+}
+
+void MacishTypeEngine::handleSessionlessKey(const EngineInfo &engine,
+                                            fcitx::KeyEvent &keyEvent) {
+    auto *inputContext = keyEvent.inputContext();
+    // Self-heal first: a restored folder reloads its host without any
+    // re-activate on a context the user stayed on (fcitx only activates
+    // on focus, IM-switch, and group changes), so the session is rebuilt
+    // lazily here. failedHosts_ caches genuine failures, keeping this
+    // check cheap on every key of a dead engine.
+    if (auto *host = hostForEngine(engine)) {
+        if (auto settings = engineSettings_.find(engine.id);
+            settings != engineSettings_.end()) {
+            host->updateSettings(settings->second->valuesToJson());
+            host->setAssociatedModeEnabled(
+                settings->second->associatedModeEnabled());
+            host->setLayoutVertical(
+                resolveLayoutVertical(settings->second->layoutDirection()));
+        }
+        auto session = std::make_unique<EngineSession>(host, inputContext);
+        if (session->valid()) {
+            clearFailurePrompt(inputContext);
+            session->invokeActivateHook();
+            auto *live =
+                (sessions_[inputContext] = std::move(session)).get();
+            // fcitx cleared the InputMethod status group when the engine
+            // last deactivated; a recovery outside activate must re-attach.
+            attachStatusActions(engine, inputContext);
+            live->handleKey(keyEvent);
+            return;
+        }
+    }
+
+    // Genuinely dead engine: the macOS host's status-prompt semantics
+    // (statusPromptResult) — printable keys are swallowed and show the
+    // message in the composing area, Escape/Backspace clear it, modifier
+    // combos and non-printing keys pass through while nothing is shown.
+    const auto key = keyEvent.key();
+    if (key.isModifier()) {
+        return;
+    }
+    const bool shown = failurePromptShown_.count(inputContext) != 0;
+    if (key.states() & fcitx::KeyStates{fcitx::KeyState::Ctrl,
+                                        fcitx::KeyState::Alt,
+                                        fcitx::KeyState::Super}) {
+        if (shown) {
+            keyEvent.filterAndAccept();
+        }
+        return;
+    }
+    if (key.sym() == FcitxKey_Escape || key.sym() == FcitxKey_BackSpace) {
+        if (!shown) {
+            return;
+        }
+        // Clear on the release so press and release are swallowed alike:
+        // clearing on the press would drop `shown`, and the release would
+        // then leak to the client as a key with no matching press.
+        if (keyEvent.isRelease()) {
+            clearFailurePrompt(inputContext);
+        }
+        keyEvent.filterAndAccept();
+        return;
+    }
+    // Mirrors mac isPrintingCharacter: control range (< 0x21, so space
+    // too) and DEL are non-printing; arrows/function keys map to zero.
+    const uint32_t unicode = fcitx::Key::keySymToUnicode(key.sym());
+    if (unicode >= 0x21 && unicode != 0x7F) {
+        if (!keyEvent.isRelease()) {
+            showFailurePrompt(inputContext);
+        }
+        keyEvent.filterAndAccept();
+        return;
+    }
+    if (shown) {
+        keyEvent.filterAndAccept();
+    }
+}
+
+void MacishTypeEngine::showFailurePrompt(fcitx::InputContext *inputContext) {
+    failurePromptShown_.insert(inputContext);
+    fcitx::Text preedit;
+    // DontCommit is load-bearing: fcitx commits the client preedit on
+    // focus-out before any engine cleanup runs, and the prompt must never
+    // land in the user's document.
+    preedit.append(translated("Engine load failed"),
+                   fcitx::TextFormatFlags{fcitx::TextFormatFlag::Underline,
+                                          fcitx::TextFormatFlag::DontCommit});
+    applyPromptPreedit(inputContext, std::move(preedit));
+}
+
+void MacishTypeEngine::clearFailurePrompt(fcitx::InputContext *inputContext) {
+    if (failurePromptShown_.erase(inputContext) == 0) {
+        return;
+    }
+    applyPromptPreedit(inputContext, fcitx::Text());
 }
 
 void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
@@ -239,12 +433,16 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
     }
     session->invokeActivateHook();
     sessions_[inputContext] = std::move(session);
+    attachStatusActions(*engine, inputContext);
+}
 
+void MacishTypeEngine::attachStatusActions(const EngineInfo &engine,
+                                           fcitx::InputContext *inputContext) {
     // The shared Traditional→Simplified conversion follows the resolved
     // outputToSimplified capability (chttrans is OnDemand and registers its
     // toggle action on load); the status-area action also arms its hotkey
     // and commit filter.
-    if (outputToSimplifiedAvailable(*engine)) {
+    if (outputToSimplifiedAvailable(engine)) {
         if (auto *action =
                 instance_->userInterfaceManager().lookupAction("chttrans")) {
             inputContext->statusArea().addAction(
@@ -261,7 +459,7 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
     // macOS's Option+key full-width trigger. Linux/Windows leave that to a
     // mode toggle (Alt+key is a shortcut modifier there), so it is off by
     // default and the user flips it. No-op when the module is not installed.
-    if (engine->manifest.fullwidthInput) {
+    if (engine.manifest.fullwidthInput) {
         instance_->addonManager().addon("fullwidth", true);
         if (auto *action =
                 instance_->userInterfaceManager().lookupAction("fullwidth")) {
@@ -284,6 +482,7 @@ void MacishTypeEngine::deactivate(const fcitx::InputMethodEntry &entry,
         found->second->endFromDeactivate(preeditAlreadyCommitted);
     }
     endSession(event.inputContext());
+    clearFailurePrompt(event.inputContext());
 }
 
 void MacishTypeEngine::reset(const fcitx::InputMethodEntry &entry,
@@ -293,6 +492,137 @@ void MacishTypeEngine::reset(const fcitx::InputMethodEntry &entry,
     if (found != sessions_.end()) {
         found->second->resetFromClient();
     }
+    clearFailurePrompt(event.inputContext());
+}
+
+EngineInfo *MacishTypeEngine::engineById(const std::string &engineId) {
+    for (auto &engine : engines_) {
+        if (engine.id == engineId) {
+            return &engine;
+        }
+    }
+    return nullptr;
+}
+
+void MacishTypeEngine::rescanEngineFolders() {
+    // Snapshot before scanning: mtimes have whole-second granularity, so
+    // reading the timestamp afterwards could hide a folder that appeared
+    // within the recording second forever; an occasional redundant
+    // CheckUpdate accept is the cheaper failure.
+    int64_t snapshot = fcitx::StandardPaths::global().timestamp(
+        fcitx::StandardPathsType::PkgData, "macishtype/engines");
+    auto discovered = discoverEngines(languages_,
+                                      &enginesHaveUnparsableManifest_);
+    for (auto &engine : discovered) {
+        auto position = std::lower_bound(
+            engines_.begin(), engines_.end(), engine,
+            [](const EngineInfo &lhs, const EngineInfo &rhs) {
+                return lhs.id < rhs.id;
+            });
+        if (position != engines_.end() && position->id == engine.id) {
+            // Known engines are the per-engine watcher's concern; leaving
+            // them untouched keeps live hosts undisturbed.
+            continue;
+        }
+        MACISHTYPE_INFO() << "Engine discovered: " << engine.id;
+        auto inserted = engines_.insert(position, std::move(engine));
+        rebuildEngineSettings(*inserted);
+        watcher_->watchEngine(inserted->id, inserted->root);
+    }
+    // The Update button applies everything at once: deferred reloads too.
+    // Vanished folders are skipped — their teardown belongs to the root
+    // reconcile, which may still be inside its debounce window.
+    auto pending = std::move(pendingReloads_);
+    pendingReloads_.clear();
+    for (const auto &engineId : pending) {
+        const auto *engine = engineById(engineId);
+        std::error_code errorCode;
+        if (engine == nullptr ||
+            !std::filesystem::is_directory(engine->root, errorCode)) {
+            continue;
+        }
+        reloadEngine(engineId);
+    }
+    enginesTimestamp_ = snapshot;
+}
+
+void MacishTypeEngine::reconcileEngineFolder(const std::string &name) {
+    EngineInfo *engine = engineById(name);
+    if (engine == nullptr) {
+        // Not discovered yet: onboarding stays pull-based (the configtool
+        // Update flow); the root watch only serves known engines.
+        return;
+    }
+    auto resolved = discoverEngine(name, languages_);
+    if (!resolved) {
+        // No layer holds a parsable manifest, but a directory may still
+        // exist (a restore-in-progress copy whose manifest.json lands after
+        // the folder event, or a higher-layer shadow mid-creation).
+        std::error_code errorCode;
+        std::filesystem::path existingDir;
+        for (const auto &candidate :
+             fcitx::StandardPaths::global().locateAll(
+                 fcitx::StandardPathsType::PkgData,
+                 std::filesystem::path("macishtype/engines") / name)) {
+            if (std::filesystem::is_directory(candidate, errorCode)) {
+                existingDir = candidate;
+                break;
+            }
+        }
+        if (!existingDir.empty()) {
+            // Only re-root a PARKED engine (torn down when its folder
+            // vanished): re-arm its content watch on the directory so the
+            // manifest landing drives recovery. A live or never-activated
+            // engine is left untouched — the directory is an incomplete
+            // shadow, and repointing root onto it would break a working
+            // engine over an unrelated mkdir; its own layer still serves it.
+            if (failedHosts_.count(name) != 0) {
+                engine->root = existingDir;
+                watcher_->watchEngine(engine->id, engine->root);
+            }
+            return;
+        }
+        // Folder gone from every layer: tear down like a reload would,
+        // then park the engine until the folder returns or fcitx5
+        // restarts — its entry cannot leave fcitx's list at runtime.
+        std::vector<fcitx::InputContext *> affected;
+        for (const auto &[inputContext, session] : sessions_) {
+            if (session->engineId() == name) {
+                affected.push_back(inputContext);
+            }
+        }
+        for (auto *inputContext : affected) {
+            // Not a focus-out, so the staged prefix is committed rather
+            // than lost.
+            sessions_[inputContext]->endFromDeactivate(false);
+            endSession(inputContext);
+        }
+        hosts_.erase(name);
+        // Disarm the storage watch now: the folder (and its _storage) is
+        // gone, and reloadEngine's re-resolve does not run on this path, so
+        // nothing else clears the bookkeeping.
+        watcher_->unwatchStorage(name);
+        chttransToggleStates_.erase(name);
+        failedHosts_[name] = true;
+        pendingReloads_.erase(name);
+        MACISHTYPE_INFO() << "Engine folder removed: " << name;
+        notifyEngine(name, translated("Engine removed from disk"),
+                     safeDisplayName(*engine) + " · " +
+                         translated("Restore the folder to recover, or "
+                                    "restart fcitx5"));
+        return;
+    }
+    // Folder back (or the winning layer changed): refresh the cached
+    // location before reloading — the old root may be a deleted user-layer
+    // path shadowing a still-present system copy — and re-arm the content
+    // watch, which died with the old directory. Recovery is deliberately
+    // not gated on AutoReloadEngines: reviving a dead engine disturbs
+    // nobody's typing, and the removal tip promises it.
+    engine->root = resolved->root;
+    engine->storageRoot = resolved->storageRoot;
+    engine->iconPath = resolved->iconPath;
+    watcher_->watchEngine(engine->id, engine->root);
+    reloadEngine(engine->id);
 }
 
 const EngineInfo *
@@ -551,6 +881,9 @@ bool MacishTypeEngine::shouldReload(
 void MacishTypeEngine::reloadEngine(const std::string &engineId) {
     MACISHTYPE_INFO() << "Engine changed on disk, reloading: " << engineId;
     failedHosts_.erase(engineId);
+    // A reload applies all on-disk state, so any deferred entry is served;
+    // leaving it would pin CheckUpdate true and force a redundant reload.
+    pendingReloads_.erase(engineId);
 
     std::vector<fcitx::InputContext *> affected;
     for (const auto &[inputContext, session] : sessions_) {
@@ -610,9 +943,9 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
     }
 }
 
-void MacishTypeEngine::notifyReload(const std::string &engineId,
-                                    const std::string &displayName,
-                                    bool succeeded) {
+void MacishTypeEngine::notifyEngine(const std::string &engineId,
+                                    const std::string &summary,
+                                    const std::string &body) {
     auto *notifications = instance_->addonManager().addon("notifications",
                                                           true);
     if (notifications == nullptr) {
@@ -621,17 +954,23 @@ void MacishTypeEngine::notifyReload(const std::string &engineId,
     if (!*config_.notifyOnReload) {
         return;
     }
-    // Per-engine tip id: repeated reloads of one engine replace in place, but
+    // Per-engine tip id: repeated tips for one engine replace in place, but
     // different engines each get their own notification so none is silently
     // overwritten (they queue in the notification center rather than merge).
     notifications->call<fcitx::INotifications::showTip>(
         "macishtype-reload-" + engineId, "MacishType", "input-keyboard",
-        succeeded ? translated("Engine reloaded")
-                  : translated("Engine failed to load"),
-        succeeded ? displayName
-                  : displayName + " · " +
-                        translated("See the fcitx5 log for details"),
-        3000);
+        summary, body, 3000);
+}
+
+void MacishTypeEngine::notifyReload(const std::string &engineId,
+                                    const std::string &displayName,
+                                    bool succeeded) {
+    notifyEngine(engineId,
+                 succeeded ? translated("Engine reloaded")
+                           : translated("Engine load failed"),
+                 succeeded ? displayName
+                           : displayName + " · " +
+                                 translated("See the fcitx5 log for details"));
 }
 
 fcitx::AddonInstance *

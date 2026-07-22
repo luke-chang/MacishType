@@ -10,14 +10,23 @@ msgstr ""
 msgid "Engine reloaded"
 msgstr "引擎已重新載入"
 
-msgid "Engine failed to load"
+msgid "Engine load failed"
 msgstr "引擎載入失敗"
 
 msgid "See the fcitx5 log for details"
 msgstr "詳見 fcitx5 記錄"
 
-msgid "Show a desktop notification when an engine reloads"
-msgstr "引擎重新載入時顯示桌面通知"
+msgid "Engine removed from disk"
+msgstr "引擎已從磁碟移除"
+
+msgid "Restore the folder to recover, or restart fcitx5"
+msgstr "放回資料夾即可復原，或重新啟動 fcitx5"
+
+msgid "Auto-reload an engine when its files change"
+msgstr "編輯引擎後自動重新載入"
+
+msgid "Notify on engine folder changes"
+msgstr "引擎資料夾變動時通知"
 
 msgid "Associated words"
 msgstr "關聯字"

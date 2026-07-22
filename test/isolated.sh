@@ -48,6 +48,15 @@ export FCITX_ADDON_DIRS="$HOME/.local/lib/fcitx5:/usr/lib/$(gcc -dumpmachine 2>/
 # Fixture engines join through the system XDG layer, so tests never write
 # into the user's engine folders.
 export XDG_DATA_DIRS="$script_dir/fixtures/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+# A caller-provided data home gives the test a writable user engines layer
+# (the discovery test mutates folders there). The real ~/.local/share then
+# joins as a lower layer so the dev-installed addon conf and runtime stay
+# visible; fixtures keep priority over it.
+if [ -n "$ISOLATED_DATA_HOME" ]; then
+    mkdir -p "$ISOLATED_DATA_HOME"
+    export XDG_DATA_HOME="$ISOLATED_DATA_HOME"
+    export XDG_DATA_DIRS="$script_dir/fixtures/share:$HOME/.local/share:${XDG_DATA_DIRS#"$script_dir/fixtures/share:"}"
+fi
 export XDG_CONFIG_HOME="$config_root"
 # System-layer engines put their storage under XDG state; keep it in the
 # scratch unless the caller wants to reach in (storage tests do).

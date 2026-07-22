@@ -101,8 +101,40 @@ std::string resolveIconPath(const std::filesystem::path &root,
     return {};
 }
 
+namespace {
+
+// Builds the EngineInfo for one already-located folder; nullopt when the
+// manifest does not parse.
+std::optional<EngineInfo>
+buildEngineInfo(const std::string &id, const std::filesystem::path &fullPath,
+                const std::vector<std::string> &languages) {
+    auto manifest = parseManifest(fullPath / "manifest.json", languages);
+    if (!manifest) {
+        MACISHTYPE_WARN() << "Skipping engine folder without a valid "
+                             "manifest.json: "
+                          << fullPath;
+        return std::nullopt;
+    }
+    EngineInfo engine{id, fullPath, std::move(*manifest), {}, {}};
+    engine.iconPath = resolveIconPath(engine.root, engine.manifest.icon);
+    auto userEngines =
+        fcitx::StandardPaths::global().userDirectory(
+            fcitx::StandardPathsType::PkgData) /
+        kEnginesSubdir;
+    const bool userLayer =
+        fullPath.string().rfind(userEngines.string() + "/", 0) == 0;
+    engine.storageRoot = storageRootForEngine(id, fullPath, userLayer);
+    return engine;
+}
+
+} // namespace
+
 std::vector<EngineInfo>
-discoverEngines(const std::vector<std::string> &languages) {
+discoverEngines(const std::vector<std::string> &languages,
+                bool *sawUnparsableManifest) {
+    if (sawUnparsableManifest != nullptr) {
+        *sawUnparsableManifest = false;
+    }
     const auto &paths = fcitx::StandardPaths::global();
     auto folders = paths.locate(
         fcitx::StandardPathsType::PkgData, kEnginesSubdir,
@@ -110,9 +142,6 @@ discoverEngines(const std::vector<std::string> &languages) {
             std::error_code errorCode;
             return std::filesystem::is_directory(path, errorCode);
         });
-    auto userEngines =
-        paths.userDirectory(fcitx::StandardPathsType::PkgData) /
-        kEnginesSubdir;
 
     std::vector<EngineInfo> engines;
     for (const auto &[name, fullPath] : folders) {
@@ -125,19 +154,14 @@ discoverEngines(const std::vector<std::string> &languages) {
                 << fullPath;
             continue;
         }
-        auto manifest = parseManifest(fullPath / "manifest.json", languages);
-        if (!manifest) {
-            MACISHTYPE_WARN() << "Skipping engine folder without a valid "
-                                 "manifest.json: "
-                              << fullPath;
-            continue;
+        if (auto engine = buildEngineInfo(id, fullPath, languages)) {
+            engines.push_back(std::move(*engine));
+        } else if (sawUnparsableManifest != nullptr) {
+            // A validly-named folder that failed to parse: a new engine
+            // mid-authoring. The caller keeps its update affordance live so
+            // the next pull re-scans once the manifest is fixed.
+            *sawUnparsableManifest = true;
         }
-        EngineInfo engine{id, fullPath, std::move(*manifest), {}, {}};
-        engine.iconPath = resolveIconPath(engine.root, engine.manifest.icon);
-        const bool userLayer =
-            fullPath.string().rfind(userEngines.string() + "/", 0) == 0;
-        engine.storageRoot = storageRootForEngine(id, fullPath, userLayer);
-        engines.push_back(std::move(engine));
     }
 
     std::sort(engines.begin(), engines.end(),
@@ -145,6 +169,27 @@ discoverEngines(const std::vector<std::string> &languages) {
                   return lhs.id < rhs.id;
               });
     return engines;
+}
+
+std::optional<EngineInfo>
+discoverEngine(const std::string &id,
+               const std::vector<std::string> &languages) {
+    if (!isValidEngineId(id)) {
+        return std::nullopt;
+    }
+    // First is_directory hit wins, matching discoverEngines' map locate
+    // (both enumerate layers in StandardPaths priority order).
+    auto candidates = fcitx::StandardPaths::global().locateAll(
+        fcitx::StandardPathsType::PkgData,
+        std::filesystem::path(kEnginesSubdir) / id);
+    for (const auto &candidate : candidates) {
+        std::error_code errorCode;
+        if (!std::filesystem::is_directory(candidate, errorCode)) {
+            continue;
+        }
+        return buildEngineInfo(id, candidate, languages);
+    }
+    return std::nullopt;
 }
 
 } // namespace macishtype

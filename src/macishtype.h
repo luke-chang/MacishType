@@ -29,10 +29,14 @@ namespace macishtype {
 
 FCITX_CONFIGURATION(
     MacishTypeConfig,
+    // Declared first: configtool renders options in declaration order and
+    // this one belongs above the notification toggle.
+    fcitx::Option<bool> autoReloadEngines{
+        this, "AutoReloadEngines",
+        translated("Auto-reload an engine when its files change"), true};
     fcitx::Option<bool> notifyOnReload{
         this, "NotifyOnReload",
-        translated("Show a desktop notification when an engine reloads"),
-        true};);
+        translated("Notify on engine folder changes"), true};);
 
 class MacishTypeEngine final : public fcitx::InputMethodEngineV2 {
 public:
@@ -70,10 +74,35 @@ public:
 
 private:
     const EngineInfo *engineForEntry(const fcitx::InputMethodEntry &entry);
+    EngineInfo *engineById(const std::string &engineId);
     // Lazily loads the JS host for an engine; a load failure is remembered
     // so a broken engine does not re-load on every focus change.
     JsEngineHost *hostForEngine(const EngineInfo &engine);
     void endSession(fcitx::InputContext *inputContext);
+    // Merges engine folders that appeared since the last scan into
+    // engines_ and applies deferred reloads; runs at the head of
+    // listInputMethods so fcitx's refresh (the configtool Update button)
+    // picks up runtime additions — the pull-based onboarding path.
+    void rescanEngineFolders();
+    // Root-watch receiver: reconciles one engines/<name> folder against
+    // disk state — vanished => defunct with feedback, present-and-known =>
+    // re-resolve the winning layer and reload, present-and-unknown =>
+    // left to the pull-based path.
+    void reconcileEngineFolder(const std::string &name);
+    // keyEvent path for a context without a session: rebuilds one lazily
+    // when the host is healthy (the only recovery path for a context that
+    // stayed on a restored engine), otherwise renders the load-failure
+    // prompt, mirroring the macOS host's status prompt semantics.
+    void handleSessionlessKey(const EngineInfo &engine,
+                              fcitx::KeyEvent &keyEvent);
+    void showFailurePrompt(fcitx::InputContext *inputContext);
+    void clearFailurePrompt(fcitx::InputContext *inputContext);
+    // Adds the engine's capability-driven status-area actions (the
+    // Traditional→Simplified toggle, the full-width toggle) to a context.
+    // fcitx clears the InputMethod status group before each activate, so
+    // both activate and the lazy session rebuild must (re)attach them.
+    void attachStatusActions(const EngineInfo &engine,
+                             fcitx::InputContext *inputContext);
 
     // chttrans enablement for one input method, via its addon config (the
     // same state its hotkey toggles and persists).
@@ -114,6 +143,8 @@ private:
     // Hot reload: tears down the engine's JS host and rebuilds the active
     // sessions so on-disk edits apply immediately.
     void reloadEngine(const std::string &engineId);
+    void notifyEngine(const std::string &engineId, const std::string &summary,
+                      const std::string &body);
     void notifyReload(const std::string &engineId,
                       const std::string &displayName, bool succeeded);
 
@@ -139,6 +170,25 @@ private:
     std::map<std::string, ChttransToggleState> chttransToggleStates_;
     std::unique_ptr<fcitx::EventSource> chttransReconcileDefer_;
     fcitx::ScopedConnection chttransUpdateConnection_;
+    // Engines whose on-disk edits await the user's pull (AutoReloadEngines
+    // off); applied and cleared by rescanEngineFolders.
+    std::set<std::string> pendingReloads_;
+    // CheckUpdate baseline: max mtime across the engines layers at the
+    // last scan. Recorded only after the user layer is created and the
+    // root watches are armed (a directory created afterwards would read
+    // as a permanent pending update).
+    int64_t enginesTimestamp_ = 0;
+    // Whether the last scan skipped a validly-named folder whose manifest
+    // did not parse (a new engine mid-authoring). Keeps CheckUpdate live —
+    // engines/ mtime does not change when the manifest is fixed in place,
+    // so without this the update affordance would vanish after the first
+    // scan and the fixed engine would never surface until a restart.
+    bool enginesHaveUnparsableManifest_ = false;
+    std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>>
+        checkUpdateWatcher_;
+    // Contexts currently showing the load-failure prompt, so Escape/
+    // Backspace know whether there is anything to clear.
+    std::set<fcitx::InputContext *> failurePromptShown_;
 };
 
 class MacishTypeAddonFactory : public fcitx::AddonFactory {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -49,8 +50,18 @@ std::string resolveIconPath(const std::filesystem::path &root,
 // Scans <pkgdata>/macishtype/engines/* across XDG layers (user shadows
 // system). A folder qualifies if its name is valid and it carries a
 // parsable manifest.json. Returns engines sorted by id for stable listing
-// order.
+// order. When `sawUnparsableManifest` is given, it is set to whether any
+// validly-named folder was skipped for a manifest that did not parse (a
+// new engine still being authored).
 std::vector<EngineInfo>
-discoverEngines(const std::vector<std::string> &languages);
+discoverEngines(const std::vector<std::string> &languages,
+                bool *sawUnparsableManifest = nullptr);
+
+// Resolves one engine id to its winning XDG layer (same first-layer-wins
+// order as discoverEngines) and rebuilds its EngineInfo from disk. nullopt
+// when no layer holds a directory with a parsable manifest.
+std::optional<EngineInfo>
+discoverEngine(const std::string &id,
+               const std::vector<std::string> &languages);
 
 } // namespace macishtype

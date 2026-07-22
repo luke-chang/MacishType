@@ -183,6 +183,7 @@ test: build
 	test/contract.sh
 	test/asyncfetch.sh
 	test/toggle.sh
+	test/discovery.sh
 
 clean:
 	rm -rf $(BUILD_DIR)
