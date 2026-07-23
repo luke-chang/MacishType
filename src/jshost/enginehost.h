@@ -307,6 +307,13 @@ private:
                                               JSValueConst *argv);
     static JSValue nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
                                     int argc, JSValueConst *argv);
+    // Optional TextDecoder/TextEncoder fast paths consumed by runtime.js.
+    // Decode is strict: invalid UTF-8 returns null so the runtime's state
+    // machine keeps the WHATWG replacement/fatal semantics.
+    static JSValue nativeDecodeUtf8(JSContext *ctx, JSValueConst thisVal,
+                                    int argc, JSValueConst *argv);
+    static JSValue nativeEncodeUtf8(JSContext *ctx, JSValueConst thisVal,
+                                    int argc, JSValueConst *argv);
     // Segments a string via ICU (UAX #29) at grapheme/word/sentence
     // granularity, returning boundary offsets in UTF-16 code units (the
     // ECMA-402 index unit). Backs the hostglue Intl.Segmenter, which

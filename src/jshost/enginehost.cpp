@@ -1828,6 +1828,60 @@ JSValue JsEngineHost::nativeAction(JSContext *ctx, JSValueConst thisVal,
     return JS_UNDEFINED;
 }
 
+namespace {
+
+// Strict WHATWG UTF-8 validation. fcitx::utf8::validate stops scanning at an
+// embedded NUL and would bless whatever follows it.
+bool isStrictUtf8(const uint8_t *data, size_t size) {
+    size_t i = 0;
+    while (i < size) {
+        uint8_t byte = data[i];
+        if (byte <= 0x7F) {
+            i += 1;
+            continue;
+        }
+        size_t continuations;
+        uint8_t lower = 0x80;
+        uint8_t upper = 0xBF;
+        if (byte >= 0xC2 && byte <= 0xDF) {
+            continuations = 1;
+        } else if (byte == 0xE0) {
+            continuations = 2;
+            lower = 0xA0; // reject overlongs
+        } else if (byte == 0xED) {
+            continuations = 2;
+            upper = 0x9F; // reject surrogates
+        } else if (byte >= 0xE1 && byte <= 0xEF) {
+            continuations = 2;
+        } else if (byte == 0xF0) {
+            continuations = 3;
+            lower = 0x90; // reject overlongs
+        } else if (byte == 0xF4) {
+            continuations = 3;
+            upper = 0x8F; // reject > U+10FFFF
+        } else if (byte >= 0xF1 && byte <= 0xF3) {
+            continuations = 3;
+        } else {
+            return false; // C0/C1, F5-FF, or a stray continuation byte
+        }
+        if (size - i - 1 < continuations) {
+            return false;
+        }
+        if (data[i + 1] < lower || data[i + 1] > upper) {
+            return false;
+        }
+        for (size_t k = 2; k <= continuations; ++k) {
+            if (data[i + k] < 0x80 || data[i + k] > 0xBF) {
+                return false;
+            }
+        }
+        i += continuations + 1;
+    }
+    return true;
+}
+
+} // namespace
+
 JSValue JsEngineHost::nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
                                        int argc, JSValueConst *argv) {
     FCITX_UNUSED(thisVal);
@@ -1844,6 +1898,68 @@ JSValue JsEngineHost::nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
         return JS_ThrowTypeError(ctx, "invalid UTF-8");
     }
     return JS_NewStringLen(ctx, text.data(), text.size());
+}
+
+// TextDecoder fast path: decodes a whole valid buffer natively; anything
+// invalid returns null and stays with the runtime.js state machine.
+JSValue JsEngineHost::nativeDecodeUtf8(JSContext *ctx, JSValueConst thisVal,
+                                       int argc, JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    FCITX_UNUSED(argc); // declared arity 2; quickjs pads argv with undefined
+    int ignoreBOM = JS_ToBool(ctx, argv[1]);
+    size_t size = 0;
+    const uint8_t *data = JS_GetUint8Array(ctx, &size, argv[0]);
+    if (data == nullptr) {
+        return JS_EXCEPTION;
+    }
+    if (!ignoreBOM && size >= 3 && data[0] == 0xEF && data[1] == 0xBB &&
+        data[2] == 0xBF) {
+        data += 3;
+        size -= 3;
+    }
+    if (!isStrictUtf8(data, size)) {
+        MACISHTYPE_DEBUG() << "decodeUTF8: declined, invalid UTF-8";
+        return JS_NULL;
+    }
+    MACISHTYPE_DEBUG() << "decodeUTF8: native fast path, " << size << " bytes";
+    return JS_NewStringLen(ctx, reinterpret_cast<const char *>(data), size);
+}
+
+// TextEncoder fast path. quickjs keeps unpaired surrogates as WTF-8
+// (0xED 0xA0-0xBF ..) where WHATWG wants U+FFFD (0xEF 0xBF 0xBD, same
+// length); patch a copy — the returned pointer may alias the live string.
+JSValue JsEngineHost::nativeEncodeUtf8(JSContext *ctx, JSValueConst thisVal,
+                                       int argc, JSValueConst *argv) {
+    FCITX_UNUSED(thisVal);
+    FCITX_UNUSED(argc);
+    size_t size = 0;
+    const char *chars = JS_ToCStringLen(ctx, &size, argv[0]);
+    if (chars == nullptr) {
+        return JS_EXCEPTION;
+    }
+    const auto *bytes = reinterpret_cast<const uint8_t *>(chars);
+    JSValue result;
+    if (memchr(bytes, 0xED, size) == nullptr) {
+        result = JS_NewUint8ArrayCopy(ctx, bytes, size);
+    } else {
+        std::string patched(chars, size);
+        for (size_t i = 0; i + 2 < patched.size(); ++i) {
+            if (static_cast<uint8_t>(patched[i]) == 0xED &&
+                static_cast<uint8_t>(patched[i + 1]) >= 0xA0 &&
+                static_cast<uint8_t>(patched[i + 1]) <= 0xBF) {
+                patched[i] = '\xEF';
+                patched[i + 1] = '\xBF';
+                patched[i + 2] = '\xBD';
+                i += 2;
+            }
+        }
+        result = JS_NewUint8ArrayCopy(
+            ctx, reinterpret_cast<const uint8_t *>(patched.data()),
+            patched.size());
+    }
+    MACISHTYPE_DEBUG() << "encodeUTF8: native fast path, " << size << " bytes";
+    JS_FreeCString(ctx, chars);
+    return result;
 }
 
 void JsEngineHost::registerBridgeGlobals() {
@@ -1879,6 +1995,8 @@ void JsEngineHost::registerBridgeGlobals() {
     define("__MacishType_setStorageListening",
            &JsEngineHost::nativeSetStorageListening, 1);
     define("__MacishType_getLanguages", &JsEngineHost::nativeGetLanguages, 0);
+    define("__MacishType_decodeUTF8", &JsEngineHost::nativeDecodeUtf8, 2);
+    define("__MacishType_encodeUTF8", &JsEngineHost::nativeEncodeUtf8, 1);
     define("__MacishTypeHost_beginFetch", &JsEngineHost::nativeBeginFetch, 3);
     define("__MacishTypeHost_registerMakeResponse",
            &JsEngineHost::nativeRegisterMakeResponse, 1);

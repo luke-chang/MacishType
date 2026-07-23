@@ -105,4 +105,10 @@ check "an embedded NUL decodes in place" "$out" \
     'nul-valid 41,0,42'
 check "invalid bytes after a NUL are still replaced" "$out" \
     'nul-invalid 0,fffd'
+check "the native decode fast path engaged" "$out" \
+    'decodeUTF8: native fast path'
+check "the native decode declined invalid input" "$out" \
+    'decodeUTF8: declined'
+check "the native encode fast path engaged" "$out" \
+    'encodeUTF8: native fast path'
 echo "TextDecoder/TextEncoder checks passed."
