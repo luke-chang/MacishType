@@ -184,6 +184,7 @@ test: build
 	test/asyncfetch.sh
 	test/toggle.sh
 	test/discovery.sh
+	test/textcodec.sh
 
 clean:
 	rm -rf $(BUILD_DIR)

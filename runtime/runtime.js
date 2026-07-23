@@ -567,3 +567,195 @@ globalThis.fetch = function (input, init) {
     __MacishType_fetch(input, resolve, reject);
   });
 };
+
+// TextDecoder / TextEncoder — minimal UTF-8-only subset of the WHATWG
+// Encoding Standard. Non-UTF-8 labels throw RangeError (the standard's
+// behavior for unsupported encodings), leaving room to add encodings later.
+// Pure JS: JSC ships no Encoding API, mirroring decodeBase64 above.
+globalThis.TextDecoder = class TextDecoder {
+  // WHATWG-recognized labels for UTF-8.
+  static #utf8Labels = new Set([
+    "unicode-1-1-utf-8", "unicode11utf8", "unicode20utf8",
+    "utf-8", "utf8", "x-unicode20utf8",
+  ]);
+
+  #fatal;
+  #ignoreBOM;
+  #doNotFlush = false;
+  // UTF-8 decoder state machine (WHATWG § "UTF-8 decoder"). These persist
+  // across streaming decode() calls; #bomSeen tracks whether the leading
+  // BOM check has run for the current stream.
+  #codePoint = 0;
+  #bytesNeeded = 0;
+  #bytesSeen = 0;
+  #lowerBoundary = 0x80;
+  #upperBoundary = 0xBF;
+  #bomSeen = false;
+
+  constructor(label = "utf-8", options = {}) {
+    const normalized = String(label).trim().toLowerCase();
+    if (!TextDecoder.#utf8Labels.has(normalized)) {
+      throw new RangeError(
+        "TextDecoder: unsupported encoding '" + String(label) +
+        "' (only UTF-8 is supported)");
+    }
+    const opts = options ?? {};
+    this.#fatal = Boolean(opts.fatal);
+    this.#ignoreBOM = Boolean(opts.ignoreBOM);
+  }
+
+  get encoding() { return "utf-8"; }
+  get fatal() { return this.#fatal; }
+  get ignoreBOM() { return this.#ignoreBOM; }
+
+  // Resets only the state machine registers, not #bomSeen — the byte-restore
+  // error path must reset registers mid-stream without forgetting the BOM
+  // check already performed.
+  #resetDecoder() {
+    this.#codePoint = 0;
+    this.#bytesNeeded = 0;
+    this.#bytesSeen = 0;
+    this.#lowerBoundary = 0x80;
+    this.#upperBoundary = 0xBF;
+  }
+
+  decode(input, options) {
+    let bytes;
+    if (input === undefined) {
+      bytes = new Uint8Array(0);
+    } else if (input instanceof ArrayBuffer) {
+      bytes = new Uint8Array(input);
+    } else if (ArrayBuffer.isView(input)) {
+      bytes = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+    } else {
+      throw new TypeError(
+        "TextDecoder.decode: input must be an ArrayBuffer or a view (got " +
+        typeof input + ")");
+    }
+
+    // A fresh (non-streaming) decode starts a new stream; a continuation of a
+    // prior stream (previous call passed stream: true) keeps the state.
+    if (!this.#doNotFlush) {
+      this.#resetDecoder();
+      this.#bomSeen = false;
+      // Optional host fast path for whole, non-streaming decodes. The hook
+      // returns the decoded string, or null to decline (e.g. invalid UTF-8,
+      // which the state machine below handles).
+      if (!options?.stream &&
+          typeof __MacishType_decodeUTF8 === "function") {
+        const decoded = __MacishType_decodeUTF8(bytes, this.#ignoreBOM);
+        if (typeof decoded === "string") return decoded;
+      }
+    }
+    this.#doNotFlush = Boolean(options?.stream);
+
+    const out = [];
+    let result = "";
+    const emit = (codePoint) => {
+      if (!this.#ignoreBOM && !this.#bomSeen) {
+        this.#bomSeen = true;
+        if (codePoint === 0xFEFF) return;  // strip the stream's leading BOM
+      }
+      out.push(codePoint);
+      // JSC caps Function.prototype.apply at 65535 arguments; flush well under.
+      if (out.length >= 4096) {
+        result += String.fromCodePoint.apply(null, out);
+        out.length = 0;
+      }
+    };
+
+    for (let i = 0; i < bytes.length; i++) {
+      const byte = bytes[i];
+      if (this.#bytesNeeded === 0) {
+        if (byte <= 0x7F) {
+          emit(byte);
+        } else if (byte >= 0xC2 && byte <= 0xDF) {
+          this.#bytesNeeded = 1;
+          this.#codePoint = byte & 0x1F;
+        } else if (byte >= 0xE0 && byte <= 0xEF) {
+          if (byte === 0xE0) this.#lowerBoundary = 0xA0;
+          if (byte === 0xED) this.#upperBoundary = 0x9F;
+          this.#bytesNeeded = 2;
+          this.#codePoint = byte & 0x0F;
+        } else if (byte >= 0xF0 && byte <= 0xF4) {
+          if (byte === 0xF0) this.#lowerBoundary = 0x90;
+          if (byte === 0xF4) this.#upperBoundary = 0x8F;
+          this.#bytesNeeded = 3;
+          this.#codePoint = byte & 0x07;
+        } else if (this.#fatal) {
+          throw this.#invalidByteError();
+        } else {
+          emit(0xFFFD);
+        }
+        continue;
+      }
+      if (byte < this.#lowerBoundary || byte > this.#upperBoundary) {
+        this.#resetDecoder();
+        if (this.#fatal) throw this.#invalidByteError();
+        emit(0xFFFD);
+        i--;  // restore the byte to the stream and reprocess as a lead byte
+        continue;
+      }
+      this.#lowerBoundary = 0x80;
+      this.#upperBoundary = 0xBF;
+      this.#codePoint = (this.#codePoint << 6) | (byte & 0x3F);
+      this.#bytesSeen += 1;
+      if (this.#bytesSeen === this.#bytesNeeded) {
+        const completed = this.#codePoint;
+        this.#codePoint = 0;
+        this.#bytesNeeded = 0;
+        this.#bytesSeen = 0;
+        emit(completed);
+      }
+    }
+
+    // Flush: a non-streaming decode ending mid-sequence is an error.
+    if (!this.#doNotFlush && this.#bytesNeeded !== 0) {
+      this.#resetDecoder();
+      if (this.#fatal) throw this.#invalidByteError();
+      emit(0xFFFD);
+    }
+
+    if (out.length) result += String.fromCodePoint.apply(null, out);
+    return result;
+  }
+
+  #invalidByteError() {
+    return new TypeError("TextDecoder.decode: invalid UTF-8 byte sequence");
+  }
+};
+
+globalThis.TextEncoder = class TextEncoder {
+  get encoding() { return "utf-8"; }
+
+  encode(input = "") {
+    const str = String(input);
+    // Optional host fast path; must implement the full WHATWG semantics.
+    if (typeof __MacishType_encodeUTF8 === "function") {
+      return __MacishType_encodeUTF8(str);
+    }
+    const bytes = [];
+    for (let i = 0; i < str.length; i++) {
+      let codePoint = str.codePointAt(i);
+      if (codePoint > 0xFFFF) i++;  // consumed a surrogate pair
+      // A lone surrogate (unpaired) serializes to U+FFFD, per the standard.
+      if (codePoint >= 0xD800 && codePoint <= 0xDFFF) codePoint = 0xFFFD;
+      if (codePoint <= 0x7F) {
+        bytes.push(codePoint);
+      } else if (codePoint <= 0x7FF) {
+        bytes.push(0xC0 | (codePoint >> 6),
+                   0x80 | (codePoint & 0x3F));
+      } else if (codePoint <= 0xFFFF) {
+        bytes.push(0xE0 | (codePoint >> 12),
+                   0x80 | ((codePoint >> 6) & 0x3F),
+                   0x80 | (codePoint & 0x3F));
+      } else {
+        bytes.push(0xF0 | (codePoint >> 18),
+                   0x80 | ((codePoint >> 12) & 0x3F),
+                   0x80 | ((codePoint >> 6) & 0x3F),
+                   0x80 | (codePoint & 0x3F));
+      }
+    }
+    return new Uint8Array(bytes);
+  }
+};
