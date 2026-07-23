@@ -38,6 +38,14 @@ else
     exit 1
 fi
 
+if grep -qF 'asyncfetch nul-text Error msg=Body is not valid UTF-8' "$log"; then
+    echo "PASS: text() rejects invalid UTF-8 after an embedded NUL"
+else
+    echo "FAIL: text() rejects invalid UTF-8 after an embedded NUL" >&2
+    grep -nF 'asyncfetch' "$log" >&2
+    exit 1
+fi
+
 if printf '%s\n' "$output" | grep -qF '"event": "commit"'; then
     echo "PASS: a key handled during the load window still commits"
 else

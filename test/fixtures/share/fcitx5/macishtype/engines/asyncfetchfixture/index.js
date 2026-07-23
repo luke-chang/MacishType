@@ -4,6 +4,12 @@
 // flips exactly when fetch stops resolving synchronously during load.
 console.log("asyncfetch eval-done");
 
+// text() must reject invalid UTF-8 even after an embedded NUL.
+fetch("./invalid.bin")
+  .then((response) => response.text())
+  .then(() => console.log("asyncfetch nul-text no-throw"))
+  .catch((error) => console.log(`asyncfetch nul-text ${error.constructor.name} msg=${error.message}`));
+
 let table = null;
 fetch("./table.json")
   .then((response) => response.json())

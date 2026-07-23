@@ -1893,11 +1893,10 @@ JSValue JsEngineHost::nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
     if (data == nullptr) {
         return JS_EXCEPTION;
     }
-    std::string_view text(reinterpret_cast<const char *>(data), size);
-    if (!fcitx::utf8::validate(text)) {
+    if (!isStrictUtf8(data, size)) {
         return JS_ThrowTypeError(ctx, "invalid UTF-8");
     }
-    return JS_NewStringLen(ctx, text.data(), text.size());
+    return JS_NewStringLen(ctx, reinterpret_cast<const char *>(data), size);
 }
 
 // TextDecoder fast path: decodes a whole valid buffer natively; anything
