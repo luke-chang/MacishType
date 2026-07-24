@@ -179,18 +179,13 @@ EngineSession::WindowConfig EngineSession::sessionWindowConfig() const {
 }
 
 int EngineSession::currentPageItemCount() const {
-    if (!candidatesVisible_) {
+    auto *list = candidateList();
+    if (!list) {
         return 0;
     }
-    int total = static_cast<int>(candidates_.size());
-    return std::min(windowConfig_.pageSize, total - pageStart_);
-}
-
-int EngineSession::pageStartFor(int highlight) const {
-    if (highlight <= 0) {
-        return 0;
-    }
-    return (highlight / windowConfig_.pageSize) * windowConfig_.pageSize;
+    int pageSize = std::max(1, list->pageSize());
+    int start = list->currentPage() * pageSize;
+    return std::min(pageSize, static_cast<int>(candidates_.size()) - start);
 }
 
 // Key pipeline ------------------------------------------------------------
@@ -262,8 +257,10 @@ bool EngineSession::dispatchCandidateWindowKey(const WebKeyEvent &web) {
             }
         }
         if (matched && labelIndex < currentPageItemCount()) {
-            confirmCandidateAt(
-                static_cast<size_t>(pageStart_ + labelIndex));
+            auto *list = candidateList();
+            confirmCandidateAt(static_cast<size_t>(
+                list->currentPage() * std::max(1, list->pageSize()) +
+                labelIndex));
             return true;
         }
     }
@@ -273,7 +270,7 @@ bool EngineSession::dispatchCandidateWindowKey(const WebKeyEvent &web) {
             return true;
         }
         if (web.key == "Enter" && !web.shiftKey && !web.altKey) {
-            if (associating_ && highlightSuspended_) {
+            if (associating_ && selectedIndex() < 0) {
                 // Associated mode with nothing highlighted: commit the held
                 // character alone, like any other dismiss key, rather than
                 // the first follow-up.
@@ -556,27 +553,40 @@ void EngineSession::applyActions(std::vector<Action> actions) {
                     }
                 } else if constexpr (std::is_same_v<T,
                                                     CommitSelectedAction>) {
-                    if (candidatesVisible_ && !candidates_.empty()) {
-                        size_t index = highlightSuspended_
-                                           ? static_cast<size_t>(pageStart_)
-                                           : static_cast<size_t>(highlight_);
+                    auto *list = candidateList();
+                    if (list && !candidates_.empty()) {
+                        int cursor = list->globalCursorIndex();
+                        bool suspended = cursor < 0;
+                        // Suspended (no selection): commit the current page's
+                        // first candidate, reporting absoluteIndex -1.
+                        size_t index =
+                            suspended
+                                ? static_cast<size_t>(
+                                      list->currentPage() *
+                                      std::max(1, list->pageSize()))
+                                : static_cast<size_t>(cursor);
                         // Copy: confirmCandidate re-enters the engine, which
                         // may replace candidates_ while we still need this
                         // entry (mirrors confirmCandidateAt).
-                        CandidateData copy = copyCandidate(
-                            host_->context(), candidates_[index]);
-                        confirmCandidate(copy, highlightSuspended_
-                                                   ? -1
-                                                   : static_cast<int>(index));
-                        if (copy.hasPayload) {
-                            JS_FreeValue(host_->context(), copy.payload);
+                        if (index < candidates_.size()) {
+                            CandidateData copy = copyCandidate(
+                                host_->context(), candidates_[index]);
+                            confirmCandidate(
+                                copy,
+                                suspended ? -1 : static_cast<int>(index));
+                            if (copy.hasPayload) {
+                                JS_FreeValue(host_->context(), copy.payload);
+                            }
                         }
                     }
                 } else if constexpr (std::is_same_v<T, CommitAtIndexAction>) {
-                    if (candidatesVisible_ && value.index >= 0 &&
+                    auto *list = candidateList();
+                    if (list && value.index >= 0 &&
                         value.index < currentPageItemCount()) {
-                        confirmCandidateAt(
-                            static_cast<size_t>(pageStart_ + value.index));
+                        confirmCandidateAt(static_cast<size_t>(
+                            list->currentPage() *
+                                std::max(1, list->pageSize()) +
+                            value.index));
                     }
                 } else if constexpr (std::is_same_v<T, NavigateAction>) {
                     navigate(value.direction, value.wrapping);
@@ -694,33 +704,26 @@ void EngineSession::applyUpdateCandidates(UpdateCandidatesAction action) {
 
     int total = static_cast<int>(candidates_.size());
     int initialHighlight = action.options.initialHighlight.value_or(0);
-    if (initialHighlight < 0) {
-        highlightSuspended_ = true;
-        highlight_ = 0;
-        pageStart_ = 0;
-    } else {
-        highlightSuspended_ = false;
-        highlight_ = std::min(initialHighlight, total - 1);
-        pageStart_ = pageStartFor(highlight_);
-    }
+    int initialCursor =
+        initialHighlight < 0 ? -1 : std::min(initialHighlight, total - 1);
     candidatesVisible_ = true;
-    renderCandidates();
+    renderCandidates(initialCursor);
     // The initial selection counts as a selection change (macOS parity:
     // the window notifies when moving from no-selection to the initial
     // highlight), so engines can render replace previews on open.
-    if (!highlightSuspended_) {
+    if (initialCursor >= 0) {
         fireSelectionChanged();
     }
 }
 
-// Candidate word pushed into the fcitx input panel; select() fires when the
-// user clicks a candidate in the UI.
+// Candidate word pushed into the fcitx input panel; select() (mouse click)
+// commits by absolute index.
 class MacishCandidateWord : public fcitx::CandidateWord {
 public:
-    MacishCandidateWord(int pageRelativeIndex, const CandidateData &candidate,
+    MacishCandidateWord(int index, const CandidateData &candidate,
                         std::function<void(int)> onSelect)
-        : fcitx::CandidateWord(fcitx::Text(candidate.text)),
-          pageRelativeIndex_(pageRelativeIndex), onSelect_(std::move(onSelect)) {
+        : fcitx::CandidateWord(fcitx::Text(candidate.text)), index_(index),
+          onSelect_(std::move(onSelect)) {
         if (!candidate.annotation.empty()) {
             setComment(fcitx::Text(candidate.annotation));
         }
@@ -728,48 +731,91 @@ public:
 
     void select(fcitx::InputContext *inputContext) const override {
         FCITX_UNUSED(inputContext);
-        onSelect_(pageRelativeIndex_);
+        onSelect_(index_);
     }
 
 private:
-    int pageRelativeIndex_;
+    int index_;
     std::function<void(int)> onSelect_;
 };
 
-void EngineSession::renderCandidates() {
-    auto list = std::make_unique<fcitx::CommonCandidateList>();
-    int pageItems = currentPageItemCount();
-    list->setPageSize(std::max(1, pageItems));
+// CommonCandidateList that funnels native paging (a click on the panel's
+// prev/next arrows, or a client PrevPage/NextPage) back through navigate(), so
+// mouse and keyboard paging share one path: both move the highlight onto the
+// new page and fire candidateSelectionChanged.
+class MacishCandidateList : public fcitx::CommonCandidateList {
+public:
+    explicit MacishCandidateList(
+        std::function<void(const std::string &)> onPage)
+        : onPage_(std::move(onPage)) {}
+
+    void prev() override { onPage_("pageBackward"); }
+    void next() override { onPage_("pageForward"); }
+
+private:
+    std::function<void(const std::string &)> onPage_;
+};
+
+fcitx::CommonCandidateList *EngineSession::candidateList() const {
+    if (!candidatesVisible_) {
+        return nullptr;
+    }
+    return dynamic_cast<fcitx::CommonCandidateList *>(
+        inputContext_->inputPanel().candidateList().get());
+}
+
+int EngineSession::selectedIndex() const {
+    auto *list = candidateList();
+    return list ? list->globalCursorIndex() : -1;
+}
+
+void EngineSession::renderCandidates(int initialCursor) {
+    // Full-list native pagination: append every candidate and let the list
+    // page itself so hasPrev()/hasNext() drive the panel's page indicators and
+    // mouse paging. The list owns cursor/page; initialCursor is an absolute
+    // index, or -1 for a suspended (no-selection) highlight.
+    auto list = std::make_unique<MacishCandidateList>(
+        [this](const std::string &direction) { navigate(direction, false); });
+    int total = static_cast<int>(candidates_.size());
+    int pageSize = std::max(1, windowConfig_.pageSize);
+    list->setPageSize(pageSize);
     list->setLayoutHint(windowConfig_.vertical
                             ? fcitx::CandidateLayoutHint::Vertical
                             : fcitx::CandidateLayoutHint::Horizontal);
 
     // Blank labels are selection-disabled placeholders; the panels prepend
-    // label text to the candidate, so render them as no label at all to
-    // keep rows aligned.
+    // label text to the candidate, so render them as no label at all to keep
+    // rows aligned. One page's worth; the list applies them per page.
     std::vector<std::string> labels;
     auto labelRange =
         fcitx::utf8::MakeUTF8CharRange(windowConfig_.indexLabels);
     for (auto iterator = std::begin(labelRange);
          iterator != std::end(labelRange) &&
-         labels.size() < static_cast<size_t>(pageItems);
+         labels.size() < static_cast<size_t>(pageSize);
          ++iterator) {
         std::string labelText(iterator.charRange().first,
                               iterator.charRange().second);
         labels.push_back(labelText == " " ? "" : labelText + " ");
     }
-    labels.resize(pageItems, "");
+    labels.resize(pageSize, "");
     list->setLabels(labels);
 
-    auto onSelect = [this](int pageRelativeIndex) {
-        confirmCandidateAt(static_cast<size_t>(pageStart_ + pageRelativeIndex));
+    auto onSelect = [this](int absoluteIndex) {
+        confirmCandidateAt(static_cast<size_t>(absoluteIndex));
     };
-    for (int i = 0; i < pageItems; i++) {
-        list->append(std::make_unique<MacishCandidateWord>(
-            i, candidates_[pageStart_ + i], onSelect));
+    for (int i = 0; i < total; i++) {
+        list->append(
+            std::make_unique<MacishCandidateWord>(i, candidates_[i], onSelect));
     }
-    list->setGlobalCursorIndex(highlightSuspended_ ? -1
-                                                   : highlight_ - pageStart_);
+    // Cursor first, then page: with currentPage_ freshly 0 from setPageSize,
+    // cursorIndex() reads -1 for an off-page cursor so setPage's
+    // fixCursorAfterPaging leaves the global index intact.
+    if (initialCursor < 0) {
+        list->setGlobalCursorIndex(-1);
+    } else {
+        list->setGlobalCursorIndex(initialCursor);
+        list->setPage(initialCursor / pageSize);
+    }
     auto &inputPanel = inputContext_->inputPanel();
     inputPanel.setCandidateList(std::move(list));
     // A header labels the candidates as associated words; cleared otherwise.
@@ -782,9 +828,6 @@ void EngineSession::renderCandidates() {
 
 void EngineSession::hideCandidates() {
     candidatesVisible_ = false;
-    highlightSuspended_ = false;
-    highlight_ = 0;
-    pageStart_ = 0;
     freeCandidates(candidates_);
     auto &inputPanel = inputContext_->inputPanel();
     inputPanel.setCandidateList(nullptr);
@@ -794,31 +837,35 @@ void EngineSession::hideCandidates() {
 }
 
 void EngineSession::navigate(const std::string &direction, bool wrapping) {
-    if (!candidatesVisible_ || candidates_.empty()) {
+    auto *list = candidateList();
+    if (!list || candidates_.empty()) {
         return;
     }
-    bool wasSuspended = highlightSuspended_;
-    if (highlightSuspended_) {
+    int total = static_cast<int>(candidates_.size());
+    int pageSize = std::max(1, list->pageSize());
+    int cursor = list->globalCursorIndex();
+    bool wasSuspended = cursor < 0;
+    int pageStart = list->currentPage() * pageSize;
+    if (wasSuspended) {
         // First navigation from a suspended highlight: arrow / item keys only
-        // reveal the first candidate without moving it, but page keys and
-        // Home/End navigate right away, treating the suspended state as
-        // index 0 (MacishType parity).
-        highlightSuspended_ = false;
-        highlight_ = pageStart_;
+        // reveal the current page's first candidate without moving it, but
+        // page keys and Home/End navigate right away, treating the suspended
+        // state as index 0 of the page (MacishType parity).
+        cursor = pageStart;
         bool revealOnly = direction == "up" || direction == "down" ||
                           direction == "left" || direction == "right" ||
                           direction == "itemForward" ||
                           direction == "itemBackward";
         if (revealOnly) {
-            renderCandidates();
+            list->setGlobalCursorIndex(cursor);
+            inputContext_->updateUserInterface(
+                fcitx::UserInterfaceComponent::InputPanel);
             fireSelectionChanged();
             return;
         }
         // Page keys / Home / End fall through and navigate from index 0.
     }
 
-    int total = static_cast<int>(candidates_.size());
-    int pageSize = windowConfig_.pageSize;
     std::string resolved = direction;
     if (windowConfig_.vertical) {
         if (direction == "up") {
@@ -847,49 +894,53 @@ void EngineSession::navigate(const std::string &direction, bool wrapping) {
         resolved = "pageForward";
     }
 
-    int previousHighlight = highlight_;
+    int previousCursor = wasSuspended ? -1 : cursor;
     if (resolved == "itemForward") {
-        if (highlight_ + 1 < total) {
-            highlight_++;
+        if (cursor + 1 < total) {
+            cursor++;
         } else if (wrapping) {
-            highlight_ = 0;
+            cursor = 0;
         }
     } else if (resolved == "itemBackward") {
-        if (highlight_ > 0) {
-            highlight_--;
+        if (cursor > 0) {
+            cursor--;
         } else if (wrapping) {
-            highlight_ = total - 1;
+            cursor = total - 1;
         }
     } else if (resolved == "pageForward") {
-        int offset = highlight_ - pageStart_;
-        if (pageStart_ + pageSize < total) {
-            pageStart_ += pageSize;
+        int offset = cursor - pageStart;
+        if (pageStart + pageSize < total) {
+            pageStart += pageSize;
         } else if (wrapping) {
-            pageStart_ = 0;
+            pageStart = 0;
         }
-        highlight_ = std::min(pageStart_ + offset, total - 1);
+        cursor = std::min(pageStart + offset, total - 1);
     } else if (resolved == "pageBackward") {
-        int offset = highlight_ - pageStart_;
-        if (pageStart_ - pageSize >= 0) {
-            pageStart_ -= pageSize;
+        int offset = cursor - pageStart;
+        if (pageStart - pageSize >= 0) {
+            pageStart -= pageSize;
         } else if (wrapping) {
-            pageStart_ = pageStartFor(total - 1);
+            pageStart = (total - 1) / pageSize * pageSize;
         }
-        highlight_ = std::min(pageStart_ + offset, total - 1);
+        cursor = std::min(pageStart + offset, total - 1);
     } else if (resolved == "home") {
-        highlight_ = windowConfig_.vertical ? 0 : pageStart_;
+        cursor = windowConfig_.vertical ? 0 : pageStart;
     } else if (resolved == "end") {
-        highlight_ = windowConfig_.vertical
-                         ? total - 1
-                         : std::min(pageStart_ + pageSize, total) - 1;
+        cursor = windowConfig_.vertical
+                     ? total - 1
+                     : std::min(pageStart + pageSize, total) - 1;
     } else {
         MACISHTYPE_WARN() << host_->engineId()
                           << ": unknown navigation direction: " << direction;
         return;
     }
-    pageStart_ = pageStartFor(highlight_);
-    renderCandidates();
-    if (highlight_ != previousHighlight || wasSuspended) {
+    // Cursor first, then page (see renderCandidates): keeps the absolute cursor
+    // intact when it crosses a page boundary.
+    list->setGlobalCursorIndex(cursor);
+    list->setPage(cursor / pageSize);
+    inputContext_->updateUserInterface(
+        fcitx::UserInterfaceComponent::InputPanel);
+    if (cursor != previousCursor || wasSuspended) {
         fireSelectionChanged();
     }
 }
@@ -932,14 +983,14 @@ void EngineSession::confirmCandidate(const CandidateData &candidate,
 }
 
 void EngineSession::fireSelectionChanged() {
-    if (highlight_ < 0 ||
-        static_cast<size_t>(highlight_) >= candidates_.size()) {
+    int index = selectedIndex();
+    if (index < 0 || static_cast<size_t>(index) >= candidates_.size()) {
         return;
     }
     CandidateData copy =
-        copyCandidate(host_->context(), candidates_[highlight_]);
+        copyCandidate(host_->context(), candidates_[index]);
     invokeEngineMethod("candidateSelectionChanged",
-                       makeEvent(nullptr, &copy, highlight_));
+                       makeEvent(nullptr, &copy, index));
     if (copy.hasPayload) {
         JS_FreeValue(host_->context(), copy.payload);
     }

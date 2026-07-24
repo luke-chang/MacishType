@@ -11,6 +11,10 @@
 #include "jshost/enginehost.h"
 #include "webkeymap.h"
 
+namespace fcitx {
+class CommonCandidateList;
+}
+
 namespace macishtype {
 
 // Candidate emitted by the engine; `payload` is an opaque JS value that
@@ -130,13 +134,17 @@ private:
     // state either way. The macOS endComposition equivalent.
     void endComposition(const std::string &insertion);
 
-    void renderCandidates();
+    void renderCandidates(int initialCursor);
     void hideCandidates();
     void clearCompositionState();
 
     WindowConfig sessionWindowConfig() const;
+    // The live candidate list (our CommonCandidateList subclass) when visible,
+    // else nullptr. Cursor/page state lives here — it is the source of truth.
+    fcitx::CommonCandidateList *candidateList() const;
+    // Absolute index of the selected candidate, or -1 when none (suspended).
+    int selectedIndex() const;
     int currentPageItemCount() const;
-    int pageStartFor(int highlight) const;
 
     JSValue buildEventData(const WebKeyEvent *web,
                            const CandidateData *candidate, int absoluteIndex);
@@ -155,11 +163,11 @@ private:
     std::string stagedText_;
     bool associating_ = false;
 
+    // Candidate payloads (source for confirm/selection events), indexed
+    // absolutely. Cursor/page selection state lives in the CommonCandidateList
+    // (see candidateList()), not here.
     std::vector<CandidateData> candidates_;
     bool candidatesVisible_ = false;
-    int highlight_ = 0;
-    int pageStart_ = 0;
-    bool highlightSuspended_ = false;
     WindowConfig windowConfig_;
 
     std::vector<std::vector<Action>> queueStack_;
