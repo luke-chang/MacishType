@@ -207,6 +207,8 @@ struct BookmarkPickerSection<StatusRow: View>: View {
     @ObservedObject var bookmark: SecurityScopedBookmark
     let validatePick: ((URL) -> (title: String, message: String)?)?
     let configurePanel: (NSOpenPanel) -> Void
+    /// Called after a successful pick, with the window that hosted the picker.
+    var onPicked: (@MainActor (NSWindow?) -> Void)? = nil
     /// Extra rows in the same section, below the picker (e.g. a status row).
     @ViewBuilder let statusRow: () -> StatusRow
 
@@ -237,11 +239,13 @@ struct BookmarkPickerSection<StatusRow: View>: View {
                     Button(buttonTitle) {
                         let parent = NSApp.keyWindow
                         Task {
-                            _ = await bookmark.pick(
+                            if await bookmark.pick(
                                 parent: parent,
                                 configure: configurePanel,
                                 validate: validatePick
-                            )
+                            ) {
+                                onPicked?(parent)
+                            }
                         }
                     }
                 }
@@ -258,12 +262,13 @@ extension BookmarkPickerSection where StatusRow == EmptyView {
         buttonTitle: LocalizedStringKey,
         bookmark: SecurityScopedBookmark,
         validatePick: ((URL) -> (title: String, message: String)?)?,
+        onPicked: (@MainActor (NSWindow?) -> Void)? = nil,
         configurePanel: @escaping (NSOpenPanel) -> Void
     ) {
         self.init(
             title: title, placeholder: placeholder, buttonTitle: buttonTitle,
             bookmark: bookmark, validatePick: validatePick,
-            configurePanel: configurePanel
+            configurePanel: configurePanel, onPicked: onPicked
         ) { EmptyView() }
     }
 }

@@ -186,6 +186,14 @@ class InputEngine {
         engines[suffix]?()
     }
 
+    /// Localized input-mode name for an engineID (IMK InfoPlist channel),
+    /// falling back to the raw id. Used where a nil externalDisplayName still
+    /// needs a human-readable label.
+    static func inputModeName(forEngineID engineID: String) -> String {
+        let fullID = (Bundle.main.bundleIdentifier ?? "") + "." + engineID
+        return Bundle.main.localizedString(forKey: fullID, value: engineID, table: "InfoPlist")
+    }
+
     /// UserDefaults key: `{engineID}_{subKey}`.
     static func composedKey(engineID: String, subKey: String) -> String {
         "\(engineID)_\(subKey)"
@@ -660,6 +668,19 @@ class InputEngine {
         return (trimmed?.isEmpty == false) ? trimmed : nil
     }
 
+    /// Whether the external source is a program or a code table, so
+    /// notifications can name it correctly.
+    enum ExternalSourceKind { case engine, table }
+    var externalSourceKind: ExternalSourceKind { .engine }
+
+    /// Called from an external engine's file watcher on a change to the loaded
+    /// source, keeping the change-notification wiring in one place.
+    func notifyExternalModified(changedFile: String) {
+        EngineModifiedNotifier.shared.notifyModified(
+            engineID: engineID, engineName: externalDisplayName,
+            kind: externalSourceKind, changedFile: changedFile)
+    }
+
     // MARK: - Reverse Lookup
 
     /// Set when `prepareReverseLookup` itself loaded the engine, so
@@ -925,7 +946,7 @@ extension InputEngine {
                 .pickerStyle(.menu)
                 if availability.full {
                     Text("Full keeps the entire table, which may include characters that need an extra font installed to display.")
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }

@@ -917,7 +917,7 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         // ancestor changes we don't care about.
         try? FileManager.default.createDirectory(
             at: url, withIntermediateDirectories: true)
-        bundleStorageWatcher = FSEventsWatcher(paths: [url.path], latency: 0.5) { [weak self] paths in
+        bundleStorageWatcher = FSEventsWatcher(paths: [url.path]) { [weak self] paths in
             guard let self else { return }
             for path in paths { self.handleStorageEvent(path: path) }
         }

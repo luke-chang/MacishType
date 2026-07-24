@@ -32,6 +32,8 @@ final class CINExternalEngine: CINEngine, ObservableObject {
 
     override var externalSourceURL: URL? { cinTableURL }
 
+    override var externalSourceKind: ExternalSourceKind { .table }
+
     override var externalDisplayName: String? {
         Self.normalizedDisplayName(displayName)
     }
@@ -180,7 +182,7 @@ final class CINExternalEngine: CINEngine, ObservableObject {
     private func startWatching(fileURL: URL) {
         let directory = fileURL.deletingLastPathComponent()
         watchedCanonicalPath = Self.canonicalPath(for: fileURL)
-        watchStream = FSEventsWatcher(paths: [directory.path], latency: 0.3) { [weak self] paths in
+        watchStream = FSEventsWatcher(paths: [directory.path]) { [weak self] paths in
             self?.handleFSEvents(paths: paths)
         }
         if watchStream == nil {
@@ -196,6 +198,9 @@ final class CINExternalEngine: CINEngine, ObservableObject {
     private func handleFSEvents(paths: [String]) {
         guard let target = watchedCanonicalPath else { return }
         for path in paths where Self.canonicalPath(for: URL(fileURLWithPath: path)) == target {
+            // Notify on every change, independent of the stale guard, so
+            // repeated edits while a reload is pending still surface.
+            notifyExternalModified(changedFile: path)
             markStale()
             break
         }
@@ -224,7 +229,10 @@ private struct CINExternalSettingsView: View {
                 placeholder: "Not selected",
                 buttonTitle: "Choose File…",
                 bookmark: bookmark,
-                validatePick: CINExternalEngine.validatePick
+                validatePick: CINExternalEngine.validatePick,
+                onPicked: { parent in
+                    EngineModifiedNotifier.shared.promptToEnableIfFirstTime(parent: parent)
+                }
             ) { panel in
                 panel.canChooseDirectories = false
                 panel.canChooseFiles = true

@@ -21,9 +21,13 @@ final class FSEventsWatcher {
 
     private let stream: FSEventStreamRef
 
+    /// `NoDefer` below delivers the first event after an idle gap immediately;
+    /// this only throttles the batches that follow.
+    static let defaultLatency: CFTimeInterval = 0.5
+
     /// Returns nil when `FSEventStreamCreate` fails; logging is left to
     /// the caller, which knows the category and message that fit.
-    init?(paths: [String], latency: CFTimeInterval,
+    init?(paths: [String], latency: CFTimeInterval = FSEventsWatcher.defaultLatency,
           handler: @escaping @MainActor ([String]) -> Void) {
         let box = HandlerBox(handler: handler)
         // The stream copies this context and retains `info` for its own

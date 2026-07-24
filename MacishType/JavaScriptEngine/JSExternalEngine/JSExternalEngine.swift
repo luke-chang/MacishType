@@ -135,7 +135,7 @@ class JSExternalEngine: JavaScriptEngine {
         super.load()
         if isModuleLoaded {
             loadStatus = .loaded
-            watchStream = FSEventsWatcher(paths: [folder.path], latency: 0.5) { [weak self] paths in
+            watchStream = FSEventsWatcher(paths: [folder.path]) { [weak self] paths in
                 self?.handleFSEvents(paths: paths)
             }
             if watchStream == nil {
@@ -247,6 +247,9 @@ class JSExternalEngine: JavaScriptEngine {
                     configurePanel: { panel in
                         panel.canChooseDirectories = true
                         panel.canChooseFiles = false
+                    },
+                    onPicked: { parent in
+                        EngineModifiedNotifier.shared.promptToEnableIfFirstTime(parent: parent)
                     }
                 ) {
                     if let error = engine.lastLoadError {
@@ -332,6 +335,11 @@ class JSExternalEngine: JavaScriptEngine {
                 trackedHit = path
             }
         }
-        if let trackedHit { markStale(reason: "tracked file changed: \(trackedHit)") }
+        if let trackedHit {
+            // Notify on every change, independent of the loaded→stale guard, so
+            // repeated edits while a reload is pending still surface.
+            notifyExternalModified(changedFile: trackedHit)
+            markStale(reason: "tracked file changed: \(trackedHit)")
+        }
     }
 }

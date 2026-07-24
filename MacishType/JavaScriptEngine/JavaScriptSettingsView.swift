@@ -131,7 +131,7 @@ extension JavaScriptEngine {
                 control()
                 if let description {
                     Text(verbatim: description.resolved())
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }

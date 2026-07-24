@@ -20,4 +20,5 @@ extension Logger {
     nonisolated static let javaScript = Logger(subsystem: subsystem, category: "JavaScript")
     nonisolated static let securityScopedBookmark = Logger(subsystem: subsystem, category: "SecurityScopedBookmark")
     nonisolated static let fontCoverage = Logger(subsystem: subsystem, category: "FontCoverage")
+    nonisolated static let notification = Logger(subsystem: subsystem, category: "Notification")
 }
