@@ -81,6 +81,9 @@ struct ManifestData {
     // toggle in the engine's status area — the portable stand-in for macOS's
     // Option+key full-width trigger.
     bool fullwidthInput = false;
+    // Whether manifest `capabilities.reverseLookup` is declared. Host-only;
+    // lists the engine's static reverseLookup in the Find Input Code surface.
+    bool reverseLookup = false;
     // Tri-state manifest `capabilities.outputToSimplified`: true force-
     // enables, false force-disables, nullopt (absent or malformed) falls
     // back to the language gate. Host-only; the addon resolves availability

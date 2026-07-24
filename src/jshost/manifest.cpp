@@ -656,6 +656,8 @@ parseManifest(const std::filesystem::path &manifestPath,
                 };
                 data.fullwidthInput =
                     capabilityFlag("fullwidthInput").value_or(false);
+                data.reverseLookup =
+                    capabilityFlag("reverseLookup").value_or(false);
                 data.outputToSimplified = capabilityFlag("outputToSimplified");
             }
 

@@ -34,6 +34,26 @@ constexpr size_t kStorageMaxValueBytes = 10 * 1024 * 1024;
 // engine ever logs an out-of-memory failure.
 constexpr size_t kRuntimeMemoryLimit = 512 * 1024 * 1024;
 
+// Upper bound on codes marshaled from one reverseLookup result. A buggy or
+// malicious engine returning a huge-length array (e.g. `new Array(2**32-1)`)
+// would otherwise spin the marshal loop for billions of iterations on the main
+// loop, past the watchdog's reach (element reads don't poll it). The display
+// truncates far below this, so legitimate results are unaffected.
+constexpr uint32_t kReverseLookupMaxMarshaledCodes = 4096;
+
+// Idle delay (microseconds) before releasing a built reverse-lookup index,
+// debouncing rapid focus/window switches. Overridable for tests.
+uint64_t reverseLookupIdleReleaseMicros() {
+    if (const char *ms = std::getenv("MACISHTYPE_REVERSE_LOOKUP_RELEASE_MS")) {
+        char *end = nullptr;
+        long value = std::strtol(ms, &end, 10);
+        if (end != ms && value >= 0) {
+            return static_cast<uint64_t>(value) * 1000;
+        }
+    }
+    return 30ULL * 1000 * 1000;
+}
+
 // navigator.userAgent platform segment helpers. Each host info axis is
 // resolved independently so a missing source drops only its own token.
 std::string displayServerName() {
@@ -267,6 +287,7 @@ JsEngineHost::~JsEngineHost() {
     // context is about to be freed); those dup'd refs are reclaimed
     // wholesale by JS_FreeRuntime below.
     deferredSettle_.reset();
+    reverseLookupReleaseTimer_.reset();
     if (fetchWorker_.joinable()) {
         fetchWorker_.join();
     }
@@ -766,6 +787,161 @@ std::optional<bool> JsEngineHost::invokeHook(uint64_t instanceId,
     return invokeHook(instanceId, method, JS_UNDEFINED);
 }
 
+// Reverse lookup ---------------------------------------------------------
+
+uint64_t JsEngineHost::prepareReverseLookup(std::function<void(bool)> onReady) {
+    uint64_t token = ++reverseLookupToken_;
+    reverseLookupOnReady_ = std::move(onReady);
+    // A fresh lookup cancels any pending idle release of the index.
+    reverseLookupReleaseTimer_.reset();
+    Entry entry(*this);
+    qjs::Value method(
+        ctx_, JS_GetPropertyStr(ctx_, engineClass_, "prepareReverseLookup"));
+    if (!method.isFunction()) {
+        settleReverseLookup(token, true); // absent => ready
+        return token;
+    }
+    reverseLookupPrepared_ = true;
+    qjs::Value result(
+        ctx_, JS_Call(ctx_, method.get(), engineClass_, 0, nullptr));
+    if (result.isException()) {
+        MACISHTYPE_ERROR() << engineId_ << ".prepareReverseLookup threw: "
+                           << qjs::exceptionText(ctx_);
+        settleReverseLookup(token, false);
+        return token;
+    }
+    if (!JS_IsPromise(result.get())) {
+        settleReverseLookup(token, true); // synchronous => ready
+        return token;
+    }
+    // Attach C++ reactions carrying the token (onResolve magic 1, onReject
+    // magic 0). A synchronously-settled promise runs them during this Entry's
+    // drainJobs (before we return); a pending one settles on a later turn.
+    qjs::Value tokenValue(ctx_, JS_NewInt64(ctx_, static_cast<int64_t>(token)));
+    JSValueConst data = tokenValue.get();
+    qjs::Value onResolve(
+        ctx_, JS_NewCFunctionData(ctx_, reverseLookupReaction, 1, 1, 1, &data));
+    qjs::Value onReject(
+        ctx_, JS_NewCFunctionData(ctx_, reverseLookupReaction, 1, 0, 1, &data));
+    qjs::Value thenFn(ctx_, JS_GetPropertyStr(ctx_, result.get(), "then"));
+    if (!thenFn.isFunction()) {
+        settleReverseLookup(token, true);
+        return token;
+    }
+    JSValue args[2] = {onResolve.get(), onReject.get()};
+    qjs::Value chained(
+        ctx_, JS_Call(ctx_, thenFn.get(), result.get(), 2, args));
+    if (chained.isException()) {
+        MACISHTYPE_ERROR() << engineId_
+                           << ": prepareReverseLookup .then failed: "
+                           << qjs::exceptionText(ctx_);
+        settleReverseLookup(token, false);
+    }
+    return token;
+}
+
+void JsEngineHost::settleReverseLookup(uint64_t token, bool ready) {
+    if (token != reverseLookupToken_ || !reverseLookupOnReady_) {
+        return; // superseded / cancelled: drop the abandoned query's result
+    }
+    auto callback = std::move(reverseLookupOnReady_);
+    reverseLookupOnReady_ = nullptr;
+    callback(ready);
+}
+
+void JsEngineHost::cancelReverseLookupWait(uint64_t token) {
+    if (token != reverseLookupToken_) {
+        return;
+    }
+    ++reverseLookupToken_; // invalidate any still-pending reaction
+    reverseLookupOnReady_ = nullptr;
+}
+
+std::vector<JsEngineHost::ReverseCode>
+JsEngineHost::reverseLookup(const std::string &character) {
+    std::vector<ReverseCode> codes;
+    Entry entry(*this);
+    qjs::Value method(
+        ctx_, JS_GetPropertyStr(ctx_, engineClass_, "reverseLookup"));
+    if (!method.isFunction()) {
+        return codes;
+    }
+    qjs::Value arg(
+        ctx_, JS_NewStringLen(ctx_, character.c_str(), character.size()));
+    JSValue argv = arg.get();
+    qjs::Value result(
+        ctx_, JS_Call(ctx_, method.get(), engineClass_, 1, &argv));
+    if (result.isException()) {
+        MACISHTYPE_ERROR() << engineId_ << ".reverseLookup threw: "
+                           << qjs::exceptionText(ctx_);
+        return codes;
+    }
+    if (!JS_IsArray(result.get())) {
+        return codes;
+    }
+    qjs::Value lengthValue(ctx_,
+                           JS_GetPropertyStr(ctx_, result.get(), "length"));
+    uint32_t length = 0;
+    JS_ToUint32(ctx_, &length, lengthValue.get());
+    uint32_t limit = std::min(length, kReverseLookupMaxMarshaledCodes);
+    for (uint32_t i = 0; i < limit; i++) {
+        qjs::Value item(ctx_, JS_GetPropertyUint32(ctx_, result.get(), i));
+        ReverseCode code;
+        if (JS_IsString(item.get())) {
+            code.code = qjs::toString(ctx_, item.get());
+        } else if (JS_IsObject(item.get())) {
+            qjs::Value codeValue(
+                ctx_, JS_GetPropertyStr(ctx_, item.get(), "code"));
+            if (!JS_IsString(codeValue.get())) {
+                continue; // require a string `code`
+            }
+            code.code = qjs::toString(ctx_, codeValue.get());
+            qjs::Value annotation(
+                ctx_, JS_GetPropertyStr(ctx_, item.get(), "annotation"));
+            if (JS_IsString(annotation.get())) {
+                code.annotation = qjs::toString(ctx_, annotation.get());
+            }
+        } else {
+            continue;
+        }
+        codes.push_back(std::move(code));
+    }
+    return codes;
+}
+
+void JsEngineHost::releaseReverseLookup() {
+    if (!reverseLookupPrepared_) {
+        return;
+    }
+    reverseLookupPrepared_ = false;
+    ++reverseLookupToken_; // invalidate any straggler reaction
+    reverseLookupOnReady_ = nullptr;
+    Entry entry(*this);
+    qjs::Value method(
+        ctx_, JS_GetPropertyStr(ctx_, engineClass_, "endReverseLookup"));
+    if (method.isFunction()) {
+        qjs::Value result(
+            ctx_, JS_Call(ctx_, method.get(), engineClass_, 0, nullptr));
+        if (result.isException()) {
+            MACISHTYPE_ERROR() << engineId_ << ".endReverseLookup threw: "
+                               << qjs::exceptionText(ctx_);
+        }
+    }
+}
+
+JSValue JsEngineHost::reverseLookupReaction(JSContext *ctx,
+                                            JSValueConst thisVal, int argc,
+                                            JSValueConst *argv, int magic,
+                                            JSValueConst *funcData) {
+    FCITX_UNUSED(thisVal);
+    FCITX_UNUSED(argc);
+    FCITX_UNUSED(argv);
+    int64_t token = 0;
+    JS_ToInt64(ctx, &token, funcData[0]);
+    hostOf(ctx)->settleReverseLookup(static_cast<uint64_t>(token), magic != 0);
+    return JS_UNDEFINED;
+}
+
 bool JsEngineHost::instanceHasHook(uint64_t instanceId, const char *method) {
     auto found = instances_.find(instanceId);
     if (found == instances_.end()) {
@@ -849,6 +1025,8 @@ void JsEngineHost::rejectionTracker(JSContext *ctx, JSValueConst promise,
 // The two paths operate on disjoint subsets.
 
 void JsEngineHost::incrementActive() {
+    // Reuse within the idle window keeps the reverse index (cheap re-lookup).
+    reverseLookupReleaseTimer_.reset();
     ++activeCount_;
     if (activeCount_ == 1) {
         dispatchToWorker();
@@ -863,6 +1041,22 @@ void JsEngineHost::decrementActive() {
         // in-flight worker read finishes harmlessly off-loop and its results
         // are staged by the (inactive) completion.
         deferredSettle_.reset();
+        // Release the host-scoped reverse index after an idle grace period, so
+        // brief focus/window switches don't churn a rebuild.
+        if (reverseLookupPrepared_ && eventLoop_ != nullptr) {
+            reverseLookupReleaseTimer_ = eventLoop_->addTimeEvent(
+                CLOCK_MONOTONIC,
+                fcitx::now(CLOCK_MONOTONIC) + reverseLookupIdleReleaseMicros(),
+                0, [this](fcitx::EventSourceTime *, uint64_t) {
+                    // Guard the self-destroy: touch only `self` after reset.
+                    auto *self = this;
+                    if (self->activeCount_ <= 0) {
+                        self->releaseReverseLookup();
+                    }
+                    self->reverseLookupReleaseTimer_.reset();
+                    return true;
+                });
+        }
     }
 }
 

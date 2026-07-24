@@ -185,6 +185,7 @@ test: build
 	test/toggle.sh
 	test/discovery.sh
 	test/textcodec.sh
+	test/reverselookup.sh
 
 clean:
 	rm -rf $(BUILD_DIR)

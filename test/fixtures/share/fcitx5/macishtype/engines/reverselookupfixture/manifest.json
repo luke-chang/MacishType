@@ -1,0 +1,6 @@
+{
+  "entry": "index.js",
+  "name": { "en": "ReverseLookup Fixture" },
+  "candidateWindow": { "pageSize": 2 },
+  "capabilities": { "reverseLookup": true }
+}

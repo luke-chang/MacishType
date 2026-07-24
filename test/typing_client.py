@@ -30,6 +30,9 @@ IC_IFACE = "org.fcitx.Fcitx.InputContext1"
 
 CAPABILITY_PREEDIT = 1 << 1
 CAPABILITY_FORMATTED_PREEDIT = 1 << 4
+# Lets the client push a selection via SetSurroundingText, the primary query
+# source for the Find Input Code (reverse lookup) surface.
+CAPABILITY_SURROUNDING_TEXT = 1 << 6
 # Routes the input panel over DBus (UpdateClientSideUI) so tests can assert
 # candidate lists and their comments.
 CAPABILITY_CLIENT_SIDE_INPUT_PANEL = 1 << 39
@@ -74,6 +77,12 @@ def main():
         # keyboard-us) mid-sequence, keeping focus.
         if spec.startswith("switchim:"):
             keys.append(("switchim", spec[len("switchim:"):]))
+            continue
+        # "setsurrounding:TEXT" pushes TEXT as the client's surrounding text
+        # with the whole string selected (cursor 0, anchor = char count), so
+        # SurroundingText::selectedText() returns TEXT.
+        if spec.startswith("setsurrounding:"):
+            keys.append(("setsurrounding", spec[len("setsurrounding:"):]))
             continue
         # "setaddonconfig:ADDON:KEY=V1[,V2...]" writes one list option of an
         # addon's config through DBus SetConfig (e.g. chttrans EnabledIM).
@@ -167,6 +176,7 @@ def main():
 
     ic_call("SetCapability", GLib.Variant(
         "(t)", (CAPABILITY_PREEDIT | CAPABILITY_FORMATTED_PREEDIT |
+                CAPABILITY_SURROUNDING_TEXT |
                 CAPABILITY_CLIENT_SIDE_INPUT_PANEL,)))
     ic_call("FocusIn")
     # The first switch to a macishtype IM loads its JS engine synchronously,
@@ -208,6 +218,14 @@ def main():
             if entry[0] == "reset":
                 ic_call("Reset")
                 emit({"event": "was-reset"})
+                continue
+            if entry[0] == "setsurrounding":
+                text = entry[1]
+                # cursor 0, anchor at the end selects the whole text (offsets
+                # are in characters, so Python's len is the code-point count).
+                ic_call("SetSurroundingText",
+                        GLib.Variant("(suu)", (text, 0, len(text))))
+                emit({"event": "surrounding-set", "text": text})
                 continue
             if entry[0] == "switchim":
                 # 30s like the initial switch: selecting a macishtype IM

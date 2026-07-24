@@ -19,6 +19,7 @@
 #include <fcitx/event.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/statusarea.h>
+#include <fcitx/surroundingtext.h>
 #include <fcitx/text.h>
 #include <fcitx/userinterfacemanager.h>
 
@@ -95,6 +96,16 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     MACISHTYPE_INFO() << "Discovered " << engines_.size()
                       << " engine folder(s)";
     fcitx::readAsIni(config_, "conf/macishtype.conf");
+    // Registered once; attached per input context only for engines that
+    // declare the reverseLookup capability (see attachStatusActions).
+    findInputCodeAction_.setShortText(translated("Find Input Code"));
+    findInputCodeAction_.setIcon("edit-find");
+    findInputCodeAction_.setHotkey(config_.findInputCodeKey.value());
+    findInputCodeAction_.registerAction("macishtype-find-input-code",
+                                        &instance_->userInterfaceManager());
+    findInputCodeConn_ =
+        findInputCodeAction_.connect<fcitx::SimpleAction::Activated>(
+            [this](fcitx::InputContext *ic) { triggerFindInputCode(ic); });
     for (const auto &engine : engines_) {
         rebuildEngineSettings(engine);
     }
@@ -215,6 +226,9 @@ std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {
 void MacishTypeEngine::setConfig(const fcitx::RawConfig &raw) {
     config_.load(raw, true);
     fcitx::safeSaveAsIni(config_, "conf/macishtype.conf");
+    // Refresh the action's displayed hotkey (matching is read live in
+    // keyEvent, so functional matching already tracks the new value).
+    findInputCodeAction_.setHotkey(config_.findInputCodeKey.value());
 }
 
 void MacishTypeEngine::rebuildEngineSettings(const EngineInfo &engine) {
@@ -298,6 +312,23 @@ void applyPromptPreedit(fcitx::InputContext *inputContext,
 
 void MacishTypeEngine::keyEvent(const fcitx::InputMethodEntry &entry,
                                 fcitx::KeyEvent &keyEvent) {
+    // Find Input Code hotkey (before session dispatch): only for a capability
+    // engine with a live session; consumes the key and shows the reverse
+    // lookup. Without a session (load failed / not yet built) the key falls
+    // through so a modifier combo still reaches the client, as before.
+    if (!keyEvent.isRelease() &&
+        !config_.findInputCodeKey.value().empty() &&
+        keyEvent.key().checkKeyList(config_.findInputCodeKey.value())) {
+        if (const auto *engine = engineForEntry(entry);
+            engine != nullptr && engine->manifest.reverseLookup) {
+            auto found = sessions_.find(keyEvent.inputContext());
+            if (found != sessions_.end() && found->second->valid()) {
+                triggerFindInputCode(keyEvent.inputContext());
+                keyEvent.filterAndAccept();
+                return;
+            }
+        }
+    }
     auto found = sessions_.find(keyEvent.inputContext());
     if (found == sessions_.end()) {
         if (const auto *engine = engineForEntry(entry)) {
@@ -467,6 +498,58 @@ void MacishTypeEngine::attachStatusActions(const EngineInfo &engine,
                 fcitx::StatusGroup::InputMethod, action);
         }
     }
+
+    // Engines declaring reverseLookup get the Find Input Code action.
+    if (engine.manifest.reverseLookup) {
+        inputContext->statusArea().addAction(fcitx::StatusGroup::InputMethod,
+                                             &findInputCodeAction_);
+    }
+}
+
+void MacishTypeEngine::triggerFindInputCode(
+    fcitx::InputContext *inputContext) {
+    auto found = sessions_.find(inputContext);
+    if (found == sessions_.end() || !found->second->valid()) {
+        return;
+    }
+    found->second->showReverseLookup(resolveLookupQuery(inputContext));
+}
+
+std::string
+MacishTypeEngine::resolveLookupQuery(fcitx::InputContext *inputContext) {
+    std::string query;
+    // The client's current selection, and only that: reading it does not steal
+    // focus, so no pre-read dance is needed. Deliberately no PRIMARY-selection
+    // fallback — PRIMARY holds whatever was last selected anywhere (which is
+    // also whatever was last copied, since copying requires selecting), so it
+    // would silently look up stale text when nothing is selected here.
+    if (inputContext->capabilityFlags().test(
+            fcitx::CapabilityFlag::SurroundingText)) {
+        const auto &surrounding = inputContext->surroundingText();
+        if (surrounding.isValid()) {
+            query = surrounding.selectedText();
+        }
+    }
+    // Keep only non-ASCII characters, bounded to 256 code points, before the
+    // display iterates (it caps again at 200 unique characters). A single-byte
+    // code point (U+0000–U+007F: letters, digits, punctuation, whitespace) is
+    // ASCII — typed directly, with no input code to look up — so it is dropped;
+    // an all-ASCII selection thus yields an empty query and the select-text
+    // hint rather than a window full of dashes.
+    std::string capped;
+    size_t count = 0;
+    auto range = fcitx::utf8::MakeUTF8CharRange(query);
+    for (auto it = std::begin(range); it != std::end(range); ++it) {
+        auto charRange = it.charRange();
+        if (charRange.second - charRange.first == 1) {
+            continue;
+        }
+        if (count++ >= 256) {
+            break;
+        }
+        capped.append(charRange.first, charRange.second);
+    }
+    return capped;
 }
 
 void MacishTypeEngine::deactivate(const fcitx::InputMethodEntry &entry,

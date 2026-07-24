@@ -31,7 +31,14 @@ unmodified — composition preedit, candidate window with index labels and
 navigation, commit, escape, and OS passthrough all work against an isolated
 fcitx5 instance (`test/acceptance.sh`).
 
-Not yet implemented: reverse lookup.
+Reverse lookup: engines that declare `capabilities.reverseLookup` get a "Find
+Input Code" status-area action plus a configurable hotkey (default
+`Control+Alt+L`), which lists each selected character's input codes in a
+read-only candidate window. It reads the client's current selection only, and
+within it only non-ASCII characters (ASCII is typed directly, so it has no code
+to look up).
+
+Not yet implemented: custom `menu` items.
 
 Associated mode: committing a single character (when the engine's
 `enableAssociatedMode` setting is on and an associated-phrase dictionary is

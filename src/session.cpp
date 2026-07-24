@@ -23,6 +23,38 @@ namespace {
 // candidate or associated-word list approaches this bound.
 constexpr uint32_t kMaxListItems = 100000;
 
+// Reverse-lookup display caps: distinct query characters (one row each) and
+// codes shown per character before eliding with "…" (both signal truncation
+// rather than silently dropping).
+constexpr size_t kReverseLookupMaxChars = 200;
+constexpr size_t kReverseLookupMaxCodes = 12;
+
+// Joins a character's reverse-lookup codes into one comment string: codes
+// two-space-separated, each optional annotation parenthesized right after its
+// code (the panel drops the dim styling macOS uses over DBus, so parentheses
+// carry the grouping). Capped with "…", or "—" when the character has no codes.
+std::string
+joinReverseCodes(const std::vector<JsEngineHost::ReverseCode> &codes) {
+    if (codes.empty()) {
+        return "\xE2\x80\x94"; // em dash
+    }
+    std::string result;
+    size_t shown = std::min(codes.size(), kReverseLookupMaxCodes);
+    for (size_t i = 0; i < shown; i++) {
+        if (i > 0) {
+            result += "  ";
+        }
+        result += codes[i].code;
+        if (!codes[i].annotation.empty()) {
+            result += " (" + codes[i].annotation + ")";
+        }
+    }
+    if (codes.size() > shown) {
+        result += "  \xE2\x80\xA6"; // …
+    }
+    return result;
+}
+
 // Character indices in the JS contract count grapheme clusters; code points
 // approximate that (correct for the CJK text engines emit; ZWJ sequences
 // and combining marks would need a real segmenter).
@@ -118,6 +150,10 @@ EngineSession::EngineSession(JsEngineHost *host,
 }
 
 EngineSession::~EngineSession() {
+    // Invalidate any pending reverse-lookup callback capturing this session
+    // (no-op unless this session owns the current lookup). The input panel's
+    // candidate list is left to the input-context teardown, as elsewhere.
+    host_->cancelReverseLookupWait(reverseLookupToken_);
     host_->decrementActive();
     freeCandidates(candidates_);
     if (instanceId_ != 0) {
@@ -199,6 +235,32 @@ void EngineSession::handleKey(fcitx::KeyEvent &keyEvent) {
         return;
     }
     WebKeyEvent web = translateKeyEvent(keyEvent.rawKey());
+
+    // Reverse-lookup read-only display owns every key while shown: Escape and
+    // page keys are consumed; anything else dismisses it and falls through so
+    // the keystroke starts composing normally (typing is never blocked).
+    if (reverseLookupVisible_) {
+        if (isEscapeLikeKey(web)) {
+            hideReverseLookup();
+            keyEvent.filterAndAccept();
+            return;
+        }
+        if (auto direction = navigationDirectionFor(web)) {
+            bool forward = *direction == "pageDown" || *direction == "down" ||
+                           *direction == "right";
+            bool backward = *direction == "pageUp" || *direction == "up" ||
+                            *direction == "left";
+            auto *list = candidateList();
+            if ((forward || backward) && list != nullptr &&
+                list->totalPages() > 1) {
+                reverseLookupPage(forward);
+                keyEvent.filterAndAccept();
+                return;
+            }
+        }
+        hideReverseLookup();
+        // Not accepted: fall through to the normal pipeline below.
+    }
 
     // Tier 1a: candidate window owns policy-gated keys.
     if (dispatchCandidateWindowKey(web)) {
@@ -329,6 +391,9 @@ void EngineSession::resetFromClient() {
     if (!valid()) {
         return;
     }
+    if (reverseLookupVisible_) {
+        hideReverseLookup();
+    }
     // fcitx5's reset abandons the input; discard the whole composition
     // (staged and composing alike) rather than committing, matching the
     // platform convention. Unlike focus-out, reset does not auto-commit
@@ -340,6 +405,9 @@ void EngineSession::resetFromClient() {
 void EngineSession::endFromDeactivate(bool preeditAlreadyCommitted) {
     if (!valid()) {
         return;
+    }
+    if (reverseLookupVisible_) {
+        hideReverseLookup();
     }
     // macOS parity: deactivating commits the staged prefix and drops the
     // composing rest. On a focus-out fcitx5 has already committed the
@@ -834,6 +902,134 @@ void EngineSession::hideCandidates() {
     inputPanel.setAuxUp(fcitx::Text());
     inputContext_->updateUserInterface(
         fcitx::UserInterfaceComponent::InputPanel);
+}
+
+// Reverse lookup (read-only Find Input Code display) --------------------
+
+void EngineSession::showReverseLookup(const std::string &query) {
+    if (!valid()) {
+        return;
+    }
+    // Refresh: drop any existing reverse display so a re-trigger re-queries
+    // with the new selection (index kept host-side, so re-prepare is cheap).
+    if (reverseLookupVisible_) {
+        hideReverseLookup();
+    }
+    // Only from idle: never disturb an in-progress composition.
+    if (!markedText_.empty() || associating_ || candidatesVisible_) {
+        return;
+    }
+    reverseLookupVisible_ = true;
+
+    if (query.empty()) {
+        // Nothing to look up (no selection, or an all-ASCII one dropped by the
+        // query filter): a hint row teaches the operation.
+        std::vector<CandidateData> rows(1);
+        rows[0].text = translated("Select text first, then run Find Input Code");
+        renderReverseLookup(std::move(rows));
+        return;
+    }
+
+    reverseLookupRendered_ = false;
+    reverseLookupToken_ =
+        host_->prepareReverseLookup([this, query](bool ready) {
+            if (!ready) {
+                reverseLookupAux(translated("Failed to load this input method"));
+                reverseLookupRendered_ = true;
+                return;
+            }
+            // One row per unique character (capped); its codes are joined
+            // into the comment. The query is already ASCII-filtered and
+            // non-empty (see the hint branch above).
+            std::vector<CandidateData> rows;
+            std::set<std::string> seen;
+            auto range = fcitx::utf8::MakeUTF8CharRange(query);
+            for (auto it = std::begin(range); it != std::end(range); ++it) {
+                std::string ch(it.charRange().first, it.charRange().second);
+                if (!seen.insert(ch).second) {
+                    continue;
+                }
+                if (rows.size() >= kReverseLookupMaxChars) {
+                    MACISHTYPE_WARN()
+                        << host_->engineId()
+                        << ": reverse lookup query truncated at "
+                        << kReverseLookupMaxChars << " characters";
+                    break;
+                }
+                CandidateData row;
+                row.text = ch;
+                row.annotation = joinReverseCodes(host_->reverseLookup(ch));
+                rows.push_back(std::move(row));
+            }
+            renderReverseLookup(std::move(rows));
+            reverseLookupRendered_ = true;
+        });
+
+    // Anti-flash: draw the loading line only if prepare has not already
+    // settled synchronously (a fetch-backed prepare settles on a later turn).
+    if (!reverseLookupRendered_) {
+        reverseLookupAux(translated("Loading…"));
+    }
+}
+
+void EngineSession::renderReverseLookup(std::vector<CandidateData> rows) {
+    freeCandidates(candidates_);
+    candidates_ = std::move(rows);
+    // Read-only: paging routes to the read-only pager (keeps suspended), and
+    // clicking a row only dismisses. Fixed vertical, no index labels.
+    auto list = std::make_unique<MacishCandidateList>(
+        [this](const std::string &direction) {
+            reverseLookupPage(direction == "pageForward");
+        });
+    int total = static_cast<int>(candidates_.size());
+    int pageSize = std::max(1, windowConfig_.pageSize);
+    list->setPageSize(pageSize);
+    list->setLayoutHint(fcitx::CandidateLayoutHint::Vertical);
+    list->setLabels(std::vector<std::string>(pageSize, ""));
+    auto onSelect = [this](int) { hideReverseLookup(); };
+    for (int i = 0; i < total; i++) {
+        list->append(
+            std::make_unique<MacishCandidateWord>(i, candidates_[i], onSelect));
+    }
+    list->setGlobalCursorIndex(-1); // suspended: never highlight a code
+    auto &inputPanel = inputContext_->inputPanel();
+    inputPanel.setCandidateList(std::move(list));
+    inputPanel.setAuxUp(fcitx::Text());
+    candidatesVisible_ = true;
+    inputContext_->updateUserInterface(
+        fcitx::UserInterfaceComponent::InputPanel);
+}
+
+void EngineSession::reverseLookupAux(const std::string &message) {
+    freeCandidates(candidates_);
+    candidatesVisible_ = false; // aux-only (loading/failure): no candidate list
+    auto &inputPanel = inputContext_->inputPanel();
+    inputPanel.setCandidateList(nullptr);
+    inputPanel.setAuxUp(fcitx::Text(message));
+    inputContext_->updateUserInterface(
+        fcitx::UserInterfaceComponent::InputPanel);
+}
+
+void EngineSession::reverseLookupPage(bool forward) {
+    auto *list = candidateList();
+    if (list == nullptr) {
+        return;
+    }
+    int pageSize = std::max(1, list->pageSize());
+    int lastPage = (static_cast<int>(candidates_.size()) - 1) / pageSize;
+    int page = list->currentPage() + (forward ? 1 : -1);
+    page = std::max(0, std::min(page, lastPage));
+    list->setPage(page);
+    list->setGlobalCursorIndex(-1); // stay suspended
+    inputContext_->updateUserInterface(
+        fcitx::UserInterfaceComponent::InputPanel);
+}
+
+void EngineSession::hideReverseLookup() {
+    host_->cancelReverseLookupWait(reverseLookupToken_);
+    reverseLookupVisible_ = false;
+    reverseLookupRendered_ = false;
+    hideCandidates();
 }
 
 void EngineSession::navigate(const std::string &direction, bool wrapping) {

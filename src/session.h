@@ -55,6 +55,10 @@ public:
     // committed the staged prefix from the client preedit, so we must not
     // commit it again.
     void endFromDeactivate(bool preeditAlreadyCommitted);
+    // Show a read-only reverse-lookup (Find Input Code) result for `query`
+    // in the candidate window. One-shot; dismissed on the next key. No-op
+    // while composing.
+    void showReverseLookup(const std::string &query);
 
 private:
 
@@ -138,6 +142,15 @@ private:
     void hideCandidates();
     void clearCompositionState();
 
+    // Reverse-lookup (read-only) display. renderReverseLookup shows the given
+    // rows suspended/non-selectable; reverseLookupAux shows a transient
+    // message (loading/failure); reverseLookupPage flips pages keeping the
+    // suspended cursor; hideReverseLookup tears down and cancels the wait.
+    void renderReverseLookup(std::vector<CandidateData> rows);
+    void reverseLookupAux(const std::string &message);
+    void reverseLookupPage(bool forward);
+    void hideReverseLookup();
+
     WindowConfig sessionWindowConfig() const;
     // The live candidate list (our CommonCandidateList subclass) when visible,
     // else nullptr. Cursor/page state lives here — it is the source of truth.
@@ -169,6 +182,14 @@ private:
     std::vector<CandidateData> candidates_;
     bool candidatesVisible_ = false;
     WindowConfig windowConfig_;
+
+    // Reverse-lookup read-only display: visible flag (its handleKey branch
+    // owns keys while set), the host lookup token, and a transient flag set
+    // once the results/aux are drawn (anti-flash: loading is drawn only if
+    // prepare hasn't already settled synchronously).
+    bool reverseLookupVisible_ = false;
+    uint64_t reverseLookupToken_ = 0;
+    bool reverseLookupRendered_ = false;
 
     std::vector<std::vector<Action>> queueStack_;
 };

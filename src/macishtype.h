@@ -10,7 +10,9 @@
 #include <fcitx-config/configuration.h>
 #include <fcitx-config/option.h>
 #include <fcitx-utils/event.h>
+#include <fcitx-utils/key.h>
 #include <fcitx-utils/signals.h>
+#include <fcitx/action.h>
 #include <fcitx/addonfactory.h>
 #include <fcitx/addoninstance.h>
 #include <fcitx/inputcontext.h>
@@ -36,7 +38,14 @@ FCITX_CONFIGURATION(
         translated("Auto-reload an engine when its files change"), true};
     fcitx::Option<bool> notifyOnReload{
         this, "NotifyOnReload",
-        translated("Notify on engine folder changes"), true};);
+        translated("Notify on engine folder changes"), true};
+    // Hotkey that opens Find Input Code (reverse lookup) for the selected
+    // text. Empty clears it (status-area action still triggers). Default
+    // Ctrl+Alt+L (GNOME's screen lock is Super+L, so no conflict there);
+    // the modifier spells out as "Control" — fcitx drops the "Ctrl" alias.
+    fcitx::KeyListOption findInputCodeKey{
+        this, "FindInputCodeKey", translated("Find Input Code"),
+        {fcitx::Key("Control+Alt+L")}, fcitx::KeyListConstrain()};);
 
 class MacishTypeEngine final : public fcitx::InputMethodEngineV2 {
 public:
@@ -103,6 +112,10 @@ private:
     // both activate and the lazy session rebuild must (re)attach them.
     void attachStatusActions(const EngineInfo &engine,
                              fcitx::InputContext *inputContext);
+    // Find Input Code (reverse lookup): trigger reads the client's selection
+    // and hands it to the focused session's read-only display.
+    void triggerFindInputCode(fcitx::InputContext *inputContext);
+    std::string resolveLookupQuery(fcitx::InputContext *inputContext);
 
     // chttrans enablement for one input method, via its addon config (the
     // same state its hotkey toggles and persists).
@@ -170,6 +183,10 @@ private:
     std::map<std::string, ChttransToggleState> chttransToggleStates_;
     std::unique_ptr<fcitx::EventSource> chttransReconcileDefer_;
     fcitx::ScopedConnection chttransUpdateConnection_;
+    // Find Input Code status-area action (present only on capability engines)
+    // and its Activated connection.
+    fcitx::SimpleAction findInputCodeAction_;
+    fcitx::ScopedConnection findInputCodeConn_;
     // Engines whose on-disk edits await the user's pull (AutoReloadEngines
     // off); applied and cleared by rescanEngineFolders.
     std::set<std::string> pendingReloads_;

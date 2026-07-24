@@ -66,6 +66,26 @@ public:
     std::optional<bool> invokeHook(uint64_t instanceId, const char *method);
     bool instanceHasHook(uint64_t instanceId, const char *method);
 
+    // Reverse lookup (capabilities.reverseLookup): calls the engine class's
+    // static reverseLookup / prepareReverseLookup / endReverseLookup.
+    struct ReverseCode {
+        std::string code;
+        std::string annotation;
+    };
+    // Calls static prepareReverseLookup(); returns a token for this lookup.
+    // onReady(true) fires once when ready (synchronously if prepare is absent
+    // or settles synchronously), onReady(false) on prepare failure. A newer
+    // prepareReverseLookup or a cancelReverseLookupWait(token) invalidates a
+    // still-pending callback (it never fires). Absent static => ready.
+    uint64_t prepareReverseLookup(std::function<void(bool ready)> onReady);
+    // Display dismissed: invalidate a still-pending prepare callback for
+    // `token` (no-op if it isn't the current one). Does NOT call the static
+    // endReverseLookup or release the engine's reverse index.
+    void cancelReverseLookupWait(uint64_t token);
+    // Calls static reverseLookup(character); marshals the returned
+    // (string | {code, annotation})[] into ReverseCode. Empty on absence/throw.
+    std::vector<ReverseCode> reverseLookup(const std::string &character);
+
     JSContext *context() const { return ctx_; }
     const std::string &engineId() const { return engineId_; }
 
@@ -232,6 +252,17 @@ private:
     void registerBridgeGlobals();
     void drainJobs();
     void reportRejections();
+
+    // Reverse-lookup async plumbing. settleReverseLookup fires the pending
+    // onReady when `token` is still current; releaseReverseLookup calls the
+    // static endReverseLookup on idle. reverseLookupReaction is the JS
+    // resolve/reject reaction (magic encodes ready=1/fail=0; func_data[0] is
+    // the token).
+    void settleReverseLookup(uint64_t token, bool ready);
+    void releaseReverseLookup();
+    static JSValue reverseLookupReaction(JSContext *ctx, JSValueConst thisVal,
+                                         int argc, JSValueConst *argv,
+                                         int magic, JSValueConst *funcData);
 
     // engine:///-style path resolution with realpath containment. Returns
     // the on-disk path and normalized "engine:///…" URL, or an error
@@ -432,6 +463,15 @@ private:
     // calls) when the host died first.
     std::shared_ptr<char> aliveToken_ = std::make_shared<char>('\0');
     JSValue makeResponse_ = JS_UNDEFINED;
+
+    // Reverse-lookup state (host-scoped; the reverse index lives on the engine
+    // class, shared across sessions). token monotonic; onReady is the pending
+    // callback; prepared tracks whether the static index was built; the timer
+    // debounces the idle release of the index.
+    uint64_t reverseLookupToken_ = 0;
+    std::function<void(bool)> reverseLookupOnReady_;
+    bool reverseLookupPrepared_ = false;
+    std::unique_ptr<fcitx::EventSourceTime> reverseLookupReleaseTimer_;
 };
 
 // Whether an associated-mode dictionary is bundled for `intendedLanguage`.

@@ -75,3 +75,15 @@ msgstr "非（%1）"
 
 msgid ", "
 msgstr "、"
+
+msgid "Find Input Code"
+msgstr "尋找輸入碼"
+
+msgid "Loading…"
+msgstr "載入中…"
+
+msgid "Failed to load this input method"
+msgstr "無法載入此輸入法"
+
+msgid "Select text first, then run Find Input Code"
+msgstr "先選取文字再執行尋找輸入碼"
