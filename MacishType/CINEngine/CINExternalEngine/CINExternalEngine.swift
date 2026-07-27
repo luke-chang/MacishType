@@ -26,7 +26,7 @@ final class CINExternalEngine: CINEngine, ObservableObject {
     /// Set when the watched file changes mid-session; the reload is deferred
     /// to the next `activate()` so it never swaps the table while the user is
     /// composing.
-    private var isStale = false
+    @Published private(set) var isStale = false
 
     override var cinTableURL: URL? { fileBookmark.url }
 
@@ -58,8 +58,7 @@ final class CINExternalEngine: CINEngine, ObservableObject {
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     if self.isLoaded {
-                        self.unload()
-                        self.load()
+                        self.reloadExternalSource()
                     } else {
                         self.refreshTableForSettings()
                     }
@@ -91,9 +90,9 @@ final class CINExternalEngine: CINEngine, ObservableObject {
     /// A stale table (watched file edited) is swapped here rather than on the
     /// FSEvent itself, so an in-progress composition is never disrupted.
     override func activate(context: InputEngineContext, clientIdentifier: String?) {
-        if isStale {
-            isStale = false
-            if isLoaded { unload() }
+        // load() clears the flag, and super.activate always loads once unloaded.
+        if isStale, isLoaded, InputEngine.autoReloadOnModified {
+            unload()
         }
         super.activate(context: context, clientIdentifier: clientIdentifier)
     }
@@ -137,9 +136,10 @@ final class CINExternalEngine: CINEngine, ObservableObject {
     }
 
     /// Watched file changed: defer the reload to the next `activate()` (keeps
-    /// the running table until the user is between compositions).
+    /// the running table until the user is between compositions). Edge-triggered
+    /// — republishing on every save would churn the Settings view.
     private func markStale() {
-        guard isLoaded else { return }
+        guard isLoaded, !isStale else { return }
         isStale = true
         Logger.inputEngine.info("CINExternal table marked stale (file changed)")
     }
@@ -230,14 +230,21 @@ private struct CINExternalSettingsView: View {
                 buttonTitle: "Choose File…",
                 bookmark: bookmark,
                 validatePick: CINExternalEngine.validatePick,
+                configurePanel: { panel in
+                    panel.canChooseDirectories = false
+                    panel.canChooseFiles = true
+                    if let cinType = UTType(filenameExtension: "cin") {
+                        panel.allowedContentTypes = [cinType]
+                    }
+                },
                 onPicked: { parent in
                     EngineModifiedNotifier.shared.promptToEnableIfFirstTime(parent: parent)
                 }
-            ) { panel in
-                panel.canChooseDirectories = false
-                panel.canChooseFiles = true
-                if let cinType = UTType(filenameExtension: "cin") {
-                    panel.allowedContentTypes = [cinType]
+            ) {
+                if engine.isStale, !InputEngine.autoReloadOnModified {
+                    InputEngine.ExternalEngineReloadRow {
+                        engine.applyPendingExternalChange()
+                    }
                 }
             }
             // Other options only make sense once a table is loaded.
@@ -254,8 +261,14 @@ private struct CINExternalSettingsView: View {
                 }
             }
         }
-        // Parse for display when opened inactive; file changes are handled by
-        // the engine's fileObserver (which republishes the table).
-        .onAppear { engine.refreshTableForSettings() }
+        // Catch a stale engine up here; otherwise parse for display when opened
+        // inactive (a file swap is handled by the engine's fileObserver).
+        .onAppear {
+            if engine.isStale, InputEngine.autoReloadOnModified {
+                engine.reloadExternalSource()
+            } else {
+                engine.refreshTableForSettings()
+            }
+        }
     }
 }

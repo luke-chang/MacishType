@@ -1,9 +1,9 @@
 # Writing a MacishType JavaScript engine
 
 A MacishType JavaScript engine is a folder picked by the user through
-**Settings → JSExternal → Choose Folder…**. The host loads the folder via a
-security-scoped bookmark and watches it with FSEvents, so edits show up
-without a relaunch.
+**Settings → JS → Engine folder → Choose Folder…**. The host loads the folder
+via a security-scoped bookmark and watches it with FSEvents; while automatic
+reloading is on (the default), edits show up without a relaunch.
 
 ## Required layout
 

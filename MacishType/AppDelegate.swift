@@ -64,6 +64,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Warm the font-coverage union off-main so the first query doesn't stall.
         FontCoverage.shared.preheat()
 
+        // Before launch completes, so notification taps route from a cold start.
+        NotificationManager.shared.registerDelegate()
+
         setupMainMenu()
     }
 

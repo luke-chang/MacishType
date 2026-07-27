@@ -254,21 +254,3 @@ struct BookmarkPickerSection<StatusRow: View>: View {
         }
     }
 }
-
-extension BookmarkPickerSection where StatusRow == EmptyView {
-    init(
-        title: LocalizedStringKey,
-        placeholder: LocalizedStringKey,
-        buttonTitle: LocalizedStringKey,
-        bookmark: SecurityScopedBookmark,
-        validatePick: ((URL) -> (title: String, message: String)?)?,
-        onPicked: (@MainActor (NSWindow?) -> Void)? = nil,
-        configurePanel: @escaping (NSOpenPanel) -> Void
-    ) {
-        self.init(
-            title: title, placeholder: placeholder, buttonTitle: buttonTitle,
-            bookmark: bookmark, validatePick: validatePick,
-            configurePanel: configurePanel, onPicked: onPicked
-        ) { EmptyView() }
-    }
-}

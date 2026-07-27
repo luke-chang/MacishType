@@ -678,7 +678,33 @@ class InputEngine {
     func notifyExternalModified(changedFile: String) {
         EngineModifiedNotifier.shared.notifyModified(
             engineID: engineID, engineName: externalDisplayName,
-            kind: externalSourceKind, changedFile: changedFile)
+            kind: externalSourceKind, changedFile: changedFile,
+            willReloadAutomatically: Self.autoReloadOnModified)
+    }
+
+    nonisolated static let autoReloadEnabledKey = "autoReloadOnEngineModified"
+    nonisolated static let defaultAutoReloadOnModified = true
+
+    /// Gates only change-driven reloads; re-picking a source always loads it.
+    static var autoReloadOnModified: Bool {
+        UserDefaults.standard.object(forKey: autoReloadEnabledKey) as? Bool
+            ?? defaultAutoReloadOnModified
+    }
+
+    func reloadExternalSource() {
+        // Hold the associated dictionary across the swap: releasing the last
+        // handle evicts the slot outright, and reacquiring re-parses it.
+        withExtendedLifetime(associatedDictionaryHandle) {
+            unload()
+            load()
+        }
+    }
+
+    /// The user reloaded a changed source themselves, so withdraw the
+    /// notification that asked them to.
+    func applyPendingExternalChange() {
+        EngineModifiedNotifier.shared.clearModified(engineID: engineID)
+        reloadExternalSource()
     }
 
     // MARK: - Reverse Lookup
@@ -915,6 +941,40 @@ extension InputEngine {
 
         var body: some View {
             Toggle("Show predictive completions", isOn: $value)
+        }
+    }
+
+    /// Dimmed notice with a trailing button, for a condition the user can
+    /// resolve from the pane they're already looking at.
+    struct InlineNoticeRow: View {
+        let systemImage: String
+        let message: LocalizedStringKey
+        let actionTitle: LocalizedStringKey
+        let action: () -> Void
+
+        var body: some View {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.secondary)
+                Text(message)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(actionTitle, action: action)
+            }
+            .font(.callout)
+        }
+    }
+
+    /// Prompt for a changed external source when automatic reloading is off.
+    struct ExternalEngineReloadRow: View {
+        let reload: () -> Void
+
+        var body: some View {
+            InlineNoticeRow(
+                systemImage: "arrow.triangle.2.circlepath",
+                message: "Changed on disk since it was last loaded.",
+                actionTitle: "Reload",
+                action: reload)
         }
     }
 

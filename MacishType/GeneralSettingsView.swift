@@ -4,9 +4,12 @@ import SwiftUI
 import UserNotifications
 
 /// The "General" settings page: the keyboard-layout override (which Roman
-/// layout keystrokes are read as) and the external-engine file-change notification.
+/// layout keystrokes are read as) and how external engines respond to their
+/// files changing (automatic reload, notification).
 struct GeneralSettingsView: View {
     @AppStorage(KeyboardLayouts.overrideDefaultsKey) private var layoutID = ""
+    @AppStorage(InputEngine.autoReloadEnabledKey)
+    private var autoReloadOnModified = InputEngine.defaultAutoReloadOnModified
     @AppStorage(EngineModifiedNotifier.enabledKey) private var notifyOnEngineModified = false
     @State private var notificationsDenied = false
     private let groups = LayoutGroup.all()
@@ -27,23 +30,25 @@ struct GeneralSettingsView: View {
             }
             Section("External engines") {
                 VStack(alignment: .leading, spacing: 2) {
+                    Toggle("Reload automatically when files change", isOn: $autoReloadOnModified)
+                    Text("When off, reload it manually from the engine's settings.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
                     Toggle("Notify when files change", isOn: $notifyOnEngineModified)
                     Text("Get a system notification when a loaded engine's files change. Engines you haven't switched to aren't loaded yet, so they aren't watched.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 if notifyOnEngineModified, notificationsDenied {
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.secondary)
-                        Text("Notifications are turned off in System Settings.")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Open System Settings") {
-                            NotificationManager.shared.openSystemNotificationSettings()
-                        }
+                    InputEngine.InlineNoticeRow(
+                        systemImage: "exclamationmark.triangle.fill",
+                        message: "Notifications are turned off in System Settings.",
+                        actionTitle: "Open System Settings"
+                    ) {
+                        NotificationManager.shared.openSystemNotificationSettings()
                     }
-                    .font(.callout)
                 }
             }
         }

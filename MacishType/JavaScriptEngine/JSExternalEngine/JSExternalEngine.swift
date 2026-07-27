@@ -12,7 +12,7 @@ class JSExternalEngine: JavaScriptEngine {
     override var engineID: String { "JSExternal" }
 
     let folderBookmark = SecurityScopedBookmark(identifier: "JSExternal_engineFolder")
-    private(set) var loadStatus: LoadStatus = .notConfigured
+    @Published private(set) var loadStatus: LoadStatus = .notConfigured
 
     private var folderObserver: AnyCancellable?
     private var watchStream: FSEventsWatcher?
@@ -71,8 +71,7 @@ class JSExternalEngine: JavaScriptEngine {
                 self.clearStoredSettings()
                 if self.isLoaded {
                     // load() does its own reloadManifest — don't duplicate.
-                    self.unload()
-                    self.load()
+                    self.reloadExternalSource()
                 } else {
                     // Inactive: just refresh preview for settings UI.
                     self.reloadManifest()
@@ -115,7 +114,7 @@ class JSExternalEngine: JavaScriptEngine {
         // .failed: JavaScriptEngine.load() self-cleans on failure (defer),
         //   so retry just works — no special handling here.
         // .notConfigured / .loaded: no-op (super.activate's `if !isLoaded` gates).
-        if loadStatus == .stale {
+        if loadStatus == .stale, InputEngine.autoReloadOnModified {
             unload()
         }
         super.activate(context: context, clientIdentifier: clientIdentifier)
@@ -255,6 +254,11 @@ class JSExternalEngine: JavaScriptEngine {
                     if let error = engine.lastLoadError {
                         LoadFailureRow(message: error)
                     }
+                    if engine.loadStatus == .stale, !InputEngine.autoReloadOnModified {
+                        InputEngine.ExternalEngineReloadRow {
+                            engine.applyPendingExternalChange()
+                        }
+                    }
                 }
                 if engine.lastLoadError == nil {
                     if let overrides = engine.manifest?.candidateWindow {
@@ -282,9 +286,8 @@ class JSExternalEngine: JavaScriptEngine {
                 // here). Stale engine: force swap so it catches up.
                 if !engine.isLoaded {
                     engine.reloadManifest()
-                } else if engine.loadStatus == .stale {
-                    engine.unload()
-                    engine.load()
+                } else if engine.loadStatus == .stale, InputEngine.autoReloadOnModified {
+                    engine.reloadExternalSource()
                 }
             }
         }

@@ -1,18 +1,34 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Detected a change to %@; reloading." : {
+    "Detected a change to %@; reloading automatically." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Detected a change to %@; reloading."
+            "value" : "Detected a change to %@; reloading automatically."
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "偵測到 %@ 檔案變動，即將重新載入。"
+            "value" : "偵測到 %@ 檔案變動，將自動重新載入。"
+          }
+        }
+      }
+    },
+    "Detected a change to %@. Click to open Settings and reload manually." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detected a change to %@. Click to open Settings and reload manually."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "偵測到 %@ 檔案變動，點擊此處前往設定手動重新載入。"
           }
         }
       }
@@ -81,18 +97,82 @@
         }
       }
     },
-    "Engine files reload automatically when they change; notifications help you spot unexpected edits. Change this later in the General settings tab." : {
+    "Notifications help you spot unexpected edits to an external engine's files. Change this later in the General settings tab." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Engine files reload automatically when they change; notifications help you spot unexpected edits. Change this later in the General settings tab."
+            "value" : "Notifications help you spot unexpected edits to an external engine's files. Change this later in the General settings tab."
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "引擎的檔案變動時會自動重新載入，通知有助於察覺非預期的改動。之後亦可在本輸入法的「一般」設定中變更。"
+            "value" : "通知有助於察覺外部引擎檔案的非預期改動。之後亦可在本輸入法的「一般」設定中變更。"
+          }
+        }
+      }
+    },
+    "Reload automatically when files change" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reload automatically when files change"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檔案變動時自動重新載入"
+          }
+        }
+      }
+    },
+    "When off, reload it manually from the engine's settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When off, reload it manually from the engine's settings."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉時，需在該引擎的設定中手動重新載入。"
+          }
+        }
+      }
+    },
+    "Changed on disk since it was last loaded." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Changed on disk since it was last loaded."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檔案在上次載入後發生變動"
+          }
+        }
+      }
+    },
+    "Reload" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reload"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新載入"
           }
         }
       }
