@@ -30,7 +30,7 @@ class WindowManager {
         NSApp.activate(ignoringOtherApps: true)
 
         if let existing = windows[id], existing.isVisible {
-            existing.makeKeyAndOrderFront(nil)
+            Self.raise(existing)
             Logger.windowManager.info("Brought \(id.rawValue, privacy: .public) window to front")
             return
         }
@@ -56,8 +56,17 @@ class WindowManager {
         }
 
         windows[id] = window
-        window.makeKeyAndOrderFront(nil)
+        Self.raise(window)
         Logger.windowManager.info("Opened \(id.rawValue, privacy: .public) window")
+    }
+
+    /// `makeKeyAndOrderFront` only orders within this app's own layer when
+    /// activation is denied — which it is when the opening interaction happened
+    /// in another process (a notification tap), since an accessory app holds no
+    /// user-activation grant of its own. `orderFrontRegardless` covers that.
+    private static func raise(_ window: NSWindow) {
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
     }
 
     private func centerOnMouseScreen(_ window: NSWindow) {
