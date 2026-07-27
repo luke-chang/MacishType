@@ -31,12 +31,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard isInstalledCopy else {
+            Logger.app.fault(
+                "launched from \(Bundle.main.bundleURL.path, privacy: .public), which is not an Input Methods directory — exiting rather than competing with the installed copy"
+            )
+            exit(0)
+        }
+
         // Connect to the input method server
         let info = Bundle.main.infoDictionary
         server = IMKServer(
             name: info?["InputMethodConnectionName"] as? String,
             bundleIdentifier: Bundle.main.bundleIdentifier
         )
+        if server == nil {
+            Logger.app.fault("IMKServer creation failed — this process receives no key events")
+        }
+        reportRivalInstances()
 
         // Log version info
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
@@ -54,6 +65,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         FontCoverage.shared.preheat()
 
         setupMainMenu()
+    }
+
+    /// An input method is only ever meant to run from an Input Methods directory.
+    /// A build product carries the same bundle ID, so LaunchServices can resolve
+    /// to it and start the wrong copy — which then fights the installed one for
+    /// the single IMKServer connection name. Matching the parent directory name
+    /// covers both ~/Library and /Library, and sidesteps the sandbox's
+    /// `NSHomeDirectory()` pointing at the container rather than the real home.
+    private var isInstalledCopy: Bool {
+        Bundle.main.bundleURL.deletingLastPathComponent().lastPathComponent == "Input Methods"
+    }
+
+    /// Backstop for two copies in the install location itself (an install racing
+    /// a still-dying process). Only one owns the IMKServer connection name; the
+    /// loser looks healthy while receiving no key events, so name the rival.
+    private func reportRivalInstances() {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return }
+        let mine = ProcessInfo.processInfo.processIdentifier
+        for other in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        where other.processIdentifier != mine {
+            Logger.app.fault(
+                "another instance is running (pid \(other.processIdentifier, privacy: .public)) from \(other.bundleURL?.path ?? "unknown", privacy: .public)"
+            )
+        }
     }
 
     private func setupMainMenu() {

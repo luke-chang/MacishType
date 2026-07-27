@@ -30,12 +30,31 @@ endef
 # comparison. Prints empty string when the file or key is absent. $(1) = path.
 EXTRACT_MODE_DICT = plutil -extract ComponentInputModeDict json -o - "$(1)" 2>/dev/null | python3 -c 'import json,sys; raw=sys.stdin.read().strip(); print(json.dumps(json.loads(raw), sort_keys=True) if raw else "")' 2>/dev/null
 
+# $(call UNREGISTER_BUILD_APP,<Debug|Release>): drop the LaunchServices record
+# Xcode adds for the build product, which otherwise rivals the installed input
+# method for the same bundle ID — two processes then fight over the single
+# IMKServer connection name and the loser silently receives no key events.
+# Best effort: launching re-registers, and a GUI build skips this Makefile, so
+# AppDelegate's install-location guard is the actual guarantee. Not replaceable
+# by a build setting (LSRegisterURL.xcspec takes no options) or a Run Script
+# phase (every phase runs before the registration).
+LSREGISTER = /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister
+define UNREGISTER_BUILD_APP
+"$(LSREGISTER)" -u "./build/$(1)/$(APP_NAME).app" 2>/dev/null || true
+endef
+
 # $(call INSTALL_APP,<Debug|Release>): deploy ./build/<config>/$(APP_NAME).app.
 # Logout hint mirrors the pkg's onConclusionScript: the Settings input source
 # picker has a per-login cache that no observable plist or service restart can
 # flush, so prompt a re-login only when the declared input mode set changed
 # (first install, or the installed ComponentInputModeDict differs from the new
 # build's). A plain upgrade that keeps the same modes installs silently.
+#
+# Removing the old bundle before killing the processes is deliberate: while it
+# is installed, typing in any client relaunches it the instant killall returns,
+# and the copy would then be deleted from under a live process. Deleting first
+# leaves nothing to relaunch from — assuming it is the only candidate, which is
+# what UNREGISTER_BUILD_APP maintains.
 define INSTALL_APP
 echo "Installing input method..."; \
 NEW_APP="./build/$(1)/$(APP_NAME).app"; \
@@ -55,6 +74,7 @@ fi; \
 echo "Killing input method processes..."; \
 killall $(APP_NAME) 2>/dev/null || true; \
 cp -r "$$NEW_APP" ~/Library/Input\ Methods/; \
+"$(LSREGISTER)" -f -R -trusted ~/Library/Input\ Methods/$(APP_NAME).app 2>/dev/null || true; \
 echo "✓ Installed $(1) version"; \
 if $$relogin; then \
 	echo ""; \
@@ -107,6 +127,7 @@ build: prepare
 	@$(XCODE_CHECK)
 	@echo "Building Debug version..."
 	xcodebuild -target $(APP_NAME) -configuration Debug ARCHS=$(shell uname -m) CURRENT_PROJECT_VERSION=$(BUILD_NUMBER)
+	@$(call UNREGISTER_BUILD_APP,Debug)
 
 # No `prepare` dependency: the test bundle compiles sources only and
 # never stages engine resources.
@@ -127,6 +148,7 @@ release: prepare
 	@$(XCODE_CHECK)
 	@echo "Building Release version..."
 	xcodebuild -target $(APP_NAME) -configuration Release ARCHS=$(shell uname -m) CURRENT_PROJECT_VERSION=$(BUILD_NUMBER)
+	@$(call UNREGISTER_BUILD_APP,Release)
 
 release-universal: prepare
 	@$(XCODE_CHECK)
