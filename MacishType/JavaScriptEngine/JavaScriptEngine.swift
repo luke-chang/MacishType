@@ -106,7 +106,11 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     /// `@Published` drives `objectWillChange` so SwiftUI views holding
     /// `@ObservedObject` on the engine re-render on every manifest swap
     /// (folder pick / clear / FSEvents stale → reload).
-    @Published private(set) var manifest: Manifest?
+    @Published private(set) var manifest: Manifest? {
+        // The sanitize skip-guard can't fingerprint the schema (Manifest
+        // isn't Equatable); this single assignment point invalidates instead.
+        didSet { lastSanitizedInputs = nil }
+    }
 
     /// Snapshot of user-edited settings aligned with the current manifest
     /// schema. Refreshed at every `reloadManifest()` via sanitize against
@@ -199,6 +203,20 @@ class JavaScriptEngine: InputEngine, ObservableObject {
                 UserDefaults.standard.set(defaultValue, forKey: storageKey)
             }
         }
+    }
+
+    /// Effective value of every available, host-mapped system field, read
+    /// from its standalone key. Shared by the sanitize pass and the
+    /// skip-guard fingerprint so the two can never disagree.
+    private func resolvedSystemFieldValues() -> [String: Bool] {
+        var resolved: [String: Bool] = [:]
+        for case .system(let systemField) in (manifest?.settings ?? []).flatMap(\.fields) {
+            guard systemFeatureAvailable(systemField.key),
+                  let subKey = Self.systemFeatureSubKey(systemField.key) else { continue }
+            resolved[systemField.key] = defaultsValue(
+                subKey, fallback: systemField.defaultValue ?? false)
+        }
+        return resolved
     }
 
     /// `failure` is the author-facing reason (already logged).
@@ -309,37 +327,59 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     }
 
     /// Per-activate hook: in addition to the base's UserDefaults-backed
-    /// ivars, re-decode + sanitize the settings blob so a UI edit between
-    /// sessions becomes visible to engine.settings (and to JS via the push
-    /// inside `sanitizeBlobAndRefreshCache`).
+    /// ivars, re-check the settings blob so a UI edit between sessions
+    /// becomes visible to engine.settings (and to JS via the push inside
+    /// `sanitizeBlobAndRefreshCache`).
     override func reloadConfig() {
         super.reloadConfig()
         sanitizeBlobAndRefreshCache()
     }
 
+    /// Inputs the sanitize result depends on besides the manifest schema,
+    /// which `manifest.didSet` covers instead. When equal to the previous
+    /// pass, decode + sanitize can be skipped.
+    private struct SanitizeInputs: Equatable {
+        var blob: String?
+        var systemValues: [String: Bool]
+    }
+
+    private var lastSanitizedInputs: SanitizeInputs?
+
     private func sanitizeBlobAndRefreshCache() {
-        let next: [String: JSONValue]
-        if manifest == nil {
-            next = [:]
-        } else {
-            let key = InputEngine.composedKey(
-                engineID: engineID, subKey: InputEngine.manifestSettingsSubKey)
-            let raw = ManifestSettingsStore.decode(forKey: key)
-            let sanitized = sanitizedSettings(from: raw)
-            if sanitized != raw {
-                ManifestSettingsStore.encode(sanitized, forKey: key)
-            }
-            next = sanitized
+        // Push even when skipping: a rebuilt JS context resets
+        // lastPushedSettings and relies on this call for its initial injection.
+        defer { pushSettingsToJS() }
+        guard manifest != nil else {
+            settings = [:]
+            return
         }
-        settings = next
-        pushSettingsToJS()
+        let key = InputEngine.composedKey(
+            engineID: engineID, subKey: InputEngine.manifestSettingsSubKey)
+        let inputs = SanitizeInputs(
+            blob: UserDefaults.standard.string(forKey: key),
+            systemValues: resolvedSystemFieldValues())
+        if inputs == lastSanitizedInputs { return }
+        let raw = ManifestSettingsStore.decode(from: inputs.blob)
+        let sanitized = sanitizedSettings(from: raw, systemValues: inputs.systemValues)
+        var stableInputs = inputs
+        if sanitized != raw {
+            ManifestSettingsStore.encode(sanitized, forKey: key)
+            // Fingerprint what the store actually holds, so a failed or
+            // non-round-tripping encode doesn't re-heal on every activation.
+            stableInputs.blob = UserDefaults.standard.string(forKey: key)
+        }
+        lastSanitizedInputs = stableInputs
+        settings = sanitized
     }
 
     /// Reshape the raw blob to match the current manifest schema: drop
     /// keys not declared by any field, replace type-mismatched values with
     /// field default, fill declared-but-missing keys with field default.
     /// Each drop / replace is logged.
-    private func sanitizedSettings(from raw: [String: JSONValue]) -> [String: JSONValue] {
+    private func sanitizedSettings(
+        from raw: [String: JSONValue],
+        systemValues: [String: Bool]
+    ) -> [String: JSONValue] {
         guard let sections = manifest?.settings else { return [:] }
         // Keys are unique after decode-time dedupe; still prefer keeping
         // the first over trapping if a duplicate ever slips through.
@@ -355,19 +395,10 @@ class JavaScriptEngine: InputEngine, ObservableObject {
 
         var result: [String: JSONValue] = [:]
         for (key, field) in declared {
-            // System fields read from the standalone key (populated by
-            // applySystemFieldDefaults before sanitize). The `?? false` tail
-            // only fires if there's no manifest default and no user choice.
-            if case .system(let sf) = field {
-                // A feature the host can't back for this locale is treated as
-                // undeclared: skip so the key isn't pushed to JS.
-                if systemFeatureAvailable(sf.key),
-                   let subKey = Self.systemFeatureSubKey(sf.key) {
-                    let storageKey = InputEngine.composedKey(engineID: engineID, subKey: subKey)
-                    let current = (UserDefaults.standard.object(forKey: storageKey) as? Bool)
-                        ?? sf.defaultValue ?? false
-                    result[key] = .bool(current)
-                }
+            if case .system = field {
+                // Absent from the snapshot = feature unavailable or unmapped;
+                // treated as undeclared so the key isn't pushed to JS.
+                if let current = systemValues[key] { result[key] = .bool(current) }
                 continue
             }
             if let stored = raw[key], field.accepts(stored) {

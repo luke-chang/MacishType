@@ -62,13 +62,17 @@ final class ManifestSettingsStore: NSObject, ObservableObject {
     /// Blob stored as JSON UTF-8 string rather than Data so `defaults read`
     /// from the CLI renders the content directly (escaped through plist's
     /// string literal, but readable) instead of opaque hex bytes.
-    nonisolated static func decode(forKey key: String) -> [String: JavaScriptEngine.JSONValue] {
-        guard let str = UserDefaults.standard.string(forKey: key),
-              let data = str.data(using: .utf8),
+    nonisolated static func decode(from string: String?) -> [String: JavaScriptEngine.JSONValue] {
+        guard let string,
+              let data = string.data(using: .utf8),
               let dict = try? decoder.decode(
                 [String: JavaScriptEngine.JSONValue].self, from: data)
         else { return [:] }
         return dict
+    }
+
+    nonisolated static func decode(forKey key: String) -> [String: JavaScriptEngine.JSONValue] {
+        decode(from: UserDefaults.standard.string(forKey: key))
     }
 
     nonisolated static func encode(
