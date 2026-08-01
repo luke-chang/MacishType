@@ -12,6 +12,8 @@
 //                       toggle available when the host has no
 //                       Traditional->Simplified transform for the engine's
 //                       language (this manifest declares none)
+//   dynamic-import-*  - dynamic import() is rejected, both for a module the
+//                       static graph already loaded and for a loadable one
 import { MARKER } from "/util.js";
 
 console.log(`nav-languages ${JSON.stringify(navigator.languages)}`);
@@ -42,5 +44,16 @@ console.log(
   `toggle-nonchinese value=${String(manifest.toggle.outputToSimplified)} ` +
     `keys=${JSON.stringify(Object.keys(manifest.toggle))}`,
 );
+
+// Dynamic import() is outside the contract and must reject either way: the
+// already-loaded specifier never reaches the module loader, the fresh one
+// would load fine if it were allowed through.
+const reportDynamicImport = (tag, specifier) =>
+  import(specifier).then(
+    () => console.log(`${tag} resolved`),
+    (error) => console.log(`${tag} rejected ${error.message}`),
+  );
+reportDynamicImport("dynamic-import-loaded", "/util.js");
+reportDynamicImport("dynamic-import-fresh", "/dynamic.js");
 
 export default class {}

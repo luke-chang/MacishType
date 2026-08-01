@@ -396,6 +396,24 @@ private:
     static void rejectionTracker(JSContext *ctx, JSValueConst promise,
                                  JSValueConst reason, bool isHandled,
                                  void *opaque);
+    // Marks the window where module resolution is legitimate. quickjs's
+    // loader hooks carry no origin flag, but a module's static imports
+    // resolve inside JS_Eval while dynamic import() resolves from a job, so
+    // scoping that one call tells the two apart. Counted rather than a flag
+    // so a nested scope cannot close an enclosing one.
+    class StaticImportScope {
+    public:
+        explicit StaticImportScope(JsEngineHost &host) : host_(host) {
+            ++host_.staticImportDepth_;
+        }
+        ~StaticImportScope() { --host_.staticImportDepth_; }
+        StaticImportScope(const StaticImportScope &) = delete;
+        StaticImportScope &operator=(const StaticImportScope &) = delete;
+
+    private:
+        JsEngineHost &host_;
+    };
+
     static char *moduleNormalize(JSContext *ctx, const char *baseName,
                                  const char *moduleName, void *opaque);
     static JSModuleDef *moduleLoad(JSContext *ctx, const char *moduleName,
@@ -441,6 +459,7 @@ private:
     uint64_t nextInstanceId_ = 1;
 
     int callDepth_ = 0;
+    int staticImportDepth_ = 0;
     std::chrono::steady_clock::time_point deadline_{};
     std::map<void *, std::string> pendingRejections_;
     ActionHandler actionHandler_;

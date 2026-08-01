@@ -658,10 +658,17 @@ bool JsEngineHost::evaluateEntryModule() {
     loadedFilePaths_.insert(entryPath.fileSystemPath.string());
 
     Entry entry(*this);
-    qjs::Value compiled(
-        ctx_, JS_Eval(ctx_, content->c_str(), content->size(),
-                      entryPath.url.c_str(),
-                      JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY));
+    // COMPILE_ONLY still resolves the module's imports, so the whole static
+    // import graph loads within this scope.
+    JSValue compiledModule;
+    {
+        StaticImportScope staticImports(*this);
+        compiledModule =
+            JS_Eval(ctx_, content->c_str(), content->size(),
+                    entryPath.url.c_str(),
+                    JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    }
+    qjs::Value compiled(ctx_, compiledModule);
     if (compiled.isException()) {
         MACISHTYPE_ERROR() << "Entry module compile failed: "
                            << qjs::exceptionText(ctx_);
@@ -1268,7 +1275,15 @@ JsEngineHost::resolveEnginePath(const std::string &input) const {
 
 char *JsEngineHost::moduleNormalize(JSContext *ctx, const char *baseName,
                                     const char *moduleName, void *opaque) {
-    FCITX_UNUSED(opaque);
+    auto *host = static_cast<JsEngineHost *>(opaque);
+    if (host->staticImportDepth_ == 0) {
+        // The contract has no dynamic import(); quickjs would otherwise serve
+        // it. Rejecting in the normalizer rather than the loader also covers a
+        // specifier the static graph already loaded, which quickjs answers
+        // from its module map without ever calling the loader.
+        JS_ThrowTypeError(ctx, "dynamic import() is not supported");
+        return nullptr;
+    }
     std::string name(moduleName);
     if (name.rfind(kEngineUrlPrefix, 0) == 0) {
         return js_strdup(ctx, name.c_str());

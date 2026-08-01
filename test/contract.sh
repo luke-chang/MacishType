@@ -39,4 +39,8 @@ check "a pageSize above 11 is rejected, keeping the prior value" "$out" \
     'pagesize-after-bad 11'
 check "outputToSimplified stays unavailable without a Traditional-Chinese language" \
     "$out" 'toggle-nonchinese value=undefined keys=[]'
+check "dynamic import() of an already-loaded module is rejected" "$out" \
+    'dynamic-import-loaded rejected dynamic import() is not supported'
+check "dynamic import() of a loadable module is rejected" "$out" \
+    'dynamic-import-fresh rejected dynamic import() is not supported'
 echo "Contract conformance checks passed."
