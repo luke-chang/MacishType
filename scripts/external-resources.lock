@@ -3,9 +3,9 @@
 # Same format as MacishType's Scripts/HandleExternalResources.lock; the
 # wordFrequency / symbolNames pins intentionally match the macOS host so
 # both platforms feed engines identical data.
-data/modules/wordFrequency.zh-Hant.tsv https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ generate-word-frequency.py
-data/modules/AssociatedDictionary.zh-Hant.tsv https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ generate-associated-dictionary.py
-data/McBopomofo.LICENSE.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/LICENSE.txt -
-data/symbol-names-override.zh-Hant.txt https://raw.githubusercontent.com/luke-chang/MacishType/493ab0a8de349b41e8ced57ac009afa9257f43b5/Scripts/SymbolNamesOverride.zh-Hant.txt -
-data/modules/symbolNames.zh-Hant.tsv https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/cldr-json/cldr-annotations-full/annotations/zh-Hant/annotations.json generate-symbol-names.py
-data/CLDR.LICENSE.txt https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/LICENSE -
+tables/WordFrequency.zh-Hant.tsv https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ generate-word-frequency.py
+tables/AssociatedDictionary.zh-Hant.tsv https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ generate-associated-dictionary.py
+tables/McBopomofo.LICENSE.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/LICENSE.txt -
+.external-resources/SymbolNamesOverride.zh-Hant.txt https://raw.githubusercontent.com/luke-chang/MacishType/493ab0a8de349b41e8ced57ac009afa9257f43b5/Scripts/SymbolNamesOverride.zh-Hant.txt -
+tables/SymbolNames.zh-Hant.tsv https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/cldr-json/cldr-annotations-full/annotations/zh-Hant/annotations.json generate-symbol-names.py
+tables/CLDR.LICENSE.txt https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/LICENSE -

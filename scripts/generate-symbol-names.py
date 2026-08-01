@@ -7,11 +7,11 @@ Interface (external-resources processor convention):
 Keeps single-codepoint BMP symbols and their `tts` name, sorted by
 codepoint. Mirrors MacishType's Scripts/GenerateSymbolNames.swift. The
 hand-curated override table (a sibling lock entry downloaded to
-data/symbol-names-override.zh-Hant.txt, pinned to the MacishType repo) is
-overlaid on the CLDR base; the override wins on conflicts. The .inputs
-sidecar folds the downloaded override into the stamp, so a pin bump
-regenerates this table (the override's lock line sorts first, keeping the
-download ahead of this processor).
+.external-resources/SymbolNamesOverride.zh-Hant.txt, pinned to the
+MacishType repo) is overlaid on the CLDR base; the override wins on
+conflicts. The .inputs sidecar folds the downloaded override into the
+stamp, so a pin bump regenerates this table (the override's lock line
+sorts first, keeping the download ahead of this processor).
 """
 
 import json
@@ -36,7 +36,7 @@ def main():
     overlaid = 0
     override_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(output_path))),
-        "symbol-names-override.zh-Hant.txt")
+        ".external-resources", "SymbolNamesOverride.zh-Hant.txt")
     with open(override_path, encoding="utf-8") as override:
         for line in override:
             line = line.rstrip("\n")

@@ -1,0 +1,10 @@
+{
+  "entry": "index.js",
+  "name": { "en": "Modules Fixture" },
+  "intendedLanguage": "zz",
+  "modules": {
+    "fontCoverage": true,
+    "symbolNames": true,
+    "wordFrequency": true
+  }
+}

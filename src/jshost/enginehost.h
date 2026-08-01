@@ -246,7 +246,7 @@ private:
     bool evaluateEntryModule();
     bool pushSettings(const std::string &valuesJson);
     bool injectModules();
-    void loadModuleTable(JSValue table, const std::string &moduleName,
+    void loadModuleTable(JSValue table, const std::string &fileBase,
                          bool numericValues);
     void ensureAssociatedDictionary();
     void registerBridgeGlobals();

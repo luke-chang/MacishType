@@ -88,10 +88,9 @@ dev-install:
 	@mkdir -p $(USER_SHARE)/macishtype/engines
 	install -D -m 644 $(BUILD_DIR)/po/zh_TW.mo \
 	    $(HOME)/.local/share/locale/zh_TW/LC_MESSAGES/fcitx5-macishtype.mo
-	@if [ -d data/modules ]; then \
-	    mkdir -p $(USER_SHARE)/macishtype/modules; \
-	    cp data/modules/* $(USER_SHARE)/macishtype/modules/; \
-	    cp data/*.LICENSE.txt $(USER_SHARE)/macishtype/modules/ 2> /dev/null || true; \
+	@if [ -d tables ]; then \
+	    mkdir -p $(USER_SHARE)/macishtype/tables; \
+	    cp tables/* $(USER_SHARE)/macishtype/tables/; \
 	fi
 
 # Reverses dev-install but keeps user data (the engines folder). Run this
@@ -103,7 +102,7 @@ dev-uninstall:
 	rm -f $(USER_SHARE)/addon/macishtype.conf
 	rm -f $(USER_SHARE)/macishtype/runtime.js
 	rm -f $(USER_SHARE)/macishtype/hostglue.js
-	rm -rf $(USER_SHARE)/macishtype/modules
+	rm -rf $(USER_SHARE)/macishtype/tables
 	rm -f $(HOME)/.local/share/locale/*/LC_MESSAGES/fcitx5-macishtype.mo
 	@rmdir $(USER_SHARE)/macishtype/engines $(USER_SHARE)/macishtype \
 	    2> /dev/null || true
@@ -159,7 +158,7 @@ uninstall:
 	@test -f $(BUILD_DIR)/install_manifest.txt || \
 	    { echo "No install manifest; nothing recorded to uninstall." >&2; exit 1; }
 	sudo xargs rm -f < $(BUILD_DIR)/install_manifest.txt
-	@sudo rmdir /usr/share/fcitx5/macishtype/modules \
+	@sudo rmdir /usr/share/fcitx5/macishtype/tables \
 	    /usr/share/fcitx5/macishtype 2> /dev/null || true
 	$(MAKE) restart
 
@@ -186,6 +185,7 @@ test: build
 	test/discovery.sh
 	test/textcodec.sh
 	test/reverselookup.sh
+	test/modules.sh
 
 clean:
 	rm -rf $(BUILD_DIR)

@@ -466,6 +466,33 @@ void JsEngineHost::updateSettings(const std::string &valuesJson) {
     }
 }
 
+namespace {
+// The data files backing each manifest `modules` entry, and whether its values
+// are numeric (which also picks the miss value the runtime answers with).
+// Listed rather than derived from the module name: fontCoverage is computed
+// from installed fonts and has no file at all, and a module may need more than
+// one. File base names match the macOS host's bundle resources.
+struct ModuleSpec {
+    std::string_view name;
+    std::vector<std::string_view> tables;
+    bool numericValues;
+};
+
+const ModuleSpec *moduleSpecFor(const std::string &name) {
+    static const std::vector<ModuleSpec> specs = {
+        {"fontCoverage", {}, false},
+        {"symbolNames", {"SymbolNames"}, false},
+        {"wordFrequency", {"WordFrequency"}, true},
+    };
+    for (const auto &spec : specs) {
+        if (spec.name == name) {
+            return &spec;
+        }
+    }
+    return nullptr;
+}
+} // namespace
+
 bool JsEngineHost::injectModules() {
     if (manifest_.enabledModules.empty()) {
         return true;
@@ -473,9 +500,9 @@ bool JsEngineHost::injectModules() {
     Entry entry(*this);
     qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
     for (const auto &moduleName : manifest_.enabledModules) {
-        // TODO: fontCoverage should come from fontconfig; symbolNames from
-        // a bundled CLDR table. Modules without a data source inject empty
-        // views so they answer with their miss value.
+        // A module the host does not back (unknown name, or no table installed)
+        // injects an empty view, so it answers with its miss value.
+        const ModuleSpec *spec = moduleSpecFor(moduleName);
         const char *setterName = moduleName == "fontCoverage"
                                      ? "__MacishType_setCoverageModule"
                                      : "__MacishType_setModuleData";
@@ -497,13 +524,15 @@ bool JsEngineHost::injectModules() {
             JS_FreeValue(ctx_, arguments[0]);
             JS_FreeValue(ctx_, arguments[1]);
         } else {
-            JSValue missValue = moduleName == "wordFrequency"
-                                    ? JS_NewInt32(ctx_, 0)
-                                    : JS_UNDEFINED;
+            bool numericValues = spec != nullptr && spec->numericValues;
+            JSValue missValue =
+                numericValues ? JS_NewInt32(ctx_, 0) : JS_UNDEFINED;
             JSValue table = JS_NewObject(ctx_);
-            if (moduleName == "wordFrequency" || moduleName == "symbolNames") {
-                loadModuleTable(table, moduleName,
-                                moduleName == "wordFrequency");
+            if (spec != nullptr) {
+                for (std::string_view fileBase : spec->tables) {
+                    loadModuleTable(table, std::string(fileBase),
+                                    numericValues);
+                }
             }
             JSValue arguments[3] = {
                 JS_NewString(ctx_, moduleName.c_str()),
@@ -525,24 +554,25 @@ bool JsEngineHost::injectModules() {
     return true;
 }
 
-// Fills `table` from the per-language module data file installed under
-// <pkgdata>/macishtype/modules/ ("key<TAB>value" lines, # comments). A
-// missing file leaves the table empty, which reads as all-miss.
-void JsEngineHost::loadModuleTable(JSValue table,
-                                   const std::string &moduleName,
+// Merges the per-language <fileBase>.<language>.tsv installed under
+// <pkgdata>/macishtype/tables/ into `table` ("key<TAB>value" lines, #
+// comments). A missing file adds nothing, which reads as a miss for every key
+// it would have supplied.
+void JsEngineHost::loadModuleTable(JSValue table, const std::string &fileBase,
                                    bool numericValues) {
     if (manifest_.intendedLanguage.empty()) {
         return;
     }
     auto path = fcitx::StandardPaths::global().locate(
         fcitx::StandardPathsType::PkgData,
-        "macishtype/modules/" + moduleName + "." +
-            manifest_.intendedLanguage + ".tsv");
+        "macishtype/tables/" + fileBase + "." + manifest_.intendedLanguage +
+            ".tsv");
     if (path.empty()) {
-        MACISHTYPE_INFO() << "No " << moduleName << " table for "
+        MACISHTYPE_INFO() << "No " << fileBase << " table for "
                           << manifest_.intendedLanguage
-                          << "; module answers with its miss value (run "
-                             "scripts/prepare-data.sh and dev-install.sh)";
+                          << "; those keys answer with the module's miss value "
+                             "(run scripts/external-resources.sh then make "
+                             "dev-install)";
         return;
     }
     std::ifstream stream(path, std::ios::binary);
@@ -574,8 +604,8 @@ void JsEngineHost::loadModuleTable(JSValue table,
         }
         count++;
     }
-    MACISHTYPE_INFO() << moduleName << "." << manifest_.intendedLanguage
-                      << ": " << count << " entries";
+    MACISHTYPE_INFO() << fileBase << "." << manifest_.intendedLanguage << ": "
+                      << count << " entries";
 }
 
 namespace {
@@ -585,7 +615,7 @@ std::filesystem::path associatedDictionaryPath(const std::string &language) {
     }
     return fcitx::StandardPaths::global().locate(
         fcitx::StandardPathsType::PkgData,
-        "macishtype/modules/AssociatedDictionary." + language + ".tsv");
+        "macishtype/tables/AssociatedDictionary." + language + ".tsv");
 }
 } // namespace
 
