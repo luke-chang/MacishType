@@ -23,7 +23,7 @@ A macOS input method that replicates the system look and feel, extensible via ex
 
 ## Installation
 
-Requires Xcode (used by `make install` to build the Release binary).
+Requires Xcode (used by `make install` to build the Release binary). All `make` commands run from this directory (`macos/`).
 
 ### First install
 
@@ -83,9 +83,9 @@ A MacishType JavaScript engine is a folder with `manifest.json` and an entry mod
 
 Start here:
 
-- [`engines/README.md`](engines/README.md) — full engine-writing guide (manifest, lifecycle, event mutators, Settings schema, runtime globals)
-- [`engines/example/`](engines/example/) — reference engine to copy and edit
-- [`engines/utils/MacishType.d.ts`](engines/utils/MacishType.d.ts) — TypeScript definitions for IDE autocomplete, type checking, and bundler integration
+- [`engines/README.md`](../engines/README.md) — full engine-writing guide (manifest, lifecycle, event mutators, Settings schema, runtime globals)
+- [`engines/example/`](../engines/example/) — reference engine to copy and edit
+- [`engines/utils/MacishType.d.ts`](../engines/utils/MacishType.d.ts) — TypeScript definitions for IDE autocomplete, type checking, and bundler integration
 
 ### Bundled Swift engine
 
@@ -140,4 +140,4 @@ Data tables downloaded and bundled by `make prepare` (each upstream's license, i
 
 ## License
 
-See [LICENSE](LICENSE).
+See [LICENSE](../LICENSE).

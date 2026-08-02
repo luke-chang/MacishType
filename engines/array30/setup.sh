@@ -3,7 +3,7 @@
 #
 # This JS engine mirrors the bundled Swift Array engine, which reads its tables
 # from the repo's build resources. Those tables are produced by `make prepare`
-# (see Scripts/HandleExternalResources.sh) and are gitignored. This script copies
+# (see macos/Scripts/HandleExternalResources.sh) and are gitignored. This script copies
 # them here under the same names; if any are missing, it runs `make prepare`
 # first.
 
@@ -14,10 +14,10 @@ REPO_ROOT="$SCRIPT_DIR/../.."
 
 # Source (under REPO_ROOT) and destination (basename, under SCRIPT_DIR) pairs.
 SOURCES="
-MacishType/ArrayEngine/Resources/Array30.txt
-MacishType/ArrayEngine/Resources/ArrayShortCode.txt
-MacishType/ArrayEngine/Resources/ArrayPhrase.txt
-MacishType/ArrayEngine/Resources/ArraySymbol.txt
+macos/MacishType/ArrayEngine/Resources/Array30.txt
+macos/MacishType/ArrayEngine/Resources/ArrayShortCode.txt
+macos/MacishType/ArrayEngine/Resources/ArrayPhrase.txt
+macos/MacishType/ArrayEngine/Resources/ArraySymbol.txt
 "
 
 missing=0
@@ -27,7 +27,7 @@ done
 
 if [ "$missing" -eq 1 ]; then
     echo "→ Some source tables are missing; running \`make prepare\`..."
-    make -C "$REPO_ROOT" prepare
+    make -C "$REPO_ROOT/macos" prepare
 fi
 
 for src in $SOURCES; do

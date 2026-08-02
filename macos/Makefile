@@ -220,7 +220,7 @@ pkg: release-universal
 			"    <pkg-ref id=\"$(BUNDLE_ID)\" version=\"$$VERSION\" onConclusionScript=\"macishConclusion()\">component.pkg</pkg-ref>" \
 			'</installer-gui-script>'; \
 	} > "$$DIST_XML"; \
-	awk 'BEGIN { RS = ""; ORS = "" } { gsub(/\n/, " "); printf "%s%s", separator, $$0; separator = "\n\n" }' LICENSE > "$$WORK_DIR/LICENSE"; \
+	awk 'BEGIN { RS = ""; ORS = "" } { gsub(/\n/, " "); printf "%s%s", separator, $$0; separator = "\n\n" }' ../LICENSE > "$$WORK_DIR/LICENSE"; \
 	echo "Building product archive..."; \
 	productbuild \
 		--distribution "$$DIST_XML" \
