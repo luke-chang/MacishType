@@ -129,15 +129,3 @@ Reference: [`MacishType/ExampleEngine/`](MacishType/ExampleEngine/) — the bund
 The bundled [`MacishType/MacishCandidateWindow/`](MacishType/MacishCandidateWindow/) is one implementation of [`CandidateWindowImpl`](MacishType/CandidateWindow.swift), the abstract base that defines the override points (`apply`, `updateCandidates`, `show`, `hide`, `handleNavigation`, `commitSelectedCandidate`, etc.). To build a different candidate window, create a parallel folder under `MacishType/` with your own `CandidateWindowImpl` subclass and any supporting types, then add a `Style` case in [`CandidateWindow.swift`](MacishType/CandidateWindow.swift) and a matching arm in the `activeImpl` switch that constructs your subclass.
 
 Shared types (`Candidate`, `CandidateWindowConfiguration`, `CandidateWindowDelegate`) live in `CandidateWindow.swift`.
-
-## Acknowledgements
-
-Data tables downloaded and bundled by `make prepare` (each upstream's license, if any, ships alongside its data):
-
-- **Associated-phrase** and **per-character frequency** tables — derived from the phrase corpus of [McBopomofo](https://github.com/openvanilla/McBopomofo), under its [MIT License](https://github.com/openvanilla/McBopomofo/blob/master/LICENSE.txt).
-- **Symbol-name** table — derived from [Unicode CLDR](https://github.com/unicode-org/cldr-json) annotations, under the [Unicode License](https://github.com/unicode-org/cldr-json/blob/main/LICENSE).
-- **Array30 code tables** — derived from [gontera/array30](https://github.com/gontera/array30), under its license for use by third-party input methods.
-
-## License
-
-See [LICENSE](../LICENSE).
