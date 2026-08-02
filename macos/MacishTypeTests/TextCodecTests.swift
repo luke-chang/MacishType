@@ -29,8 +29,9 @@ struct TextCodecTests {
 
         let runtimeURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // MacishTypeTests/
+            .deletingLastPathComponent()   // macos/
             .deletingLastPathComponent()   // repo root
-            .appendingPathComponent("MacishType/JavaScriptEngine/Resources/runtime.js")
+            .appendingPathComponent("runtime/runtime.js")
         let source = try String(contentsOf: runtimeURL, encoding: .utf8)
         context.evaluateScript(source, withSourceURL: runtimeURL)
         if let exception = context.exception {
