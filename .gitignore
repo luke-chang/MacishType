@@ -6,7 +6,7 @@ xcuserdata/
 *.dSYM.zip
 *.dSYM
 /MacishType*.pkg
-Engines/**/_storage/
+engines/**/_storage/
 
 # Download cache + provenance stamp (managed by Scripts/HandleExternalResources.sh).
 /.HandleExternalResources/
@@ -21,11 +21,8 @@ MacishType/ArrayEngine/Resources/ArrayShortCode.txt
 MacishType/ArrayEngine/Resources/ArrayPhrase.txt
 MacishType/**/Resources/*.LICENSE.txt
 
-# Array JS engine tables (copied by Engines/ArrayEngine/setup.sh).
-Engines/ArrayEngine/Array30.txt
-Engines/ArrayEngine/ArrayShortCode.txt
-Engines/ArrayEngine/ArrayPhrase.txt
-Engines/ArrayEngine/ArraySymbol.txt
-Engines/ArrayEngine/WordFrequency.zh-Hant.txt
-Engines/ArrayEngine/SymbolNames.zh-Hant.txt
-Engines/ArrayEngine/CLDR.LICENSE.txt
+# Array JS engine tables (copied by engines/array30/setup.sh).
+engines/array30/Array30.txt
+engines/array30/ArrayShortCode.txt
+engines/array30/ArrayPhrase.txt
+engines/array30/ArraySymbol.txt

@@ -49,5 +49,5 @@ host globals and drives the engine against the real data tables, so run
 `./setup.sh` first.
 
 ```sh
-node --test Engines/ArrayEngine/index.test.mjs
+node --test engines/array30/index.test.mjs
 ```

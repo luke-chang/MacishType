@@ -6,10 +6,10 @@
 //
 // Usage:
 //   // In TypeScript
-//   import type { InputEngine, KeyEvent } from "../Utils/MacishType";
+//   import type { InputEngine, KeyEvent } from "../utils/MacishType";
 //
 //   // In plain JS with JSDoc
-//   /** @typedef {import("../Utils/MacishType").InputEngine} InputEngine */
+//   /** @typedef {import("../utils/MacishType").InputEngine} InputEngine */
 //   /** @implements {InputEngine} */
 //   export default class MyEngine { ... }
 
@@ -760,7 +760,7 @@ declare global {
     readonly language: string;
     /** Frozen list of BCP 47 preferences, most preferred first. */
     readonly languages: ReadonlyArray<string>;
-    /** Static host identifier. See `Engines/README.md` for the full format. */
+    /** Static host identifier. See `engines/README.md` for the full format. */
     readonly userAgent: string;
   }
 

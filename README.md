@@ -83,9 +83,9 @@ A MacishType JavaScript engine is a folder with `manifest.json` and an entry mod
 
 Start here:
 
-- [`Engines/README.md`](Engines/README.md) — full engine-writing guide (manifest, lifecycle, event mutators, Settings schema, runtime globals)
-- [`Engines/ExampleEngine/`](Engines/ExampleEngine/) — reference engine to copy and edit
-- [`Engines/Utils/MacishType.d.ts`](Engines/Utils/MacishType.d.ts) — TypeScript definitions for IDE autocomplete, type checking, and bundler integration
+- [`engines/README.md`](engines/README.md) — full engine-writing guide (manifest, lifecycle, event mutators, Settings schema, runtime globals)
+- [`engines/example/`](engines/example/) — reference engine to copy and edit
+- [`engines/utils/MacishType.d.ts`](engines/utils/MacishType.d.ts) — TypeScript definitions for IDE autocomplete, type checking, and bundler integration
 
 ### Bundled Swift engine
 

@@ -285,9 +285,9 @@ function wildcardMatches(pattern) {
   }));
 }
 
-/** @typedef {import("../Utils/MacishType").InputEngine} InputEngine */
-/** @typedef {import("../Utils/MacishType").KeyEvent} KeyEvent */
-/** @typedef {import("../Utils/MacishType").ConfirmEvent} ConfirmEvent */
+/** @typedef {import("../utils/MacishType").InputEngine} InputEngine */
+/** @typedef {import("../utils/MacishType").KeyEvent} KeyEvent */
+/** @typedef {import("../utils/MacishType").ConfirmEvent} ConfirmEvent */
 
 /** @implements {InputEngine} */
 export default class ArrayEngine {

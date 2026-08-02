@@ -63,10 +63,10 @@ function applyComposition(event, marked) {
 // Bridge contract is duck-typed: engines export a default class with any
 // of `activate / deactivate / handleKey / candidateConfirmed /
 // candidateSelectionChanged`. Methods absent from the class are skipped.
-// See ../Utils/MacishType.d.ts for the full type surface.
+// See ../utils/MacishType.d.ts for the full type surface.
 
-/** @typedef {import("../Utils/MacishType").InputEngine} InputEngine */
-/** @typedef {import("../Utils/MacishType").KeyEvent} KeyEvent */
+/** @typedef {import("../utils/MacishType").InputEngine} InputEngine */
+/** @typedef {import("../utils/MacishType").KeyEvent} KeyEvent */
 
 /** @implements {InputEngine} */
 export default class JSExternalEngine {

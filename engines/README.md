@@ -262,7 +262,7 @@ export default class MyEngine {
 ```
 
 The typed contract for the static side is `InputEngineConstructor` in
-`Utils/MacishType.d.ts`; see the TypeScript hint section for how to check
+`utils/MacishType.d.ts`; see the TypeScript hint section for how to check
 it with `satisfies`.
 
 #### `fullwidthInput`
@@ -555,9 +555,9 @@ a class. The class is **instantiated once per text-field session**, so
 per-field state lives on `this`.
 
 ```js
-/** @typedef {import("../Utils/MacishType").InputEngine} InputEngine */
-/** @typedef {import("../Utils/MacishType").KeyEvent}     KeyEvent     */
-/** @typedef {import("../Utils/MacishType").ConfirmEvent} ConfirmEvent */
+/** @typedef {import("../utils/MacishType").InputEngine} InputEngine */
+/** @typedef {import("../utils/MacishType").KeyEvent}     KeyEvent     */
+/** @typedef {import("../utils/MacishType").ConfirmEvent} ConfirmEvent */
 
 /** @implements {InputEngine} */
 export default class MyEngine {
@@ -582,7 +582,7 @@ export default class MyEngine {
 
 Every method is **optional** — the host calls only those defined on the
 instance. The full type surface lives in
-[`Utils/MacishType.d.ts`](Utils/MacishType.d.ts) and is the source of
+[`utils/MacishType.d.ts`](utils/MacishType.d.ts) and is the source of
 truth. Highlights:
 
 ### Lifecycle
@@ -1438,18 +1438,18 @@ matters.
 
 ## TypeScript hint
 
-`Utils/MacishType.d.ts` ships with the project. Plain JS engines can pull
+`utils/MacishType.d.ts` ships with the project. Plain JS engines can pull
 type hints in via JSDoc:
 
 ```js
-/** @typedef {import("../Utils/MacishType").InputEngine} InputEngine */
-/** @typedef {import("../Utils/MacishType").KeyEvent}     KeyEvent     */
+/** @typedef {import("../utils/MacishType").InputEngine} InputEngine */
+/** @typedef {import("../utils/MacishType").KeyEvent}     KeyEvent     */
 ```
 
 TypeScript engines can `import type` directly:
 
 ```ts
-import type { InputEngine, KeyEvent } from "../Utils/MacishType";
+import type { InputEngine, KeyEvent } from "../utils/MacishType";
 ```
 
 Interfaces only describe the **instance** side of a class. Static members
@@ -1458,7 +1458,7 @@ object itself, typed separately by `InputEngineConstructor`. TypeScript
 engines check both sides with `implements` + `satisfies`:
 
 ```ts
-import type { InputEngine, InputEngineConstructor, KeyEvent } from "../Utils/MacishType";
+import type { InputEngine, InputEngineConstructor, KeyEvent } from "../utils/MacishType";
 
 class MyEngine implements InputEngine {
   handleKey(event: KeyEvent): boolean | void { /* … */ }
@@ -1477,8 +1477,8 @@ The JSDoc equivalent for plain JS engines (editors running TypeScript 5.0+
 with `// @ts-check` or `checkJs`):
 
 ```js
-/** @typedef {import("../Utils/MacishType").InputEngine} InputEngine */
-/** @typedef {import("../Utils/MacishType").InputEngineConstructor} InputEngineConstructor */
+/** @typedef {import("../utils/MacishType").InputEngine} InputEngine */
+/** @typedef {import("../utils/MacishType").InputEngineConstructor} InputEngineConstructor */
 
 /** @implements {InputEngine} */
 class MyEngine {

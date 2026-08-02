@@ -1,6 +1,6 @@
 // Tests for the Array (行列) JS engine, run with Node's built-in test runner:
 //
-//   node --test Engines/ArrayEngine/index.test.mjs
+//   node --test engines/array30/index.test.mjs
 //
 // (Point it at this file, not the folder — folder mode would try to run the
 // engine module index.js as a test and crash on the missing host globals.)
