@@ -878,7 +878,7 @@ uint64_t JsEngineHost::prepareReverseLookup(std::function<void(bool)> onReady) {
 
 void JsEngineHost::settleReverseLookup(uint64_t token, bool ready) {
     if (token != reverseLookupToken_ || !reverseLookupOnReady_) {
-        return; // superseded / cancelled: drop the abandoned query's result
+        return; // superseded / canceled: drop the abandoned query's result
     }
     auto callback = std::move(reverseLookupOnReady_);
     reverseLookupOnReady_ = nullptr;

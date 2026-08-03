@@ -245,7 +245,11 @@ def mode_prepare(entries):
                         cached, tmp, url]
                 if section:
                     argv.append(section)
-                if subprocess.run(argv).returncode != 0:
+                # Pin child stdio to UTF-8: with piped output, Windows
+                # subprocesses default to the locale code page and would
+                # die printing the ✗ glyph in error paths.
+                env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+                if subprocess.run(argv, env=env).returncode != 0:
                     fail(f"✗ Processor failed: scripts/{proc} (for {out})")
             write_atomically(out_path(out), run_processor)
         new_stamp.append((out, kh))

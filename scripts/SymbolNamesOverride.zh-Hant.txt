@@ -1,7 +1,7 @@
-# Traditional Chinese symbol names — hand-maintained master table.
-# Seeded from macOS CoreChineseEngine + our edits; the system source is NO
-# longer read at build time. CLDR zh-Hant is merged *under* this (this file
-# wins). Edit here, then run `make prepare` to regenerate the consolidated table.
+# Traditional Chinese symbol names — hand-maintained master table, seeded
+# from macOS CoreChineseEngine. CLDR zh-Hant is merged *under* this (this
+# file wins). Edit here, then run `make prepare` to regenerate the
+# consolidated table.
 # format: symbol<TAB>name
 
 !	驚嘆號

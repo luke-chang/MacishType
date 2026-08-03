@@ -1,10 +1,10 @@
 #!/bin/sh
 # Runs an isolated fcitx5 (private DBus session, scratch config, no display
 # frontends) with the user-dir addon install, then drives it with
-# typing_client.py. The user's running fcitx5 is never touched.
+# typing-client.py. The user's running fcitx5 is never touched.
 #
-# Usage: test/isolated.sh <engine-id> [key specs for typing_client.py...]
-# Output: typing_client.py JSON lines on stdout; fcitx5 log in
+# Usage: test/isolated.sh <engine-id> [key specs for typing-client.py...]
+# Output: typing-client.py JSON lines on stdout; fcitx5 log in
 #         $ISOLATED_LOG (default /tmp/fcitx5-macishtype-isolated.log).
 set -e
 
@@ -91,4 +91,4 @@ dbus-run-session -- sh -c '
     kill "$fcitx_pid" 2>/dev/null
     wait "$fcitx_pid" 2>/dev/null
     exit $status
-' "$script_dir/typing_client.py" "$log_file" "macishtype-$engine_id" "$@"
+' "$script_dir/typing-client.py" "$log_file" "macishtype-$engine_id" "$@"

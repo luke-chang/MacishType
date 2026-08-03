@@ -103,7 +103,7 @@ final class ArrayDictionary {
         guard let url = Bundle.main.url(
                 forResource: base, withExtension: "txt", subdirectory: "Array") else {
             Logger.inputEngine.fault(
-                "Array/\(base, privacy: .public).txt not bundled (run `make prepare` and stage Array/Resources)")
+                "Array/\(base, privacy: .public).txt not bundled (run `make prepare` and rebuild)")
             return nil
         }
         return url

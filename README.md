@@ -22,7 +22,7 @@ runs unmodified on the Linux host, a fcitx5 addon in [`fcitx5/`](fcitx5/).
 - Installing or developing on Linux: [`fcitx5/README.md`](fcitx5/README.md) (note: `fcitx5/` needs the quickjs-ng submodule — clone with `--recurse-submodules`)
 - Writing an engine: [`engines/README.md`](engines/README.md)
 
-## Acknowledgements
+## Acknowledgments
 
 Data tables downloaded and bundled by `make prepare` (each upstream's license, if any, ships alongside its data):
 

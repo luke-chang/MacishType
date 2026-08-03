@@ -23,12 +23,26 @@ this host and on the macOS one ([`macos/`](../macos/)).
 ### Runtime
 
 - Linux with fcitx5 (developed and tested against 5.1.x)
+- `fcitx5-chinese-addons` — engine capabilities delegate to its modules:
+  `chttrans` backs `outputToSimplified` and `fullwidth` backs
+  `fullwidthInput` (Debian also splits them out as
+  `fcitx5-module-chttrans` / `fcitx5-module-fullwidth`). A missing module
+  leaves that capability off.
+- On GNOME the candidate window is rendered by the kimpanel Shell
+  extension: install
+  [Input Method Panel](https://extensions.gnome.org/extension/261/kimpanel/)
+  (`kimpanel@kde.org`) from extensions.gnome.org. Without it fcitx5 falls
+  back to its own classicui window, which works in regular apps but cannot
+  appear in GNOME Shell's own text fields (the Overview search, the Alt+F2
+  run dialog). A layout bug you may hit after installing it is described in
+  [Known issue: kimpanel on GNOME](#known-issue-kimpanel-on-gnome).
 
 ### Development
 
 - A C++20 compiler, CMake ≥ 3.16, Ninja, pkg-config
 - Fcitx5, fontconfig, ICU, and gettext development files
 - `python3` for the data-table pipeline (`make prepare`)
+- `python3-fonttools` for the icon generator (`scripts/generate-icon.py`)
 - Tests additionally need `python3-gi`, `dbus-run-session`, and an installed
   fcitx5 to run against
 
@@ -167,3 +181,19 @@ Host notes for this platform:
 - `Intl` is provided on top of quickjs-ng, backed by the system ICU — a
   common option subset of `Segmenter`, `DateTimeFormat`, `NumberFormat`,
   `PluralRules`, and `Collator`.
+
+## Known issue: kimpanel on GNOME
+
+The kimpanel Shell extension ([required on GNOME](#runtime)) has a layout
+bug: when an engine flips `layoutDirection` per update, the
+frame that switches direction renders broken — the panel sits at the wrong
+position with a mis-sized backdrop. Tracked upstream as
+[gnome-shell-extension-kimpanel#107](https://github.com/wengxt/gnome-shell-extension-kimpanel/issues/107);
+until it lands, apply the two-line patch from the issue locally:
+
+1. Edit `~/.local/share/gnome-shell/extensions/kimpanel@kde.org/extension.js`
+   as described in the issue.
+2. Log out and back in — GNOME Shell only reloads extensions on login.
+
+An extension update from extensions.gnome.org rewrites the file; re-apply
+the patch if the broken frame comes back.

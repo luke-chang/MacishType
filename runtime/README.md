@@ -10,4 +10,4 @@ the engine's own code. The two files have different audiences:
   (fcitx5 today; a Windows host would share it). Evaluated before
   `runtime.js`, it defines the bridge globals that are easier to express in
   JS than through the QuickJS C API. JavaScriptCore-based hosts (macOS)
-  register those natively and never load this file.
+  register those natively.

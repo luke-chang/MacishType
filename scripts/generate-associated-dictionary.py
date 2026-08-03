@@ -8,8 +8,7 @@ Reads <input> (`phrase<whitespace>freq` per line, the phrase.occ format),
 keeps CJK phrases of at least two characters, groups them by leading
 character, deduplicates the followers by their own leading character
 (keeping the highest-frequency variant), and writes the top 60 followers
-per prefix. Mirrors MacishType's Scripts/GenerateAssociatedDictionary.swift
-so both platforms produce identical tables from the same pinned source.
+per prefix.
 """
 
 import sys

@@ -7,9 +7,7 @@ Interface (external-resources processor convention):
 
 Reads <input> (`entry<space>count` per line, the phrase.occ format), keeps
 only entries whose key is exactly one Unicode scalar, and writes them to
-<output> in the input's native order. Mirrors MacishType's
-Scripts/GenerateWordFrequency.swift so both platforms produce identical
-tables from the same pinned source.
+<output> in the input's native order.
 """
 
 import sys

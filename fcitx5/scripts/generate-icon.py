@@ -9,7 +9,7 @@ Usage:
                  recolor it to the panel foreground (the Linux counterpart of
                  a macOS template image)
 
-Mirrors MacishType's Scripts/GenerateIcon.swift visual spec: a 16pt rounded
+Mirrors macos/Scripts/GenerateIcon.swift's visual spec: a 16pt rounded
 rectangle (corner radius 3.5) with the glyph knocked out to transparency,
 0.75 font scale for a single glyph / 0.55 for a pair, medium weight. The
 glyph outline is baked into the SVG as path geometry (via fontconfig +
