@@ -554,7 +554,7 @@ bool JsEngineHost::injectModules() {
     return true;
 }
 
-// Merges the per-language <fileBase>.<language>.tsv installed under
+// Merges the per-language <fileBase>.<language>.txt installed under
 // <pkgdata>/macishtype/tables/ into `table` ("key<TAB>value" lines, #
 // comments). A missing file adds nothing, which reads as a miss for every key
 // it would have supplied.
@@ -566,13 +566,12 @@ void JsEngineHost::loadModuleTable(JSValue table, const std::string &fileBase,
     auto path = fcitx::StandardPaths::global().locate(
         fcitx::StandardPathsType::PkgData,
         "macishtype/tables/" + fileBase + "." + manifest_.intendedLanguage +
-            ".tsv");
+            ".txt");
     if (path.empty()) {
         MACISHTYPE_INFO() << "No " << fileBase << " table for "
                           << manifest_.intendedLanguage
                           << "; those keys answer with the module's miss value "
-                             "(run scripts/external-resources.sh then make "
-                             "dev-install)";
+                             "(run make prepare then make dev-install)";
         return;
     }
     std::ifstream stream(path, std::ios::binary);
@@ -615,7 +614,7 @@ std::filesystem::path associatedDictionaryPath(const std::string &language) {
     }
     return fcitx::StandardPaths::global().locate(
         fcitx::StandardPathsType::PkgData,
-        "macishtype/tables/AssociatedDictionary." + language + ".tsv");
+        "macishtype/tables/AssociatedDictionary." + language + ".txt");
 }
 } // namespace
 

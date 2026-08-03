@@ -28,7 +28,7 @@ this host and on the macOS one ([`macos/`](../macos/)).
 
 - A C++20 compiler, CMake ≥ 3.16, Ninja, pkg-config
 - Fcitx5, fontconfig, ICU, and gettext development files
-- `curl` + `python3` for the data-table pipeline (`make prepare`)
+- `python3` for the data-table pipeline (`make prepare`)
 - Tests additionally need `python3-gi`, `dbus-run-session`, and an installed
   fcitx5 to run against
 
@@ -37,7 +37,7 @@ On Debian/Ubuntu, everything above is:
 ```sh
 sudo apt install build-essential cmake ninja-build pkgconf git \
     fcitx5-modules-dev libfcitx5core-dev libfontconfig-dev libicu-dev \
-    gettext curl python3 python3-gi python3-fonttools dbus
+    gettext python3 python3-gi python3-fonttools dbus
 ```
 
 ## Installation

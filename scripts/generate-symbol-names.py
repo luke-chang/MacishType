@@ -5,13 +5,10 @@ Interface (external-resources processor convention):
     generate-symbol-names.py <cldr-annotations.json> <output> <source-url>
 
 Keeps single-codepoint BMP symbols and their `tts` name, sorted by
-codepoint. Mirrors macos/Scripts/GenerateSymbolNames.swift. The
-hand-curated override table (a sibling lock entry downloaded to
-.external-resources/SymbolNamesOverride.zh-Hant.txt, pinned to the
-MacishType repo) is overlaid on the CLDR base; the override wins on
-conflicts. The .inputs sidecar folds the downloaded override into the
-stamp, so a pin bump regenerates this table (the override's lock line
-sorts first, keeping the download ahead of this processor).
+codepoint. The hand-curated override table (SymbolNamesOverride.zh-Hant.txt
+beside this script) is overlaid on the CLDR base; the override wins on
+conflicts. The .inputs sidecar folds the override into the stamp, so
+editing it regenerates this table.
 """
 
 import json
@@ -35,8 +32,8 @@ def main():
 
     overlaid = 0
     override_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(output_path))),
-        ".external-resources", "SymbolNamesOverride.zh-Hant.txt")
+        os.path.dirname(os.path.abspath(__file__)),
+        "SymbolNamesOverride.zh-Hant.txt")
     with open(override_path, encoding="utf-8") as override:
         for line in override:
             line = line.rstrip("\n")

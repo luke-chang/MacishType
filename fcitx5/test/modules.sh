@@ -1,6 +1,6 @@
 #!/bin/sh
 # Manifest `modules`: each declared module is injected before the entry module
-# evaluates, filled from <pkgdata>/macishtype/tables/<FileBase>.<language>.tsv.
+# evaluates, filled from <pkgdata>/macishtype/tables/<FileBase>.<language>.txt.
 # Asserts the module→file mapping (a file base name, deliberately not derived
 # from the module name), the per-module miss values, and the loader's comment /
 # malformed-row handling. Runs in the zz test locale so only the fixture tables

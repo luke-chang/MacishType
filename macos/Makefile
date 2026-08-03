@@ -321,10 +321,10 @@ preview: prepare
 	@open ./build/Debug/CandidateWindowPreview.app
 
 prepare:
-	@./Scripts/HandleExternalResources.sh --prepare
+	@../scripts/external-resources.py --prepare
 
 update-resources:
-	@./Scripts/HandleExternalResources.sh --update
+	@../scripts/external-resources.py --update
 
 clean-resources:
-	@./Scripts/HandleExternalResources.sh --clean
+	@../scripts/external-resources.py --clean

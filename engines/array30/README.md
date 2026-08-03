@@ -9,14 +9,14 @@ end to end.
 1. **Sync the data tables.**
 
    ```sh
-   ./setup.sh
+   python3 setup.py
    ```
 
-   This copies the processed Array tables out of the repo's build resources into
-   this folder. The tables are produced by `make prepare`; if they're missing,
-   the script runs `make prepare` first. The copied `*.txt` files are generated
-   artifacts and are gitignored — re-run the script after a `make prepare` or a
-   resource-lock bump.
+   This copies the processed Array tables out of the repo's shared `tables/`
+   into this folder, running the external-resources pipeline first if they're
+   missing. The copied `*.txt` files are generated artifacts and are
+   gitignored — re-run the script after a `make prepare` or a resource-lock
+   bump.
 
 2. **Load the engine.** In MacishType, open **Settings → JS → Engine folder →
    Choose Folder…** and pick this folder. The host watches the folder and
@@ -46,7 +46,7 @@ Mirrors the Swift engine:
 
 Run the suite with Node's built-in test runner (no dependencies); it stubs the
 host globals and drives the engine against the real data tables, so run
-`./setup.sh` first.
+`python3 setup.py` first.
 
 ```sh
 node --test engines/array30/index.test.mjs

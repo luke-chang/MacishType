@@ -1,0 +1,22 @@
+# Pinned external resources—edit by hand to bump versions, or run
+# `make update-resources` (from macos/ or fcitx5/).
+#
+# Each line: <output-path-relative-to-repo-root> <source-url> <processor-or-dash> [section]
+#   "<processor>"  scripts/<processor> is invoked with (input, output, url, [section]).
+#   "-"            Verbatim copy, no processing.
+#   "[section]"    Optional 4th column passed to the processor as a 4th argument,
+#                  e.g. which section of a multi-section source to extract. Lines
+#                  sharing one source-url are downloaded once (cached per run).
+#
+# `make update-resources` queries the default-branch HEAD of each github.com
+# upstream and bumps the pinned SHA. Manual edits also work.
+
+tables/AssociatedDictionary.zh-Hant.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ generate-associated-dictionary.py
+tables/WordFrequency.zh-Hant.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ generate-word-frequency.py
+tables/McBopomofo.LICENSE.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/LICENSE.txt -
+tables/SymbolNames.zh-Hant.txt https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/cldr-json/cldr-annotations-full/annotations/zh-Hant/annotations.json generate-symbol-names.py
+tables/CLDR.LICENSE.txt https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/LICENSE -
+tables/Array30.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 extract-code-table.py chardef
+tables/ArraySymbol.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 extract-code-table.py symboldef
+tables/ArrayShortCode.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 extract-code-table.py quick
+tables/ArrayPhrase.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 extract-code-table.py quickphrases

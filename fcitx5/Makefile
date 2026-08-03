@@ -68,10 +68,10 @@ build:
 	cmake -B $(BUILD_DIR) -G Ninja
 	cmake --build $(BUILD_DIR) -j
 
-# Module data tables (wordFrequency / symbolNames), pinned in
-# scripts/external-resources.lock.
+# Module data tables (wordFrequency / symbolNames), pinned in the repo-level
+# scripts/external-resources.lock and shared with the other platforms.
 prepare:
-	scripts/external-resources.sh --prepare
+	../scripts/external-resources.py --prepare
 
 # Development install into ~/.local plus a fcitx5 restart. Restarting
 # interrupts typing in the current session — run this yourself.
@@ -91,9 +91,9 @@ dev-install:
 	@mkdir -p $(USER_SHARE)/macishtype/engines
 	install -D -m 644 $(BUILD_DIR)/po/zh_TW.mo \
 	    $(HOME)/.local/share/locale/zh_TW/LC_MESSAGES/fcitx5-macishtype.mo
-	@if [ -d tables ]; then \
+	@if [ -d ../tables ]; then \
 	    mkdir -p $(USER_SHARE)/macishtype/tables; \
-	    cp tables/* $(USER_SHARE)/macishtype/tables/; \
+	    cp ../tables/* $(USER_SHARE)/macishtype/tables/; \
 	fi
 
 # Reverses dev-install but keeps user data (the engines folder). Run this

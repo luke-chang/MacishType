@@ -1,7 +1,12 @@
 .DS_Store
 engines/**/_storage/
 
-# Array JS engine tables (copied by engines/array30/setup.sh).
+# Outputs and state of the shared external-resources pipeline
+# (scripts/external-resources.py).
+/tables/
+/.external-resources/
+
+# Array JS engine tables (copied by engines/array30/setup.py).
 engines/array30/Array30.txt
 engines/array30/ArrayShortCode.txt
 engines/array30/ArrayPhrase.txt
