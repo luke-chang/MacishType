@@ -14,15 +14,31 @@ shift
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 log_file="${ISOLATED_LOG:-/tmp/fcitx5-macishtype-isolated.log}"
-# A caller-provided config home persists across runs (the settings test
-# verifies values survive a reload); scratch otherwise.
+# Caller-provided homes persist across runs (the settings test verifies values
+# survive a reload; the discovery test mutates a writable engines layer);
+# scratch otherwise. One cleanup handler for both — a second `trap ... EXIT`
+# would silently replace the first.
+scratch_dirs=""
+cleanup() { [ -n "$scratch_dirs" ] && rm -rf $scratch_dirs; }
+trap cleanup EXIT
+
 if [ -n "$ISOLATED_CONFIG_HOME" ]; then
     config_root="$ISOLATED_CONFIG_HOME"
     mkdir -p "$config_root"
 else
     config_root="$(mktemp -d)"
-    trap 'rm -rf "$config_root"' EXIT
+    scratch_dirs="$scratch_dirs $config_root"
 fi
+# XDG_DATA_HOME is always isolated: the addon links engine icons into
+# $XDG_DATA_HOME/icons and bumps that tree's mtime to make desktops rescan
+# their icon theme, which must never reach the developer's own session.
+if [ -n "$ISOLATED_DATA_HOME" ]; then
+    data_home="$ISOLATED_DATA_HOME"
+else
+    data_home="$(mktemp -d)"
+    scratch_dirs="$scratch_dirs $data_home"
+fi
+mkdir -p "$data_home"
 
 # Scratch profile: the engine under test is the default IM of the only group.
 mkdir -p "$config_root/fcitx5"
@@ -46,17 +62,12 @@ EOF
 
 export FCITX_ADDON_DIRS="$HOME/.local/lib/fcitx5:/usr/lib/$(gcc -dumpmachine 2>/dev/null || echo x86_64-linux-gnu)/fcitx5"
 # Fixture engines join through the system XDG layer, so tests never write
-# into the user's engine folders.
-export XDG_DATA_DIRS="$script_dir/fixtures/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-# A caller-provided data home gives the test a writable user engines layer
-# (the discovery test mutates folders there). The real ~/.local/share then
-# joins as a lower layer so the dev-installed addon conf and runtime stay
-# visible; fixtures keep priority over it.
-if [ -n "$ISOLATED_DATA_HOME" ]; then
-    mkdir -p "$ISOLATED_DATA_HOME"
-    export XDG_DATA_HOME="$ISOLATED_DATA_HOME"
-    export XDG_DATA_DIRS="$script_dir/fixtures/share:$HOME/.local/share:${XDG_DATA_DIRS#"$script_dir/fixtures/share:"}"
-fi
+# into the user's engine folders. The isolated data home takes the user layer
+# (a writable engines layer for tests that mutate folders there), and the real
+# ~/.local/share joins as a lower layer so the dev-installed addon conf,
+# runtime and data tables stay visible; fixtures keep priority over both.
+export XDG_DATA_HOME="$data_home"
+export XDG_DATA_DIRS="$script_dir/fixtures/share:$HOME/.local/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export XDG_CONFIG_HOME="$config_root"
 # System-layer engines put their storage under XDG state; keep it in the
 # scratch unless the caller wants to reach in (storage tests do).
