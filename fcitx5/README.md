@@ -1,0 +1,277 @@
+# fcitx5-macishtype
+
+A Fcitx5 addon that hosts [MacishType](https://github.com/luke-chang/MacishType)
+JavaScript input method engines on Linux, embedding
+[quickjs-ng](https://github.com/quickjs-ng/quickjs) as the JS runtime.
+
+The goal: engines written against the MacishType JS contract
+(`Engines/*/index.js` + `manifest.json`) run **unmodified** on both macOS
+(MacishType, JavaScriptCore) and Linux (this addon, QuickJS).
+
+## How it works
+
+- One addon, many input methods: engine folders are discovered at startup and
+  each becomes an independent Fcitx5 input method (`macishtype-<name>`) via
+  `listInputMethods()`, switchable like any other IM.
+- Engine folders live in the layered XDG location
+  `~/.local/share/fcitx5/macishtype/engines/<name>/` (user) and
+  `/usr/share/fcitx5/macishtype/engines/<name>/` (system). Folder names are
+  the stable identity: lowercase `[a-z0-9_-]` only, no `Engine` postfix —
+  e.g. `example`, not `ExampleEngine`. Symlinks are fine (and are the
+  intended dev workflow).
+- Each engine gets its own QuickJS context. The addon re-registers the same
+  `__MacishType_*` bridge globals the macOS host provides, then loads the
+  shared `runtime.js` and the engine's entry module through an `engine:///`
+  module loader with path containment.
+
+## Status
+
+Milestone 1 reached: MacishType's `ExampleEngine` types end to end,
+unmodified — composition preedit, candidate window with index labels and
+navigation, commit, escape, and OS passthrough all work against an isolated
+fcitx5 instance (`test/acceptance.sh`).
+
+Reverse lookup: engines that declare `capabilities.reverseLookup` get a "Find
+Input Code" status-area action plus a configurable hotkey (default
+`Control+Alt+L`), which lists each selected character's input codes in a
+read-only candidate window. It reads the client's current selection only, and
+within it only non-ASCII characters (ASCII is typed directly, so it has no code
+to look up).
+
+Not yet implemented: custom `menu` items.
+
+Associated mode: committing a single character (when the engine's
+`enableAssociatedMode` setting is on and an associated-phrase dictionary is
+bundled for its language) holds that character and offers common
+follow-ups under a "關聯字" header; picking one commits the pair, any other
+key commits the held character alone. The dictionary is derived from the
+same pinned corpus as `wordFrequency` (`scripts/external-resources.lock`).
+
+Font coverage (which drives the "displayable" character-set filter) is
+computed once when an engine loads; the contract's `fontcoveragechange`
+event is not raised for fonts installed mid-session. This is deliberate:
+the candidate window is drawn by the desktop (e.g. the kimpanel GNOME
+Shell extension), whose own font set only refreshes on re-login under
+Wayland, so live-updating the filter alone would surface candidates the
+panel still draws as tofu. Installing a font therefore takes effect after
+a fcitx5 restart — which the re-login that makes the desktop render the
+new font performs anyway, keeping the filter and the renderer in step.
+
+Manifest `settings` become a per-input-method configuration dialog in
+`fcitx5-configtool` (select the input method, then the gear button), and
+the addon's own options live on its Add-ons page entry. Values persist
+under `~/.config/fcitx5/macishtype/<engine>.conf` and reach the live
+engine immediately through the contract's `settingschange` event. A field
+renders only when its behavior can match the macOS host ("render means
+equivalent"); otherwise it stays hidden and its manifest default still
+reaches the engine:
+
+- Supported: `toggle`, `textField`, integer `number` (integral default
+  and step), `picker` (stored by tag, dropdown only).
+- Hidden: `multiSelect`, fractional `number`.
+- `system` fields are availability-gated like on macOS: `enableAssociatedMode`
+  surfaces only when an associated-phrase dictionary is bundled for the
+  engine's language; other or unavailable system fields stay undeclared and
+  are not pushed.
+- Section titles are ignored (flat list); `disabledWhen`/`hiddenWhen`
+  are not evaluated — the rule is rendered as a static sentence in the
+  field's tooltip instead.
+
+When the manifest omits `candidateWindow.layoutDirection`, a candidate
+orientation setting is generated (Follow system default / Horizontal /
+Vertical), matching macOS. "System default" follows the only fcitx global
+carrying a candidate direction — classicui's "Vertical Candidate List" —
+and falls back to horizontal when it is unreadable (e.g. under kimpanel,
+which renders through the desktop rather than classicui). A manifest that
+fixes the direction hides the setting.
+
+The macOS General-page keyboard-layout override has a native fcitx5
+equivalent: the per-input-method layout (the keyboard button in
+configtool's input method list) or the group's default layout.
+
+Engine-private storage (`localStorage`) lives in `_storage/` inside the
+engine folder for user-layer engines — matching macOS, the folder stays
+self-contained — and under `~/.local/state/fcitx5/macishtype/<engine>/`
+for system-layer engines, whose folders are read-only and machine-shared.
+External modifications raise the contract's `storage` events (the
+engine's own writes stay silent, per web semantics); the watch arms only
+while the engine holds storage listeners.
+
+Engines may declare the optional manifest `label` (short panel text;
+defaults to the full display name, which fcitx5 shortens per surface — one
+CJK glyph or two Latin letters in the status area, the full text in the
+input-method switch popup) and `icon` (an extensionless base name inside
+the engine folder, default `icon`). The addon probes
+`<icon>-symbolic.svg`, `<icon>.svg`, then `<icon>.png` and takes the first
+match. A `-symbolic.svg` gets recolored to the panel foreground by the
+desktop; `scripts/generate-icon.py` bakes such a badge (macOS-style rounded
+rectangle with the glyph knocked out, carrying both the GNOME and KDE
+recoloring conventions) from a glyph. Both fields apply live on hot reload.
+
+An SVG match is linked into the user's icon theme as
+`$XDG_DATA_HOME/icons/hicolor/scalable/apps/macishtype-<engine>[-symbolic].svg`
+and panels are served that **name** rather than a file path. The name is what
+makes the icon portable: panels reached over SNI/dbusmenu — which is how
+GNOME's AppIndicator support draws the input-method menu — only accept a theme
+name in their icon field and render a path as a missing-icon glyph.
+`fcitx5-configtool` also lists icons by theme-name lookup, so engine icons now
+show there too. Three consequences worth knowing:
+
+- A **PNG** match keeps the absolute path: the theme requires bitmaps to sit in
+  size-named directories, and an off-size or non-square PNG has no legal home
+  there. Ship an SVG if the icon should appear on every panel.
+- A **newly added** engine's icon can take a few seconds to appear: desktops
+  do not notice a file added to an icon directory they already scanned, so the
+  addon bumps the search path's mtime to make them rescan.
+- Stale links are cleaned up at startup. Only symlinks this addon created are
+  ever removed — a file you put there under the same name is left alone.
+
+Engine folders hot-reload:
+editing an engine's files (or fixing a broken one) applies on the next
+keystroke with a desktop notification, no fcitx5 restart needed — except
+display-name changes, which fcitx5 only picks up on restart (its list
+entries cannot be updated or removed at runtime). Turning off the addon
+option "Reload an engine automatically when its files are edited" defers
+edits instead: fcitx5's configuration tool notices pending updates and
+its Update button applies them. Reloads are scoped to the files the
+engine expressed interest in — manifest, entry, imported modules, fetched
+data, icon candidates — so unrelated files in the folder don't trigger
+one; an engine that failed to load retries on any change. All
+`manifest.modules` data sources are fed: wordFrequency and symbolNames
+from the corpora pinned in `scripts/external-resources.lock`, fontCoverage
+from fontconfig.
+
+Whole folders come and go at runtime too. A new engine folder surfaces
+the way any fcitx5 input method package does: the configuration tool
+notices pending updates, and its Update button adds the engine to the
+available list (joining an input method group stays a manual step).
+Deleting a live engine's folder parks it with a desktop notification, and
+typing on it shows "Engine load failed" in the composing area instead of
+leaking keystrokes into the application; restoring the folder recovers it
+automatically. A rename is a removal plus a new folder, and the stale
+list entry clears on the next restart.
+
+Traditional→Simplified output is delegated to fcitx5's own chttrans
+module, attached while `capabilities.outputToSimplified` resolves
+available: not declared `false`, a Traditional-Chinese language code
+(elsewhere chttrans converts the other way or not at all), and chttrans
+installed. `manifest.toggle.outputToSimplified` reads and writes the
+same chttrans state, a user flip (its hotkey / status-area icon) reaches
+the engine as `togglechange`, and the value persists per input method.
+
+An engine declaring the `capabilities.fullwidthInput` contract flag gets
+fcitx5's own fullwidth module attached to its status area. On macOS the flag
+means "commit the full-width form of an Option-modified key"; Linux and
+Windows leave `Alt`/`Option`+key to shortcuts, so the portable stand-in is a
+full-width mode toggle instead (fcitx's hotkey / status-area icon), off by
+default. The module is loaded on demand and simply absent when not installed.
+
+### Intl
+
+The addon provides `Intl` (absent from quickjs-ng), backed by the system ICU
+library rather than bundled data. A common option subset of each object is
+implemented:
+
+- `Segmenter` — `grapheme`, `word` (with `isWordLike`), and `sentence`;
+  segment `index` values are UTF-16 code units.
+- `DateTimeFormat` — component options (`weekday`, `era`, `year`, `month`,
+  `day`, `hour`, `minute`, `second`, `fractionalSecondDigits`, `dayPeriod`,
+  `timeZoneName`), `dateStyle`/`timeStyle` presets (not mixable with
+  components), `hour12`/`hourCycle`, and `timeZone` (validated, defaulting to
+  the system IANA zone).
+- `NumberFormat` — `decimal`/`currency`/`percent`/`unit` styles, fraction and
+  significant-digit control, grouping, notation, `signDisplay`, and `BigInt`.
+- `PluralRules` — `cardinal` and `ordinal`.
+- `Collator` — `sensitivity`, `numeric`, `caseFirst`, and `ignorePunctuation`.
+
+`Intl.getCanonicalLocales`, `Intl.Locale`, and `Intl.supportedValuesOf` are
+not implemented.
+
+## Development
+
+### Dependencies
+
+Build:
+
+- A C++20 compiler, CMake ≥ 3.16, Ninja, pkg-config
+- Fcitx5 development files: the `Fcitx5Core` CMake package plus the
+  Notifications module headers, matching your installed fcitx5 (this addon
+  is developed against 5.1.x)
+- fontconfig development files
+- ICU development files (`libicu-dev`) — the system ICU backs the JS `Intl`
+  implementation; the runtime library ships with any desktop environment
+- git — quickjs-ng is a submodule; clone with `--recurse-submodules`
+- gettext
+
+Data preparation (`make prepare`): `curl`, `python3`.
+
+Icon badge generation (`scripts/generate-icon.py`, optional authoring
+tool): `python3` with fontTools (`python3-fonttools` on Debian-family) and
+fontconfig's `fc-match`.
+
+Tests (`make test`): `python3` with GObject introspection (`python3-gi` on
+Debian-family), `dbus-run-session`, and an installed fcitx5 to test
+against.
+
+On Debian/Ubuntu, everything above is:
+
+```sh
+sudo apt install build-essential cmake ninja-build pkgconf git \
+    fcitx5-modules-dev libfcitx5core-dev libfontconfig-dev libicu-dev \
+    gettext curl python3 python3-gi python3-fonttools dbus
+```
+
+### Workflow
+
+```sh
+make build     # cmake configure + build
+make prepare   # sync pinned module data tables (also run by debug/install)
+make debug     # dev install into ~/.local + fcitx5 restart (interrupts typing)
+make test      # acceptance suite against an isolated fcitx5
+make install   # production install into /usr (sudo) + fcitx5 restart
+make uninstall # remove the production install (per cmake's manifest)
+
+make log          # follow the addon's log (scoped to this repo's sources)
+make log-js       # follow engine console.* output only
+make log-history  # show recent addon log (default 1h; LOG_SHOW_LAST=24h ...)
+```
+
+fcitx5 logs to the user journal regardless of how it was started
+(session autostart or `make restart`). Per-key Debug logging — including
+engine `console.debug` — is off by default; restart with
+`make restart LOG_DEBUG=1` (or `make debug LOG_DEBUG=1`) to enable it.
+
+```sh
+```
+
+### Dev install and `FCITX_ADDON_DIRS`
+
+fcitx5 only searches its baked-in system directory for addon `.so` files,
+so the dev install relies on launching fcitx5 with `FCITX_ADDON_DIRS`
+(`make restart` does this for the current session). Make it survive
+re-login with a one-time systemd user-environment entry — adjust the home
+path and the multiarch triplet (`gcc -dumpmachine`) to your system:
+
+```sh
+cat > ~/.config/environment.d/90-fcitx5-macishtype.conf <<'EOF'
+FCITX_ADDON_DIRS=/home/YOU/.local/lib/fcitx5:/usr/lib/x86_64-linux-gnu/fcitx5
+EOF
+```
+
+Notes:
+
+- The variable REPLACES the default search path; keep the system directory
+  listed or every other addon breaks.
+- `environment.d` is read at login, so the entry takes effect on the next
+  login; use `make restart` to apply immediately.
+- **Skipping this bites after the next re-login**: the autostarted fcitx5
+  comes up without the variable, fails to load the addon, and prunes its
+  input methods from `~/.config/fcitx5/profile` on save — they have to be
+  re-added in fcitx5-configtool.
+- A production `make install` needs none of this (and run
+  `make dev-uninstall` first — user-dir files shadow the system install).
+
+## License
+
+MIT, same as MacishType. `runtime.js` is copied from the MacishType
+repository; its provenance commit is recorded in the file header.

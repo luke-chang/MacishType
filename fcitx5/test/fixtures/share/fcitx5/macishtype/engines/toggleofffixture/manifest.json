@@ -1,0 +1,6 @@
+{
+  "entry": "index.js",
+  "name": { "en": "Toggle Off Fixture" },
+  "intendedLanguage": "zh-Hant",
+  "capabilities": { "outputToSimplified": false, "fullwidthInput": "yes" }
+}

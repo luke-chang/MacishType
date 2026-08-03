@@ -1,0 +1,5 @@
+# Fixture frequencies for the zz test locale. The last row's value does not
+# parse as a number, so a numeric module must drop that key.
+的	615175
+一	42
+bad	not-a-number

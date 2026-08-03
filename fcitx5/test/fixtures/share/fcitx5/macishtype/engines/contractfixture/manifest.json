@@ -1,0 +1,9 @@
+{
+  "entry": "index.js",
+  "name": {
+    "mm": "MM",
+    "aa": "AA",
+    "zz": "ZZ"
+  },
+  "capabilities": { "outputToSimplified": true }
+}

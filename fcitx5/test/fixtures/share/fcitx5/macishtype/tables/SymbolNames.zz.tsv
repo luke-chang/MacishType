@@ -1,0 +1,7 @@
+# Fixture symbol names for the zz test locale. This comment, the blank line,
+# and the tab-less line below must all be skipped by the loader.
+
+！	驚嘆號
+？	問號
+#＠	a commented-out entry must not become a key
+no-tab-line
