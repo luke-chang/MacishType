@@ -79,4 +79,32 @@ check "Home selects the first candidate of the page (cursor 0)" \
 # An index label on page 2 commits the correct absolute candidate.
 check "an index label on page 2 commits the absolute candidate c4" \
     "$committed" '{"event": "commit", "text": "c4"}'
+
+# --- Engine-driven navigation (macOS-parity hostglue helpers) ---
+# intentfixture opts out of handleNavigationKeys/handleIndexLabelKeys and
+# replays navigationIntent()/candidateIndex() itself. Tab=65289:23,
+# Shift+Tab=65056:23:1, Alt+Down=65364:116:8, Shift+Down=65364:116:1,
+# ArrowRight=65363:114, space=32:65.
+moved="$("$root/test/isolated.sh" intentfixture 97:38 65363:114 2> /dev/null)"
+altdown="$("$root/test/isolated.sh" intentfixture 97:38 65364:116:8 2> /dev/null)"
+shiftdown="$("$root/test/isolated.sh" intentfixture 97:38 65364:116:1 2> /dev/null)"
+wrapfwd="$("$root/test/isolated.sh" intentfixture 97:38 65366:117 65366:117 65289:23 2> /dev/null)"
+wrapback="$("$root/test/isolated.sh" intentfixture 97:38 65056:23:1 2> /dev/null)"
+lastpage="$("$root/test/isolated.sh" intentfixture 97:38 65366:117 65366:117 50:11 2> /dev/null)"
+spaced="$("$root/test/isolated.sh" intentfixture 97:38 32:65 2> /dev/null)"
+
+check "navigationIntent drives an arrow through navigateCandidates" \
+    "$(last_cand "$moved")" '"text": "c2"}], "cursor": 1'
+check "Option disqualifies a navigation key" \
+    "$altdown" '"keyval": 65364, "handled": false'
+check "Shift disqualifies a non-Tab navigation key" \
+    "$shiftdown" '"keyval": 65364, "handled": false'
+check "Tab wraps forward from the last candidate to the first" \
+    "$(last_cand "$wrapfwd")" '"text": "c2"}], "cursor": 0'
+check "Shift+Tab wraps backward from the first candidate to the last" \
+    "$(last_cand "$wrapback")" '"text": "c6"'
+check "candidateIndex answers within pageSize on a short last page" \
+    "$lastpage" '{"event": "commit", "text": "ci1"}'
+check "whitespace input never matches an index label" \
+    "$spaced" '"keyval": 32, "handled": false'
 echo "Navigation checks passed."

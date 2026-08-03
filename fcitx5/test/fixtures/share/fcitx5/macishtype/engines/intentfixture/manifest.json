@@ -1,0 +1,10 @@
+{
+  "entry": "index.js",
+  "name": {
+    "en": "Intent Fixture"
+  },
+  "candidateWindow": {
+    "handleNavigationKeys": false,
+    "handleIndexLabelKeys": false
+  }
+}

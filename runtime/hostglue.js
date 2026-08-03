@@ -69,17 +69,31 @@
       handleIndexLabelKeys: cw.handleIndexLabelKeys,
       candidateIndex(char) {
         if (typeof char !== "string" || char.length === 0) return null;
-        // A " " label is a blank slot: it reserves the position but is not
-        // selectable ("" collapses the labels entirely).
-        if (char === " ") return null;
-        const index = Array.from(cw.indexLabels).indexOf(char);
-        if (index < 0 || index >= cw.pageItemCount) return null;
+        // Only the first character is looked up, never a whitespace one (a
+        // " " label is a blank slot: it reserves the position but is not
+        // selectable), and only within pageSize — labels keep answering on
+        // a short last page.
+        const first = Array.from(char)[0];
+        if (/\s/u.test(first)) return null;
+        const index = Array.from(cw.indexLabels).indexOf(first);
+        if (index < 0 || index >= cw.pageSize) return null;
         return index;
       },
       // Mirrors the host's nav-key table (dispatchCandidateWindowKey) for
-      // engines that opt out of handleNavigationKeys.
+      // engines that opt out of handleNavigationKeys. Tab is the only nav
+      // key that reads a modifier (Shift, to reverse) and the only one that
+      // wraps; Option — or Shift on any other key — disqualifies the key,
+      // leaving it to the engine.
       navigationIntent(keyEvent) {
         if (!keyEvent || typeof keyEvent !== "object") return null;
+        if (keyEvent.altKey) return null;
+        if (keyEvent.code === "Tab") {
+          return {
+            direction: keyEvent.shiftKey ? "itemBackward" : "itemForward",
+            options: { wrapping: true },
+          };
+        }
+        if (keyEvent.shiftKey) return null;
         switch (keyEvent.code) {
           case "ArrowUp": return { direction: "up" };
           case "ArrowDown": return { direction: "down" };
@@ -89,10 +103,6 @@
           case "PageDown": return { direction: "pageDown" };
           case "Home": return { direction: "home" };
           case "End": return { direction: "end" };
-          case "Tab":
-            return {
-              direction: keyEvent.shiftKey ? "itemBackward" : "itemForward",
-            };
           default:
             return null;
         }
