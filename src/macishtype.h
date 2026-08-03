@@ -24,6 +24,7 @@
 #include "enginesettings.h"
 #include "enginewatcher.h"
 #include "i18n.h"
+#include "iconlinks.h"
 #include "jshost/enginehost.h"
 #include "session.h"
 
@@ -149,6 +150,10 @@ private:
     // still retries on a fix.
     bool shouldReload(const std::string &engineId,
                       const std::set<std::string> &changedPaths);
+    // Re-resolves the engine's icon from disk and refreshes what panels are
+    // served for it. The single mutation point for EngineInfo::icon/iconName
+    // after discovery.
+    void refreshEngineIcon(EngineInfo &engine);
     // (Re)composes the engine's fcitx configuration from its manifest
     // settings schema and layers the persisted user values over the
     // manifest defaults.
@@ -173,6 +178,9 @@ private:
     std::map<std::string, bool> failedHosts_;
     std::map<fcitx::InputContext *, std::unique_ptr<EngineSession>> sessions_;
     std::unique_ptr<EngineWatcher> watcher_;
+    // Installs engine icons into the user's hicolor theme so panels can be
+    // served a theme name; see iconlinks.h for why a name beats a path.
+    std::unique_ptr<IconLinks> iconLinks_;
     // Last chttrans enablement pushed to / observed for each engine with an
     // available outputToSimplified toggle, keyed by engine id; the delta
     // detector behind reconcileChttransToggles().

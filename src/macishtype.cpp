@@ -106,9 +106,17 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     findInputCodeConn_ =
         findInputCodeAction_.connect<fcitx::SimpleAction::Activated>(
             [this](fcitx::InputContext *ic) { triggerFindInputCode(ic); });
-    for (const auto &engine : engines_) {
+    // Before the watcher: its callbacks reach refreshEngineIcon, so IconLinks
+    // has to exist for the whole lifetime in which any callback can run.
+    iconLinks_ = std::make_unique<IconLinks>(&instance_->eventLoop());
+    for (auto &engine : engines_) {
         rebuildEngineSettings(engine);
+        refreshEngineIcon(engine);
     }
+    // Only meaningful once every engine has claimed its entry, and only at
+    // startup: engines that vanish later are parked with their entry intact
+    // (see reconcileEngineFolder), so a runtime sweep would fight that.
+    iconLinks_->sweepOrphans();
     watcher_ = std::make_unique<EngineWatcher>(
         &instance_->eventLoop(),
         [this](const std::string &engineId,
@@ -212,8 +220,8 @@ std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {
                                       engine.manifest.languageCode,
                                       "macishtype");
         entry.setLabel(labelForEngine(engine));
-        if (!engine.iconPath.empty()) {
-            entry.setIcon(engine.iconPath);
+        if (!engine.iconName.empty()) {
+            entry.setIcon(engine.iconName);
         }
         auto settings = engineSettings_.find(engine.id);
         entry.setConfigurable(settings != engineSettings_.end() &&
@@ -229,6 +237,11 @@ void MacishTypeEngine::setConfig(const fcitx::RawConfig &raw) {
     // Refresh the action's displayed hotkey (matching is read live in
     // keyEvent, so functional matching already tracks the new value).
     findInputCodeAction_.setHotkey(config_.findInputCodeKey.value());
+}
+
+void MacishTypeEngine::refreshEngineIcon(EngineInfo &engine) {
+    engine.icon = resolveIcon(engine.root, engine.manifest.icon);
+    engine.iconName = iconLinks_->install(engine.id, engine.icon);
 }
 
 void MacishTypeEngine::rebuildEngineSettings(const EngineInfo &engine) {
@@ -280,7 +293,7 @@ MacishTypeEngine::subModeIconImpl(const fcitx::InputMethodEntry &entry,
                                   fcitx::InputContext &inputContext) {
     FCITX_UNUSED(inputContext);
     const auto *engine = engineForEntry(entry);
-    return engine != nullptr ? engine->iconPath : std::string();
+    return engine != nullptr ? engine->iconName : std::string();
 }
 
 std::string
@@ -610,6 +623,7 @@ void MacishTypeEngine::rescanEngineFolders() {
         MACISHTYPE_INFO() << "Engine discovered: " << engine.id;
         auto inserted = engines_.insert(position, std::move(engine));
         rebuildEngineSettings(*inserted);
+        refreshEngineIcon(*inserted);
         watcher_->watchEngine(inserted->id, inserted->root);
     }
     // The Update button applies everything at once: deferred reloads too.
@@ -681,6 +695,12 @@ void MacishTypeEngine::reconcileEngineFolder(const std::string &name) {
             endSession(inputContext);
         }
         hosts_.erase(name);
+        // The engine's icon theme entry deliberately stays. The entry cannot
+        // leave fcitx's list, so removing the icon would only turn a stale
+        // icon into a missing one; and keeping the file name lets a restored
+        // folder just re-point the link, which no panel has to rescan to
+        // notice. A folder that never comes back is cleaned up by the sweep
+        // on the next start.
         // Disarm the storage watch now: the folder (and its _storage) is
         // gone, and reloadEngine's re-resolve does not run on this path, so
         // nothing else clears the bookkeeping.
@@ -703,7 +723,9 @@ void MacishTypeEngine::reconcileEngineFolder(const std::string &name) {
     // nobody's typing, and the removal tip promises it.
     engine->root = resolved->root;
     engine->storageRoot = resolved->storageRoot;
-    engine->iconPath = resolved->iconPath;
+    // The icon is deliberately not copied here: reloadEngine below re-resolves
+    // it against the new root, which is also where the icon-theme entry is
+    // refreshed.
     watcher_->watchEngine(engine->id, engine->root);
     reloadEngine(engine->id);
 }
@@ -1006,7 +1028,7 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
     }
     // Icon file changes count too, even when the manifest kept its old
     // parse result; the subMode overrides serve the new value live.
-    engine->iconPath = resolveIconPath(engine->root, engine->manifest.icon);
+    refreshEngineIcon(*engine);
     // The settings schema may have changed shape; recompose it (persisted
     // values re-layer over the fresh defaults).
     rebuildEngineSettings(*engine);

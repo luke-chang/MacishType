@@ -58,11 +58,12 @@ output="$(run 53:14)"
 check "idle digit passes through unhandled" '"keyval": 53, "handled": false'
 
 # The fixture engine (test/fixtures, joined via XDG_DATA_DIRS) declares the
-# optional manifest label; its icon comes from the default base name
-# probing, which must prefer the -symbolic.svg over the .png it also ships.
+# optional manifest label; its icon comes from the default base name probing,
+# which must prefer the -symbolic.svg over the .png it also ships — visible
+# here in the served icon-theme name (test/icontheme.sh covers the install).
 output="$("$root/test/isolated.sh" fixture iminfo 2> /dev/null)"
 check "manifest label reaches the entry" '"label": "Fx"'
-check "default icon base serves an absolute path" '"icon": "/'
-check "icon probing prefers the symbolic variant" '/engines/fixture/icon-symbolic.svg"'
+check "default icon base serves an icon-theme name" \
+    '"icon": "macishtype-fixture-symbolic"'
 
 echo "All acceptance checks passed."

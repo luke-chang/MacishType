@@ -5,12 +5,15 @@ BUILD_DIR := build
 MACHINE := $(shell gcc -dumpmachine 2> /dev/null || echo x86_64-linux-gnu)
 USER_LIB := $(HOME)/.local/lib/fcitx5
 USER_SHARE := $(HOME)/.local/share/fcitx5
+# Where the addon links engine icons at runtime (XDG data home, not fcitx's
+# own data directory).
+ICON_LINK_DIR := $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)/icons/hicolor
 # FCITX_ADDON_DIRS replaces fcitx5's default addon search path, so the
 # system directory must stay listed.
 ADDON_DIRS := $(USER_LIB):/usr/lib/$(MACHINE)/fcitx5
 
 .PHONY: help build prepare debug dev-install dev-uninstall install \
-	uninstall restart test clean log log-js log-history
+	uninstall remove-icon-links restart test clean log log-js log-history
 .DEFAULT_GOAL := help
 
 # Window for `make log-history`, systemd time syntax (override:
@@ -104,6 +107,7 @@ dev-uninstall:
 	rm -f $(USER_SHARE)/macishtype/hostglue.js
 	rm -rf $(USER_SHARE)/macishtype/tables
 	rm -f $(HOME)/.local/share/locale/*/LC_MESSAGES/fcitx5-macishtype.mo
+	$(MAKE) remove-icon-links
 	@rmdir $(USER_SHARE)/macishtype/engines $(USER_SHARE)/macishtype \
 	    2> /dev/null || true
 
@@ -160,7 +164,22 @@ uninstall:
 	sudo xargs rm -f < $(BUILD_DIR)/install_manifest.txt
 	@sudo rmdir /usr/share/fcitx5/macishtype/tables \
 	    /usr/share/fcitx5/macishtype 2> /dev/null || true
+	$(MAKE) remove-icon-links
 	$(MAKE) restart
+
+# The addon links engine icons into the user's icon theme at runtime, so they
+# are in no install manifest and its own startup sweep can no longer reach them
+# once it is uninstalled; both uninstall paths call this. Only symlinks are
+# removed, matching that sweep.
+#
+# Never run this against a live install: the addon serves panels the theme
+# NAME, so deleting the links makes every panel show a missing icon — worse
+# than before, and the next reload recreates them anyway. To go back to
+# path-served icons, stop the addon from serving names first (uninstall, or
+# revert and restart), then clean up here.
+remove-icon-links:
+	@find $(ICON_LINK_DIR) -maxdepth 3 -mindepth 3 -type l \
+	    -name 'macishtype-*' -delete 2> /dev/null || true
 
 # Acceptance suite against an isolated fcitx5; safe to run any time.
 test: build
@@ -186,6 +205,7 @@ test: build
 	test/textcodec.sh
 	test/reverselookup.sh
 	test/modules.sh
+	test/icontheme.sh
 
 clean:
 	rm -rf $(BUILD_DIR)

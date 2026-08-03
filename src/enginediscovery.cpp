@@ -37,6 +37,22 @@ std::filesystem::path storageRootForEngine(const std::string &id,
     return (errorCode ? root : canonicalRoot) / "_storage";
 }
 
+// The manifest declares an extensionless base name; each host appends its
+// platform's suffixes. First match wins, so a recolorable symbolic variant
+// beats plain ones when an engine ships several. Kind travels with the suffix
+// so the two can never drift apart.
+struct IconSuffix {
+    const char *suffix;
+    IconKind kind;
+};
+constexpr IconSuffix kIconSuffixes[] = {
+    {"-symbolic.svg", IconKind::SymbolicSvg},
+    {".svg", IconKind::Svg},
+    {".png", IconKind::Png},
+};
+
+} // namespace
+
 bool isValidEngineId(const std::string &name) {
     if (name.empty()) {
         return false;
@@ -47,16 +63,9 @@ bool isValidEngineId(const std::string &name) {
     });
 }
 
-} // namespace
-
 std::vector<std::string>
 iconCandidatePaths(const std::filesystem::path &root,
                    const std::string &icon) {
-    // The manifest declares an extensionless base name; each host appends
-    // its platform's suffixes. First match wins, so a recolorable symbolic
-    // variant beats plain ones when an engine ships several.
-    static constexpr const char *kSuffixes[] = {"-symbolic.svg", ".svg",
-                                                ".png"};
     std::error_code errorCode;
     auto canonicalRoot = std::filesystem::canonical(root, errorCode);
     if (errorCode) {
@@ -64,22 +73,25 @@ iconCandidatePaths(const std::filesystem::path &root,
     }
     const std::string base = icon.empty() ? "icon" : icon;
     std::vector<std::string> candidates;
-    for (const char *suffix : kSuffixes) {
-        candidates.push_back((canonicalRoot / (base + suffix)).string());
+    for (const auto &candidate : kIconSuffixes) {
+        candidates.push_back(
+            (canonicalRoot / (base + candidate.suffix)).string());
     }
     return candidates;
 }
 
-std::string resolveIconPath(const std::filesystem::path &root,
-                            const std::string &icon) {
+ResolvedIcon resolveIcon(const std::filesystem::path &root,
+                         const std::string &icon) {
     std::error_code errorCode;
     auto canonicalRoot = std::filesystem::canonical(root, errorCode);
     if (errorCode) {
         return {};
     }
     auto rootPrefix = canonicalRoot.string() + "/";
-    for (const auto &candidate : iconCandidatePaths(root, icon)) {
-        auto path = std::filesystem::canonical(candidate, errorCode);
+    const std::string base = icon.empty() ? "icon" : icon;
+    for (const auto &candidate : kIconSuffixes) {
+        auto path = std::filesystem::canonical(
+            canonicalRoot / (base + candidate.suffix), errorCode);
         if (errorCode || !std::filesystem::is_regular_file(path, errorCode)) {
             continue;
         }
@@ -90,7 +102,7 @@ std::string resolveIconPath(const std::filesystem::path &root,
                               << path;
             continue;
         }
-        return path.string();
+        return {path.string(), candidate.kind};
     }
     // Silence is correct for the probe of the implicit default; only a
     // base the manifest asked for deserves a warning.
@@ -115,8 +127,16 @@ buildEngineInfo(const std::string &id, const std::filesystem::path &fullPath,
                           << fullPath;
         return std::nullopt;
     }
-    EngineInfo engine{id, fullPath, std::move(*manifest), {}, {}};
-    engine.iconPath = resolveIconPath(engine.root, engine.manifest.icon);
+    // Assigned field by field: positional aggregate init would silently
+    // misalign the moment EngineInfo gains or reorders a member.
+    EngineInfo engine;
+    engine.id = id;
+    engine.root = fullPath;
+    engine.manifest = std::move(*manifest);
+    engine.icon = resolveIcon(engine.root, engine.manifest.icon);
+    // Discovery serves the resolved path; the addon overwrites this with an
+    // icon-theme name once it has installed one.
+    engine.iconName = engine.icon.path;
     auto userEngines =
         fcitx::StandardPaths::global().userDirectory(
             fcitx::StandardPathsType::PkgData) /

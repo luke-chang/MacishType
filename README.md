@@ -102,14 +102,29 @@ defaults to the full display name, which fcitx5 shortens per surface — one
 CJK glyph or two Latin letters in the status area, the full text in the
 input-method switch popup) and `icon` (an extensionless base name inside
 the engine folder, default `icon`). The addon probes
-`<icon>-symbolic.svg`, `<icon>.svg`, then `<icon>.png` and serves the
-first match to panels by absolute path — nothing is installed
-into an icon theme. A `-symbolic.svg` gets recolored to the panel
-foreground by the desktop; `scripts/generate-icon.py` bakes such a badge
-(macOS-style rounded rectangle with the glyph knocked out, carrying both
-the GNOME and KDE recoloring conventions) from a glyph. Both fields apply
-live on hot reload. Note that `fcitx5-configtool` lists icons by
-theme-name lookup only, so path-served icons do not show there.
+`<icon>-symbolic.svg`, `<icon>.svg`, then `<icon>.png` and takes the first
+match. A `-symbolic.svg` gets recolored to the panel foreground by the
+desktop; `scripts/generate-icon.py` bakes such a badge (macOS-style rounded
+rectangle with the glyph knocked out, carrying both the GNOME and KDE
+recoloring conventions) from a glyph. Both fields apply live on hot reload.
+
+An SVG match is linked into the user's icon theme as
+`$XDG_DATA_HOME/icons/hicolor/scalable/apps/macishtype-<engine>[-symbolic].svg`
+and panels are served that **name** rather than a file path. The name is what
+makes the icon portable: panels reached over SNI/dbusmenu — which is how
+GNOME's AppIndicator support draws the input-method menu — only accept a theme
+name in their icon field and render a path as a missing-icon glyph.
+`fcitx5-configtool` also lists icons by theme-name lookup, so engine icons now
+show there too. Three consequences worth knowing:
+
+- A **PNG** match keeps the absolute path: the theme requires bitmaps to sit in
+  size-named directories, and an off-size or non-square PNG has no legal home
+  there. Ship an SVG if the icon should appear on every panel.
+- A **newly added** engine's icon can take a few seconds to appear: desktops
+  do not notice a file added to an icon directory they already scanned, so the
+  addon bumps the search path's mtime to make them rescan.
+- Stale links are cleaned up at startup. Only symlinks this addon created are
+  ever removed — a file you put there under the same name is left alone.
 
 Engine folders hot-reload:
 editing an engine's files (or fixing a broken one) applies on the next
