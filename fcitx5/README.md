@@ -57,9 +57,8 @@ git submodule update --init --recursive     # existing checkout
      `/usr` (asks for sudo), and restarts fcitx5.
 2. Add engines: drop or symlink engine folders into
    `~/.local/share/fcitx5/macishtype/engines/<name>/`. The folder name is the
-   engine's identity and must be lowercase `[a-z0-9_-]` — anything else is
-   skipped at discovery. Symlinks are fine (and are the intended dev
-   workflow):
+   engine's identity and must be `[A-Za-z0-9_-]` — anything else is skipped
+   at discovery. Symlinks are fine (and are the intended dev workflow):
 
    ```sh
    mkdir -p ~/.local/share/fcitx5/macishtype/engines

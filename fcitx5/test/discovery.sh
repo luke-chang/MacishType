@@ -18,7 +18,7 @@ log=/tmp/fcitx5-macishtype-discovery.log
 client_out=/tmp/fcitx5-macishtype-discovery-client.log
 data_home="$(mktemp -d)"
 data_home2="$(mktemp -d)"
-engine_dir="$data_home/fcitx5/macishtype/engines/dynfixture"
+engine_dir="$data_home/fcitx5/macishtype/engines/dynFixture"
 trap 'rm -rf "$data_home" "$data_home2"' EXIT
 
 write_engine() {
@@ -53,8 +53,8 @@ ISOLATED_LOG="$log" ISOLATED_DATA_HOME="$data_home" \
     sleep:2000 \
     checkupdate \
     refresh \
-    "setgroupims:keyboard-us,macishtype-fixture,macishtype-dynfixture" \
-    switchim:macishtype-dynfixture \
+    "setgroupims:keyboard-us,macishtype-fixture,macishtype-dynFixture" \
+    switchim:macishtype-dynFixture \
     a \
     sleep:2500 \
     a \
@@ -152,11 +152,11 @@ ordered "the deferred edit keeps the old table until Refresh" \
 ordered "Escape clears the prompt" \
     '"text": "Engine load failed"' '"event": "preedit", "text": ""'
 
-check "runtime discovery is logged" "$flog" 'Engine discovered: dynfixture'
+check "runtime discovery is logged" "$flog" 'Engine discovered: dynFixture'
 check "the deferred reload is logged" "$flog" \
-    'reload deferred to the next update: dynfixture'
+    'reload deferred to the next update: dynFixture'
 check "the folder removal is logged" "$flog" \
-    'Engine folder removed: dynfixture'
+    'Engine folder removed: dynFixture'
 
 # A new folder whose manifest does not parse must keep the update affordance
 # live: fixing the manifest in place does NOT change the engines/ mtime, so

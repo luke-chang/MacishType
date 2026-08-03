@@ -22,7 +22,7 @@ struct ResolvedIcon {
 };
 
 struct EngineInfo {
-    // Folder name under the engines directory; lowercase [a-z0-9_-] only.
+    // Folder name under the engines directory; [A-Za-z0-9_-] only.
     // Doubles as the stable identity: the input method unique name is
     // "macishtype-<id>" and per-engine data is keyed by it.
     std::string id;

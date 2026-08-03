@@ -58,8 +58,8 @@ bool isValidEngineId(const std::string &name) {
         return false;
     }
     return std::all_of(name.begin(), name.end(), [](char ch) {
-        return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
-               ch == '_' || ch == '-';
+        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+               (ch >= '0' && ch <= '9') || ch == '_' || ch == '-';
     });
 }
 
@@ -169,8 +169,8 @@ discoverEngines(const std::vector<std::string> &languages,
         std::string id(u8id.begin(), u8id.end());
         if (!isValidEngineId(id)) {
             MACISHTYPE_WARN()
-                << "Skipping engine folder with invalid name (want lowercase "
-                   "[a-z0-9_-]): "
+                << "Skipping engine folder with invalid name (want "
+                   "[A-Za-z0-9_-]): "
                 << fullPath;
             continue;
         }
