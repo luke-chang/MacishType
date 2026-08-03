@@ -19,9 +19,11 @@ target_link_libraries(macishtype PRIVATE Fcitx5::Core Fcitx5::Module::Notificati
     Fontconfig::Fontconfig ICU::i18n ICU::uc)
 install(TARGETS macishtype DESTINATION "${FCITX_INSTALL_LIBDIR}/fcitx5")
 
+# The runtime assets are shared across platforms and live at the repo level,
+# one directory above this platform's CMake source root.
 install(FILES
-    "${CMAKE_SOURCE_DIR}/runtime/hostglue.js"
-    "${CMAKE_SOURCE_DIR}/runtime/runtime.js"
+    "${CMAKE_SOURCE_DIR}/../runtime/hostglue.js"
+    "${CMAKE_SOURCE_DIR}/../runtime/runtime.js"
     DESTINATION "${FCITX_INSTALL_PKGDATADIR}/macishtype")
 
 configure_file(macishtype-addon.conf.in macishtype-addon.conf @ONLY)

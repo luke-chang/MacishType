@@ -86,8 +86,8 @@ debug:
 dev-install:
 	install -D -m 755 $(BUILD_DIR)/src/libmacishtype.so $(USER_LIB)/libmacishtype.so
 	install -D -m 644 $(BUILD_DIR)/src/macishtype-addon.conf $(USER_SHARE)/addon/macishtype.conf
-	install -D -m 644 runtime/runtime.js $(USER_SHARE)/macishtype/runtime.js
-	install -D -m 644 runtime/hostglue.js $(USER_SHARE)/macishtype/hostglue.js
+	install -D -m 644 ../runtime/runtime.js $(USER_SHARE)/macishtype/runtime.js
+	install -D -m 644 ../runtime/hostglue.js $(USER_SHARE)/macishtype/hostglue.js
 	@mkdir -p $(USER_SHARE)/macishtype/engines
 	install -D -m 644 $(BUILD_DIR)/po/zh_TW.mo \
 	    $(HOME)/.local/share/locale/zh_TW/LC_MESSAGES/fcitx5-macishtype.mo
