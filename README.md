@@ -15,6 +15,7 @@ runs unmodified on the Linux host, a fcitx5 addon in [`fcitx5/`](fcitx5/).
 - [`engines/`](engines/) — cross-platform JavaScript engines and the engine contract ([`README.md`](engines/README.md), mirrored in TypeScript by [`utils/MacishType.d.ts`](engines/utils/MacishType.d.ts))
 - [`runtime/`](runtime/) — the JavaScript runtime bootstrap every host loads before an engine
 - [`scripts/`](scripts/) — the shared external-resources pipeline; `make prepare` on either platform downloads the pinned data tables into `tables/` at the repo root (gitignored)
+- [`artwork/`](artwork/) — archival originals of the app icon, kept for reference
 
 ## Start here
 
