@@ -68,7 +68,7 @@ def main():
         if picked:
             lines.append(f"{prefix}\t{' '.join(picked)}")
 
-    with open(output_path, "w", encoding="utf-8") as output:
+    with open(output_path, "w", encoding="utf-8", newline="\n") as output:
         output.write("\n".join(header + lines) + "\n")
     print(f"wrote {len(lines)} prefixes", file=sys.stderr)
 

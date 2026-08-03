@@ -86,6 +86,9 @@ def read_lock():
             if not line or line.startswith("#"):
                 continue
             fields = line.split()
+            if len(fields) < 3:
+                fail("✗ Malformed lock line (want: <output> <url>"
+                     f" <processor|-> [section]): {line}")
             out, url, proc = fields[0], fields[1], fields[2]
             section = fields[3] if len(fields) > 3 else ""
             entries.append((out, url, proc, section))
@@ -158,13 +161,15 @@ def write_atomically(path, write_payload):
 
 
 def prune_downloads(entries):
-    """Delete cached downloads whose URL is no longer referenced by the lock,
-    plus any leftover partial *.tmp* files."""
+    """Delete settled cached downloads whose URL is no longer referenced by
+    the lock. In-flight *.tmp.<pid> files belong to whichever run created
+    them (a concurrent prepare may still be writing one); each run cleans up
+    its own, and --clean sweeps any orphan."""
     if not os.path.isdir(DOWNLOADS_DIR):
         return
     valid = {sha1_bytes(url.encode()) for _, url, _, _ in entries}
     for name in os.listdir(DOWNLOADS_DIR):
-        if ".tmp" in name or name not in valid:
+        if ".tmp" not in name and name not in valid:
             os.remove(os.path.join(DOWNLOADS_DIR, name))
 
 
@@ -218,8 +223,13 @@ def mode_prepare(entries):
                             open(tmp, "wb") as sink:
                         shutil.copyfileobj(response, sink)
                 write_atomically(cached, download)
-            except (urllib.error.URLError, OSError):
+            except urllib.error.HTTPError as error:
+                fail(f"✗ Download failed ({error.code} {error.reason}): {url}",
+                     "  Check the pinned URL — the lock may point at a"
+                     " path that no longer exists upstream.")
+            except (urllib.error.URLError, OSError) as error:
                 fail(f"✗ Failed to download {url}",
+                     f"  {error}",
                      "  Check your network connection and retry"
                      " `make prepare`.")
         if proc == "-":
@@ -227,19 +237,23 @@ def mode_prepare(entries):
                              lambda tmp: shutil.copyfile(cached, tmp))
         else:
             # A 4th lock column passes an extra argument to the processor
-            # (e.g. which section of a multi-section source to extract).
-            argv = [sys.executable, os.path.join(SCRIPT_DIR, proc),
-                    cached, out_path(out), url]
-            if section:
-                argv.append(section)
-            if subprocess.run(argv).returncode != 0:
-                fail(f"✗ Processor failed: scripts/{proc} (for {out})")
+            # (e.g. which section of a multi-section source to extract). The
+            # processor writes to a sibling tempfile; the rename here makes
+            # every processor's output atomic without each implementing it.
+            def run_processor(tmp):
+                argv = [sys.executable, os.path.join(SCRIPT_DIR, proc),
+                        cached, tmp, url]
+                if section:
+                    argv.append(section)
+                if subprocess.run(argv).returncode != 0:
+                    fail(f"✗ Processor failed: scripts/{proc} (for {out})")
+            write_atomically(out_path(out), run_processor)
         new_stamp.append((out, kh))
 
     # Install the new stamp atomically (only current-lock entries), then drop
     # cached downloads no longer referenced by the lock.
     def dump_stamp(tmp):
-        with open(tmp, "w", encoding="utf-8") as stamp:
+        with open(tmp, "w", encoding="utf-8", newline="\n") as stamp:
             for out, kh in new_stamp:
                 stamp.write(f"{out}\t{kh}\n")
     write_atomically(STAMP, dump_stamp)
@@ -287,7 +301,7 @@ def mode_update(entries):
         return
 
     def dump_lock(tmp):
-        with open(tmp, "w", encoding="utf-8") as lock:
+        with open(tmp, "w", encoding="utf-8", newline="\n") as lock:
             lock.write(text)
     write_atomically(LOCK, dump_lock)
     print("\n→ Running --prepare to apply updates...")
@@ -327,7 +341,7 @@ def main():
     if mode in ("-h", "--help", "help", ""):
         print(HELP, end="")
         return
-    if mode not in ("--check", "check", "--prepare", "--update", "--clean"):
+    if mode not in ("--check", "--prepare", "--update", "--clean"):
         print(f"Unknown command: {mode}\n", file=sys.stderr)
         print(HELP, end="", file=sys.stderr)
         sys.exit(2)
@@ -335,7 +349,7 @@ def main():
     if not os.path.isfile(LOCK):
         fail(f"✗ Lock file not found: {LOCK}")
     entries = read_lock()
-    if mode in ("--check", "check"):
+    if mode == "--check":
         mode_check(entries)
     elif mode == "--prepare":
         mode_prepare(entries)

@@ -19,11 +19,10 @@ TABLES = [
 
 
 def main():
-    if not all(os.path.isfile(os.path.join(REPO_ROOT, "tables", table))
-               for table in TABLES):
-        print("→ Some source tables are missing; running the resource"
+    driver = os.path.join(REPO_ROOT, "scripts", "external-resources.py")
+    if subprocess.run([sys.executable, driver, "--check"]).returncode:
+        print("→ Tables are missing or stale; running the resource"
               " pipeline...")
-        driver = os.path.join(REPO_ROOT, "scripts", "external-resources.py")
         if subprocess.run([sys.executable, driver, "--prepare"]).returncode:
             sys.exit(1)
     for table in TABLES:

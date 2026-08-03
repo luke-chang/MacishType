@@ -54,7 +54,7 @@ def main():
     ]
     lines = [f"{symbol}\t{names[symbol]}"
              for symbol in sorted(names, key=lambda s: (ord(s[0]), s))]
-    with open(output_path, "w", encoding="utf-8") as output:
+    with open(output_path, "w", encoding="utf-8", newline="\n") as output:
         output.write("\n".join(header + lines) + "\n")
     print(f"wrote {len(lines)} entries, {overlaid} overridden",
           file=sys.stderr)

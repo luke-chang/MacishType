@@ -168,10 +168,8 @@ def main():
         *entries,
     ]) + "\n"
     try:
-        tmp = f"{output_path}.tmp.{os.getpid()}"
-        with open(tmp, "w", encoding="utf-8") as sink:
+        with open(output_path, "w", encoding="utf-8", newline="\n") as sink:
             sink.write(output)
-        os.replace(tmp, output_path)
     except OSError as error:
         print(f"✗ Cannot write {output_path}: {error}", file=sys.stderr)
         sys.exit(1)

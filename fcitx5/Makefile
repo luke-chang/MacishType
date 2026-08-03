@@ -12,8 +12,9 @@ ICON_LINK_DIR := $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)/ic
 # system directory must stay listed.
 ADDON_DIRS := $(USER_LIB):/usr/lib/$(MACHINE)/fcitx5
 
-.PHONY: help build prepare debug dev-install dev-uninstall install \
-	uninstall remove-icon-links restart test clean log log-js log-history
+.PHONY: help build prepare update-resources clean-resources debug \
+	dev-install dev-uninstall install uninstall remove-icon-links restart \
+	test clean log log-js log-history
 .DEFAULT_GOAL := help
 
 # Window for `make log-history`, systemd time syntax (override:
@@ -49,6 +50,8 @@ help:
 	@echo ""
 	@echo "  make build          - CMake configure + build"
 	@echo "  make prepare        - Sync pinned module data tables"
+	@echo "  make update-resources - Bump pinned upstream SHAs and re-prepare"
+	@echo "  make clean-resources  - Remove downloaded tables and cache/stamp"
 	@echo "  make test           - Acceptance suite against an isolated fcitx5"
 	@echo "  make debug          - prepare + build + dev-install + restart"
 	@echo "  make dev-install    - Install into ~/.local (no restart)"
@@ -73,6 +76,12 @@ build:
 prepare:
 	../scripts/external-resources.py --prepare
 
+update-resources:
+	@../scripts/external-resources.py --update
+
+clean-resources:
+	@../scripts/external-resources.py --clean
+
 # Development install into ~/.local plus a fcitx5 restart. Restarting
 # interrupts typing in the current session — run this yourself.
 debug:
@@ -82,8 +91,10 @@ debug:
 	$(MAKE) restart
 
 # User-dir install; no root needed. Engine folders go into
-# ~/.local/share/fcitx5/macishtype/engines/<name>/.
+# ~/.local/share/fcitx5/macishtype/engines/<name>/. The freshness check keeps
+# stale data tables from being copied silently (`make prepare` to sync).
 dev-install:
+	@../scripts/external-resources.py --check
 	install -D -m 755 $(BUILD_DIR)/src/libmacishtype.so $(USER_LIB)/libmacishtype.so
 	install -D -m 644 $(BUILD_DIR)/src/macishtype-addon.conf $(USER_SHARE)/addon/macishtype.conf
 	install -D -m 644 ../runtime/runtime.js $(USER_SHARE)/macishtype/runtime.js

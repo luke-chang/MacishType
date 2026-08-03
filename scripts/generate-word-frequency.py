@@ -36,7 +36,7 @@ def main():
         "external-resources - DO NOT EDIT",
         "",
     ]
-    with open(output_path, "w", encoding="utf-8") as output:
+    with open(output_path, "w", encoding="utf-8", newline="\n") as output:
         output.write("\n".join(header + entries) + "\n")
     print(f"wrote {len(entries)} entries", file=sys.stderr)
 
