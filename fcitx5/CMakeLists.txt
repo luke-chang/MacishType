@@ -57,6 +57,11 @@ set(CPACK_SET_DESTDIR ON)
 set(CPACK_STRIP_FILES ON)
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "MacishType JavaScript input method engines for fcitx5")
+set(CPACK_PACKAGE_DESCRIPTION
+    "Runs input method engines written in JavaScript against the MacishType \
+contract on an embedded quickjs-ng runtime. Every engine folder becomes its \
+own fcitx5 input method, with hot reload and native settings.")
+set(CPACK_PACKAGE_VENDOR "Luke Chang")
 set(CPACK_PACKAGE_CONTACT "Luke Chang <luke1209@gmail.com>")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/luke-chang/MacishType")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
@@ -69,5 +74,11 @@ set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5, fcitx5-modules")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
     "fcitx5-module-chttrans, fcitx5-module-fullwidth")
 set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+# RPM-family distributions ship the capability modules in one package.
 set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5")
+set(CPACK_RPM_PACKAGE_RECOMMENDS "fcitx5-chinese-addons")
+# The install rules carry fcitx5-derived absolute paths; declaring the
+# package non-relocatable silences CPackRPM's warning about them.
+set(CPACK_RPM_PACKAGE_RELOCATABLE OFF)
 include(CPack)

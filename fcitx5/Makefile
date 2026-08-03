@@ -2,7 +2,9 @@
 # real build system is CMake; see README.md.
 
 BUILD_DIR := build
-MACHINE := $(shell gcc -dumpmachine 2> /dev/null || echo x86_64-linux-gnu)
+# Build parallelism; empty lets ninja decide. Low-memory machines want
+# JOBS=2 — full parallelism can starve the compiler into a crash.
+JOBS ?=
 USER_LIB := $(HOME)/.local/lib/fcitx5
 USER_SHARE := $(HOME)/.local/share/fcitx5
 # Where the addon links engine icons at runtime (XDG data home, not fcitx's
@@ -10,7 +12,7 @@ USER_SHARE := $(HOME)/.local/share/fcitx5
 ICON_LINK_DIR := $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)/icons/hicolor
 # FCITX_ADDON_DIRS replaces fcitx5's default addon search path, so the
 # system directory must stay listed.
-ADDON_DIRS := $(USER_LIB):/usr/lib/$(MACHINE)/fcitx5
+ADDON_DIRS := $(USER_LIB):$(shell test/system-addon-dir.sh)
 
 .PHONY: help build prepare pkg update-resources clean-resources debug \
 	dev-install dev-uninstall install uninstall remove-icon-links restart \
@@ -70,7 +72,7 @@ help:
 
 build:
 	cmake -B $(BUILD_DIR) -G Ninja
-	cmake --build $(BUILD_DIR) -j
+	cmake --build $(BUILD_DIR) -j $(JOBS)
 
 # Module data tables (wordFrequency / symbolNames), pinned in the repo-level
 # scripts/external-resources.lock and shared with the other platforms.
@@ -82,7 +84,7 @@ prepare:
 pkg:
 	$(MAKE) prepare
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
-	cmake --build $(BUILD_DIR) -j
+	cmake --build $(BUILD_DIR) -j $(JOBS)
 	@gen=$$(. /etc/os-release 2> /dev/null; \
 	    case "$$ID $$ID_LIKE" in \
 	        *debian*) echo DEB ;; \
@@ -154,7 +156,7 @@ install:
 	fi
 	$(MAKE) prepare
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
-	cmake --build $(BUILD_DIR) -j
+	cmake --build $(BUILD_DIR) -j $(JOBS)
 	sudo cmake --install $(BUILD_DIR)
 	$(MAKE) restart
 

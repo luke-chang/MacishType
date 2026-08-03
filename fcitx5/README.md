@@ -43,15 +43,26 @@ this host and on the macOS one ([`macos/`](../macos/)).
 - Fcitx5, fontconfig, ICU, and gettext development files
 - `python3` for the data-table pipeline (`make prepare`)
 - `python3-fonttools` for the icon generator (`scripts/generate-icon.py`)
-- Tests additionally need `python3-gi`, `dbus-run-session`, and an installed
-  fcitx5 to run against
+- Tests additionally need `python3-gi`, `dbus-run-session`, an installed
+  fcitx5 to run against, and an available `zh_TW` locale (the suite asserts
+  translated labels)
 
 On Debian/Ubuntu, everything above is:
 
 ```sh
 sudo apt install build-essential cmake ninja-build pkgconf git \
+    fcitx5 fcitx5-module-chttrans fcitx5-module-fullwidth \
     fcitx5-modules-dev libfcitx5core-dev libfontconfig-dev libicu-dev \
     gettext python3 python3-gi python3-fonttools dbus
+```
+
+On Fedora:
+
+```sh
+sudo dnf install gcc-c++ cmake ninja-build pkgconf git gettext \
+    fcitx5 fcitx5-devel fcitx5-chinese-addons \
+    fontconfig-devel libicu-devel rpm-build \
+    python3 python3-gobject python3-fonttools dbus-daemon glibc-langpack-zh
 ```
 
 ## Installation
@@ -103,7 +114,8 @@ with `FCITX_ADDON_DIRS` pointing there.
 
 The dev install only works while that variable is set, and fcitx5's
 autostart won't have it after a re-login. Make it persistent once — adjust
-the home path and the multiarch triplet (`gcc -dumpmachine`) to your system:
+the home path and the system addon directory (`/usr/lib/<multiarch>/fcitx5`
+on Debian-family, `/usr/lib64/fcitx5` on RPM-family) to your system:
 
 ```sh
 cat > ~/.config/environment.d/90-fcitx5-macishtype.conf <<'EOF'

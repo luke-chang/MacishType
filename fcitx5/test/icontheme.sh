@@ -213,8 +213,7 @@ keep_home="$(mktemp -d)"
 gone_home="$(mktemp -d)"
 trap 'rm -rf "$data_home" "$addon_scratch" "$keep_home" "$gone_home"' EXIT
 cp "$HOME/.local/lib/fcitx5/libmacishtype.so" "$addon_scratch/"
-scratch_addon_dirs="$addon_scratch:/usr/lib/$(gcc -dumpmachine 2> /dev/null \
-    || echo x86_64-linux-gnu)/fcitx5"
+scratch_addon_dirs="$addon_scratch:$("$root/test/system-addon-dir.sh")"
 
 ISOLATED_DATA_HOME="$keep_home" ISOLATED_ADDON_DIRS="$scratch_addon_dirs" \
     ISOLATED_LOG="$log" "$root/test/isolated.sh" fixture sleep:200 \
