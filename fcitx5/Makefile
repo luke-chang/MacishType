@@ -100,12 +100,15 @@ dev-install:
 	install -D -m 644 ../runtime/runtime.js $(USER_SHARE)/macishtype/runtime.js
 	install -D -m 644 ../runtime/hostglue.js $(USER_SHARE)/macishtype/hostglue.js
 	@mkdir -p $(USER_SHARE)/macishtype/engines
-	install -D -m 644 $(BUILD_DIR)/po/zh_TW.mo \
-	    $(HOME)/.local/share/locale/zh_TW/LC_MESSAGES/fcitx5-macishtype.mo
-	@if [ -d ../tables ]; then \
-	    mkdir -p $(USER_SHARE)/macishtype/tables; \
-	    cp ../tables/* $(USER_SHARE)/macishtype/tables/; \
-	fi
+	@for mo in $(BUILD_DIR)/po/*.mo; do \
+	    lang=$$(basename $$mo .mo); \
+	    install -D -m 644 $$mo \
+	        $(HOME)/.local/share/locale/$$lang/LC_MESSAGES/fcitx5-macishtype.mo; \
+	done
+	@for t in AssociatedDictionary.zh-Hant.txt WordFrequency.zh-Hant.txt \
+	    SymbolNames.zh-Hant.txt McBopomofo.LICENSE.txt CLDR.LICENSE.txt; do \
+	    install -D -m 644 ../tables/$$t $(USER_SHARE)/macishtype/tables/$$t; \
+	done
 
 # Reverses dev-install but keeps user data (the engines folder). Run this
 # before switching to `make install`: user-dir files shadow the system
