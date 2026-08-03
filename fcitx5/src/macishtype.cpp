@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include <cstdlib>
+#include <dlfcn.h>
 #include <filesystem>
 
 #include <fcitx-config/iniparser.h>
@@ -95,6 +96,13 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
       engines_(discoverEngines(languages_)) {
     MACISHTYPE_INFO() << "Discovered " << engines_.size()
                       << " engine folder(s)";
+    // The path this addon was loaded from; the destructor probes it to tell
+    // an uninstall apart from a plain restart.
+    Dl_info dlInfo;
+    if (dladdr(reinterpret_cast<void *>(&isValidEngineId), &dlInfo) != 0 &&
+        dlInfo.dli_fname != nullptr) {
+        libraryPath_ = dlInfo.dli_fname;
+    }
     fcitx::readAsIni(config_, "conf/macishtype.conf");
     // Registered once; attached per input context only for engines that
     // declare the reverseLookup capability (see attachStatusActions).
@@ -206,6 +214,18 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
                 event.accept();
             }
         });
+}
+
+MacishTypeEngine::~MacishTypeEngine() {
+    // Package removal (apt, make uninstall) cannot reach per-user files, so
+    // the icon links this addon made would outlive it. Detect removal here:
+    // the library this process was loaded from is gone from disk. A normal
+    // restart or logout keeps the file in place and the links stay.
+    std::error_code errorCode;
+    if (iconLinks_ && !libraryPath_.empty() &&
+        !std::filesystem::exists(libraryPath_, errorCode)) {
+        iconLinks_->removeAll();
+    }
 }
 
 std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {

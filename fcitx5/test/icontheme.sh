@@ -205,4 +205,32 @@ ISOLATED_DATA_HOME="$data_home" "$root/test/isolated.sh" fixture iminfo \
 check_shell "the next start sweeps the vanished engine's entry" \
     "[ ! -e '$apps/macishtype-parkme-symbolic.svg' ]"
 
+# --- Uninstall cleanup: at teardown the addon probes whether the library it
+# was loaded from is still on disk. Present (a normal restart): the theme
+# links stay. Gone (the package was removed mid-session): it deletes them. ---
+addon_scratch="$(mktemp -d)"
+keep_home="$(mktemp -d)"
+gone_home="$(mktemp -d)"
+trap 'rm -rf "$data_home" "$addon_scratch" "$keep_home" "$gone_home"' EXIT
+cp "$HOME/.local/lib/fcitx5/libmacishtype.so" "$addon_scratch/"
+scratch_addon_dirs="$addon_scratch:/usr/lib/$(gcc -dumpmachine 2> /dev/null \
+    || echo x86_64-linux-gnu)/fcitx5"
+
+ISOLATED_DATA_HOME="$keep_home" ISOLATED_ADDON_DIRS="$scratch_addon_dirs" \
+    ISOLATED_LOG="$log" "$root/test/isolated.sh" fixture sleep:200 \
+    > /dev/null 2>&1
+check_shell "links survive a shutdown while the library remains on disk" \
+    "ls '$keep_home/icons/hicolor/scalable/apps/' | grep -q '^macishtype-'"
+
+ISOLATED_DATA_HOME="$gone_home" ISOLATED_ADDON_DIRS="$scratch_addon_dirs" \
+    ISOLATED_LOG="$log" "$root/test/isolated.sh" fixture sleep:3000 \
+    > /dev/null 2>&1 &
+client=$!
+sleep 3
+rm "$addon_scratch/libmacishtype.so"
+wait $client
+check_shell "links are removed when the library is gone at shutdown" \
+    "! ls '$gone_home/icons/hicolor/scalable/apps/' 2> /dev/null \
+        | grep -q '^macishtype-'"
+
 echo "Icon-theme checks passed."

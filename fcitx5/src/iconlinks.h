@@ -37,7 +37,14 @@ public:
     // names this addon creates.
     void sweepOrphans();
 
+    // Uninstall cleanup: removes every theme entry this addon's naming owns,
+    // regardless of the live engine set. Same symlink-only rule as the sweep.
+    void removeAll();
+
 private:
+    // Shared walk behind sweepOrphans/removeAll: deletes our symlinks whose
+    // file names are not in `keep`, returning how many went.
+    size_t removeMatching(const std::set<std::string> &keep);
     bool writeLink(const std::filesystem::path &linkPath,
                    const std::string &target);
     void removeEntry(const std::string &fileName);

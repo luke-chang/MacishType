@@ -137,7 +137,6 @@ dev-uninstall:
 	rm -f $(USER_SHARE)/macishtype/hostglue.js
 	rm -rf $(USER_SHARE)/macishtype/tables
 	rm -f $(HOME)/.local/share/locale/*/LC_MESSAGES/fcitx5-macishtype.mo
-	$(MAKE) remove-icon-links
 	@rmdir $(USER_SHARE)/macishtype/engines $(USER_SHARE)/macishtype \
 	    2> /dev/null || true
 
@@ -194,19 +193,16 @@ uninstall:
 	sudo xargs rm -f < $(BUILD_DIR)/install_manifest.txt
 	@sudo rmdir /usr/share/fcitx5/macishtype/tables \
 	    /usr/share/fcitx5/macishtype 2> /dev/null || true
-	$(MAKE) remove-icon-links
 	$(MAKE) restart
 
-# The addon links engine icons into the user's icon theme at runtime, so they
-# are in no install manifest and its own startup sweep can no longer reach them
-# once it is uninstalled; both uninstall paths call this. Only symlinks are
-# removed, matching that sweep.
+# Crash backstop. The addon removes its own icon theme links when it shuts
+# down after being uninstalled out from under a running fcitx5; this manual
+# target covers the one gap — a crash/SIGKILL where that destructor never
+# ran. Only symlinks are removed, matching the addon's own sweep rule.
 #
 # Never run this against a live install: the addon serves panels the theme
 # NAME, so deleting the links makes every panel show a missing icon — worse
-# than before, and the next reload recreates them anyway. To go back to
-# path-served icons, stop the addon from serving names first (uninstall, or
-# revert and restart), then clean up here.
+# than before, and the next reload recreates them anyway.
 remove-icon-links:
 	@find $(ICON_LINK_DIR) -maxdepth 3 -mindepth 3 -type l \
 	    -name 'macishtype-*' -delete 2> /dev/null || true

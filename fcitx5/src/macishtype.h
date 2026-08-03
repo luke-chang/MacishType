@@ -51,6 +51,7 @@ FCITX_CONFIGURATION(
 class MacishTypeEngine final : public fcitx::InputMethodEngineV2 {
 public:
     explicit MacishTypeEngine(fcitx::Instance *instance);
+    ~MacishTypeEngine() override;
 
     std::vector<fcitx::InputMethodEntry> listInputMethods() override;
     // Panels consult these live, unlike the registration-time entry
@@ -181,6 +182,9 @@ private:
     // Installs engine icons into the user's hicolor theme so panels can be
     // served a theme name; see iconlinks.h for why a name beats a path.
     std::unique_ptr<IconLinks> iconLinks_;
+    // Where this addon's library was loaded from; empty when unknown. The
+    // destructor's uninstall probe.
+    std::filesystem::path libraryPath_;
     // Last chttrans enablement pushed to / observed for each engine with an
     // available outputToSimplified toggle, keyed by engine id; the delta
     // detector behind reconcileChttransToggles().

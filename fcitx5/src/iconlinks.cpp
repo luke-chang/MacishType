@@ -188,9 +188,6 @@ std::string IconLinks::install(const std::string &engineId,
 }
 
 void IconLinks::sweepOrphans() {
-    if (iconsRoot_.empty()) {
-        return;
-    }
     // Whatever is installed right now is what stays; deriving the keep set from
     // the live entries (rather than from the engine list) also drops the old
     // file name after an engine switched icon variants.
@@ -198,14 +195,36 @@ void IconLinks::sweepOrphans() {
     for (const auto &[engineId, fileName] : installed_) {
         keep.insert(fileName);
     }
+    size_t removed = removeMatching(keep);
+    if (removed != 0) {
+        MACISHTYPE_INFO() << "Removed " << removed
+                          << " stale icon theme entr"
+                          << (removed == 1 ? "y" : "ies");
+        scheduleRefresh();
+    }
+}
 
+void IconLinks::removeAll() {
+    size_t removed = removeMatching({});
+    installed_.clear();
+    targetMtimes_.clear();
+    if (removed != 0) {
+        MACISHTYPE_INFO() << "Removed " << removed << " icon theme entr"
+                          << (removed == 1 ? "y" : "ies") << " on uninstall";
+    }
+}
+
+size_t IconLinks::removeMatching(const std::set<std::string> &keep) {
+    if (iconsRoot_.empty()) {
+        return 0;
+    }
     std::error_code errorCode;
     auto hicolor = iconsRoot_ / "hicolor";
     // Every size directory, not just scalable/: a link written by an older
     // version (or by hand) should still be cleaned up.
     std::filesystem::directory_iterator sizes(hicolor, errorCode);
     if (errorCode) {
-        return;
+        return 0;
     }
     size_t removed = 0;
     for (const auto &size : sizes) {
@@ -235,12 +254,7 @@ void IconLinks::sweepOrphans() {
             }
         }
     }
-    if (removed != 0) {
-        MACISHTYPE_INFO() << "Removed " << removed
-                          << " stale icon theme entr"
-                          << (removed == 1 ? "y" : "ies");
-        scheduleRefresh();
-    }
+    return removed;
 }
 
 void IconLinks::scheduleRefresh() {

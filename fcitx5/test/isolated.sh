@@ -60,7 +60,9 @@ Layout=
 0=Default
 EOF
 
-export FCITX_ADDON_DIRS="$HOME/.local/lib/fcitx5:/usr/lib/$(gcc -dumpmachine 2>/dev/null || echo x86_64-linux-gnu)/fcitx5"
+# ISOLATED_ADDON_DIRS lets a test load the addon from a scratch copy (the
+# uninstall-cleanup test deletes it mid-run).
+export FCITX_ADDON_DIRS="${ISOLATED_ADDON_DIRS:-$HOME/.local/lib/fcitx5:/usr/lib/$(gcc -dumpmachine 2>/dev/null || echo x86_64-linux-gnu)/fcitx5}"
 # Fixture engines join through the system XDG layer, so tests never write
 # into the user's engine folders. The isolated data home takes the user layer
 # (a writable engines layer for tests that mutate folders there), and the real
