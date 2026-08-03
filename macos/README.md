@@ -59,6 +59,7 @@ Same as the [Installation](#installation) flow above, but use `make debug` inste
 After a code change:
 
 - `make debug` — rebuild and reinstall in one step.
+- `make test` — run the unit tests.
 - `make log` — stream live OSLog output from the input method.
 - `make log-js` — stream JS-originated logs (engine `console.*`, uncaught exceptions, rejections).
 - `make log-history` — show recent log history (default 1h; override with `LOG_SHOW_LAST=24h`).

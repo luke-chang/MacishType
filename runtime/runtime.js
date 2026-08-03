@@ -1,13 +1,10 @@
 // Global APIs for JavaScript engines, auto-evaluated by the bridge before
 // engine code so engines use these without importing anything.
 //
-// Currently: console.{log,info,debug,warn,error} → Swift OSLog.
-// Future: file I/O, etc.
+// Currently: console.{log,info,debug,warn,error}, mapped by each host to
+// its native log levels. Future: file I/O, etc.
 //
-// JS console levels → OSLog:
-//   log/info → .info       warn  → .notice
-//   debug    → .debug      error → .error
-// .fault is reserved for the bridge itself; engines reach it only via
+// "fault" is reserved for the bridge itself; engines reach it only via
 // __MacishType_log("fault", ...), not part of the public API.
 
 function __MacishType_format(args) {

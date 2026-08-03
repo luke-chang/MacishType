@@ -1,13 +1,20 @@
 # MacishType
 
-An input method that replicates the macOS system look and feel, extensible via external JavaScript engines, on macOS and Linux. Engines are plain JavaScript shared across platforms through a single contract; each platform ships a native host that runs them.
+A macOS input method that replicates the native input experience — a
+system-look candidate window, built-in input methods (currently Array 行列),
+and user extension through external JavaScript engines and drop-in `.cin`
+tables.
+
+The JavaScript engine contract is cross-platform: the same engine folder
+runs unmodified on the Linux host, a fcitx5 addon in [`fcitx5/`](fcitx5/).
 
 ## Repository layout
 
 - [`macos/`](macos/) — the macOS input method: InputMethodKit host, candidate window, Settings UI, and build system
 - [`fcitx5/`](fcitx5/) — the Linux input method: fcitx5 addon, QuickJS engine host, and build system
-- [`engines/`](engines/) — cross-platform JavaScript engines and the engine contract ([`utils/MacishType.d.ts`](engines/utils/MacishType.d.ts))
+- [`engines/`](engines/) — cross-platform JavaScript engines and the engine contract ([`README.md`](engines/README.md), mirrored in TypeScript by [`utils/MacishType.d.ts`](engines/utils/MacishType.d.ts))
 - [`runtime/`](runtime/) — the JavaScript runtime bootstrap every host loads before an engine
+- [`scripts/`](scripts/) — the shared external-resources pipeline; `make prepare` on either platform downloads the pinned data tables into `tables/` at the repo root (gitignored)
 
 ## Start here
 

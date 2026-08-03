@@ -1,6 +1,7 @@
 // Type definitions for JavaScript engines loaded by MacishType.
 //
-// MacishType bridges to user-supplied engines via JavaScriptCore. The
+// MacishType hosts bridge to user-supplied engines through an embedded
+// JavaScript runtime (JavaScriptCore on macOS, QuickJS on fcitx5). The
 // engine module's default export is duck-typed: the host calls each
 // method only if defined, so every member of `InputEngine` is optional.
 //

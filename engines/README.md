@@ -1,9 +1,12 @@
 # Writing a MacishType JavaScript engine
 
-A MacishType JavaScript engine is a folder picked by the user through
-**Settings → JS → Engine folder → Choose Folder…**. The host loads the folder
-via a security-scoped bookmark and watches it with FSEvents; while automatic
-reloading is on (the default), edits show up without a relaunch.
+A MacishType JavaScript engine is a folder the host loads and watches;
+while automatic reloading is on (the default), edits show up without a
+relaunch. How the folder reaches the host is per platform: on macOS the
+user picks it through **Settings → JS → Engine folder → Choose Folder…**
+(loaded via a security-scoped bookmark, watched with FSEvents); on fcitx5
+it sits in — or is symlinked into —
+`~/.local/share/fcitx5/macishtype/engines/<name>/` (watched with inotify).
 
 ## Required layout
 
@@ -83,17 +86,20 @@ Currently only supported by fcitx5-macishtype.
 
 ### `intendedLanguage` (optional)
 
-BCP 47 language tag declaring the language this engine targets. Overrides the
-`TISIntendedLanguage` the host declares for the engine slot in Info.plist —
-useful because that slot value is fixed at install time and can't change at
-runtime, while a loaded engine may target a different language.
+BCP 47 language tag declaring the language this engine targets. Each host
+falls back to its own default when the field is omitted: on macOS the
+`TISIntendedLanguage` declared for the engine slot in Info.plist (fixed at
+install time, so declaring the field is how a loaded engine targets a
+different language); on fcitx5 there is no per-slot value and the resolved
+language stays empty — the engine still types fine, but the language-keyed
+features (the `symbolNames` / `wordFrequency` module tables, the host's
+associated-words dictionary, the `outputToSimplified` gate) stay off.
 
-Use the **Apple / in-bundle localization** convention — the same tags as your
-`Localizable` map keys and the host's `TISIntendedLanguage` (language + script,
-e.g. `zh-Hant`, `en`, `ja`). This is **not** the region style that
-`navigator.language` reports (`zh-TW`); the two describe different things
-(engine target vs. user preference) and the host matches this value exactly,
-so `zh-TW` would not resolve. Omitting the field keeps the plist value.
+Use the **in-bundle localization** convention — the same tags as your
+`Localizable` map keys (language + script, e.g. `zh-Hant`, `en`, `ja`). This
+is **not** the region style that `navigator.language` reports (`zh-TW`); the
+two describe different things (engine target vs. user preference) and the
+host matches this value exactly, so `zh-TW` would not resolve.
 
 Currently consumed by the associated-mode dictionary lookup (see
 [`system`](#system)); future host features may read it too.
@@ -156,7 +162,7 @@ parsing the data yourself. Each field is a boolean; `true` requests that module.
 
 `symbolNames` / `wordFrequency` are static tables picked by the engine's
 *resolved* [`intendedLanguage`](#intendedlanguage-optional) — the manifest field if
-declared, otherwise the host's plist `TISIntendedLanguage`. `fontCoverage` is
+declared, otherwise the host's default (see that section). `fontCoverage` is
 computed live from installed fonts (locale-independent) and stays current: when
 fonts are installed/removed `query` reflects the new coverage with no reload,
 and a [`fontcoveragechange`](#event-fontcoveragechange) event fires.
@@ -295,7 +301,7 @@ flag is tri-state:
 - **`false`** — unavailable even for `zh-Hant`.
 
 A malformed value is treated as undeclared (back to the language gate) and
-logged via OSLog. While available, the live value is readable and writable
+logged. While available, the live value is readable and writable
 from JS via [`manifest.toggle`](#manifesttoggle), and changes from the IME
 menu fire [`togglechange`](#event-togglechange). There is no method to
 implement.
@@ -399,7 +405,7 @@ When `enableAssociatedMode` is on, calling `event.enterAssociatedMode(heldChar)`
 without a second argument falls back to the host's `AssociatedDictionary`
 dictionary keyed by the engine's resolved language — the manifest
 [`intendedLanguage`](#intendedlanguage-optional) if declared, otherwise the
-plist `TISIntendedLanguage`.
+host's default (see that section).
 
 If the host bundles no `AssociatedDictionary.<locale>.txt` for that resolved
 language, the system field is treated as if it were never declared: the toggle
@@ -418,8 +424,9 @@ locale map:
 "label": { "en": "Show associated words", "zh-Hant": "顯示關聯字" }
 ```
 
-Resolution order: `Bundle.main.preferredLocalizations` → `"en"` →
-lowest-sorted key (deterministic).
+Resolution order: the host's preferred-language list (macOS:
+`Bundle.main.preferredLocalizations`; fcitx5: the locale-derived language
+list) → `"en"` → lowest-sorted key (deterministic).
 
 #### PickerOption
 
@@ -581,9 +588,9 @@ export default class MyEngine {
 ```
 
 Every method is **optional** — the host calls only those defined on the
-instance. The full type surface lives in
-[`utils/MacishType.d.ts`](utils/MacishType.d.ts) and is the source of
-truth. Highlights:
+instance. The full type surface is mirrored in
+[`utils/MacishType.d.ts`](utils/MacishType.d.ts); this document is the
+source of truth. Highlights:
 
 ### Lifecycle
 
@@ -928,23 +935,22 @@ subsection below.
 
 #### `console`
 
-Levels map to OSLog:
+Levels map to the host's native log levels:
 
 ```
-console.log   / console.info  → OSLog .info
-console.trace                 → OSLog .info     (with stack)
-console.debug                 → OSLog .debug
-console.warn                  → OSLog .notice   (with stack)
-console.error                 → OSLog .error    (with stack)
+console.log   / console.info  → info
+console.trace                 → info          (with stack)
+console.debug                 → debug
+console.warn                  → notice/warn   (with stack)
+console.error                 → error         (with stack)
 ```
 
 Uncaught exceptions also appear in the log with a stack trace.
 
-View engine logs:
+View engine logs with `make log-js` (in `macos/` or `fcitx5/`), or directly:
 
-- **Console.app**: filter `subsystem:net.lukechang.inputmethod.MacishType category:JavaScript`
-- **Terminal**: `log stream --predicate 'subsystem == "net.lukechang.inputmethod.MacishType" AND category == "JavaScript"' --level debug --style compact`
-- **In this repo**: `make log-js` wraps the terminal command.
+- **macOS**: Console.app filter `subsystem:net.lukechang.inputmethod.MacishType category:JavaScript`, or `log stream --predicate 'subsystem == "net.lukechang.inputmethod.MacishType" AND category == "JavaScript"' --level debug --style compact`
+- **fcitx5**: the user journal, `macishtype` log category, each line prefixed with `[<engineId>]`
 
 #### `manifest`
 
@@ -975,7 +981,7 @@ addEventListener('settingschange', applyConfig);
 
 **Failed writes never throw** — invalid values (wrong type, out of
 range, non-ASCII `indexLabels`, etc.) and unknown field names are
-logged via OSLog and silently ignored. This is deliberate for
+logged and silently ignored. This is deliberate for
 forward/backward compat: engines written against a newer or older host
 run uninterrupted on field/value mismatches. Read back after writing
 if you need to confirm:
@@ -1025,8 +1031,8 @@ const showAssoc = manifest.settings.enableAssociatedMode;
 
 Populated before engine module evaluation (read at module top level
 works). Refreshes at two boundaries: any host-driven manifest reload
-(folder change, FSEvents in import graph) and the start of each new
-text-field session (the host re-reads UserDefaults on activate). UI
+(folder change, a watched file in the import graph) and the start of each
+new text-field session (the host re-reads its settings store on activate). UI
 edits made between sessions are visible to the engine on the next
 session boundary; mid-composition edits aren't pushed in real time.
 `settingschange` fires whenever the values actually change.
@@ -1088,8 +1094,8 @@ engine-global state shared with the IME menu's checkmarks, not
 per-session configuration.
 
 Keys are the declared items only. Reads of anything else return
-`undefined`; writes to them (or non-boolean writes) are logged via OSLog
-and silently ignored, same policy as `manifest.candidateWindow`.
+`undefined`; writes to them (or non-boolean writes) are logged and
+silently ignored, same policy as `manifest.candidateWindow`.
 
 ##### Event: `menuchange`
 
@@ -1122,7 +1128,7 @@ manifest.toggle.outputToSimplified = true;  // flip it
 **Writes act immediately** and persist across sessions, same as
 `manifest.menu` — the value is engine-global state shared with the IME
 menu's checkmark. Reads of unavailable keys return `undefined`; writes to
-them (or non-boolean writes) are logged via OSLog and silently ignored.
+them (or non-boolean writes) are logged and silently ignored.
 
 ##### Event: `togglechange`
 
@@ -1374,8 +1380,8 @@ try {
 } catch (e) { console.error(e); }
 ```
 
-**Filesystem errors** (permission denied, disk full, etc.) are logged
-via OSLog and **silently swallowed**:
+**Filesystem errors** (permission denied, disk full, etc.) are logged and
+**silently swallowed**:
 
 - `getItem` returns `null` on read failure.
 - `setItem` / `removeItem` / `clear` drop the operation.
@@ -1424,8 +1430,8 @@ addEventListener('storage', (event) => {
 | `storageArea` | The `localStorage` object. |
 
 **External `clear` not modeled.** When the user deletes the whole
-`_storage/` folder, FSEvents reports per-file deletions and a
-separate event fires for each key — not a single Web-style
+`_storage/` folder, the host's file watcher reports per-file deletions
+and a separate event fires for each key — not a single Web-style
 `key === null` clear event.
 
 **Lazy `newValue` edge case**: all listeners on one dispatch share
