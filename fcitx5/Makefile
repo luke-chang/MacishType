@@ -12,7 +12,7 @@ ICON_LINK_DIR := $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)/ic
 # system directory must stay listed.
 ADDON_DIRS := $(USER_LIB):/usr/lib/$(MACHINE)/fcitx5
 
-.PHONY: help build prepare update-resources clean-resources debug \
+.PHONY: help build prepare pkg update-resources clean-resources debug \
 	dev-install dev-uninstall install uninstall remove-icon-links restart \
 	test clean log log-js log-history
 .DEFAULT_GOAL := help
@@ -57,6 +57,7 @@ help:
 	@echo "  make dev-install    - Install into ~/.local (no restart)"
 	@echo "  make dev-uninstall  - Remove the ~/.local install (keeps engines)"
 	@echo "  make install        - Production install into /usr (sudo) + restart"
+	@echo "  make pkg            - Build a native package (deb/rpm) via CPack"
 	@echo "  make uninstall      - Remove the production install + restart"
 	@echo "  make restart        - Restart the live fcitx5 (interrupts typing;"
 	@echo "                        LOG_DEBUG=1 enables per-key Debug logging)"
@@ -75,6 +76,21 @@ build:
 # scripts/external-resources.lock and shared with the other platforms.
 prepare:
 	../scripts/external-resources.py --prepare
+
+# Native package for the current environment: deb on Debian-family, rpm on
+# RPM-family (run inside a matching container to produce the other format).
+pkg:
+	$(MAKE) prepare
+	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
+	cmake --build $(BUILD_DIR) -j
+	@gen=$$(. /etc/os-release 2> /dev/null; \
+	    case "$$ID $$ID_LIKE" in \
+	        *debian*) echo DEB ;; \
+	        *fedora*|*rhel*|*suse*) echo RPM ;; \
+	        *) echo TGZ ;; \
+	    esac); \
+	set -x; \
+	cpack -G $$gen --config $(BUILD_DIR)/CPackConfig.cmake -B $(BUILD_DIR)
 
 update-resources:
 	@../scripts/external-resources.py --update

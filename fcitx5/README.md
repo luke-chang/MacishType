@@ -143,6 +143,8 @@ keystroke.
 - `make build` — cmake configure + build without installing.
 - `make prepare` — sync the pinned data tables (incremental; auto-run by
   debug/install).
+- `make pkg` — build a native package (`.deb` on Debian-family, `.rpm` on
+  RPM-family) with CPack, into `build/`.
 - `make restart` — restart fcitx5; `LOG_DEBUG=1` enables per-key Debug
   logging (including engine `console.debug`).
 - `make clean` — remove the build directory.

@@ -44,3 +44,30 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../tables")
         "${CMAKE_CURRENT_SOURCE_DIR}/../tables/CLDR.LICENSE.txt"
         DESTINATION "${FCITX_INSTALL_PKGDATADIR}/macishtype/tables")
 endif()
+
+# Debian policy: every package documents its licensing under
+# /usr/share/doc/<package>/copyright (DEP-5 format).
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/copyright"
+        DESTINATION "share/doc/fcitx5-macishtype")
+
+# Native packages (`make pkg`): CPack assembles them from the install rules
+# above. DESTDIR staging keeps the fcitx5-derived absolute destinations
+# as-is, so a package carries exactly what `make install` lays down.
+set(CPACK_SET_DESTDIR ON)
+set(CPACK_STRIP_FILES ON)
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "MacishType JavaScript input method engines for fcitx5")
+set(CPACK_PACKAGE_CONTACT "Luke Chang <luke1209@gmail.com>")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/luke-chang/MacishType")
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+# Library dependencies (ICU, fontconfig, Fcitx5Core, ...) are computed from
+# the linked sonames; only the framework and the capability modules the code
+# consults are declared by hand.
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5, fcitx5-modules")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
+    "fcitx5-module-chttrans, fcitx5-module-fullwidth")
+set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5")
+include(CPack)
