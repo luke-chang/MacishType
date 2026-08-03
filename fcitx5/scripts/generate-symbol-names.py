@@ -5,7 +5,7 @@ Interface (external-resources processor convention):
     generate-symbol-names.py <cldr-annotations.json> <output> <source-url>
 
 Keeps single-codepoint BMP symbols and their `tts` name, sorted by
-codepoint. Mirrors MacishType's Scripts/GenerateSymbolNames.swift. The
+codepoint. Mirrors macos/Scripts/GenerateSymbolNames.swift. The
 hand-curated override table (a sibling lock entry downloaded to
 .external-resources/SymbolNamesOverride.zh-Hant.txt, pinned to the
 MacishType repo) is overlaid on the CLDR base; the override wins on

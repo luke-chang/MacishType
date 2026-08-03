@@ -1,7 +1,7 @@
 #!/bin/sh
-# Milestone acceptance: MacishType's ExampleEngine, unmodified, types end to
+# Milestone acceptance: the shared example engine, unmodified, types end to
 # end through an isolated fcitx5. Requires the example engine folder to be
-# present (a symlink to the MacishType repo's ExampleEngine works):
+# present (a symlink to this repo's engines/example works):
 #   ~/.local/share/fcitx5/macishtype/engines/example
 #
 # Key specs are keyval:keycode with X keycodes (evdev + 8).

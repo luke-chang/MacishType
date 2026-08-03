@@ -1,7 +1,7 @@
 #!/bin/sh
 # external-resources.sh — manage external resources pinned in
-# external-resources.lock. Copied from the MacishType repository
-# (Scripts/HandleExternalResources.sh, MIT) with sha1sum substituted for
+# external-resources.lock. Copied from the macOS host's driver
+# (macos/Scripts/HandleExternalResources.sh) with sha1sum substituted for
 # macOS's shasum; keep the two in sync when the driver evolves.
 #
 # Modes:

@@ -1,6 +1,6 @@
 # External resources pinned by commit. Format (whitespace-delimited):
 #   <output-path> <source-url> <processor|-> [processor-arg]
-# Same format as MacishType's Scripts/HandleExternalResources.lock; the
+# Same format as macos/Scripts/HandleExternalResources.lock; the
 # wordFrequency / symbolNames pins intentionally match the macOS host so
 # both platforms feed engines identical data.
 tables/WordFrequency.zh-Hant.tsv https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ generate-word-frequency.py
