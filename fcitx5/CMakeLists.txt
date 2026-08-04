@@ -7,7 +7,10 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
-find_package(Fcitx5Core REQUIRED)
+# 5.1.13 is the release that added the StandardPaths API engine discovery
+# builds on; asking for it here turns an older fcitx5 into a configure-time
+# error instead of a wall of missing-header output.
+find_package(Fcitx5Core 5.1.13 REQUIRED)
 find_package(Fontconfig REQUIRED)
 # System ICU backs the JS Intl bindings (like fontconfig, we link the system
 # library rather than bundling CLDR data). Present on desktop Linux and, for a
@@ -68,9 +71,11 @@ set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 # Library dependencies (ICU, fontconfig, Fcitx5Core, ...) are computed from
 # the linked sonames; only the framework and the capability modules the code
-# consults are declared by hand.
+# consults are declared by hand. Both generators repeat the find_package
+# version bound: an RPM soname dependency carries none, so an older fcitx5
+# would install the package and then fail to load the addon.
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5, fcitx5-modules")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5 (>= 5.1.13), fcitx5-modules")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
     "fcitx5-module-chttrans, fcitx5-module-fullwidth")
 set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
@@ -79,7 +84,7 @@ set(CPACK_RPM_PACKAGE_LICENSE "MIT")
 # CMake's generic boilerplate.
 set(CPACK_RPM_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
 # RPM-family distributions ship the capability modules in one package.
-set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5")
+set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5 >= 5.1.13")
 set(CPACK_RPM_PACKAGE_RECOMMENDS "fcitx5-chinese-addons")
 # The install rules carry fcitx5-derived absolute paths, which DESTDIR
 # staging cannot turn into a relocatable package. CPack requests one by

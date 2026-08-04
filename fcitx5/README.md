@@ -22,7 +22,8 @@ this host and on the macOS one ([`macos/`](../macos/)).
 
 ### Runtime
 
-- Linux with fcitx5 (developed and tested against 5.1.x)
+- Linux with fcitx5 ≥ 5.1.13 — the release that added the `StandardPaths`
+  API the addon builds on; older versions do not compile
 - `fcitx5-chinese-addons` — engine capabilities delegate to its modules:
   `chttrans` backs `outputToSimplified` and `fullwidth` backs
   `fullwidthInput` (Debian also splits them out as
