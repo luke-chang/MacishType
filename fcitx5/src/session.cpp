@@ -1289,6 +1289,7 @@ JSValue EngineSession::buildEventData(const WebKeyEvent *web,
         setBoolField(ctx, states, "Alt", web->altKey);
         setBoolField(ctx, states, "Meta", web->metaKey);
         setBoolField(ctx, states, "CapsLock", web->capsLock);
+        setBoolField(ctx, states, "NumLock", web->numLock);
         JS_SetPropertyStr(ctx, data, "modifierStates", states);
     }
 

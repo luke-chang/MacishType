@@ -173,6 +173,9 @@ WebKeyEvent translateKeyEvent(const fcitx::Key &rawKey) {
     event.metaKey = states.test(fcitx::KeyState::Super) ||
                     states.test(fcitx::KeyState::Super2);
     event.capsLock = states.test(fcitx::KeyState::CapsLock);
+    // KeyState::NumLock is Mod2, where the common XKB maps bind the lock. A
+    // frontend may still not forward it.
+    event.numLock = states.test(fcitx::KeyState::NumLock);
     event.repeat = states.test(fcitx::KeyState::Repeat);
     event.location = locationForKey(rawKey);
 

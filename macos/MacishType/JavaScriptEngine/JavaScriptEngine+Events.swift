@@ -40,6 +40,8 @@ extension JavaScriptEngine {
         // Web standard `getModifierState(key)`. Returns true only for the five
         // states macOS can faithfully report; everything else (NumLock /
         // ScrollLock / AltGraph / Hyper / Super / Symbol / etc.) returns false.
+        // NumLock is host-dependent in the contract; Mac keyboards have Clear
+        // in that position, so it stays false here.
         // "Fn" is intentionally not supported — NSEvent.ModifierFlags.function
         // gets set automatically on arrow / F-keys / Page Up/Down / Home / End
         // even when no Fn key is held, which would mislead callers.

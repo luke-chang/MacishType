@@ -213,6 +213,7 @@ remove-icon-links:
 test: build
 	test/acceptance.sh
 	test/navigation.sh
+	test/modifier.sh
 	test/reload.sh
 	test/storage.sh
 	test/settings.sh

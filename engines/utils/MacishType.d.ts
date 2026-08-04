@@ -298,20 +298,14 @@ export interface KeyEvent extends EventContext, EventMutators {
   /**
    * Query an individual modifier or lock state.
    *
-   * Supported keys returning the live state:
-   * - `"Shift"` / `"Control"` / `"Alt"` / `"Meta"` — same as the boolean
-   *   `*Key` properties above (web spec exposes both forms).
-   * - `"CapsLock"` — the only state without a corresponding `*Key` flag.
+   * Live states: `"Shift"` / `"Control"` / `"Alt"` / `"Meta"` (same as the
+   * boolean `*Key` properties above), `"CapsLock"`, and `"NumLock"` — that
+   * last one host-dependent, as in browsers: `false` on macOS, live on
+   * fcitx5 only where the frontend forwards Mod2.
    *
-   * Everything else returns `false`, including web-spec values that don't
-   * map cleanly on macOS:
-   * - `"Fn"` — NSEvent has a `.function` flag, but macOS auto-sets it on
-   *   arrows / F-keys / Page Up/Down / Home / End even with no Fn key held,
-   *   which would mislead callers. Use `code` to detect those keys instead.
-   * - `"NumLock"` / `"ScrollLock"` / `"FnLock"` — Mac keyboards don't have
-   *   these keys.
-   * - `"AltGraph"` / `"Hyper"` / `"Super"` / `"Symbol"` / `"SymbolLock"` /
-   *   `"OS"` — no Mac equivalent.
+   * Every other web-spec string returns `false` on both hosts. A key can
+   * still arrive while its state reads `false`, so detect those with `code`.
+   * See README for the per-host details.
    */
   getModifierState(key: string): boolean;
   /**

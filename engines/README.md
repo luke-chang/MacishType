@@ -848,9 +848,15 @@ non-standard trigger.
   [Numeric keypad keys](#numeric-keypad-keys) for the handling contract.
 - `isComposing` — same as the read-only context field above.
 - `getModifierState(key)` — query individual states (`"Shift"`, `"Control"`,
-  `"Alt"`, `"Meta"`, `"CapsLock"`). Other web-spec strings (`"Fn"` /
-  `"NumLock"` / `"AltGraph"` / etc.) return `false` — macOS either lacks
-  the key or can't report it faithfully.
+  `"Alt"`, `"Meta"`, `"CapsLock"`). `"NumLock"` is host-dependent, as in
+  browsers: `false` on macOS (that key position is Clear), the live state on
+  fcitx5 where the frontend forwards Mod2 — it does not arrive in a GNOME
+  Wayland session, so it reads `false` there. Every other web-spec string
+  (`"Fn"` / `"AltGraph"` / `"ScrollLock"` / `"Hyper"` / `"Super"` /
+  `"Symbol"` / `"OS"` / etc.) returns `false` on both hosts; fcitx5 folds
+  Super into `"Meta"` per the Linux convention. A key can still arrive
+  while its state reads `false` — fcitx5 delivers `key: "AltGraph"` — so
+  detect those with `code`.
 - `keyIgnoringModifiers` *(host extension, not in the web spec)* — the
   layout-aware character with Option / Command / Control stripped (Shift
   preserved). Useful on macOS where Option doubles as a dead-key modifier
