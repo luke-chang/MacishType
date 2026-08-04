@@ -75,10 +75,14 @@ set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
     "fcitx5-module-chttrans, fcitx5-module-fullwidth")
 set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
 set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+# CPackRPM reads its own description variable and otherwise falls back to
+# CMake's generic boilerplate.
+set(CPACK_RPM_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
 # RPM-family distributions ship the capability modules in one package.
 set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5")
 set(CPACK_RPM_PACKAGE_RECOMMENDS "fcitx5-chinese-addons")
-# The install rules carry fcitx5-derived absolute paths; declaring the
-# package non-relocatable silences CPackRPM's warning about them.
-set(CPACK_RPM_PACKAGE_RELOCATABLE OFF)
+# The install rules carry fcitx5-derived absolute paths, which DESTDIR
+# staging cannot turn into a relocatable package. CPack requests one by
+# default; opting out here matches what the package actually is.
+set(CPACK_PACKAGE_RELOCATABLE OFF)
 include(CPack)
