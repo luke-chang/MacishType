@@ -1,0 +1,10 @@
+# Included by cpack at packaging time: adopt the stamped version the build
+# wrote next to the binary, so the package can never disagree with the binary
+# it carries. DEB-DEFAULT / RPM-DEFAULT file names derive from
+# CPACK_PACKAGE_VERSION at cpack time; CPACK_PACKAGE_FILE_NAME covers the TGZ
+# fallback, whose default was baked at configure time.
+file(READ "@PROJECT_BINARY_DIR@/src/version-full.txt" _full_version)
+string(STRIP "${_full_version}" _full_version)
+set(CPACK_PACKAGE_VERSION "${_full_version}")
+set(CPACK_PACKAGE_FILE_NAME
+    "${CPACK_PACKAGE_NAME}-${_full_version}-${CPACK_SYSTEM_NAME}")

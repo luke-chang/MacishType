@@ -26,6 +26,7 @@
 
 #include "i18n.h"
 #include "log.h"
+#include "versionstamp.h"
 
 namespace macishtype {
 
@@ -94,6 +95,7 @@ std::string safeDisplayName(const EngineInfo &engine) {
 MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     : instance_(instance), languages_(preferredLanguages()),
       engines_(discoverEngines(languages_)) {
+    MACISHTYPE_INFO() << "MacishType " << versionStampFull() << " loaded";
     MACISHTYPE_INFO() << "Discovered " << engines_.size()
                       << " engine folder(s)";
     // The path this addon was loaded from; the destructor probes it to tell

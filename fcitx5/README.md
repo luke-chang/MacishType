@@ -157,7 +157,11 @@ keystroke.
 - `make prepare` — sync the pinned data tables (incremental; auto-run by
   debug/install).
 - `make pkg` — build a native package (`.deb` on Debian-family, `.rpm` on
-  RPM-family) with CPack, into `build/`.
+  RPM-family) with CPack, into `build/`. The version carries a date-and-commit
+  stamp (`0.2.0+20260805.93426bb`, `.dirty` appended for an unclean tree) so
+  an installed package points back at the commit it came from; the addon
+  logs the same version when it loads. Override `VERSION_STAMP` to change
+  or omit it.
 - `make restart` — restart fcitx5; `LOG_DEBUG=1` enables per-key Debug
   logging (including engine `console.debug`).
 - `make clean` — remove the build directory.

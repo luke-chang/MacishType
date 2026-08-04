@@ -58,6 +58,15 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/copyright"
 # as-is, so a package carries exactly what `make install` lays down.
 set(CPACK_SET_DESTDIR ON)
 set(CPACK_STRIP_FILES ON)
+# The package version carries the build stamp identifying the commit it was
+# built from. `+` keeps the stamp out of precedence decisions and is legal for
+# both dpkg and rpm (`^` would suit rpm but dpkg rejects it); it goes in the
+# version rather than the packaging release field so `dpkg -l` / `rpm -q`
+# still show it after install. The stamp is decided at build time and written
+# next to the binary (see src/CMakeLists.txt); reading it back when cpack runs
+# keeps package and binary in agreement by construction.
+set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_CURRENT_BINARY_DIR}/cpack-version.cmake")
+configure_file(cmake/cpack-version.cmake.in cpack-version.cmake @ONLY)
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "MacishType JavaScript input method engines for fcitx5")
 set(CPACK_PACKAGE_DESCRIPTION

@@ -13,6 +13,12 @@ ICON_LINK_DIR := $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)/ic
 # FCITX_ADDON_DIRS replaces fcitx5's default addon search path, so the
 # system directory must stay listed.
 ADDON_DIRS := $(USER_LIB):$(shell test/system-addon-dir.sh)
+# Build stamp for `make pkg`, computed by scripts/version-stamp.sh (date plus
+# commit, `.dirty` when the tree carries uncommitted changes). Handed to the
+# build as an environment variable so the binary and the package share one
+# value; other builds compute their own at build time. Override VERSION_STAMP
+# to change or omit it.
+VERSION_STAMP ?= $(shell scripts/version-stamp.sh)
 
 .PHONY: help build prepare pkg update-resources clean-resources debug \
 	dev-install dev-uninstall install uninstall remove-icon-links restart \
@@ -84,7 +90,7 @@ prepare:
 pkg:
 	$(MAKE) prepare
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
-	cmake --build $(BUILD_DIR) -j $(JOBS)
+	VERSION_STAMP="$(VERSION_STAMP)" cmake --build $(BUILD_DIR) -j $(JOBS)
 	@gen=$$(. /etc/os-release 2> /dev/null; \
 	    case "$$ID $$ID_LIKE" in \
 	        *debian*) echo DEB ;; \
