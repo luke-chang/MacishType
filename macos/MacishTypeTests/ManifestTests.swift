@@ -287,15 +287,57 @@ struct ManifestTests {
 
     // MARK: Localizable
 
-    /// Only environment-independent paths: literal passthrough, the "en"
-    /// fallback, and the sorted-first fallback. Preferred-localization
-    /// resolution depends on the host bundle and is not asserted here.
+    private func makeLocalizable(_ json: String) throws -> JavaScriptEngine.Localizable {
+        try JSONDecoder().decode(JavaScriptEngine.Localizable.self, from: Data(json.utf8))
+    }
+
     @Test func localizableFallsBackDeterministically() throws {
-        func makeLocalizable(_ json: String) throws -> JavaScriptEngine.Localizable {
-            try JSONDecoder().decode(JavaScriptEngine.Localizable.self, from: Data(json.utf8))
-        }
         #expect(try makeLocalizable(#""plain""#).resolved() == "plain")
-        #expect(try makeLocalizable(#"{"zz": "Z", "en": "E"}"#).resolved() == "E")
-        #expect(try makeLocalizable(#"{"zz": "Z", "aa": "A"}"#).resolved() == "A")
+        #expect(try makeLocalizable(#"{"zz": "Z", "en": "E"}"#).resolved(languages: ["fr"]) == "E")
+        #expect(try makeLocalizable(#"{"zz": "Z", "en": "E"}"#).resolved(languages: []) == "E")
+        #expect(try makeLocalizable(#"{"zz": "Z", "aa": "A"}"#).resolved(languages: ["fr"]) == "A")
+    }
+
+    @Test func localizableResolvesExactTagBeforeAliases() throws {
+        let map = #"{"zh-TW": "T", "zh-Hant": "H", "en": "E"}"#
+        #expect(try makeLocalizable(map).resolved(languages: ["zh-TW"]) == "T")
+    }
+
+    @Test func localizableExpandsChineseScriptAliases() throws {
+        #expect(try makeLocalizable(#"{"zh-Hant": "H", "en": "E"}"#)
+            .resolved(languages: ["zh-TW"]) == "H")
+        #expect(try makeLocalizable(#"{"zh-Hans": "S", "en": "E"}"#)
+            .resolved(languages: ["zh-CN"]) == "S")
+        #expect(try makeLocalizable(#"{"zh-Hant": "H"}"#)
+            .resolved(languages: ["zh-HK"]) == "H")
+    }
+
+    @Test func localizableAliasOrderPrefersHantOverTW() throws {
+        let map = #"{"zh-TW": "T", "zh-Hant": "H"}"#
+        #expect(try makeLocalizable(map).resolved(languages: ["zh-HK"]) == "H")
+    }
+
+    @Test func localizableStripsScriptWhenRegionFollows() throws {
+        let both = #"{"zh-TW": "T", "zh-Hant": "H"}"#
+        #expect(try makeLocalizable(both).resolved(languages: ["zh-Hant-TW"]) == "T")
+        #expect(try makeLocalizable(#"{"zh-Hant": "H", "en": "E"}"#)
+            .resolved(languages: ["zh-Hant"]) == "H")
+    }
+
+    @Test func localizableFallsBackToBaseLanguage() throws {
+        let map = #"{"ja": "J", "en": "E"}"#
+        #expect(try makeLocalizable(map).resolved(languages: ["ja-JP"]) == "J")
+    }
+
+    @Test func localizableMatchesKeysCaseSensitively() throws {
+        let map = #"{"zh-hant": "X", "en": "E"}"#
+        #expect(try makeLocalizable(map).resolved(languages: ["zh-TW"]) == "E")
+    }
+
+    /// An earlier preference's alias probe beats a later preference's
+    /// exact match, pinning fcitx5's loop nesting.
+    @Test func localizableExhaustsOneLanguageBeforeTheNext() throws {
+        let map = #"{"ja": "J", "zh-TW": "T"}"#
+        #expect(try makeLocalizable(map).resolved(languages: ["zh-HK", "ja"]) == "T")
     }
 }

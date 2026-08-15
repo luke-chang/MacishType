@@ -716,10 +716,10 @@ extension JavaScriptEngine {
 
     // MARK: Manifest helper types
 
-    /// Manifest-resolved localized string. Decodes from a literal `String`
-    /// or a `{ <locale>: <String> }` map. Resolution at render time:
-    /// `Bundle.main.preferredLocalizations` order → `"en"` → lowest key
-    /// (sorted; `Dictionary.first` would flicker between launches).
+    /// Manifest-resolved localized string: a literal `String` or a
+    /// `{ <locale>: <String> }` map. Map resolution mirrors fcitx5's
+    /// resolveLocalizedName; the final fallback sorts keys because
+    /// `Dictionary.first` would flicker between launches.
     nonisolated enum Localizable: Decodable {
         case literal(String)
         case map([String: String])
@@ -730,16 +730,49 @@ extension JavaScriptEngine {
             self = .map(try c.decode([String: String].self))
         }
 
-        func resolved() -> String {
+        func resolved(languages: [String] = Locale.preferredLanguages) -> String {
             switch self {
-            case .literal(let s): return s
+            case .literal(let text): return text
             case .map(let dict):
-                for code in Bundle.main.preferredLocalizations {
-                    if let v = dict[code] { return v }
+                var seen = Set<String>()
+                for language in languages {
+                    let tag = Self.stripScriptBeforeRegion(language)
+                    guard seen.insert(tag).inserted else { continue }
+                    for key in Self.lookupKeysForLanguage(tag) {
+                        if let value = dict[key] { return value }
+                    }
                 }
-                if let v = dict["en"] { return v }
+                if let value = dict["en"] { return value }
                 return dict.keys.sorted().first.flatMap { dict[$0] } ?? ""
             }
+        }
+
+        /// `zh-Hant-TW` → `zh-TW`: the shape fcitx5 derives from POSIX
+        /// locales, keeping probe order identical across hosts. Bare
+        /// script tags stay intact; alias expansion covers them.
+        private static func stripScriptBeforeRegion(_ tag: String) -> String {
+            let parts = tag.split(separator: "-")
+            guard parts.count == 3, parts[1].count == 4,
+                  parts[1].first?.isUppercase == true else { return tag }
+            return "\(parts[0])-\(parts[2])"
+        }
+
+        /// Mirrors fcitx5's lookupKeysForLanguage so a zh-TW preference
+        /// can pick a zh-Hant manifest value and vice versa.
+        private static func lookupKeysForLanguage(_ language: String) -> [String] {
+            var keys = [language]
+            let lower = language.lowercased()
+            if lower == "zh-tw" || lower == "zh-hk" || lower == "zh-mo"
+                || lower.hasPrefix("zh-hant") {
+                keys += ["zh-Hant", "zh-TW"]
+            } else if lower == "zh-cn" || lower == "zh-sg"
+                || lower.hasPrefix("zh-hans") {
+                keys += ["zh-Hans", "zh-CN"]
+            }
+            if let dash = language.firstIndex(of: "-") {
+                keys.append(String(language[..<dash]))
+            }
+            return keys
         }
     }
 

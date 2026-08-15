@@ -424,9 +424,12 @@ locale map:
 "label": { "en": "Show associated words", "zh-Hant": "顯示關聯字" }
 ```
 
-Resolution order: the host's preferred-language list (macOS:
-`Bundle.main.preferredLocalizations`; fcitx5: the locale-derived language
-list) → `"en"` → lowest-sorted key (deterministic).
+Both hosts resolve the map the same way, against the user's preferred
+languages: a `zh-Hant` or `zh-Hans` key covers the matching Chinese
+regions (`zh-TW`, `zh-HK`, `zh-CN`, …), and a base-language key (`ja`)
+covers its regional variants (`ja-JP`). Keys are case-sensitive. When
+every preference misses, resolution falls back to `"en"`, then to the
+lowest-sorted key (deterministic).
 
 #### PickerOption
 
