@@ -2,7 +2,8 @@
 # version (PROJECT_VERSION plus the stamp from STAMP_SCRIPT) and writes
 # versionstamp.cpp / version-full.txt into OUTPUT_DIR. Files are rewritten
 # only when their content changes, so an unchanged stamp triggers neither a
-# recompile nor a relink.
+# recompile nor a relink. A dirty tree's stamp carries the build time, which
+# costs those builds this one generated source plus a relink.
 execute_process(COMMAND "${STAMP_SCRIPT}"
     RESULT_VARIABLE stamp_result
     OUTPUT_VARIABLE stamp

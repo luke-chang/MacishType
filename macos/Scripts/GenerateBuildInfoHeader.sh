@@ -18,6 +18,12 @@ mkdir -p "${DERIVED_FILE_DIR}"
 
 git_hash=$(git -C "${PROJECT_DIR}" describe --always --dirty 2>/dev/null || echo unknown)
 
+# A dirty tree keeps the same commit and build date across a day of rebuilds, so
+# append the local build time to tell one such build from the next.
+case "${git_hash}" in
+    *-dirty) git_hash="${git_hash}.$(date +%H%M)" ;;
+esac
+
 # Bare token (no quotes): the preprocessor substitutes it verbatim into the plist
 # string value, e.g. <string>GIT_COMMIT_HASH</string> -> <string>abc123</string>.
 printf '#define GIT_COMMIT_HASH %s\n' "${git_hash}" > "${header}"

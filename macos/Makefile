@@ -2,7 +2,7 @@
 
 APP_NAME = MacishType
 BUNDLE_ID = net.lukechang.inputmethod.$(APP_NAME)
-BUILD_NUMBER := $(shell date +%Y%m%d%H%M)
+BUILD_NUMBER := $(shell date +%Y%m%d)
 LOG_SHOW_LAST = 1h
 # Component install destination; rebased under the user home by the installer's
 # currentUserHome domain, so this resolves to ~/Library/Input Methods.
@@ -170,7 +170,7 @@ pkg: release-universal
 	if [ ! -d "$$APP_DIR" ]; then echo "✗ Error: $$APP_DIR not found"; exit 1; fi; \
 	PLIST="$$APP_DIR/Contents/Info.plist"; \
 	VERSION=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$$PLIST"); \
-	BUILD_DATE=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$$PLIST" | cut -c1-8); \
+	BUILD_DATE=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$$PLIST"); \
 	GIT_HASH=$$(/usr/libexec/PlistBuddy -c "Print :GitCommitHash" "$$PLIST"); \
 	WORK_DIR="./build/pkg"; \
 	rm -rf "$$WORK_DIR"; mkdir -p "$$WORK_DIR"; \
