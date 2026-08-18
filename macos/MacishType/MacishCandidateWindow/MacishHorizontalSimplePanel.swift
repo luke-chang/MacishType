@@ -314,7 +314,6 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
     // MARK: - Commit
 
     override func commitCandidate(at index: Int) {
-        guard isVisible else { return }
         guard index >= 0, index < currentPageItems.count else { return }
         let candidateIndex = currentPageItems[index].candidateIndex
         guard candidateIndex < candidates.count else { return }

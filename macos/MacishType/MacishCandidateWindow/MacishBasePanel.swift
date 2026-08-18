@@ -414,7 +414,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     }
 
     func commitSelectedCandidate() {
-        guard isVisible, hasSelection, selectedIndex < displayCount else { return }
+        guard hasSelection, selectedIndex < displayCount else { return }
         let chosen = candidates[selectedIndex]
         impl.candidateDelegate?.candidateConfirmed(
             chosen.text, absoluteIndex: selectedIndex, raw: chosen)

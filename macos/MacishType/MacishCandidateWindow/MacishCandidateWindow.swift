@@ -108,8 +108,6 @@ class MacishCandidateWindow: CandidateWindowImpl {
     }
 
     override func handleNavigation(direction: NavigationDirection, wrapping: Bool) {
-        // A hidden panel still holds stale candidates; don't navigate them.
-        guard activePanel.isVisible else { return }
         if !hasSelection {
             switch direction {
             case .up, .down, .left, .right, .itemForward, .itemBackward:
@@ -133,9 +131,6 @@ class MacishCandidateWindow: CandidateWindowImpl {
     }
 
     override func commitSelectedCandidate() {
-        // When no item is selected, report an empty commit to the delegate.
-        // Callers can interpret "" / -1 however they want (fall back to
-        // committing surrounding marked text, treat as no-op, etc).
         if !hasSelection {
             candidateDelegate?.candidateConfirmed("", absoluteIndex: -1, raw: nil)
             return

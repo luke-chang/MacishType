@@ -476,7 +476,6 @@ class MacishVerticalPanel: MacishBasePanel {
     // MARK: - Commit
 
     override func commitCandidate(at index: Int) {
-        guard isVisible else { return }
         guard index >= 0, index < pageSize else { return }
         let candidateIndex = anchorIndex + index
         guard candidateIndex < displayCount else { return }

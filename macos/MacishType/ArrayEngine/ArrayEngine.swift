@@ -288,6 +288,11 @@ final class ArrayEngine: InputEngine {
             }
             return .handled()
         }
+        // Nothing highlighted: in associated mode the host commits the held
+        // text; otherwise there is nothing to confirm.
+        if candidate.isEmpty {
+            return context.isAssociating ? .notHandled() : .handled()
+        }
         return .notHandled(stagedPreviewClear(candidate, context: context))
     }
 

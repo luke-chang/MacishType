@@ -131,9 +131,10 @@ extension Character {
 
 protocol CandidateWindowDelegate: AnyObject {
     /// Called when a candidate is committed. `candidate` is the chosen
-    /// string, or `""` when commitSelectedCandidate was invoked with no
-    /// active selection; `raw` is `nil` and `absoluteIndex` is `-1` in
-    /// that case. `absoluteIndex` is into the candidates array emitted
+    /// string, or `""` when commitSelectedCandidate was invoked on a visible
+    /// window with no active selection; `raw` is `nil` and `absoluteIndex` is
+    /// `-1` in that case. A hidden window fires nothing at all.
+    /// `absoluteIndex` is into the candidates array emitted
     /// by the most recent updateCandidates (distinct from the
     /// page-relative index taken by `commitCandidateAtIndex(_)`).
     func candidateConfirmed(_ candidate: String, absoluteIndex: Int, raw: Candidate?)
@@ -294,15 +295,23 @@ class CandidateWindow {
         activeImpl.hide()
     }
 
+    // Window verbs are silent while hidden: a hidden impl still holds stale
+    // candidates, and the contract has engines treat a missing window as
+    // nothing to act on. Gating here covers every impl and every window
+    // verb; in-panel mouse paths imply a visible panel.
+
     func handleNavigation(direction: NavigationDirection, wrapping: Bool = false) {
+        guard isVisible else { return }
         activeImpl.handleNavigation(direction: direction, wrapping: wrapping)
     }
 
     func commitSelectedCandidate() {
+        guard isVisible else { return }
         activeImpl.commitSelectedCandidate()
     }
 
     func commitCandidate(at index: Int) {
+        guard isVisible else { return }
         activeImpl.commitCandidate(at: index)
     }
 

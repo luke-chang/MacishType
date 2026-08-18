@@ -937,7 +937,6 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     // MARK: - Commit
 
     override func commitCandidate(at index: Int) {
-        guard isVisible else { return }
         guard index >= 0 else { return }
 
         // -1 (no selection) is treated as row 0 so number-key commit still
