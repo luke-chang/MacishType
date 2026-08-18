@@ -2,8 +2,6 @@ import AppKit
 import Testing
 
 /// Covers the shared host Option+key full-width policy and its kernel.
-/// `EngineAction` isn't `Equatable` (it carries a closure), so results are
-/// checked by pattern-matching the case + associated value, not `==`.
 @MainActor
 struct FullwidthPolicyTests {
     private func makeKey(
@@ -19,9 +17,8 @@ struct FullwidthPolicyTests {
 
     /// The flushed string of a `.handled([.flushStaged(_)])` result, else nil.
     private func flushText(_ result: EngineHandleResult?) -> String? {
-        guard case .handled(let actions)? = result,
-              case .flushStaged(let text)? = actions.first else { return nil }
-        return text
+        guard let result, result.isHandled else { return nil }
+        return flushedText(result.actions)
     }
 
     // MARK: hostOptionFullwidthResult

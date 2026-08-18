@@ -213,23 +213,17 @@ class CINEngine: InputEngine {
     override func candidateConfirmed(
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate?,
         candidateWindow: CandidateWindowState
-    ) -> [EngineAction] {
-        // Clear staged so the host commits exactly this candidate, keeping
-        // marked text non-empty (empty tears down the session → baseline
-        // drift if associated mode follows).
-        let prefix: [EngineAction] = context.isAssociating ? [] : [.updateMarkedText(candidate, staged: 0)]
-        return prefix + super.candidateConfirmed(
-            context: context, candidate, absoluteIndex: absoluteIndex, raw: raw,
-            candidateWindow: candidateWindow)
+    ) -> EngineHandleResult {
+        .notHandled(stagedPreviewClear(candidate, context: context))
     }
 
     override func candidateSelectionChanged(
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate,
         candidateWindow: CandidateWindowState
-    ) -> [EngineAction] {
-        guard !isEffectivePreview else { return [] }
+    ) -> EngineHandleResult {
+        guard !isEffectivePreview else { return .handled() }
         let ctx = context as! CINEngineContext
-        return ctx.selecting ? [.updateMarkedText(candidate, staged: -1)] : []
+        return .handled(ctx.selecting ? [.updateMarkedText(candidate, staged: -1)] : [])
     }
 
     // MARK: - Idle

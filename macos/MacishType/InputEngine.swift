@@ -75,6 +75,19 @@ enum EngineAction {
 enum EngineHandleResult {
     case handled([EngineAction] = [])
     case notHandled([EngineAction] = [])
+
+    /// Both cases carry actions the caller must apply; only the fall-through
+    /// decision differs, so most call sites want these instead of a switch.
+    var actions: [EngineAction] {
+        switch self {
+        case .handled(let actions), .notHandled(let actions): actions
+        }
+    }
+
+    var isHandled: Bool {
+        if case .handled = self { return true }
+        return false
+    }
 }
 
 extension EngineAction {
@@ -509,6 +522,16 @@ class InputEngine {
     func candidateConfirmed(
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate?,
         candidateWindow: CandidateWindowState
+    ) -> EngineHandleResult {
+        .notHandled()
+    }
+
+    /// Host default for a `.notHandled` confirm. Controller runs it after the
+    /// engine's own actions, so it reads the state the engine just set. Not an
+    /// override point — engines steer it with the `handled` bit.
+    final func candidateConfirmedFallback(
+        context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate?,
+        candidateWindow: CandidateWindowState
     ) -> [EngineAction] {
         if context.isAssociating {
             return [.flushStaged(candidate)]
@@ -526,8 +549,8 @@ class InputEngine {
     func candidateSelectionChanged(
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate,
         candidateWindow: CandidateWindowState
-    ) -> [EngineAction] {
-        []
+    ) -> EngineHandleResult {
+        .notHandled()
     }
 
     // MARK: Subclass Override Points
@@ -553,6 +576,18 @@ class InputEngine {
     // (enableAssociatedMode) and a dictionary for its locale is bundled.
     func lookupAssociatedCandidates(for char: Character) -> [String] {
         associatedDictionaryHandle?.lookup(char) ?? []
+    }
+
+    /// Staged-clear for engines that stage the highlighted candidate as a
+    /// preview: without it the host would commit the preview and the candidate.
+    /// Marked text stays non-empty — an empty value tears down the composition,
+    /// resetting IMKBaseline and drifting a following associated-mode window.
+    /// In associated mode the staged held text belongs to the follow-up.
+    final func stagedPreviewClear(
+        _ candidate: String, context: InputEngineContext
+    ) -> [EngineAction] {
+        guard !context.isAssociating, !candidate.isEmpty else { return [] }
+        return [.updateMarkedText(candidate, staged: 0)]
     }
 
     // MARK: Utilities

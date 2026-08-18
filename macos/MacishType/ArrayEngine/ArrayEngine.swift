@@ -278,32 +278,25 @@ final class ArrayEngine: InputEngine {
     override func candidateConfirmed(
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int,
         raw: Candidate?, candidateWindow: CandidateWindowState
-    ) -> [EngineAction] {
+    ) -> EngineHandleResult {
         let ctx = context as! ArrayEngineContext
         if ctx.groupMenu {
             // Group menu: open the picked group (its code is the candidate payload).
             if let groupCode = raw?.payload as? String {
                 ctx.code = groupCode
-                return enterSymbolGroup(ctx, dictionary?.symbolGroup(groupCode) ?? [])
+                return .handled(enterSymbolGroup(ctx, dictionary?.symbolGroup(groupCode) ?? []))
             }
-            return []
+            return .handled()
         }
-        // Clear staged so the host commits exactly this candidate, but set marked
-        // text to the candidate, not empty: an empty value tears down the
-        // composition, resetting IMKBaseline and drifting the associated window.
-        // In associated mode keep the staged held char for the follow-up.
-        let prefix: [EngineAction] = context.isAssociating ? [] : [.updateMarkedText(candidate, staged: 0)]
-        return prefix + super.candidateConfirmed(
-            context: context, candidate, absoluteIndex: absoluteIndex,
-            raw: raw, candidateWindow: candidateWindow)
+        return .notHandled(stagedPreviewClear(candidate, context: context))
     }
 
     override func candidateSelectionChanged(
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int,
         raw: Candidate, candidateWindow: CandidateWindowState
-    ) -> [EngineAction] {
+    ) -> EngineHandleResult {
         let ctx = context as! ArrayEngineContext
-        return ctx.selecting ? [.updateMarkedText(candidate, staged: -1)] : []
+        return .handled(ctx.selecting ? [.updateMarkedText(candidate, staged: -1)] : [])
     }
 
     // MARK: - Rendering

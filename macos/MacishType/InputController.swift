@@ -370,14 +370,8 @@ class InputController: IMKInputController {
             context: engineContext,
             keyEvent: keyEvent,
             candidateWindow: currentCandidateWindowState())
-        switch result {
-        case .handled(let actions):
-            executeActions(actions, client: client)
-            return true
-        case .notHandled(let actions):
-            executeActions(actions, client: client)
-            return false
-        }
+        executeActions(result.actions, client: client)
+        return result.isHandled
     }
 
     // MARK: - Action Executor
@@ -563,18 +557,25 @@ class InputController: IMKInputController {
 extension InputController: CandidateWindowDelegate {
     func candidateConfirmed(_ candidate: String, absoluteIndex: Int, raw: Candidate?) {
         guard let client = client() else { return }
-        let actions = engine.candidateConfirmed(
+        let result = engine.candidateConfirmed(
             context: engineContext, candidate, absoluteIndex: absoluteIndex, raw: raw,
             candidateWindow: currentCandidateWindowState())
-        executeActions(actions, client: client)
+        // The engine's actions land first: the fallback layers on top of them and
+        // reads context / window state afterwards.
+        executeActions(result.actions, client: client)
+        guard !result.isHandled else { return }
+        executeActions(engine.candidateConfirmedFallback(
+            context: engineContext, candidate, absoluteIndex: absoluteIndex, raw: raw,
+            candidateWindow: currentCandidateWindowState()), client: client)
     }
 
     func candidateSelectionChanged(_ candidate: String, absoluteIndex: Int, raw: Candidate) {
         guard let client = client() else { return }
-        let actions = engine.candidateSelectionChanged(
+        // The contract gives this the same result shape as candidateConfirmed;
+        // there is no host default to fall back to yet.
+        executeActions(engine.candidateSelectionChanged(
             context: engineContext, candidate, absoluteIndex: absoluteIndex, raw: raw,
-            candidateWindow: currentCandidateWindowState())
-        executeActions(actions, client: client)
+            candidateWindow: currentCandidateWindowState()).actions, client: client)
     }
 }
 
