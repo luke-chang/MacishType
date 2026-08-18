@@ -1,0 +1,13 @@
+{
+  "entry": "index.js",
+  "name": { "en": "Staged Assoc Fixture" },
+  "intendedLanguage": "zz",
+  "settings": [
+    {
+      "title": { "en": "Typing" },
+      "fields": [
+        { "key": "enableAssociatedMode", "type": "system", "default": true }
+      ]
+    }
+  ]
+}

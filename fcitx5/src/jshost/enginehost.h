@@ -142,8 +142,8 @@ public:
     // still override per candidate window.
     void setLayoutVertical(bool vertical) { layoutVertical_ = vertical; }
     bool layoutVertical() const { return layoutVertical_; }
-    // Follow-up phrases for a held character from the locale dictionary
-    // (lazily loaded); empty when no entry.
+    // Follow-up phrases for held text, keyed on its last character, from
+    // the locale dictionary (lazily loaded); empty when no entry.
     std::vector<std::string> associatedFollowups(const std::string &heldChar);
 
     using FieldValue = std::variant<bool, double, std::string>;

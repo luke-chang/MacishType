@@ -137,7 +137,8 @@ export interface CandidateUpdateOptions {
    * Cursor position in `markedText` where the candidate window's left
    * edge anchors. Range `0...markedText.length` — `0` = before the
    * first character, `length` = after the last. Grapheme clusters,
-   * not UTF-16.
+   * not UTF-16. Currently only supported by the macOS host — under
+   * fcitx5, window placement is frontend-driven.
    */
   anchorAt?: number;
   /**
@@ -181,7 +182,13 @@ export interface EventMutators {
   updateCandidates(items: readonly CandidateInput[], options?: CandidateUpdateOptions): void;
   /** Engine-driven commit. Triggers `candidateConfirmed` if defined. */
   commit(candidate: CandidateInput): void;
-  /** Commit whichever candidate is currently highlighted. */
+  /**
+   * Commit whichever candidate is currently highlighted. With the window
+   * visible but nothing highlighted, reports an empty commit
+   * (`candidateConfirmed` fires with `candidate` `""`, `absoluteIndex` -1)
+   * for the engine to interpret; with the window not visible it is a no-op
+   * (pre-check via `candidateWindow.isVisible`).
+   */
   commitSelectedCandidate(): void;
   /**
    * Commit the candidate at the given page-relative index (0-based, within
@@ -199,13 +206,14 @@ export interface EventMutators {
    */
   flushStaged(append?: string): void;
   /**
-   * Enter associated mode: `heldChar` becomes staged marked text
-   * and `candidates` appear as suggested follow-ups. Picking a candidate
-   * commits `heldChar` followed by the chosen candidate; typing anything
-   * else commits `heldChar` alone and the new key is processed normally.
+   * Enter associated mode: `heldChar` (which may be more than one
+   * character) becomes staged marked text and `candidates` appear as
+   * suggested follow-ups. Picking a candidate commits `heldChar` followed
+   * by the chosen candidate; typing anything else commits `heldChar`
+   * alone and the new key is processed normally.
    *
    * Omitting `candidates` falls back to the host's `AssociatedDictionary`
-   * dictionary keyed by `heldChar`'s first character. The fallback only
+   * dictionary keyed by `heldChar`'s last character. The fallback only
    * yields suggestions when the manifest opts in via a
    * `{ "key": "enableAssociatedMode", "type": "system" }` field and the
    * toggle is on; otherwise the array is empty and no associated mode
@@ -328,7 +336,10 @@ export interface KeyEvent extends EventContext, EventMutators {
 
 /** Payload passed to `candidateConfirmed` and `candidateSelectionChanged`. */
 export interface ConfirmEvent extends EventContext, EventMutators {
-  /** Confirmed display text. */
+  /**
+   * Confirmed display text. `""` on an empty commit
+   * (`commitSelectedCandidate` with nothing highlighted).
+   */
   readonly candidate: string;
   /**
    * Absolute index of the candidate within the list emitted by the most
@@ -392,7 +403,9 @@ export interface InputEngine {
    */
   handleAssociatedKey?(event: KeyEvent): boolean | void;
   /**
-   * Called after a candidate is committed (engine-driven or by the user).
+   * Called after a candidate is committed (engine-driven or by the user),
+   * or on an empty commit (`candidate` `""`, `absoluteIndex` -1) from
+   * `commitSelectedCandidate` with nothing highlighted.
    *
    * Return `true` to mark as handled. Returning `false` / `undefined`
    * (including omitting the method) makes the host fall back to its

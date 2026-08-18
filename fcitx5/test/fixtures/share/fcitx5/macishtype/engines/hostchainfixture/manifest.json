@@ -1,0 +1,13 @@
+{
+  "entry": "index.js",
+  "name": { "en": "Host Chain Fixture" },
+  "intendedLanguage": "zz",
+  "settings": [
+    {
+      "title": { "en": "Typing" },
+      "fields": [
+        { "key": "enableAssociatedMode", "type": "system", "default": true }
+      ]
+    }
+  ]
+}

@@ -80,6 +80,23 @@ check "Home selects the first candidate of the page (cursor 0)" \
 check "an index label on page 2 commits the absolute candidate c4" \
     "$committed" '{"event": "commit", "text": "c4"}'
 
+# --- commitSelectedCandidate without a highlight / without a window ---
+# Enter on a suspended highlight is an empty commit: the host never picks a
+# candidate; with no engine candidateConfirmed the fallback just ends the
+# composition. Return=65293:36; KeyC=99:54 fires commitSelectedCandidate
+# with no window up, which must be a silent no-op.
+entered="$("$root/test/isolated.sh" navfixture 97:38 65293:36 2> /dev/null)"
+nowindow="$("$root/test/isolated.sh" navfixture 99:54 2> /dev/null)"
+
+check_absent "Enter on a suspended highlight commits nothing" \
+    "$entered" '"event": "commit"'
+check "Enter on a suspended highlight dismisses the window" \
+    "$(last_cand "$entered")" '"items": []'
+check "commitSelectedCandidate with no window is still consumed" \
+    "$nowindow" '"keyval": 99, "handled": true'
+check_absent "commitSelectedCandidate with no window commits nothing" \
+    "$nowindow" '"event": "commit"'
+
 # --- Engine-driven navigation (macOS-parity hostglue helpers) ---
 # intentfixture opts out of handleNavigationKeys/handleIndexLabelKeys and
 # replays navigationIntent()/candidateIndex() itself. Tab=65289:23,

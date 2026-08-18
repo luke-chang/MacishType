@@ -19,6 +19,12 @@ export default class {
       );
       return true;
     }
+    if (event.code === "KeyC") {
+      // No window is up: commitSelectedCandidate must be a silent no-op
+      // (window verbs require a visible window), not an empty commit.
+      event.commitSelectedCandidate();
+      return true;
+    }
     return false;
   }
 }

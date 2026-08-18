@@ -332,14 +332,7 @@ bool EngineSession::dispatchCandidateWindowKey(const WebKeyEvent &web) {
             return true;
         }
         if (web.key == "Enter" && !web.shiftKey && !web.altKey) {
-            if (associating_ && selectedIndex() < 0) {
-                // Associated mode with nothing highlighted: commit the held
-                // character alone, like any other dismiss key, rather than
-                // the first follow-up.
-                applyActions({FlushStagedAction{}});
-            } else {
-                applyActions({CommitSelectedAction{}});
-            }
+            applyActions({CommitSelectedAction{}});
             return true;
         }
     }
@@ -621,30 +614,16 @@ void EngineSession::applyActions(std::vector<Action> actions) {
                     }
                 } else if constexpr (std::is_same_v<T,
                                                     CommitSelectedAction>) {
+                    // Window verbs are no-ops without a visible window; with
+                    // one, a suspended highlight reports an empty commit so
+                    // the engine decides — the host never picks a candidate.
                     auto *list = candidateList();
                     if (list && !candidates_.empty()) {
                         int cursor = list->globalCursorIndex();
-                        bool suspended = cursor < 0;
-                        // Suspended (no selection): commit the current page's
-                        // first candidate, reporting absoluteIndex -1.
-                        size_t index =
-                            suspended
-                                ? static_cast<size_t>(
-                                      list->currentPage() *
-                                      std::max(1, list->pageSize()))
-                                : static_cast<size_t>(cursor);
-                        // Copy: confirmCandidate re-enters the engine, which
-                        // may replace candidates_ while we still need this
-                        // entry (mirrors confirmCandidateAt).
-                        if (index < candidates_.size()) {
-                            CandidateData copy = copyCandidate(
-                                host_->context(), candidates_[index]);
-                            confirmCandidate(
-                                copy,
-                                suspended ? -1 : static_cast<int>(index));
-                            if (copy.hasPayload) {
-                                JS_FreeValue(host_->context(), copy.payload);
-                            }
+                        if (cursor < 0) {
+                            confirmCandidate(CandidateData{}, -1);
+                        } else {
+                            confirmCandidateAt(static_cast<size_t>(cursor));
                         }
                     }
                 } else if constexpr (std::is_same_v<T, CommitAtIndexAction>) {
@@ -1163,17 +1142,14 @@ void EngineSession::confirmCandidate(const CandidateData &candidate,
     if (handled.value_or(false)) {
         return;
     }
-    // Host fallback (macOS parity): commit the staged prefix plus this
-    // candidate. A single confirmed character can enter associated mode
-    // (hold it, offer follow-ups from the host dictionary) when enabled.
+    // Host fallback: commit the staged prefix plus this candidate. A
+    // single-character candidate can enter associated mode; the length gate
+    // reads the candidate alone (not staged + candidate) and the staged
+    // prefix folds into the held text so it is never dropped.
     std::string committed = stagedText_ + candidate.text;
-    if (!associating_ && host_->associatedModeEnabled() &&
-        characterCount(committed) == 1) {
-        auto followups = host_->associatedFollowups(committed);
-        if (!followups.empty()) {
-            enterAssociatedMode(committed, std::move(followups));
-            return;
-        }
+    if (!associating_ && characterCount(candidate.text) == 1) {
+        enterAssociatedMode(committed, std::nullopt);
+        return;
     }
     endComposition(committed);
 }
@@ -1204,7 +1180,7 @@ void EngineSession::enterAssociatedMode(
             : std::vector<std::string>{};
     if (resolved.empty()) {
         // No follow-ups: don't enter associated mode, just commit the held
-        // character (macOS parity).
+        // text.
         endComposition(heldChar);
         return;
     }

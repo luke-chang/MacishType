@@ -26,6 +26,16 @@ check() {
     fi
 }
 
+check_absent() {
+    if printf '%s\n' "$2" | grep -qF "$3"; then
+        echo "FAIL: $1" >&2
+        printf '%s\n' "$2" >&2
+        exit 1
+    else
+        echo "PASS: $1"
+    fi
+}
+
 # The associated candidate list carries the header and the dictionary's
 # follow-ups; it is the event whose auxUp is 關聯字.
 assoc_line="$(printf '%s\n' "$enter" | grep -F '"auxUp": "關聯字"')"
@@ -41,4 +51,38 @@ check "an unhandled key dismisses, committing the held char alone" \
 # first follow-up.
 check "Return with nothing highlighted commits the held char alone" \
     "$returned" '{"event": "commit", "text": "中"}'
+
+# --- Staged prefix retention through the fallback ---
+# stagedassocfixture: KeyA stages 甲 (of 甲乙) and offers the one-char
+# candidate 中. Confirming 中 must fold the staged prefix into the held
+# text (甲中) and enter associated mode off 中's follow-ups — not commit,
+# and not drop 甲. A second Return (nothing highlighted) flushes the
+# accumulated held text.
+staged="$("$root/test/isolated.sh" stagedassocfixture 97:38 65293:36 2> /dev/null)"
+stagedout="$("$root/test/isolated.sh" stagedassocfixture 97:38 65293:36 65293:36 2> /dev/null)"
+
+check "confirming with a staged prefix enters associated mode" \
+    "$staged" '"auxUp": "關聯字"'
+check "the staged prefix folds into the held text" \
+    "$staged" '"text": "甲中", "cursor"'
+check_absent "confirming with a staged prefix does not commit yet" \
+    "$staged" '"event": "commit"'
+check "Return then flushes the accumulated held text" \
+    "$stagedout" '{"event": "commit", "text": "甲中"}'
+
+# --- Chained associated input ---
+# Each pick re-enters associated mode with the accumulated text; the chain
+# ends (committing everything) when the next round has no follow-ups.
+# hostchainfixture omits the candidates argument, so the host keys each
+# round off the held text's LAST character (存 → 錢 → 包, no 包 entry);
+# chainfixture supplies its own lists, ending with an explicit empty array.
+hostchain="$("$root/test/isolated.sh" hostchainfixture 97:38 49:10 49:10 2> /dev/null)"
+enginechain="$("$root/test/isolated.sh" chainfixture 97:38 49:10 49:10 2> /dev/null)"
+
+check "the dictionary chains off the held text's last character" \
+    "$hostchain" '"text": "包"'
+check "a dictionary miss ends the chain, committing the accumulated text" \
+    "$hostchain" '{"event": "commit", "text": "存錢包"}'
+check "an engine-supplied empty candidates array ends the chain" \
+    "$enginechain" '{"event": "commit", "text": "存錢包"}'
 echo "Associated-mode checks passed."

@@ -639,8 +639,10 @@ source of truth. Highlights:
   Omitting the method gives the host default: Escape calls
   `flushStaged()` to dismiss; other keys fall through.
 - `candidateConfirmed(event)` — after the host commits a candidate
-  (engine-driven or user-picked). See [Host fallback](#host-fallback) for
-  the return-value contract.
+  (engine-driven or user-picked), or as an empty commit (`candidate` is
+  `""`, `absoluteIndex` is -1) when `commitSelectedCandidate` runs with
+  nothing highlighted. See [Host fallback](#host-fallback) for the
+  return-value contract.
 - `candidateSelectionChanged(event)` — after the highlight moves (e.g.
   arrow keys). Same return-value contract as `candidateConfirmed`.
 - `compositionEnded()` — fires when the host ends composition: an in-app
@@ -696,7 +698,9 @@ top of them.
 2. Else if `event.candidate.length === 1` AND
    `manifest.settings.enableAssociatedMode` is true AND the host's
    `AssociatedDictionary` dictionary has follow-ups for that character →
-   enter associated mode with those follow-ups.
+   enter associated mode with those follow-ups. The staged prefix is not
+   dropped: it folds into the held text (`stagedText + candidate`), so
+   dismissing or picking a follow-up commits the full accumulated text.
 3. Otherwise → flush staged.
 
 **Fallback for `candidateSelectionChanged`**: nothing happens (host emits
@@ -736,7 +740,7 @@ Replace the candidate list shown in the candidate window.
   - `annotation` *(string)* — optional disambiguator shown beside the candidate (e.g. description of a symbol).
   - `payload` *(any)* — opaque value round-tripped back via `candidateConfirmed` / `candidateSelectionChanged`, so engines can attach IDs without parsing display text.
 - Pass an **empty array** to hide the window.
-- `options.anchorAt` *(integer, default `0`)* — cursor position in `markedText` where the window's left edge anchors. Range `0...markedText.length`: `0` = before the first character, `length` = after the last.
+- `options.anchorAt` *(integer, default `0`)* — cursor position in `markedText` where the window's left edge anchors. Range `0...markedText.length`: `0` = before the first character, `length` = after the last. Currently only supported by the macOS host — under fcitx5, window placement is frontend-driven.
 - `options.initialHighlight` *(integer, default `0`)* — initial selection. `0` highlights the first candidate; a positive `n` highlights absolute index `n` (clamped to the displayed range, independent of `pageSize`); `-1` suspends the initial highlight — the first navigation action reveals it and normal behavior resumes.
 - `options.layoutDirection` *(`"horizontal"` \| `"vertical"`)* — override the candidate window's layout direction for this update only.
 - `options.indexLabels` *(string)* — override the index-label characters for this update only. Same `""`-collapses-vs-`" "`-blank-slot semantics as the manifest field.
@@ -755,6 +759,13 @@ engine can run its post-commit pipeline (associated mode, etc.).
 
 Commit whichever candidate is currently highlighted in the window. Used
 when the user presses Enter / Space.
+
+With the window visible but nothing highlighted (e.g. `initialHighlight:
+-1` before any navigation), this reports an empty commit —
+`candidateConfirmed` fires with `candidate` `""` and `absoluteIndex` -1 —
+and the engine decides what it means. With the window not visible it is a
+no-op, consistent with `commitCandidateAtIndex` and `navigateCandidates`;
+check `event.candidateWindow.isVisible` first when in doubt.
 
 #### `commitCandidateAtIndex(index)`
 
@@ -812,13 +823,16 @@ host enters associated mode automatically during
 only to supply a custom `candidates` list or to enter associated mode from a
 non-standard trigger.
 
-- `heldChar` *(string, required)* — the just-committed character to keep as the staged prefix.
+- `heldChar` *(string, required)* — the text to keep as the staged prefix;
+  may be more than one character (e.g. an accumulated prefix plus the
+  just-committed candidate).
 - `candidates` *(string[], optional)* — follow-up suggestions. Omit to fall
   back to the host's `AssociatedDictionary` dictionary keyed by `heldChar`'s
-  first character. The fallback requires the manifest to opt in via
-  `{ "key": "enableAssociatedMode", "type": "system" }` and the toggle to
-  be on; otherwise the lookup yields an empty list and associated mode
-  is not entered.
+  last character (last grapheme cluster on macOS, last code point on Linux —
+  equivalent for CJK dictionary keys). The fallback requires the manifest to
+  opt in via `{ "key": "enableAssociatedMode", "type": "system" }` and the
+  toggle to be on; otherwise the lookup yields an empty list and associated
+  mode is not entered.
 
 ### Event context (read-only)
 

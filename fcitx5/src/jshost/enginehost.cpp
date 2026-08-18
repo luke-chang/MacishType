@@ -662,11 +662,17 @@ JsEngineHost::associatedFollowups(const std::string &heldChar) {
     if (heldChar.empty() || !fcitx::utf8::validate(heldChar)) {
         return {};
     }
-    // Key on the first character only; the dictionary is keyed by single
-    // leading characters.
-    size_t firstCharBytes =
-        fcitx::utf8::ncharByteLength(heldChar.begin(), 1);
-    auto found = associatedDictionary_.find(heldChar.substr(0, firstCharBytes));
+    // Key on the last character: follow-ups attach after the held text, so
+    // multi-character held text (staged prefix + candidate) chains off its
+    // trailing character.
+    std::string lastChar;
+    auto range = fcitx::utf8::MakeUTF8CharRange(heldChar);
+    for (auto iterator = std::begin(range); iterator != std::end(range);
+         ++iterator) {
+        lastChar.assign(iterator.charRange().first,
+                        iterator.charRange().second);
+    }
+    auto found = associatedDictionary_.find(lastChar);
     return found != associatedDictionary_.end() ? found->second
                                                 : std::vector<std::string>{};
 }
