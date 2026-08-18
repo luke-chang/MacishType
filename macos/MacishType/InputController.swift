@@ -402,15 +402,23 @@ class InputController: IMKInputController {
                 endComposition(client: client)
             case .flushStaged(let append):
                 endComposition(client: client, insert: engineContext.stagedText + append)
-            case .enterAssociatedMode(let heldChar, let candidates):
+            case .enterAssociatedMode(let heldText, let candidates):
+                // No follow-ups: commit what has accumulated rather than leave a
+                // preedit under a hidden window. Not .flushStaged — heldText
+                // already includes stagedText, which flushStaged would prepend
+                // a second time.
+                if candidates.isEmpty {
+                    endComposition(client: client, insert: heldText)
+                    break
+                }
                 // Clear any leftover composing state from the emitting engine
                 // (e.g. composingBuffer that produced this committed char).
                 engineContext.reset()
                 // reset() clears isAssociating, so set it after.
                 engineContext.isAssociating = true
                 executeActions([
-                    .updateMarkedText(heldChar, staged: -1),
-                    .updateCandidates(candidates, anchorAt: 1, initialHighlight: -1)
+                    .updateMarkedText(heldText, staged: -1),
+                    .updateCandidates(candidates, anchorAt: heldText.count, initialHighlight: -1)
                 ], client: client)
             }
         }

@@ -66,9 +66,10 @@ enum EngineAction {
     // append string (both may be empty) via a single insertText call, then
     // hide window and reset context.
     case flushStaged(String = "")
-    // Enter associated mode: held char becomes staged marked text,
-    // candidates are displayed with anchorAt=1 initialHighlight=-1. Payload
-    // carries pre-looked-up candidates so Controller doesn't re-query.
+    // Enter associated mode: the held text (one or more characters) becomes
+    // staged marked text, candidates are anchored past its end with
+    // initialHighlight=-1. Payload carries pre-looked-up candidates so
+    // Controller doesn't re-query; an empty payload commits the held text.
     case enterAssociatedMode(String, [String])
 }
 
@@ -536,12 +537,12 @@ class InputEngine {
         if context.isAssociating {
             return [.flushStaged(candidate)]
         }
-        if enableAssociatedMode,
-           candidate.count == 1, let first = candidate.first {
-            let related = lookupAssociatedCandidates(for: first)
-            if !related.isEmpty {
-                return [.enterAssociatedMode(candidate, related)]
-            }
+        // The eligibility gate measures the candidate alone; the staged prefix
+        // folds into the held text so it is never dropped. An empty follow-up
+        // list makes `.enterAssociatedMode` commit that held text.
+        if enableAssociatedMode, candidate.count == 1 {
+            let held = context.stagedText + candidate
+            return [.enterAssociatedMode(held, lookupAssociatedCandidates(forHeldText: held))]
         }
         return [.flushStaged(candidate)]
     }
@@ -576,6 +577,12 @@ class InputEngine {
     // (enableAssociatedMode) and a dictionary for its locale is bundled.
     func lookupAssociatedCandidates(for char: Character) -> [String] {
         associatedDictionaryHandle?.lookup(char) ?? []
+    }
+
+    /// Follow-ups for held text of any length: the dictionary is keyed by its
+    /// last character, so accumulated text keeps resolving.
+    final func lookupAssociatedCandidates(forHeldText heldText: String) -> [String] {
+        heldText.last.map { lookupAssociatedCandidates(for: $0) } ?? []
     }
 
     /// Staged-clear for engines that stage the highlighted candidate as a

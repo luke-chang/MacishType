@@ -695,7 +695,8 @@ top of them.
 
 1. If `event.isAssociating` is true → flush the staged prefix together
    with this committed character, then exit associated mode.
-2. Else if `event.candidate.length === 1` AND
+2. Else if `event.candidate` is a single character (one grapheme
+   cluster — don't assume `length === 1`) AND
    `manifest.settings.enableAssociatedMode` is true AND the host's
    `AssociatedDictionary` dictionary has follow-ups for that character →
    enter associated mode with those follow-ups. The staged prefix is not
@@ -825,14 +826,19 @@ non-standard trigger.
 
 - `heldChar` *(string, required)* — the text to keep as the staged prefix;
   may be more than one character (e.g. an accumulated prefix plus the
-  just-committed candidate).
+  just-committed candidate). It replaces any previously staged text — fold
+  `event.stagedText` in to carry it forward.
 - `candidates` *(string[], optional)* — follow-up suggestions. Omit to fall
   back to the host's `AssociatedDictionary` dictionary keyed by `heldChar`'s
-  last character (last grapheme cluster on macOS, last code point on Linux —
-  equivalent for CJK dictionary keys). The fallback requires the manifest to
-  opt in via `{ "key": "enableAssociatedMode", "type": "system" }` and the
-  toggle to be on; otherwise the lookup yields an empty list and associated
-  mode is not entered.
+  last character (grapheme cluster). That fallback needs the manifest to opt
+  in via `{ "key": "enableAssociatedMode", "type": "system" }` with the toggle
+  on.
+
+Whenever the resolved list comes out empty — an explicit `[]`, a dictionary
+miss, or the opt-in absent — the host commits `heldChar` and ends the
+composition. Chained engines lean on this: each round re-enters with the
+accumulated text, and the round that finds no follow-ups commits the whole
+thing.
 
 ### Event context (read-only)
 

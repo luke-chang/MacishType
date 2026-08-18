@@ -11,6 +11,13 @@ func flushedText(_ actions: [EngineAction]) -> String? {
     return text
 }
 
+/// The held text and follow-ups of a lone `.enterAssociatedMode`, else nil.
+func associatedMode(_ actions: [EngineAction]) -> (held: String, candidates: [String])? {
+    guard actions.count == 1,
+          case .enterAssociatedMode(let held, let candidates) = actions[0] else { return nil }
+    return (held, candidates)
+}
+
 /// The text and staged length of a lone `.updateMarkedText`, else nil.
 func markedText(_ actions: [EngineAction]) -> (text: String, staged: Int)? {
     guard actions.count == 1,

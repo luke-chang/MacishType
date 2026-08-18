@@ -264,17 +264,17 @@ extension JavaScriptEngine {
             let text = Self.resolved(append)?.toString() ?? ""
             sink.actions.append(.flushStaged(text))
         }
-        let enterAssociatedMode: @convention(block) (String, JSValue?) -> Void = { [weak self] heldChar, candidatesValue in
-            // Two-arg form uses the JS-supplied array; one-arg falls back to
-            // the system AssociatedDictionary lookup.
+        let enterAssociatedMode: @convention(block) (String, JSValue?) -> Void = { [weak self] heldText, candidatesValue in
+            // Two-arg form uses the JS-supplied array; one-arg falls back to the
+            // system AssociatedDictionary.
             let candidates: [String]
             if let resolved = Self.resolved(candidatesValue),
                resolved.isArray, let arr = resolved.toArray() as? [String] {
                 candidates = arr
             } else {
-                candidates = heldChar.first.flatMap { self?.lookupAssociatedCandidates(for: $0) } ?? []
+                candidates = self?.lookupAssociatedCandidates(forHeldText: heldText) ?? []
             }
-            sink.actions.append(.enterAssociatedMode(heldChar, candidates))
+            sink.actions.append(.enterAssociatedMode(heldText, candidates))
         }
 
         event.setObject(updateMarkedText, forKeyedSubscript: "updateMarkedText" as NSString)

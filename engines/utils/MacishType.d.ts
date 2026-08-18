@@ -207,17 +207,21 @@ export interface EventMutators {
   flushStaged(append?: string): void;
   /**
    * Enter associated mode: `heldChar` (which may be more than one
-   * character) becomes staged marked text and `candidates` appear as
-   * suggested follow-ups. Picking a candidate commits `heldChar` followed
-   * by the chosen candidate; typing anything else commits `heldChar`
-   * alone and the new key is processed normally.
+   * character) becomes staged marked text, replacing any previously staged
+   * text — fold `event.stagedText` in to carry it forward. `candidates`
+   * appear as suggested follow-ups. Picking a candidate commits `heldChar`
+   * followed by the chosen candidate; typing anything else commits
+   * `heldChar` alone and the new key is processed normally.
    *
    * Omitting `candidates` falls back to the host's `AssociatedDictionary`
-   * dictionary keyed by `heldChar`'s last character. The fallback only
-   * yields suggestions when the manifest opts in via a
-   * `{ "key": "enableAssociatedMode", "type": "system" }` field and the
-   * toggle is on; otherwise the array is empty and no associated mode
-   * is entered.
+   * dictionary keyed by `heldChar`'s last character. That fallback needs the
+   * manifest to opt in via a
+   * `{ "key": "enableAssociatedMode", "type": "system" }` field with the
+   * toggle on.
+   *
+   * Whenever the resolved list comes out empty — an explicit `[]`, a
+   * dictionary miss, or the opt-in absent — the host commits `heldChar` and
+   * ends the composition. Chained engines lean on this to finish a chain.
    */
   enterAssociatedMode(heldChar: string, candidates?: readonly string[]): void;
 }
