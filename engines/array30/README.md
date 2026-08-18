@@ -1,8 +1,8 @@
 # Array (行列) — JavaScript engine
 
-A JavaScript port of MacishType's bundled Swift Array (行列) engine. It tracks
-the Swift engine feature-for-feature and exists to exercise the JS engine API
-end to end.
+A complete Array (行列) input method written against the MacishType JavaScript
+engine contract. It runs unmodified on every MacishType host and exercises the
+JS engine API end to end.
 
 ## Setup
 
@@ -18,14 +18,26 @@ end to end.
    gitignored — re-run the script after a `make prepare` or a resource-lock
    bump.
 
-2. **Load the engine.** In MacishType, open **Settings → JS → Engine folder →
-   Choose Folder…** and pick this folder. The host watches the folder and
-   hot-reloads on edit, so iterating doesn't require restarting the input
-   method.
+2. **Load the engine.** How the host finds an engine folder differs per
+   platform:
+
+   - **macOS** — open MacishType's **Settings → JS → Engine folder → Choose
+     Folder…** and pick this folder.
+   - **Linux (fcitx5)** — place this folder in the addon's engine directory,
+     copied or symlinked, then add **Array (行列)** in `fcitx5-configtool` →
+     **Input Method** → **Add**:
+
+     ```sh
+     mkdir -p ~/.local/share/fcitx5/macishtype/engines
+     cp -r "$(pwd)" ~/.local/share/fcitx5/macishtype/engines/array30
+     # or symlink instead, to edit the engine in place
+     ln -s "$(pwd)" ~/.local/share/fcitx5/macishtype/engines/array30
+     ```
+
+   Either way the host watches the folder and hot-reloads on edit, so
+   iterating doesn't require restarting the input method.
 
 ## Features
-
-Mirrors the Swift engine:
 
 - **Short codes** for 1–2 key codes (一/二級簡碼), with fixed selection keys.
 - **Paging** through any candidate list with `=` / `]` / `Shift+→` (forward)
@@ -35,12 +47,18 @@ Mirrors the Swift engine:
   matches any code containing the given radicals in any order.
 - **Symbol groups** via `w` / `hg` + digit, shown as a group menu and then a
   named symbol list.
-- **Full-width** punctuation via Option + key.
-- **Character set** picker in Settings (standard / all displayable / full) that
-  filters candidates by installed-font coverage.
+- **Full-width** input, triggered per host: on macOS a one-shot
+  `Option` + key commits the full-width form; on fcitx5 it is a mode, toggled
+  from the full-width entry in the input method's status area — which needs
+  fcitx5's `fullwidth` module installed (`fcitx5-module-fullwidth` on
+  Debian-family), and stays absent without it.
+- **Character set** picker in the host's engine settings (standard / all
+  displayable / full) that filters candidates by installed-font coverage.
 - **Reverse lookup** (`capabilities.reverseLookup`) for the host's Find Input
   Code window: main codes as radical readouts, then short codes as
-  `readout+selectionKey` annotated 簡碼.
+  `readout+selectionKey` annotated 簡碼. macOS opens it from the IME menu;
+  fcitx5 from the input method's status area or the hotkey configured in
+  `fcitx5-configtool` (default `Ctrl+Alt+L`).
 
 ## Tests
 
