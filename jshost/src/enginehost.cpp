@@ -1,7 +1,4 @@
-#include "enginehost.h"
-
-#include <sys/stat.h>
-#include <sys/utsname.h>
+#include "macishtype/enginehost.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -9,14 +6,10 @@
 #include <fstream>
 #include <sstream>
 
-#include <fcitx/instance.h>
-
-#include <fcitx-utils/standardpaths.h>
-#include <fcitx-utils/utf8.h>
-
-#include "../log.h"
-#include "fontcoverage.h"
-#include "qjsutil.h"
+#include "macishtype/fontcoverage.h"
+#include "macishtype/hostlog.h"
+#include "macishtype/hostseams.h"
+#include "macishtype/qjsutil.h"
 
 namespace macishtype {
 
@@ -27,8 +20,8 @@ constexpr auto kWatchdogTimeout = std::chrono::seconds(3);
 constexpr size_t kStorageMaxEncodedKeyBytes = 200;
 constexpr size_t kStorageMaxValueBytes = 10 * 1024 * 1024;
 // Per-engine JS heap ceiling. Without it a malicious or buggy engine that
-// allocates without bound grows until the kernel OOM-killer fires, taking
-// fcitx5 (and possibly the desktop) down with it; the cap turns that into a JS
+// allocates without bound grows until the OS kills the host process (and on
+// Linux possibly the desktop with it); the cap turns that into a JS
 // out-of-memory exception confined to the offending engine. Sized far above
 // any realistic input-method engine's footprint; raise it if a legitimate
 // engine ever logs an out-of-memory failure.
@@ -52,63 +45,6 @@ uint64_t reverseLookupIdleReleaseMicros() {
         }
     }
     return 30ULL * 1000 * 1000;
-}
-
-// navigator.userAgent platform segment helpers. Each host info axis is
-// resolved independently so a missing source drops only its own token.
-std::string displayServerName() {
-    const char *sessionType = std::getenv("XDG_SESSION_TYPE");
-    if (sessionType == nullptr) {
-        return {};
-    }
-    const std::string_view type(sessionType);
-    if (type == "wayland") {
-        return "Wayland";
-    }
-    if (type == "x11") {
-        return "X11";
-    }
-    return {};
-}
-
-std::string machineArchitecture() {
-    struct utsname info;
-    if (uname(&info) != 0) {
-        return {};
-    }
-    return info.machine;
-}
-
-// Distro label like "Ubuntu 26.04" from /etc/os-release NAME + VERSION_ID.
-std::string distroLabel() {
-    std::ifstream file("/etc/os-release");
-    if (!file) {
-        return {};
-    }
-    std::string name;
-    std::string versionId;
-    std::string line;
-    const auto readField = [&line](std::string_view key, std::string &out) {
-        if (line.rfind(key, 0) != 0) {
-            return;
-        }
-        std::string value = line.substr(key.size());
-        if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
-            value = value.substr(1, value.size() - 2);
-        }
-        out = std::move(value);
-    };
-    while (std::getline(file, line)) {
-        readField("NAME=", name);
-        readField("VERSION_ID=", versionId);
-    }
-    if (name.empty()) {
-        return {};
-    }
-    if (versionId.empty()) {
-        return name;
-    }
-    return name + " " + versionId;
 }
 
 enum class FieldType { Boolean, Number, String };
@@ -207,6 +143,24 @@ std::optional<std::string> decodeStorageKey(const std::string &filename) {
     return key;
 }
 
+// Defined with the UTF-8 codec natives below.
+bool isStrictUtf8(const uint8_t *data, size_t size);
+
+// Byte length of the leading UTF-8 character; call after validation.
+size_t utf8LeadingCharLength(std::string_view text) {
+    auto lead = static_cast<unsigned char>(text.front());
+    if (lead >= 0xF0) {
+        return 4;
+    }
+    if (lead >= 0xE0) {
+        return 3;
+    }
+    if (lead >= 0xC0) {
+        return 2;
+    }
+    return 1;
+}
+
 // Textual normalization of "/"-separated segments; rejects escapes above
 // the root. Empty result is allowed (caller decides).
 std::optional<std::string> normalizeRelativePath(const std::string &path) {
@@ -248,12 +202,11 @@ JsEngineHost::load(const std::string &engineId,
                    const ManifestData &manifest,
                    const std::vector<std::string> &languages,
                    std::map<std::string, ToggleDelegate> toggleDelegates,
-                   fcitx::EventLoop *eventLoop,
-                   fcitx::EventDispatcher *dispatcher) {
+                   HostEventLoop *eventLoop) {
     std::unique_ptr<JsEngineHost> host(
         new JsEngineHost(engineId, engineRoot, storageRoot,
                          settingsValuesJson, manifest, languages,
-                         std::move(toggleDelegates), eventLoop, dispatcher));
+                         std::move(toggleDelegates), eventLoop));
     if (!host->initialize()) {
         return nullptr;
     }
@@ -267,16 +220,14 @@ JsEngineHost::JsEngineHost(std::string engineId,
                            ManifestData manifest,
                            std::vector<std::string> languages,
                            std::map<std::string, ToggleDelegate> toggleDelegates,
-                           fcitx::EventLoop *eventLoop,
-                           fcitx::EventDispatcher *dispatcher)
+                           HostEventLoop *eventLoop)
     : engineId_(std::move(engineId)), engineRoot_(std::move(engineRoot)),
       storageRoot_(std::move(storageRoot)),
       settingsValuesJson_(settingsValuesJson.empty() ? "{}"
                                                      : std::move(
                                                            settingsValuesJson)),
       manifest_(std::move(manifest)), languages_(std::move(languages)),
-      toggleDelegates_(std::move(toggleDelegates)), eventLoop_(eventLoop),
-      dispatcher_(dispatcher) {}
+      toggleDelegates_(std::move(toggleDelegates)), eventLoop_(eventLoop) {}
 
 JsEngineHost::~JsEngineHost() {
     // Async-fetch teardown, strictly before the JS context dies:
@@ -331,30 +282,9 @@ bool JsEngineHost::initialize() {
     JS_SetModuleLoaderFunc(runtime_, &JsEngineHost::moduleNormalize,
                            &JsEngineHost::moduleLoad, this);
 
-    // Product token stays "MacishType/" across host ports; platform tokens
-    // and the fcitx5/quickjs-ng segments identify this Linux host.
-    std::vector<std::string> platformTokens;
-    if (std::string displayServer = displayServerName();
-        !displayServer.empty()) {
-        platformTokens.push_back(std::move(displayServer));
-    }
-    if (std::string arch = machineArchitecture(); !arch.empty()) {
-        platformTokens.push_back("Linux " + arch);
-    } else {
-        platformTokens.emplace_back("Linux");
-    }
-    if (std::string distro = distroLabel(); !distro.empty()) {
-        platformTokens.push_back(std::move(distro));
-    }
-    std::string platform;
-    for (size_t i = 0; i < platformTokens.size(); ++i) {
-        if (i != 0) {
-            platform += "; ";
-        }
-        platform += platformTokens[i];
-    }
-    userAgent_ = std::string("MacishType/") + MACISHTYPE_VERSION + " (" +
-                 platform + ") fcitx5/" + fcitx::Instance::version() +
+    // The platform supplies "MacishType/<ver> (<tokens>) <host>/<ver>";
+    // core appends the interpreter token, which only it knows.
+    userAgent_ = hostServices().platform->userAgentPrefix() +
                  " quickjs-ng/" + JS_GetVersion();
 
     // Manifest-declared candidate window fields become the read fallback
@@ -366,7 +296,7 @@ bool JsEngineHost::initialize() {
                                "manifest.candidateWindow"));
         if (JS_IsObject(declared.get())) {
             for (const auto &[field, type] : candidateWindowFieldTypes()) {
-                FCITX_UNUSED(type);
+                (void)type;
                 qjs::Value value(
                     ctx_,
                     JS_GetPropertyStr(ctx_, declared.get(), field.c_str()));
@@ -386,15 +316,13 @@ bool JsEngineHost::initialize() {
 
     registerBridgeGlobals();
 
-    const auto &paths = fcitx::StandardPaths::global();
-    auto glue = paths.locate(fcitx::StandardPathsType::PkgData,
-                             "macishtype/hostglue.js");
-    auto runtimeJs = paths.locate(fcitx::StandardPathsType::PkgData,
-                                  "macishtype/runtime.js");
+    ResourceLocator *resources = hostServices().resources;
+    auto glue = resources->locateRuntimeScript("hostglue.js");
+    auto runtimeJs = resources->locateRuntimeScript("runtime.js");
     if (glue.empty() || runtimeJs.empty()) {
         MACISHTYPE_ERROR()
-            << "Shared runtime scripts not found under <pkgdata>/macishtype "
-               "(hostglue.js / runtime.js); is the addon fully installed?";
+            << "Shared runtime scripts not found (hostglue.js / runtime.js); "
+               "is the host fully installed?";
         return false;
     }
     if (!evaluateScript(glue, "hostglue.js") ||
@@ -514,7 +442,12 @@ bool JsEngineHost::injectModules() {
         }
         qjs::Value result;
         if (moduleName == "fontCoverage") {
-            const std::string &coverage = fontCoverageBitmapBase64();
+            // Platform-provided coverage when installed; otherwise the
+            // full-coverage bitmap, which disables candidate filtering.
+            FontCoverageProvider *provider = hostServices().fontCoverage;
+            const std::string &coverage =
+                provider != nullptr ? provider->coverageBitmapBase64()
+                                    : fullCoverageBitmapBase64();
             JSValue arguments[2] = {
                 JS_NewString(ctx_, moduleName.c_str()),
                 JS_NewString(ctx_, coverage.c_str()),
@@ -554,24 +487,21 @@ bool JsEngineHost::injectModules() {
     return true;
 }
 
-// Merges the per-language <fileBase>.<language>.txt installed under
-// <pkgdata>/macishtype/tables/ into `table` ("key<TAB>value" lines, #
-// comments). A missing file adds nothing, which reads as a miss for every key
-// it would have supplied.
+// Merges the platform-installed per-language <fileBase>.<language>.txt into
+// `table` ("key<TAB>value" lines, # comments). A missing file adds nothing,
+// which reads as a miss for every key it would have supplied.
 void JsEngineHost::loadModuleTable(JSValue table, const std::string &fileBase,
                                    bool numericValues) {
     if (manifest_.intendedLanguage.empty()) {
         return;
     }
-    auto path = fcitx::StandardPaths::global().locate(
-        fcitx::StandardPathsType::PkgData,
-        "macishtype/tables/" + fileBase + "." + manifest_.intendedLanguage +
-            ".txt");
+    auto path = hostServices().resources->locateDataTable(
+        fileBase, manifest_.intendedLanguage);
     if (path.empty()) {
         MACISHTYPE_INFO() << "No " << fileBase << " table for "
                           << manifest_.intendedLanguage
-                          << "; those keys answer with the module's miss value "
-                             "(run make prepare then make dev-install)";
+                          << "; those keys answer with the module's miss "
+                             "value (install the prepared data tables)";
         return;
     }
     std::ifstream stream(path, std::ios::binary);
@@ -612,9 +542,11 @@ std::filesystem::path associatedDictionaryPath(const std::string &language) {
     if (language.empty()) {
         return {};
     }
-    return fcitx::StandardPaths::global().locate(
-        fcitx::StandardPathsType::PkgData,
-        "macishtype/tables/AssociatedDictionary." + language + ".txt");
+    ResourceLocator *resources = hostServices().resources;
+    if (resources == nullptr) {
+        return {};
+    }
+    return resources->locateDataTable("AssociatedDictionary", language);
 }
 } // namespace
 
@@ -659,20 +591,21 @@ void JsEngineHost::ensureAssociatedDictionary() {
 std::vector<std::string>
 JsEngineHost::associatedFollowups(const std::string &heldChar) {
     ensureAssociatedDictionary();
-    if (heldChar.empty() || !fcitx::utf8::validate(heldChar)) {
+    if (heldChar.empty() ||
+        !isStrictUtf8(reinterpret_cast<const uint8_t *>(heldChar.data()),
+                      heldChar.size())) {
         return {};
     }
     // Key on the last character: follow-ups attach after the held text, so
     // multi-character held text (staged prefix + candidate) chains off its
     // trailing character.
-    std::string lastChar;
-    auto range = fcitx::utf8::MakeUTF8CharRange(heldChar);
-    for (auto iterator = std::begin(range); iterator != std::end(range);
-         ++iterator) {
-        lastChar.assign(iterator.charRange().first,
-                        iterator.charRange().second);
+    std::string_view remaining(heldChar);
+    std::string_view lastChar;
+    while (!remaining.empty()) {
+        lastChar = remaining.substr(0, utf8LeadingCharLength(remaining));
+        remaining.remove_prefix(lastChar.size());
     }
-    auto found = associatedDictionary_.find(lastChar);
+    auto found = associatedDictionary_.find(std::string(lastChar));
     return found != associatedDictionary_.end() ? found->second
                                                 : std::vector<std::string>{};
 }
@@ -824,11 +757,6 @@ std::optional<bool> JsEngineHost::invokeHook(uint64_t instanceId,
     return JS_ToBool(ctx_, result.get()) == 1;
 }
 
-std::optional<bool> JsEngineHost::invokeHook(uint64_t instanceId,
-                                             const char *method) {
-    return invokeHook(instanceId, method, JS_UNDEFINED);
-}
-
 // Reverse lookup ---------------------------------------------------------
 
 uint64_t JsEngineHost::prepareReverseLookup(std::function<void(bool)> onReady) {
@@ -975,9 +903,9 @@ JSValue JsEngineHost::reverseLookupReaction(JSContext *ctx,
                                             JSValueConst thisVal, int argc,
                                             JSValueConst *argv, int magic,
                                             JSValueConst *funcData) {
-    FCITX_UNUSED(thisVal);
-    FCITX_UNUSED(argc);
-    FCITX_UNUSED(argv);
+    (void)thisVal;
+    (void)argc;
+    (void)argv;
     int64_t token = 0;
     JS_ToInt64(ctx, &token, funcData[0]);
     hostOf(ctx)->settleReverseLookup(static_cast<uint64_t>(token), magic != 0);
@@ -1010,7 +938,7 @@ JsEngineHost::Entry::~Entry() {
 }
 
 int JsEngineHost::interruptHandler(JSRuntime *runtime, void *opaque) {
-    FCITX_UNUSED(runtime);
+    (void)runtime;
     auto *host = static_cast<JsEngineHost *>(opaque);
     if (host->callDepth_ > 0 &&
         std::chrono::steady_clock::now() > host->deadline_) {
@@ -1086,24 +1014,20 @@ void JsEngineHost::decrementActive() {
         // Release the host-scoped reverse index after an idle grace period, so
         // brief focus/window switches don't churn a rebuild.
         if (reverseLookupPrepared_ && eventLoop_ != nullptr) {
-            reverseLookupReleaseTimer_ = eventLoop_->addTimeEvent(
-                CLOCK_MONOTONIC,
-                fcitx::now(CLOCK_MONOTONIC) + reverseLookupIdleReleaseMicros(),
-                0, [this](fcitx::EventSourceTime *, uint64_t) {
-                    // Guard the self-destroy: touch only `self` after reset.
-                    auto *self = this;
-                    if (self->activeCount_ <= 0) {
-                        self->releaseReverseLookup();
+            reverseLookupReleaseTimer_ = eventLoop_->postDelayed(
+                std::chrono::microseconds(reverseLookupIdleReleaseMicros()),
+                [this]() {
+                    if (activeCount_ <= 0) {
+                        releaseReverseLookup();
                     }
-                    self->reverseLookupReleaseTimer_.reset();
-                    return true;
+                    reverseLookupReleaseTimer_.reset();
                 });
         }
     }
 }
 
 void JsEngineHost::dispatchToWorker() {
-    if (workerBusy_ || dispatcher_ == nullptr || activeCount_ <= 0) {
+    if (workerBusy_ || eventLoop_ == nullptr || activeCount_ <= 0) {
         return;
     }
     std::vector<PendingFetch> batch;
@@ -1128,7 +1052,7 @@ void JsEngineHost::dispatchToWorker() {
     // JSContext or other host state. It must always schedule the completion
     // (even on failure), or workerBusy_ would stay stuck.
     fetchWorker_ = std::thread([this, alive = std::weak_ptr<char>(aliveToken_),
-                                dispatcher = dispatcher_,
+                                loop = eventLoop_,
                                 batch = std::move(batch)]() mutable {
         for (auto &fetch : batch) {
             try {
@@ -1137,8 +1061,8 @@ void JsEngineHost::dispatchToWorker() {
                 fetch.bytes = std::nullopt;
             }
         }
-        dispatcher->schedule([this, alive = std::move(alive),
-                              batch = std::move(batch)]() mutable {
+        loop->post([this, alive = std::move(alive),
+                    batch = std::move(batch)]() mutable {
             if (alive.expired()) {
                 // Host died first: pure drop. No JS_* calls — the context is
                 // gone and JS_FreeRuntime reclaimed the batch's dup'd refs.
@@ -1186,21 +1110,19 @@ void JsEngineHost::scheduleDeferredSettle() {
     // Never settle synchronously here: incrementActive runs inside
     // activate(), and settling would put the parse back on the activate
     // turn — the stall this pipeline exists to remove.
-    deferredSettle_ = eventLoop_->addDeferEvent([this](fcitx::EventSource *) {
-        auto *self = this;
-        self->deferredSettle_.reset();
+    deferredSettle_ = eventLoop_->postDeferred([this]() {
+        deferredSettle_.reset();
         std::vector<PendingFetch> staged;
-        auto it = self->pendingFetches_.begin();
-        while (it != self->pendingFetches_.end()) {
+        auto it = pendingFetches_.begin();
+        while (it != pendingFetches_.end()) {
             if (it->bytes.has_value()) {
                 staged.push_back(std::move(*it));
-                it = self->pendingFetches_.erase(it);
+                it = pendingFetches_.erase(it);
             } else {
                 ++it;
             }
         }
-        self->settleFetches(std::move(staged));
-        return true;
+        settleFetches(std::move(staged));
     });
 }
 
@@ -1263,7 +1185,7 @@ void JsEngineHost::flushPendingFetchesSync() {
 
 void JsEngineHost::reportRejections() {
     for (const auto &[key, reason] : pendingRejections_) {
-        FCITX_UNUSED(key);
+        (void)key;
         MACISHTYPE_ERROR() << engineId_
                            << ": unhandled promise rejection: " << reason;
     }
@@ -1298,8 +1220,12 @@ JsEngineHost::resolveEnginePath(const std::string &input) const {
     if (errorCode) {
         return "file not found: " + input;
     }
-    auto rootWithSlash = canonicalRoot_.string() + "/";
-    if (fullPath.string().rfind(rootWithSlash, 0) != 0) {
+    // Component-wise containment (path separators differ across platforms):
+    // the root must be a proper prefix of the resolved path.
+    auto [rootMismatch, fullMismatch] =
+        std::mismatch(canonicalRoot_.begin(), canonicalRoot_.end(),
+                      fullPath.begin(), fullPath.end());
+    if (rootMismatch != canonicalRoot_.end() || fullMismatch == fullPath.end()) {
         return "path escapes the engine folder: " + input;
     }
     if (!std::filesystem::is_regular_file(fullPath, errorCode)) {
@@ -1500,14 +1426,22 @@ JsEngineHost::safeStoragePath(const std::string &key) const {
 
 JsEngineHost::StorageFileState
 JsEngineHost::statStorageFile(const std::filesystem::path &path) {
-    struct stat buffer;
-    if (::stat(path.c_str(), &buffer) != 0) {
+    // Snapshots are only ever compared for equality, so the clock's epoch
+    // does not matter — only its granularity. Coarse-granularity filesystems
+    // (FAT: 2s) weaken the echo detection for same-size rewrites.
+    std::error_code errorCode;
+    auto modified = std::filesystem::last_write_time(path, errorCode);
+    if (errorCode) {
         return {};
     }
-    return {true,
-            static_cast<int64_t>(buffer.st_mtim.tv_sec) * 1000000000 +
-                buffer.st_mtim.tv_nsec,
-            static_cast<uint64_t>(buffer.st_size)};
+    auto size = std::filesystem::file_size(path, errorCode);
+    if (errorCode) {
+        return {};
+    }
+    int64_t nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                              modified.time_since_epoch())
+                              .count();
+    return {true, nanoseconds, size};
 }
 
 void JsEngineHost::recordSelfWrite(const std::filesystem::path &path) {
@@ -1581,7 +1515,7 @@ JsEngineHost *JsEngineHost::hostOf(JSContext *ctx) {
 
 JSValue JsEngineHost::nativeLog(JSContext *ctx, JSValueConst thisVal,
                                 int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     std::string level = argc > 0 ? qjs::toString(ctx, argv[0]) : "info";
     std::string message = argc > 1 ? qjs::toString(ctx, argv[1]) : "";
@@ -1600,9 +1534,9 @@ JSValue JsEngineHost::nativeLog(JSContext *ctx, JSValueConst thisVal,
 JSValue JsEngineHost::nativeManifestName(JSContext *ctx,
                                          JSValueConst thisVal, int argc,
                                          JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
-    FCITX_UNUSED(argc);
-    FCITX_UNUSED(argv);
+    (void)thisVal;
+    (void)argc;
+    (void)argv;
     auto *host = hostOf(ctx);
     if (host->manifest_.displayName.empty()) {
         return JS_NULL;
@@ -1614,7 +1548,7 @@ JSValue JsEngineHost::nativeGetCandidateWindowField(JSContext *ctx,
                                                     JSValueConst thisVal,
                                                     int argc,
                                                     JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc < 1) {
         return JS_NULL;
@@ -1636,7 +1570,7 @@ JSValue JsEngineHost::nativeSetCandidateWindowField(JSContext *ctx,
                                                     JSValueConst thisVal,
                                                     int argc,
                                                     JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc >= 2) {
         host->setCandidateWindowField(qjs::toString(ctx, argv[0]), argv[1]);
@@ -1648,9 +1582,9 @@ JSValue JsEngineHost::nativeCandidateWindowFields(JSContext *ctx,
                                                   JSValueConst thisVal,
                                                   int argc,
                                                   JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
-    FCITX_UNUSED(argc);
-    FCITX_UNUSED(argv);
+    (void)thisVal;
+    (void)argc;
+    (void)argv;
     auto *host = hostOf(ctx);
     JSValue array = JS_NewArray(ctx);
     uint32_t index = 0;
@@ -1659,11 +1593,11 @@ JSValue JsEngineHost::nativeCandidateWindowFields(JSContext *ctx,
                              JS_NewString(ctx, field.c_str()));
     };
     for (const auto &[field, value] : host->engineCandidateWindow_) {
-        FCITX_UNUSED(value);
+        (void)value;
         push(field);
     }
     for (const auto &[field, value] : host->manifestCandidateWindow_) {
-        FCITX_UNUSED(value);
+        (void)value;
         if (host->engineCandidateWindow_.count(field) == 0) {
             push(field);
         }
@@ -1701,7 +1635,7 @@ void JsEngineHost::dispatchToggleChange(const std::string &key) {
 
 JSValue JsEngineHost::nativeGetMenuValue(JSContext *ctx, JSValueConst thisVal,
                                          int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc < 1) {
         return JS_NULL;
@@ -1716,7 +1650,7 @@ JSValue JsEngineHost::nativeGetMenuValue(JSContext *ctx, JSValueConst thisVal,
 
 JSValue JsEngineHost::nativeSetMenuValue(JSContext *ctx, JSValueConst thisVal,
                                          int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc < 2) {
         return JS_UNDEFINED;
@@ -1738,14 +1672,14 @@ JSValue JsEngineHost::nativeSetMenuValue(JSContext *ctx, JSValueConst thisVal,
 
 JSValue JsEngineHost::nativeMenuKeys(JSContext *ctx, JSValueConst thisVal,
                                      int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
-    FCITX_UNUSED(argc);
-    FCITX_UNUSED(argv);
+    (void)thisVal;
+    (void)argc;
+    (void)argv;
     auto *host = hostOf(ctx);
     JSValue array = JS_NewArray(ctx);
     uint32_t index = 0;
     for (const auto &[key, value] : host->menuValues_) {
-        FCITX_UNUSED(value);
+        (void)value;
         JS_SetPropertyUint32(ctx, array, index++,
                              JS_NewString(ctx, key.c_str()));
     }
@@ -1755,7 +1689,7 @@ JSValue JsEngineHost::nativeMenuKeys(JSContext *ctx, JSValueConst thisVal,
 JSValue JsEngineHost::nativeGetToggleValue(JSContext *ctx,
                                            JSValueConst thisVal, int argc,
                                            JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc < 1) {
         return JS_NULL;
@@ -1771,7 +1705,7 @@ JSValue JsEngineHost::nativeGetToggleValue(JSContext *ctx,
 JSValue JsEngineHost::nativeSetToggleValue(JSContext *ctx,
                                            JSValueConst thisVal, int argc,
                                            JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc < 2) {
         return JS_UNDEFINED;
@@ -1794,14 +1728,14 @@ JSValue JsEngineHost::nativeSetToggleValue(JSContext *ctx,
 
 JSValue JsEngineHost::nativeToggleKeys(JSContext *ctx, JSValueConst thisVal,
                                        int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
-    FCITX_UNUSED(argc);
-    FCITX_UNUSED(argv);
+    (void)thisVal;
+    (void)argc;
+    (void)argv;
     auto *host = hostOf(ctx);
     JSValue array = JS_NewArray(ctx);
     uint32_t index = 0;
     for (const auto &[key, delegate] : host->toggleDelegates_) {
-        FCITX_UNUSED(delegate);
+        (void)delegate;
         JS_SetPropertyUint32(ctx, array, index++,
                              JS_NewString(ctx, key.c_str()));
     }
@@ -1811,7 +1745,7 @@ JSValue JsEngineHost::nativeToggleKeys(JSContext *ctx, JSValueConst thisVal,
 JSValue JsEngineHost::nativeStorageGetItem(JSContext *ctx,
                                            JSValueConst thisVal, int argc,
                                            JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc < 1) {
         return JS_NULL;
@@ -1830,7 +1764,7 @@ JSValue JsEngineHost::nativeStorageGetItem(JSContext *ctx,
 JSValue JsEngineHost::nativeStorageSetItem(JSContext *ctx,
                                            JSValueConst thisVal, int argc,
                                            JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc < 2) {
         return JS_UNDEFINED;
@@ -1869,7 +1803,7 @@ JSValue JsEngineHost::nativeStorageSetItem(JSContext *ctx,
 JSValue JsEngineHost::nativeStorageRemoveItem(JSContext *ctx,
                                               JSValueConst thisVal, int argc,
                                               JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc < 1) {
         return JS_UNDEFINED;
@@ -1886,9 +1820,9 @@ JSValue JsEngineHost::nativeStorageRemoveItem(JSContext *ctx,
 
 JSValue JsEngineHost::nativeStorageClear(JSContext *ctx, JSValueConst thisVal,
                                          int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
-    FCITX_UNUSED(argc);
-    FCITX_UNUSED(argv);
+    (void)thisVal;
+    (void)argc;
+    (void)argv;
     auto *host = hostOf(ctx);
     if (!host->storageRootUsable()) {
         return JS_UNDEFINED;
@@ -1914,9 +1848,9 @@ JSValue JsEngineHost::nativeStorageClear(JSContext *ctx, JSValueConst thisVal,
 
 JSValue JsEngineHost::nativeStorageKeys(JSContext *ctx, JSValueConst thisVal,
                                         int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
-    FCITX_UNUSED(argc);
-    FCITX_UNUSED(argv);
+    (void)thisVal;
+    (void)argc;
+    (void)argv;
     auto *host = hostOf(ctx);
     JSValue array = JS_NewArray(ctx);
     if (!host->storageRootUsable()) {
@@ -1952,7 +1886,7 @@ JSValue JsEngineHost::nativeStorageKeys(JSContext *ctx, JSValueConst thisVal,
 JSValue JsEngineHost::nativeSetStorageListening(JSContext *ctx,
                                                 JSValueConst thisVal,
                                                 int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     bool active = argc > 0 && JS_ToBool(ctx, argv[0]) == 1;
     if (host->storageListening_ == active) {
@@ -1967,9 +1901,9 @@ JSValue JsEngineHost::nativeSetStorageListening(JSContext *ctx,
 
 JSValue JsEngineHost::nativeGetLanguages(JSContext *ctx, JSValueConst thisVal,
                                          int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
-    FCITX_UNUSED(argc);
-    FCITX_UNUSED(argv);
+    (void)thisVal;
+    (void)argc;
+    (void)argv;
     auto *host = hostOf(ctx);
     JSValue array = JS_NewArray(ctx);
     // Each region-tagged entry is followed by its base form so first-match
@@ -1998,7 +1932,7 @@ JSValue JsEngineHost::nativeGetLanguages(JSContext *ctx, JSValueConst thisVal,
 
 JSValue JsEngineHost::nativeBeginFetch(JSContext *ctx, JSValueConst thisVal,
                                        int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc < 3 || !JS_IsFunction(ctx, argv[1]) ||
         !JS_IsFunction(ctx, argv[2])) {
@@ -2044,7 +1978,7 @@ JSValue JsEngineHost::nativeRegisterMakeResponse(JSContext *ctx,
                                                  JSValueConst thisVal,
                                                  int argc,
                                                  JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc < 1 || !JS_IsFunction(ctx, argv[0])) {
         return JS_ThrowTypeError(ctx,
@@ -2057,7 +1991,7 @@ JSValue JsEngineHost::nativeRegisterMakeResponse(JSContext *ctx,
 
 JSValue JsEngineHost::nativeAction(JSContext *ctx, JSValueConst thisVal,
                                    int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc < 1) {
         return JS_UNDEFINED;
@@ -2074,8 +2008,8 @@ JSValue JsEngineHost::nativeAction(JSContext *ctx, JSValueConst thisVal,
 
 namespace {
 
-// Strict WHATWG UTF-8 validation. fcitx::utf8::validate stops scanning at an
-// embedded NUL and would bless whatever follows it.
+// Strict WHATWG UTF-8 validation: rejects overlongs, surrogates, and
+// anything past U+10FFFF, and scans embedded NULs like any other byte.
 bool isStrictUtf8(const uint8_t *data, size_t size) {
     size_t i = 0;
     while (i < size) {
@@ -2128,7 +2062,7 @@ bool isStrictUtf8(const uint8_t *data, size_t size) {
 
 JSValue JsEngineHost::nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
                                        int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     if (argc < 1) {
         return JS_ThrowTypeError(ctx, "utf8Decode: missing buffer");
     }
@@ -2147,8 +2081,8 @@ JSValue JsEngineHost::nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
 // invalid returns null and stays with the runtime.js state machine.
 JSValue JsEngineHost::nativeDecodeUtf8(JSContext *ctx, JSValueConst thisVal,
                                        int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
-    FCITX_UNUSED(argc); // declared arity 2; quickjs pads argv with undefined
+    (void)thisVal;
+    (void)argc; // declared arity 2; quickjs pads argv with undefined
     int ignoreBOM = JS_ToBool(ctx, argv[1]);
     size_t size = 0;
     const uint8_t *data = JS_GetUint8Array(ctx, &size, argv[0]);
@@ -2173,8 +2107,8 @@ JSValue JsEngineHost::nativeDecodeUtf8(JSContext *ctx, JSValueConst thisVal,
 // length); patch a copy — the returned pointer may alias the live string.
 JSValue JsEngineHost::nativeEncodeUtf8(JSContext *ctx, JSValueConst thisVal,
                                        int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
-    FCITX_UNUSED(argc);
+    (void)thisVal;
+    (void)argc;
     size_t size = 0;
     const char *chars = JS_ToCStringLen(ctx, &size, argv[0]);
     if (chars == nullptr) {

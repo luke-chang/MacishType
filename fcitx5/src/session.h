@@ -8,7 +8,8 @@
 
 #include <fcitx/inputcontext.h>
 
-#include "jshost/enginehost.h"
+#include <macishtype/enginehost.h>
+#include <macishtype/eventdata.h>
 #include "webkeymap.h"
 
 namespace fcitx {
@@ -105,15 +106,6 @@ private:
                      NavigateAction, ResetAction, FlushStagedAction,
                      EnterAssociatedAction>;
 
-    // Effective candidate window behavior for the current list.
-    struct WindowConfig {
-        std::string indexLabels = "1234567890";
-        int pageSize = 9;
-        bool vertical = false;
-        bool handleNavigationKeys = true;
-        bool handleIndexLabelKeys = true;
-    };
-
     // Host→JS invocation with an action queue on the stack; queued actions
     // apply after the hook (and its microtasks) return.
     std::optional<bool> invokeEngineMethod(const char *method,
@@ -151,7 +143,6 @@ private:
     void reverseLookupPage(bool forward);
     void hideReverseLookup();
 
-    WindowConfig sessionWindowConfig() const;
     // The live candidate list (our CommonCandidateList subclass) when visible,
     // else nullptr. Cursor/page state lives here — it is the source of truth.
     fcitx::CommonCandidateList *candidateList() const;
@@ -159,8 +150,6 @@ private:
     int selectedIndex() const;
     int currentPageItemCount() const;
 
-    JSValue buildEventData(const WebKeyEvent *web,
-                           const CandidateData *candidate, int absoluteIndex);
     JSValue makeEvent(const WebKeyEvent *web, const CandidateData *candidate,
                       int absoluteIndex);
 
@@ -181,7 +170,7 @@ private:
     // (see candidateList()), not here.
     std::vector<CandidateData> candidates_;
     bool candidatesVisible_ = false;
-    WindowConfig windowConfig_;
+    CandidateWindowConfig windowConfig_;
 
     // Reverse-lookup read-only display: visible flag (its handleKey branch
     // owns keys while set), the host lookup token, and a transient flag set

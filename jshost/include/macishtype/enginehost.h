@@ -13,12 +13,11 @@
 #include <variant>
 #include <vector>
 
-#include <fcitx-utils/event.h>
-#include <fcitx-utils/eventdispatcher.h>
 #include <quickjs.h>
 
-#include "intl.h"
-#include "manifest.h"
+#include "macishtype/hosteventloop.h"
+#include "macishtype/intl.h"
+#include "macishtype/manifest.h"
 
 namespace macishtype {
 
@@ -47,7 +46,7 @@ public:
          const std::string &settingsValuesJson, const ManifestData &manifest,
          const std::vector<std::string> &languages,
          std::map<std::string, ToggleDelegate> toggleDelegates,
-         fcitx::EventLoop *eventLoop, fcitx::EventDispatcher *dispatcher);
+         HostEventLoop *eventLoop);
 
     ~JsEngineHost();
     JsEngineHost(const JsEngineHost &) = delete;
@@ -63,7 +62,6 @@ public:
     // absent or threw.
     std::optional<bool> invokeHook(uint64_t instanceId, const char *method,
                                    JSValue argument);
-    std::optional<bool> invokeHook(uint64_t instanceId, const char *method);
     bool instanceHasHook(uint64_t instanceId, const char *method);
 
     // Reverse lookup (capabilities.reverseLookup): calls the engine class's
@@ -136,10 +134,10 @@ public:
     bool associatedModeEnabled() const { return associatedModeEnabled_; }
 
     // Base candidate orientation used when the manifest does not fix
-    // `candidateWindow.layoutDirection`. The addon resolves the per-input-
-    // method orientation setting (including "follow the fcitx global") to a
-    // concrete direction and pushes it here; manifest/updateCandidates values
-    // still override per candidate window.
+    // `candidateWindow.layoutDirection`. The platform host resolves its
+    // orientation setting (fcitx5: per-input-method, optionally following
+    // the fcitx global) to a concrete direction and pushes it here;
+    // manifest/updateCandidates values still override per candidate window.
     void setLayoutVertical(bool vertical) { layoutVertical_ = vertical; }
     bool layoutVertical() const { return layoutVertical_; }
     // Follow-up phrases for held text, keyed on its last character, from
@@ -196,7 +194,7 @@ private:
                  std::string settingsValuesJson, ManifestData manifest,
                  std::vector<std::string> languages,
                  std::map<std::string, ToggleDelegate> toggleDelegates,
-                 fcitx::EventLoop *eventLoop, fcitx::EventDispatcher *dispatcher);
+                 HostEventLoop *eventLoop);
 
     // One queued fetch(): path resolved (and reload tracking recorded) at
     // fetch() time, disk read deferred to the worker, promise settled on the
@@ -470,10 +468,9 @@ private:
 
     // Async-fetch pipeline state (owned by the main loop; the worker only
     // touches the batch moved into it).
-    fcitx::EventLoop *eventLoop_ = nullptr;
-    fcitx::EventDispatcher *dispatcher_ = nullptr;
+    HostEventLoop *eventLoop_ = nullptr;
     std::vector<PendingFetch> pendingFetches_;
-    std::unique_ptr<fcitx::EventSource> deferredSettle_;
+    HostEventLoop::Handle deferredSettle_;
     std::thread fetchWorker_;
     bool workerBusy_ = false;
     int activeCount_ = 0;
@@ -490,7 +487,7 @@ private:
     uint64_t reverseLookupToken_ = 0;
     std::function<void(bool)> reverseLookupOnReady_;
     bool reverseLookupPrepared_ = false;
-    std::unique_ptr<fcitx::EventSourceTime> reverseLookupReleaseTimer_;
+    HostEventLoop::Handle reverseLookupReleaseTimer_;
 };
 
 // Whether an associated-mode dictionary is bundled for `intendedLanguage`.

@@ -20,12 +20,14 @@
 #include <fcitx/inputmethodentry.h>
 #include <fcitx/instance.h>
 
+#include <macishtype/enginehost.h>
+
+#include "coreadapters.h"
 #include "enginediscovery.h"
 #include "enginesettings.h"
 #include "enginewatcher.h"
 #include "i18n.h"
 #include "iconlinks.h"
-#include "jshost/enginehost.h"
 #include "session.h"
 
 namespace macishtype {
@@ -168,6 +170,11 @@ private:
                       const std::string &displayName, bool succeeded);
 
     fcitx::Instance *instance_;
+    // Installs the core seams process-wide on construction; declared before
+    // everything that already needs them (config_ option labels call
+    // translated(), discovery parses manifests).
+    FcitxCoreServices coreServices_;
+    FcitxHostEventLoop hostEventLoop_;
     MacishTypeConfig config_;
     std::vector<std::string> languages_;
     std::vector<EngineInfo> engines_;

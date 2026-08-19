@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.25)
 
-# macishtype-jshost: the platform-independent QuickJS engine host, shared by
-# the fcitx5 addon and the Windows backend. A standalone project — the
-# headless CLI and contract tests build from here — and equally consumable
-# with add_subdirectory (the fcitx5 project folds it into the addon .so).
-# Platform capabilities enter through the host seams
+# macishtype-jshost: the shared QuickJS engine host, an implementation
+# detail of whichever platform component embeds a JS engine. A standalone
+# project — the headless CLI and contract tests build from here — and
+# equally consumable with add_subdirectory (the fcitx5 project folds it
+# into the addon .so). Platform capabilities enter through the host seams
 # (include/macishtype/hostseams.h, hosteventloop.h).
 project(macishtype-jshost LANGUAGES C CXX)
 
@@ -26,7 +26,12 @@ endif()
 add_subdirectory(external/quickjs-ng EXCLUDE_FROM_ALL)
 
 add_library(macishtype-jshost STATIC
+    src/enginehost.cpp
+    src/eventdata.cpp
+    src/fontcoverage.cpp
     src/hostseams.cpp
+    src/intl.cpp
+    src/manifest.cpp
 )
 target_include_directories(macishtype-jshost PUBLIC include)
 target_compile_features(macishtype-jshost PUBLIC cxx_std_20)

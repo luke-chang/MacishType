@@ -41,7 +41,9 @@ LOG_MATCH = -t fcitx5 -t org.fcitx.Fcitx5.desktop
 # automatically.
 empty :=
 space := $(empty) $(empty)
-LOG_SOURCES = $(notdir $(wildcard src/*.cpp src/jshost/*.cpp))
+# Host (../jshost/src) log lines arrive through the Logger seam adapter, so
+# they carry coreadapters.cpp as their source and src/*.cpp covers them.
+LOG_SOURCES = $(notdir $(wildcard src/*.cpp))
 LOG_SOURCES_RE = $(subst $(space),|,$(strip $(LOG_SOURCES)))
 # A fcitx log record starts at a level+timestamp header; a multi-line message
 # (a JS stack trace) wraps onto following lines that carry no prefix. Keep a

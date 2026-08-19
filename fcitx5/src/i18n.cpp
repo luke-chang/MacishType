@@ -7,10 +7,6 @@
 
 namespace macishtype {
 
-namespace {
-constexpr char kTextDomain[] = "fcitx5-macishtype";
-} // namespace
-
 void registerTextDomain() {
     const char *home = std::getenv("HOME");
     if (home != nullptr) {
@@ -31,10 +27,6 @@ void registerTextDomain() {
         }
     }
     fcitx::registerDomain(kTextDomain, FCITX_INSTALL_LOCALEDIR);
-}
-
-std::string translated(const char *text) {
-    return fcitx::translateDomain(kTextDomain, text);
 }
 
 } // namespace macishtype

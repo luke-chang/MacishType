@@ -97,7 +97,8 @@ std::optional<ManifestData>
 parseManifest(const std::filesystem::path &manifestPath,
               const std::vector<std::string> &languages);
 
-// BCP 47 preferences from LANGUAGE / LC_ALL / LC_MESSAGES / LANG.
+// BCP 47 preferences via the installed PlatformInfo seam, most preferred
+// first; empty when none is installed.
 std::vector<std::string> preferredLanguages();
 
 } // namespace macishtype

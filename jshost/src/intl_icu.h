@@ -3,10 +3,13 @@
 // Single include/link isolation point for ICU. The ICU C API
 // (ubrk_/udat_/ucal_/udatpg_/unumf_/ucol_/uplrules_/uloc_) is identical across
 // platforms — only this header differs, so every call site in intl.cpp stays
-// byte-for-byte portable. On Windows (10 1703+) the system icu.dll exports
-// unversioned symbols, so U_DISABLE_RENAMING must precede the combined
-// <icu.h>; elsewhere we use the conventional per-component headers.
-#if defined(_WIN32)
+// byte-for-byte portable. The Windows system icu.dll exports unversioned
+// symbols, so U_DISABLE_RENAMING must precede the combined <icu.h> (the
+// formatter APIs used here need Windows 10 1903+, ICU 64); elsewhere —
+// including a vcpkg ICU on Windows — the conventional per-component headers
+// apply. The CMake build always takes the per-component branch; a build that
+// links the system icu.dll must define MACISHTYPE_ICU_WINDOWS_SYSTEM itself.
+#if defined(MACISHTYPE_ICU_WINDOWS_SYSTEM)
 #define U_DISABLE_RENAMING 1
 #include <icu.h>
 #else

@@ -93,8 +93,9 @@ std::string safeDisplayName(const EngineInfo &engine) {
 } // namespace
 
 MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
-    : instance_(instance), languages_(preferredLanguages()),
-      engines_(discoverEngines(languages_)) {
+    : instance_(instance),
+      hostEventLoop_(&instance->eventLoop(), &instance->eventDispatcher()),
+      languages_(preferredLanguages()), engines_(discoverEngines(languages_)) {
     MACISHTYPE_INFO() << "MacishType " << versionStampFull() << " loaded";
     MACISHTYPE_INFO() << "Discovered " << engines_.size()
                       << " engine folder(s)";
@@ -809,7 +810,7 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
         settings != engineSettings_.end() ? settings->second->valuesToJson()
                                           : std::string("{}"),
         engine.manifest, languages_, std::move(toggleDelegates),
-        &instance_->eventLoop(), &instance_->eventDispatcher());
+        &hostEventLoop_);
     if (!host) {
         MACISHTYPE_ERROR() << "Engine failed to load, disabled until it "
                               "changes on disk: "

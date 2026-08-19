@@ -1,15 +1,14 @@
-#include "intl.h"
+#include "macishtype/intl.h"
 
 #include <cstdint>
 #include <cstdio>
 #include <string>
 #include <vector>
 
-#include <fcitx-utils/macros.h>
+#include "macishtype/enginehost.h"
+#include "macishtype/qjsutil.h"
 
-#include "enginehost.h"
 #include "intl_icu.h"
-#include "qjsutil.h"
 
 namespace macishtype {
 
@@ -32,7 +31,7 @@ IntlCache::~IntlCache() {
 void IntlCache::closeAll(Kind kind) {
     auto &store = mapFor(kind);
     for (auto &[key, handle] : store) {
-        FCITX_UNUSED(key);
+        (void)key;
         switch (kind) {
         case kBreak:
             ubrk_close(static_cast<UBreakIterator *>(handle));
@@ -476,7 +475,7 @@ UCollator *collator(IntlCache &cache, const std::string &localeTag,
 
 JSValue JsEngineHost::nativeIntlSegment(JSContext *ctx, JSValueConst thisVal,
                                         int argc, JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     if (argc < 3) {
         return JS_ThrowTypeError(ctx, "intlSegment: expected 3 arguments");
     }
@@ -557,7 +556,7 @@ JSValue JsEngineHost::nativeIntlSegment(JSContext *ctx, JSValueConst thisVal,
 JSValue JsEngineHost::nativeIntlDateTimeResolve(JSContext *ctx,
                                                 JSValueConst thisVal, int argc,
                                                 JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     if (argc < 5) {
         return JS_ThrowTypeError(ctx, "intlDateTimeResolve: expected 5 "
                                       "arguments");
@@ -707,7 +706,7 @@ JSValue JsEngineHost::nativeIntlDateTimeResolve(JSContext *ctx,
 JSValue JsEngineHost::nativeIntlDateTimeFormat(JSContext *ctx,
                                                JSValueConst thisVal, int argc,
                                                JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     if (argc < 4) {
         return JS_ThrowTypeError(ctx, "intlDateTimeFormat: expected 4 "
                                       "arguments");
@@ -759,7 +758,7 @@ JSValue JsEngineHost::nativeIntlDateTimeFormatToParts(JSContext *ctx,
                                                       JSValueConst thisVal,
                                                       int argc,
                                                       JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     if (argc < 4) {
         return JS_ThrowTypeError(ctx, "intlDateTimeFormatToParts: expected 4 "
                                       "arguments");
@@ -840,7 +839,7 @@ JSValue JsEngineHost::nativeIntlDateTimeFormatToParts(JSContext *ctx,
 JSValue JsEngineHost::nativeIntlResolveLocale(JSContext *ctx,
                                               JSValueConst thisVal, int argc,
                                               JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     std::string localeTag = argc > 0 ? qjs::toString(ctx, argv[0]) : std::string();
     std::string icuLocale = toIcuLocale(localeTag);
     JSValue result = JS_NewObject(ctx);
@@ -854,7 +853,7 @@ JSValue JsEngineHost::nativeIntlResolveLocale(JSContext *ctx,
 JSValue JsEngineHost::nativeIntlNumberFormat(JSContext *ctx,
                                              JSValueConst thisVal, int argc,
                                              JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     if (argc < 3) {
         return JS_ThrowTypeError(ctx, "intlNumberFormat: expected 3 arguments");
     }
@@ -909,7 +908,7 @@ JSValue JsEngineHost::nativeIntlNumberFormatToParts(JSContext *ctx,
                                                     JSValueConst thisVal,
                                                     int argc,
                                                     JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     if (argc < 3) {
         return JS_ThrowTypeError(ctx, "intlNumberFormatToParts: expected 3 "
                                       "arguments");
@@ -1017,7 +1016,7 @@ JSValue JsEngineHost::nativeIntlNumberFormatToParts(JSContext *ctx,
 JSValue JsEngineHost::nativeIntlPluralSelect(JSContext *ctx,
                                              JSValueConst thisVal, int argc,
                                              JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     if (argc < 4) {
         return JS_ThrowTypeError(ctx, "intlPluralSelect: expected 4 arguments");
     }
@@ -1073,7 +1072,7 @@ JSValue JsEngineHost::nativeIntlPluralSelect(JSContext *ctx,
 JSValue JsEngineHost::nativeIntlPluralCategories(JSContext *ctx,
                                                  JSValueConst thisVal, int argc,
                                                  JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     if (argc < 2) {
         return JS_ThrowTypeError(ctx, "intlPluralCategories: expected 2 "
                                       "arguments");
@@ -1124,7 +1123,7 @@ JSValue JsEngineHost::nativeIntlPluralCategories(JSContext *ctx,
 JSValue JsEngineHost::nativeIntlCollatorCompare(JSContext *ctx,
                                                 JSValueConst thisVal, int argc,
                                                 JSValueConst *argv) {
-    FCITX_UNUSED(thisVal);
+    (void)thisVal;
     if (argc < 4) {
         return JS_ThrowTypeError(ctx, "intlCollatorCompare: expected 4 "
                                       "arguments");

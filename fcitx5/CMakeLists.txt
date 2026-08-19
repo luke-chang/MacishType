@@ -1,4 +1,6 @@
-cmake_minimum_required(VERSION 3.16)
+# The bound comes from jshost/, folded in below; this project's own files ask
+# for far less. Declaring it here keeps the real requirement discoverable.
+cmake_minimum_required(VERSION 3.25)
 project(fcitx5-macishtype VERSION 0.2.0)
 
 # The embedded interpreter runs on every keystroke; never build it
@@ -12,25 +14,15 @@ endif()
 # error instead of a wall of missing-header output.
 find_package(Fcitx5Core 5.1.13 REQUIRED)
 find_package(Fontconfig REQUIRED)
-# System ICU backs the JS Intl bindings (like fontconfig, we link the system
-# library rather than bundling CLDR data). Present on desktop Linux and, for a
-# future Windows port, on Windows 10 1703+.
-find_package(ICU REQUIRED COMPONENTS i18n uc)
 find_package(Fcitx5Module REQUIRED COMPONENTS Notifications)
 find_package(Gettext REQUIRED)
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
 
-# quickjs-ng lives under jshost/ (shared across platform hosts) and builds as
-# a static library folded into the addon .so, so it needs PIC;
-# EXCLUDE_FROM_ALL keeps its CLI and install rules out.
+# The shared engine host (jshost/ at the repo root, which owns the quickjs-ng
+# submodule and the system-ICU Intl bindings) builds as a static library
+# folded into the addon .so, so everything under it needs PIC.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(QJS_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../jshost/external/quickjs-ng/CMakeLists.txt")
-    message(FATAL_ERROR "quickjs-ng submodule is missing; run:\n"
-                        "  git submodule update --init")
-endif()
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../jshost/external/quickjs-ng"
-                 quickjs-ng EXCLUDE_FROM_ALL)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../jshost" jshost EXCLUDE_FROM_ALL)
 
 add_subdirectory(po)
 add_subdirectory(src)

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "jshost/manifest.h"
+#include <macishtype/manifest.h>
 
 namespace macishtype {
 

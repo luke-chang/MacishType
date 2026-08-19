@@ -40,7 +40,7 @@ this host and on the macOS one ([`macos/`](../macos/)).
 
 ### Development
 
-- A C++20 compiler, CMake ≥ 3.16, Ninja, pkg-config
+- A C++20 compiler, CMake ≥ 3.25, Ninja, pkg-config
 - Fcitx5, fontconfig, ICU, and gettext development files
 - `python3` for the data-table pipeline (`make prepare`)
 - `python3-fonttools` for the icon generator (`scripts/generate-icon.py`)

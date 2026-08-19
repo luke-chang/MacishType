@@ -8,7 +8,7 @@
 #include <fcitx-config/option.h>
 #include <fcitx-config/rawconfig.h>
 
-#include "jshost/manifest.h"
+#include <macishtype/manifest.h>
 
 namespace macishtype {
 

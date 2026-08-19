@@ -1,14 +1,12 @@
 add_library(macishtype SHARED
+    coreadapters.cpp
     enginediscovery.cpp
     enginesettings.cpp
     enginewatcher.cpp
+    fontcoverage.cpp
     i18n.cpp
     iconlinks.cpp
     webkeymap.cpp
-    jshost/enginehost.cpp
-    jshost/fontcoverage.cpp
-    jshost/intl.cpp
-    jshost/manifest.cpp
     macishtype.cpp
     session.cpp
 )
@@ -29,8 +27,8 @@ add_custom_target(versionstamp
         -P "${PROJECT_SOURCE_DIR}/cmake/versionstamp.cmake")
 target_sources(macishtype PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/versionstamp.cpp")
 add_dependencies(macishtype versionstamp)
-target_link_libraries(macishtype PRIVATE Fcitx5::Core Fcitx5::Module::Notifications qjs
-    Fontconfig::Fontconfig ICU::i18n ICU::uc)
+target_link_libraries(macishtype PRIVATE Fcitx5::Core Fcitx5::Module::Notifications
+    macishtype-jshost Fontconfig::Fontconfig)
 install(TARGETS macishtype DESTINATION "${FCITX_INSTALL_LIBDIR}/fcitx5")
 
 # The runtime assets are shared across platforms and live at the repo level,

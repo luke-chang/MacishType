@@ -70,6 +70,18 @@ inline std::string toString(JSContext *ctx, JSValueConst value) {
     return result;
 }
 
+// JSON text of a JS value; empty for undefined or stringify failure.
+inline std::string jsonStringify(JSContext *ctx, JSValueConst value) {
+    if (JS_IsUndefined(value)) {
+        return {};
+    }
+    Value json(ctx, JS_JSONStringify(ctx, value, JS_UNDEFINED, JS_UNDEFINED));
+    if (!JS_IsString(json.get())) {
+        return {};
+    }
+    return toString(ctx, json.get());
+}
+
 // Renders an error value as "message\nstack" (stack appended when present).
 // Works for any thrown/rejected value, not just the pending exception.
 inline std::string errorText(JSContext *ctx, JSValueConst value) {

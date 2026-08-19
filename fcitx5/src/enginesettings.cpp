@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <set>
 
+#include <macishtype/jsonutil.h>
+
 #include "i18n.h"
 #include "log.h"
 
@@ -23,39 +25,6 @@ using NumberOption =
     fcitx::Option<int, fcitx::IntConstrain, fcitx::DefaultMarshaller<int>,
                   FieldAnnotation>;
 using PickerOption = TextOption;
-
-std::string jsonEscape(const std::string &text) {
-    std::string escaped;
-    escaped.reserve(text.size());
-    for (char ch : text) {
-        switch (ch) {
-        case '"':
-            escaped += "\\\"";
-            break;
-        case '\\':
-            escaped += "\\\\";
-            break;
-        case '\n':
-            escaped += "\\n";
-            break;
-        case '\t':
-            escaped += "\\t";
-            break;
-        case '\r':
-            escaped += "\\r";
-            break;
-        default:
-            if (static_cast<unsigned char>(ch) < 0x20) {
-                char buffer[8];
-                std::snprintf(buffer, sizeof(buffer), "\\u%04x", ch);
-                escaped += buffer;
-            } else {
-                escaped += ch;
-            }
-        }
-    }
-    return escaped;
-}
 
 std::optional<bool> boolFromJson(const std::string &json) {
     if (json == "true") {

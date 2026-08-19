@@ -1,15 +1,14 @@
-#include "manifest.h"
+#include "macishtype/manifest.h"
 
 #include <algorithm>
-#include <cstdlib>
 #include <fstream>
 #include <sstream>
 
 #include <quickjs.h>
 
-#include "../i18n.h"
-#include "../log.h"
-#include "qjsutil.h"
+#include "macishtype/hostlog.h"
+#include "macishtype/hostseams.h"
+#include "macishtype/qjsutil.h"
 
 namespace macishtype {
 
@@ -41,20 +40,10 @@ std::optional<std::string> readFile(const std::filesystem::path &path) {
 }
 
 std::string lowered(std::string text) {
-    std::transform(text.begin(), text.end(), text.begin(),
-                   [](unsigned char ch) { return std::tolower(ch); });
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
     return text;
-}
-
-// "zh_TW.UTF-8" → "zh-TW"; empty or "C"/"POSIX" → empty.
-std::string bcp47FromLocale(const std::string &locale) {
-    std::string tag = locale.substr(0, locale.find('.'));
-    tag = tag.substr(0, tag.find('@'));
-    if (tag.empty() || tag == "C" || tag == "POSIX") {
-        return {};
-    }
-    std::replace(tag.begin(), tag.end(), '_', '-');
-    return tag;
 }
 
 // Script aliases so a zh-TW preference can pick a zh-Hant manifest name and
@@ -131,19 +120,6 @@ std::string resolveLocalizedName(JSContext *ctx, JSValueConst nameValue,
     return result;
 }
 
-// JSON text of a JS value; empty for undefined or stringify failure.
-std::string stringifyJson(JSContext *ctx, JSValueConst value) {
-    if (JS_IsUndefined(value)) {
-        return {};
-    }
-    qjs::Value json(ctx, JS_JSONStringify(ctx, value, JS_UNDEFINED,
-                                          JS_UNDEFINED));
-    if (!JS_IsString(json.get())) {
-        return {};
-    }
-    return qjs::toString(ctx, json.get());
-}
-
 // PickerOption: a shorthand string, or {text, value?, tag?}. The token
 // identity chain (tag → plain string value → plain text literal → value
 // JSON) gives every usable option a stable storage identifier.
@@ -155,7 +131,7 @@ parseSettingsOption(JSContext *ctx, JSValueConst optionValue,
         std::string text = qjs::toString(ctx, optionValue);
         option.token = text;
         option.label = text;
-        option.valueJson = stringifyJson(ctx, optionValue);
+        option.valueJson = qjs::jsonStringify(ctx, optionValue);
         return option;
     }
     if (!JS_IsObject(optionValue)) {
@@ -167,10 +143,10 @@ parseSettingsOption(JSContext *ctx, JSValueConst optionValue,
 
     qjs::Value value(ctx, JS_GetPropertyStr(ctx, optionValue, "value"));
     if (!JS_IsUndefined(value.get())) {
-        option.valueJson = stringifyJson(ctx, value.get());
+        option.valueJson = qjs::jsonStringify(ctx, value.get());
     } else if (plainText) {
         // Value defaults to the text literal.
-        option.valueJson = stringifyJson(ctx, text.get());
+        option.valueJson = qjs::jsonStringify(ctx, text.get());
     }
 
     qjs::Value tag(ctx, JS_GetPropertyStr(ctx, optionValue, "tag"));
@@ -217,7 +193,7 @@ const SettingsField *findField(const std::vector<SettingsSection> &sections,
 // the referenced field is a picker, else the bare string / JSON literal.
 std::string conditionValueText(JSContext *ctx, JSValueConst value,
                                const SettingsField *target) {
-    std::string json = stringifyJson(ctx, value);
+    std::string json = qjs::jsonStringify(ctx, value);
     if (target != nullptr) {
         for (const auto &option : target->options) {
             if (option.valueJson == json || option.token == json) {
@@ -413,7 +389,7 @@ parseSettingsSections(JSContext *ctx, JSValueConst settingsValue,
             auto rawJson = [&](const char *name) {
                 qjs::Value value(
                     ctx, JS_GetPropertyStr(ctx, fieldValue.get(), name));
-                return stringifyJson(ctx, value.get());
+                return qjs::jsonStringify(ctx, value.get());
             };
             field.defaultJson = rawJson("default");
             std::string disabledJson = rawJson("disabledWhen");
@@ -487,27 +463,9 @@ std::string fcitxLanguageCode(const std::string &intendedLanguage) {
 } // namespace
 
 std::vector<std::string> preferredLanguages() {
-    std::vector<std::string> languages;
-    auto push = [&](const std::string &tag) {
-        if (!tag.empty() &&
-            std::find(languages.begin(), languages.end(), tag) ==
-                languages.end()) {
-            languages.push_back(tag);
-        }
-    };
-    if (const char *languageList = std::getenv("LANGUAGE")) {
-        std::stringstream stream(languageList);
-        std::string item;
-        while (std::getline(stream, item, ':')) {
-            push(bcp47FromLocale(item));
-        }
-    }
-    for (const char *name : {"LC_ALL", "LC_MESSAGES", "LANG"}) {
-        if (const char *value = std::getenv(name)) {
-            push(bcp47FromLocale(value));
-        }
-    }
-    return languages;
+    PlatformInfo *platform = hostServices().platform;
+    return platform != nullptr ? platform->preferredLanguages()
+                               : std::vector<std::string>{};
 }
 
 std::optional<ManifestData>
@@ -524,9 +482,10 @@ parseManifest(const std::filesystem::path &manifestPath,
     std::optional<ManifestData> result;
 
     {
+        const std::string manifestPathText = manifestPath.string();
         qjs::Value root(ctx, JS_ParseJSON(ctx, content->c_str(),
                                           content->size(),
-                                          manifestPath.c_str()));
+                                          manifestPathText.c_str()));
         if (root.isException()) {
             MACISHTYPE_WARN() << "Invalid manifest JSON " << manifestPath
                               << ": " << qjs::exceptionText(ctx);
@@ -600,12 +559,8 @@ parseManifest(const std::filesystem::path &manifestPath,
             qjs::Value candidateWindow(
                 ctx, JS_GetPropertyStr(ctx, root.get(), "candidateWindow"));
             if (JS_IsObject(candidateWindow.get())) {
-                qjs::Value json(
-                    ctx, JS_JSONStringify(ctx, candidateWindow.get(),
-                                          JS_UNDEFINED, JS_UNDEFINED));
-                if (JS_IsString(json.get())) {
-                    data.candidateWindowJson = qjs::toString(ctx, json.get());
-                }
+                data.candidateWindowJson =
+                    qjs::jsonStringify(ctx, candidateWindow.get());
                 qjs::Value direction(
                     ctx, JS_GetPropertyStr(ctx, candidateWindow.get(),
                                            "layoutDirection"));

@@ -10,7 +10,7 @@
 #include <fcitx/text.h>
 
 #include "i18n.h"
-#include "jshost/qjsutil.h"
+#include <macishtype/qjsutil.h>
 #include "log.h"
 
 namespace macishtype {
@@ -120,22 +120,6 @@ std::optional<std::string> stringProperty(JSContext *ctx, JSValueConst object,
     return qjs::toString(ctx, value.get());
 }
 
-void setStringField(JSContext *ctx, JSValueConst object, const char *name,
-                    const std::string &value) {
-    JS_SetPropertyStr(ctx, object, name,
-                      JS_NewStringLen(ctx, value.c_str(), value.size()));
-}
-
-void setBoolField(JSContext *ctx, JSValueConst object, const char *name,
-                  bool value) {
-    JS_SetPropertyStr(ctx, object, name, JS_NewBool(ctx, value));
-}
-
-void setIntField(JSContext *ctx, JSValueConst object, const char *name,
-                 int value) {
-    JS_SetPropertyStr(ctx, object, name, JS_NewInt32(ctx, value));
-}
-
 } // namespace
 
 EngineSession::EngineSession(JsEngineHost *host,
@@ -146,7 +130,7 @@ EngineSession::EngineSession(JsEngineHost *host,
     // unbalanced count would keep the host's fetch pipeline armed forever.
     host_->incrementActive();
     instanceId_ = host_->createInstance();
-    windowConfig_ = sessionWindowConfig();
+    windowConfig_ = resolvedCandidateWindowConfig(*host_);
 }
 
 EngineSession::~EngineSession() {
@@ -159,59 +143,6 @@ EngineSession::~EngineSession() {
     if (instanceId_ != 0) {
         host_->destroyInstance(instanceId_);
     }
-}
-
-// Window config -----------------------------------------------------------
-
-EngineSession::WindowConfig EngineSession::sessionWindowConfig() const {
-    WindowConfig config;
-    auto stringField = [&](const char *name) -> std::optional<std::string> {
-        auto value = host_->candidateWindowField(name);
-        if (value) {
-            if (auto *text = std::get_if<std::string>(&*value)) {
-                return *text;
-            }
-        }
-        return std::nullopt;
-    };
-    auto boolField = [&](const char *name) -> std::optional<bool> {
-        auto value = host_->candidateWindowField(name);
-        if (value) {
-            if (auto *flag = std::get_if<bool>(&*value)) {
-                return *flag;
-            }
-        }
-        return std::nullopt;
-    };
-    auto numberField = [&](const char *name) -> std::optional<int> {
-        auto value = host_->candidateWindowField(name);
-        if (value) {
-            if (auto *number = std::get_if<double>(&*value)) {
-                return static_cast<int>(*number);
-            }
-        }
-        return std::nullopt;
-    };
-    if (auto labels = stringField("indexLabels")) {
-        config.indexLabels = *labels;
-    }
-    if (auto pageSize = numberField("pageSize")) {
-        config.pageSize = std::max(1, *pageSize);
-    }
-    if (auto direction = stringField("layoutDirection")) {
-        config.vertical = *direction == "vertical";
-    } else {
-        // No manifest direction: the host holds the resolved per-input-method
-        // orientation setting (macOS parity).
-        config.vertical = host_->layoutVertical();
-    }
-    if (auto navigation = boolField("handleNavigationKeys")) {
-        config.handleNavigationKeys = *navigation;
-    }
-    if (auto labelsKeys = boolField("handleIndexLabelKeys")) {
-        config.handleIndexLabelKeys = *labelsKeys;
-    }
-    return config;
 }
 
 int EngineSession::currentPageItemCount() const {
@@ -730,7 +661,7 @@ void EngineSession::applyUpdateCandidates(UpdateCandidatesAction action) {
     }
 
     // Per-update overrides start from the session base config.
-    windowConfig_ = sessionWindowConfig();
+    windowConfig_ = resolvedCandidateWindowConfig(*host_);
     if (action.options.pageSize) {
         windowConfig_.pageSize = std::max(1, *action.options.pageSize);
     }
@@ -1217,85 +1148,51 @@ void EngineSession::clearCompositionState() {
     markedText_.clear();
     stagedText_.clear();
     associating_ = false;
-    windowConfig_ = sessionWindowConfig();
+    windowConfig_ = resolvedCandidateWindowConfig(*host_);
 }
 
 // Event objects -----------------------------------------------------------
-
-JSValue EngineSession::buildEventData(const WebKeyEvent *web,
-                                      const CandidateData *candidate,
-                                      int absoluteIndex) {
-    JSContext *ctx = host_->context();
-    JSValue data = JS_NewObject(ctx);
-
-    JSValue fields = JS_NewObject(ctx);
-    setStringField(ctx, fields, "markedText", markedText_);
-    setStringField(ctx, fields, "stagedText", stagedText_);
-    setBoolField(ctx, fields, "isComposing", !markedText_.empty());
-    setBoolField(ctx, fields, "isAssociating", associating_);
-    if (web != nullptr) {
-        setStringField(ctx, fields, "key", web->key);
-        setStringField(ctx, fields, "code", web->code);
-        setStringField(ctx, fields, "keyIgnoringModifiers",
-                       web->keyIgnoringModifiers);
-        setBoolField(ctx, fields, "shiftKey", web->shiftKey);
-        setBoolField(ctx, fields, "ctrlKey", web->ctrlKey);
-        setBoolField(ctx, fields, "altKey", web->altKey);
-        setBoolField(ctx, fields, "metaKey", web->metaKey);
-        setBoolField(ctx, fields, "repeat", web->repeat);
-        setIntField(ctx, fields, "location", web->location);
-    }
-    if (candidate != nullptr) {
-        setStringField(ctx, fields, "candidate", candidate->text);
-        setIntField(ctx, fields, "absoluteIndex", absoluteIndex);
-        if (!candidate->annotation.empty()) {
-            setStringField(ctx, fields, "annotation", candidate->annotation);
-        }
-        if (candidate->hasPayload) {
-            JS_SetPropertyStr(ctx, fields, "payload",
-                              JS_DupValue(ctx, candidate->payload));
-        }
-    }
-    JS_SetPropertyStr(ctx, data, "fields", fields);
-
-    if (web != nullptr) {
-        JSValue states = JS_NewObject(ctx);
-        setBoolField(ctx, states, "Shift", web->shiftKey);
-        setBoolField(ctx, states, "Control", web->ctrlKey);
-        setBoolField(ctx, states, "Alt", web->altKey);
-        setBoolField(ctx, states, "Meta", web->metaKey);
-        setBoolField(ctx, states, "CapsLock", web->capsLock);
-        setBoolField(ctx, states, "NumLock", web->numLock);
-        JS_SetPropertyStr(ctx, data, "modifierStates", states);
-    }
-
-    JSValue window = JS_NewObject(ctx);
-    setBoolField(ctx, window, "isVisible", candidatesVisible_);
-    setStringField(ctx, window, "indexLabels", windowConfig_.indexLabels);
-    setIntField(ctx, window, "pageSize", windowConfig_.pageSize);
-    setStringField(ctx, window, "layoutDirection",
-                   windowConfig_.vertical ? "vertical" : "horizontal");
-    setBoolField(ctx, window, "handleNavigationKeys",
-                 windowConfig_.handleNavigationKeys);
-    setBoolField(ctx, window, "handleIndexLabelKeys",
-                 windowConfig_.handleIndexLabelKeys);
-    setIntField(ctx, window, "pageItemCount", currentPageItemCount());
-    JS_SetPropertyStr(ctx, data, "candidateWindow", window);
-
-    return data;
-}
 
 JSValue EngineSession::makeEvent(const WebKeyEvent *web,
                                  const CandidateData *candidate,
                                  int absoluteIndex) {
     JSContext *ctx = host_->context();
-    qjs::Value data(ctx, buildEventData(web, candidate, absoluteIndex));
+    EventStaging staging{markedText_, stagedText_, associating_,
+                         candidatesVisible_, currentPageItemCount()};
+    EventKeyFields keys;
+    const EventKeyFields *keyFields = nullptr;
+    if (web != nullptr) {
+        // Named assignments: field growth in the contract vocabulary must
+        // not silently re-bind a positional copy.
+        keys.key = web->key;
+        keys.code = web->code;
+        keys.keyIgnoringModifiers = web->keyIgnoringModifiers;
+        keys.shiftKey = web->shiftKey;
+        keys.ctrlKey = web->ctrlKey;
+        keys.altKey = web->altKey;
+        keys.metaKey = web->metaKey;
+        keys.capsLock = web->capsLock;
+        keys.numLock = web->numLock;
+        keys.repeat = web->repeat;
+        keys.location = web->location;
+        keyFields = &keys;
+    }
+    EventCandidate confirming;
+    const EventCandidate *confirmingPtr = nullptr;
+    if (candidate != nullptr) {
+        confirming = {candidate->text, candidate->annotation,
+                      candidate->payload, candidate->hasPayload};
+        confirmingPtr = &confirming;
+    }
+    qjs::Value data(ctx, buildEventData(ctx, staging, keyFields,
+                                        confirmingPtr, absoluteIndex,
+                                        windowConfig_));
     qjs::Value global(ctx, JS_GetGlobalObject(ctx));
-    qjs::Value maker(ctx, JS_GetPropertyStr(ctx, global.get(),
-                                            "__MacishTypeHost_makeEvent"));
+    qjs::Value maker(
+        ctx, JS_GetPropertyStr(ctx, global.get(), c_MakeEventHook));
     if (!maker.isFunction()) {
         MACISHTYPE_ERROR() << "hostglue.js did not define "
-                              "__MacishTypeHost_makeEvent";
+                           << c_MakeEventHook;
         return data.release();
     }
     JSValue argument = data.get();
