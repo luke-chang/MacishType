@@ -42,3 +42,7 @@ target_link_libraries(macishtype-jshost PUBLIC qjs)
 # than bundling CLDR data.
 find_package(ICU REQUIRED COMPONENTS i18n uc)
 target_link_libraries(macishtype-jshost PRIVATE ICU::i18n ICU::uc)
+
+# Headless CLI: the reference seam embedding, driven by the contract tests.
+add_executable(macishtype-jshost-cli cli/main.cpp)
+target_link_libraries(macishtype-jshost-cli PRIVATE macishtype-jshost)
