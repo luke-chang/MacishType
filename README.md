@@ -20,7 +20,7 @@ runs unmodified on the Linux host, a fcitx5 addon in [`fcitx5/`](fcitx5/).
 ## Start here
 
 - Installing or developing on macOS: [`macos/README.md`](macos/README.md)
-- Installing or developing on Linux: [`fcitx5/README.md`](fcitx5/README.md) (note: `fcitx5/` needs the quickjs-ng submodule — clone with `--recurse-submodules`)
+- Installing or developing on Linux: [`fcitx5/README.md`](fcitx5/README.md) (note: building needs the quickjs-ng submodule — clone with `--recurse-submodules`)
 - Writing an engine: [`engines/README.md`](engines/README.md)
 
 ## Acknowledgments

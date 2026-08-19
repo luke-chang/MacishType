@@ -68,8 +68,9 @@ sudo dnf install gcc-c++ cmake ninja-build pkgconf git gettext \
 
 ## Installation
 
-All `make` commands run from this directory (`fcitx5/`). quickjs-ng is a git
-submodule — only this platform needs it — so make sure it is checked out:
+All `make` commands run from this directory (`fcitx5/`). The embedded
+quickjs-ng runtime is a git submodule at `jshost/external/quickjs-ng`
+(repo root), so make sure it is checked out:
 
 ```sh
 git clone --recurse-submodules …            # fresh clone, or

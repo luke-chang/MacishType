@@ -20,15 +20,17 @@ find_package(Fcitx5Module REQUIRED COMPONENTS Notifications)
 find_package(Gettext REQUIRED)
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
 
-# quickjs-ng builds as a static library folded into the addon .so, so it
-# needs PIC; EXCLUDE_FROM_ALL keeps its CLI and install rules out.
+# quickjs-ng lives under jshost/ (shared across platform hosts) and builds as
+# a static library folded into the addon .so, so it needs PIC;
+# EXCLUDE_FROM_ALL keeps its CLI and install rules out.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(QJS_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/quickjs-ng/CMakeLists.txt")
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../jshost/external/quickjs-ng/CMakeLists.txt")
     message(FATAL_ERROR "quickjs-ng submodule is missing; run:\n"
                         "  git submodule update --init")
 endif()
-add_subdirectory(third_party/quickjs-ng EXCLUDE_FROM_ALL)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../jshost/external/quickjs-ng"
+                 quickjs-ng EXCLUDE_FROM_ALL)
 
 add_subdirectory(po)
 add_subdirectory(src)
