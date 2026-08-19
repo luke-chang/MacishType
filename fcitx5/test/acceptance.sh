@@ -1,8 +1,8 @@
 #!/bin/sh
 # Milestone acceptance: the shared example engine, unmodified, types end to
-# end through an isolated fcitx5. Requires the example engine folder to be
-# present (a symlink to this repo's engines/example works):
-#   ~/.local/share/fcitx5/macishtype/engines/example
+# end through an isolated fcitx5. The engine is copied out of the repo into
+# an isolated user data layer, so the run needs nothing from the developer's
+# own engine folders and touches none of them.
 #
 # Key specs are keyval:keycode with X keycodes (evdev + 8).
 set -e
@@ -10,10 +10,17 @@ set -e
 root="$(cd "$(dirname "$0")/.." && pwd)"
 make -s -C "$root" dev-install > /dev/null
 
+data_home="$(mktemp -d)"
+trap 'rm -rf "$data_home"' EXIT
+engines="$data_home/fcitx5/macishtype/engines"
+mkdir -p "$engines"
+cp -R "$root/../engines/example" "$engines/example"
+
 # h=104:43 i=105:31 space=32:65 digit2=50:11 escape=65307:9
 # right=65363:114 enter=65293:36 digit5=53:14
 run() {
-    "$root/test/isolated.sh" example "$@" 2> /dev/null
+    ISOLATED_DATA_HOME="$data_home" \
+        "$root/test/isolated.sh" example "$@" 2> /dev/null
 }
 
 check() {

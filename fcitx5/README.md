@@ -136,8 +136,7 @@ After a code change:
 
 - `make debug` — rebuild and dev-install in one step (restarts fcitx5, which
   interrupts typing).
-- `make test` — acceptance suite against an isolated fcitx5; safe to run any
-  time (needs the `example` engine installed, per First install).
+- `make test` — acceptance suite against an isolated fcitx5.
 - `make log` — follow the addon's log, scoped to this platform's sources.
 - `make log-js` — follow engine `console.*` output only.
 - `make log-history` — show recent log history (default 1h;
