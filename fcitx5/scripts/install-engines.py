@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+"""Interactive installer for the repo's engine folders.
+
+Shows what the engine directory fcitx5 reads
+($XDG_DATA_HOME/fcitx5/macishtype/engines, ~/.local/share by default) already
+holds, lists the engines under <repo>/engines/, and installs the picked ones
+as copies or as symlinks. No root needed; an engine keeps its source folder
+name, which is its identity to the addon.
+
+An engine that ships a setup.py has it run first, so generated data tables are
+in place. _storage/, where the JS storage API persists a user-layer engine's
+data, belongs to the installed form: a copy owns its own and keeps it across a
+reinstall, while a symlink's lives in the source folder and is never touched
+here.
+"""
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+SOURCE_DIR = os.path.join(REPO_ROOT, "engines")
+# Engine identity is the folder name; the addon skips anything else.
+ENGINE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+# Engine-private storage, kept across a reinstall.
+STORAGE_DIR = "_storage"
+# Never travels into a copy: dev leftovers, and the storage directory, which
+# is carried over from the existing install instead.
+SKIP_PATTERNS = ("__pycache__", ".git*", STORAGE_DIR)
+
+
+def engines_dir():
+    data_home = os.environ.get("XDG_DATA_HOME") or os.path.join(
+        os.path.expanduser("~"), ".local", "share")
+    return os.path.join(data_home, "fcitx5", "macishtype", "engines")
+
+
+def display_name(manifest_path):
+    """The manifest's `name`, which is either a string or a locale map."""
+    try:
+        with open(manifest_path, encoding="utf-8") as handle:
+            name = json.load(handle).get("name")
+    except (OSError, ValueError):
+        return ""
+    if isinstance(name, str):
+        return name
+    if isinstance(name, dict):
+        for locale in ("en", *sorted(name)):
+            if isinstance(name.get(locale), str):
+                return name[locale]
+    return ""
+
+
+def discover():
+    """Installable engine folders, in the order they are listed."""
+    found = []
+    for entry in sorted(os.listdir(SOURCE_DIR)):
+        source = os.path.join(SOURCE_DIR, entry)
+        manifest = os.path.join(source, "manifest.json")
+        if not ENGINE_ID.match(entry) or not os.path.isfile(manifest):
+            continue
+        found.append({"id": entry, "source": source,
+                      "name": display_name(manifest)})
+    return found
+
+
+def show_installed(destination_root):
+    """Everything the destination already serves, engines from elsewhere too."""
+    try:
+        entries = sorted(os.listdir(destination_root))
+    except OSError:
+        entries = []
+    print(f"Installed in {destination_root}:\n")
+    if not entries:
+        print("  (nothing yet)\n")
+        return
+    width = max(len(entry) for entry in entries)
+    for entry in entries:
+        path = os.path.join(destination_root, entry)
+        kind = (f"symlink -> {os.path.realpath(path)}"
+                if os.path.islink(path) else "copy")
+        print(f"  {entry:<{width}}  {kind}")
+    print()
+
+
+def installed_form(engine, destination_root):
+    """How this engine itself is installed: "copy", "symlink", or not."""
+    target = os.path.join(destination_root, engine["id"])
+    if os.path.islink(target):
+        return "symlink"
+    if os.path.isdir(target):
+        return "copy"
+    return ""
+
+
+def prompt_selection(engines):
+    width = max(len(engine["id"]) for engine in engines)
+    print(f"Engines in {SOURCE_DIR}:\n")
+    for index, engine in enumerate(engines, 1):
+        installed = (f"installed ({engine['installed']})"
+                     if engine["installed"] else "")
+        columns = [f"  {index}) {engine['id']:<{width}}", engine["name"],
+                   installed]
+        print("  ".join(column for column in columns if column))
+    print()
+    while True:
+        answer = input('Install which? '
+                       '(numbers, "all", empty to cancel): ').strip()
+        if not answer:
+            return []
+        if answer.lower() in ("all", "a"):
+            return list(engines)
+        chosen = []
+        for token in answer.replace(",", " ").split():
+            if not token.isdigit() or not 1 <= int(token) <= len(engines):
+                print(f'  "{token}" is not one of the numbers above.')
+                chosen = None
+                break
+            engine = engines[int(token) - 1]
+            if engine not in chosen:
+                chosen.append(engine)
+        if chosen:
+            return chosen
+
+
+def prompt_mode():
+    """Copy (self-contained) or symlink (source edits reach fcitx5 live)."""
+    while True:
+        answer = input("Install as [c]opy or [s]ymlink? "
+                       "(default copy): ").strip().lower()
+        if answer in ("", "c", "copy"):
+            return "copy"
+        if answer in ("s", "symlink", "link"):
+            return "symlink"
+        print('  Answer "c" or "s".')
+
+
+def confirm_reinstall(engine, destination_root):
+    """Asked before the install form, so declining costs one answer."""
+    target = os.path.join(destination_root, engine["id"])
+    print(f"  {engine['id']} is already installed as a"
+          f" {engine['installed']}:\n  {target}")
+    return input("  Reinstall? [y/N] ").strip().lower() in ("y", "yes")
+
+
+def confirm_storage_loss():
+    """A copy owns its storage; the symlink replacing it has nowhere for it."""
+    print(f"  Replacing the copy with a symlink discards its {STORAGE_DIR}/,"
+          " the engine's own data.")
+    return input("  Continue? [y/N] ").strip().lower() in ("y", "yes")
+
+
+def remove(path):
+    if os.path.islink(path) or os.path.isfile(path):
+        os.unlink(path)
+    elif os.path.isdir(path):
+        shutil.rmtree(path)
+
+
+def install(engine, destination_root, mode):
+    """Installs one engine folder. Returns whether it landed."""
+    target = os.path.join(destination_root, engine["id"])
+    if mode == "symlink":
+        if os.path.islink(target) and \
+                os.path.realpath(target) == os.path.realpath(engine["source"]):
+            print("  already links to the source folder")
+            return False
+        if not os.path.islink(target) \
+                and os.path.isdir(os.path.join(target, STORAGE_DIR)) \
+                and not confirm_storage_loss():
+            print("  skipped")
+            return False
+    elif os.path.islink(target):
+        print("  replacing the symlink with a copy: later source edits stop"
+              " reaching fcitx5")
+    if os.path.isfile(os.path.join(engine["source"], "setup.py")):
+        print("  running setup.py...")
+        if subprocess.run([sys.executable, "setup.py"],
+                          cwd=engine["source"]).returncode:
+            print("  setup.py failed; engine not installed", file=sys.stderr)
+            return False
+    if mode == "symlink":
+        remove(target)
+        os.symlink(engine["source"], target)
+        print(f"  ✓ {target} -> {engine['source']}")
+        return True
+    # Stage beside the target so nothing is removed until the new tree is
+    # complete, then swap it in with a rename.
+    staging = os.path.join(destination_root, f".{engine['id']}.new")
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        shutil.copytree(engine["source"], staging,
+                        ignore=shutil.ignore_patterns(*SKIP_PATTERNS))
+        # Only a previous copy's storage is this install's to carry; behind
+        # a symlink it belongs to the source folder and stays there.
+        storage = os.path.join(target, STORAGE_DIR)
+        if not os.path.islink(target) and os.path.isdir(storage):
+            shutil.copytree(storage, os.path.join(staging, STORAGE_DIR))
+        remove(target)
+        os.replace(staging, target)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    print(f"  ✓ {target}")
+    return True
+
+
+def main():
+    if not sys.stdin.isatty():
+        sys.exit("install-engines needs a terminal to ask what to install.")
+    engines = discover()
+    if not engines:
+        sys.exit(f"No engine folder with a manifest.json in {SOURCE_DIR}")
+    destination_root = engines_dir()
+    os.makedirs(destination_root, exist_ok=True)
+    show_installed(destination_root)
+    for engine in engines:
+        engine["installed"] = installed_form(engine, destination_root)
+    selected = prompt_selection(engines)
+    if not selected:
+        print("Nothing selected.")
+        return
+    selected = [engine for engine in selected
+                if not engine["installed"]
+                or confirm_reinstall(engine, destination_root)]
+    if not selected:
+        print("Nothing to install.")
+        return
+    mode = prompt_mode()
+    installed = 0
+    for engine in selected:
+        print(f"\n{engine['id']}:")
+        if install(engine, destination_root, mode):
+            installed += 1
+    if installed:
+        print("\nNewly added folders are picked up on demand: open"
+              " fcitx5-configtool →\nInput Method → Add to select them.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (EOFError, KeyboardInterrupt):
+        # Ctrl-C / Ctrl-D at any prompt: nothing is removed until the
+        # replacement is staged, so bailing out here is always safe.
+        sys.exit("\nCancelled.")

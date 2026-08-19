@@ -25,8 +25,8 @@ ADDON_DIRS := $(USER_LIB):$(shell test/system-addon-dir.sh)
 VERSION_STAMP ?= $(shell scripts/version-stamp.sh)
 
 .PHONY: help prepare update-resources build test debug restart dev-install \
-	dev-uninstall install uninstall remove-icon-links pkg clean \
-	clean-resources log log-js log-history
+	dev-uninstall install-engines install uninstall remove-icon-links pkg \
+	clean clean-resources log log-js log-history
 .DEFAULT_GOAL := help
 
 # Window for `make log-history`, systemd time syntax (override:
@@ -68,6 +68,7 @@ help:
 	@echo "  make restart           - Restart the live fcitx5 (LOG_DEBUG=1 enables per-key Debug logging)"
 	@echo "  make dev-install       - Install into ~/.local (no restart)"
 	@echo "  make dev-uninstall     - Remove the ~/.local install (keeps engines)"
+	@echo "  make install-engines   - Install engines from ../engines/ as copies or symlinks"
 	@echo "  make install           - Production install into /usr (sudo) + restart"
 	@echo "  make uninstall         - Remove the production install + restart"
 	@echo "  make pkg               - Build a native package (deb/rpm) via CPack"
@@ -79,7 +80,7 @@ help:
 	@echo ""
 	@echo "Quick Start:"
 	@echo "  make debug"
-	@echo "  Symlink engine folders into ~/.local/share/fcitx5/macishtype/engines/"
+	@echo "  make install-engines"
 	@echo "  Then add the input methods in fcitx5-configtool"
 
 # Module data tables (wordFrequency / symbolNames), pinned in the repo-level
@@ -169,6 +170,13 @@ dev-uninstall:
 	rm -f $(HOME)/.local/share/locale/*/LC_MESSAGES/fcitx5-macishtype.mo
 	@rmdir $(USER_SHARE)/macishtype/engines $(USER_SHARE)/macishtype \
 	    2> /dev/null || true
+
+# Interactive engine installer: lists the engine folders in ../engines/ and
+# installs the picked ones into the user engines directory, as copies or as
+# symlinks. Independent of the addon build — engines are user data, installed
+# and removed on their own.
+install-engines:
+	@scripts/install-engines.py
 
 # Production install (addon .so, confs, shared runtime, and the prepared
 # module data). The distro fcitx5 only loads addons from /usr, so the

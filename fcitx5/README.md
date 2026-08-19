@@ -81,17 +81,12 @@ git submodule update --init --recursive     # existing checkout
 1. `make install`
    - Syncs the pinned data tables (`make prepare`), builds, installs into
      `/usr` (asks for sudo), and restarts fcitx5.
-2. Add engines: drop or symlink engine folders into
-   `~/.local/share/fcitx5/macishtype/engines/<name>/`. The folder name is the
-   engine's identity and must be `[A-Za-z0-9_-]` — anything else is skipped
-   at discovery. Symlinks are fine (and are the intended dev workflow):
-
-   ```sh
-   mkdir -p ~/.local/share/fcitx5/macishtype/engines
-   ln -s "$(pwd)/../engines/example" \
-       ~/.local/share/fcitx5/macishtype/engines/example
-   ```
-
+2. `make install-engines`
+   - Installs engine folders from [`engines/`](../engines/) as copies, or as
+     symlinks — the dev workflow, where source edits reach fcitx5 live.
+   - By hand: put the folder in
+     `~/.local/share/fcitx5/macishtype/engines/<name>/`. That name is the
+     engine's identity and must be `[A-Za-z0-9_-]`, or discovery skips it.
 3. Open `fcitx5-configtool` → **Input Method** → **Add**, and pick the
    engines from the list — each appears as its own input method.
 
@@ -142,7 +137,7 @@ After a code change:
 - `make debug` — rebuild and dev-install in one step (restarts fcitx5, which
   interrupts typing).
 - `make test` — acceptance suite against an isolated fcitx5; safe to run any
-  time (needs the `example` engine symlink from First install).
+  time (needs the `example` engine installed, per First install).
 - `make log` — follow the addon's log, scoped to this platform's sources.
 - `make log-js` — follow engine `console.*` output only.
 - `make log-history` — show recent log history (default 1h;
@@ -156,6 +151,12 @@ keystroke.
 - `make build` — cmake configure + build without installing.
 - `make prepare` — sync the pinned data tables (incremental; auto-run by
   debug/install).
+- `make install-engines` — interactive engine installer, copy or symlink
+  (see [First install](#first-install)). An engine that ships a `setup.py`
+  has it run first, so generated data tables are in place. The engine's
+  `_storage/` belongs to the installed form: a copy keeps its own across a
+  reinstall, a symlink's lives in the source folder — so replacing a copy
+  with a symlink discards it, and asks before doing so.
 - `make pkg` — build a native package (`.deb` on Debian-family, `.rpm` on
   RPM-family) with CPack, into `build/`. The version carries a date-and-commit
   stamp (`0.2.0+20260805.93426bb`, `.dirty.<HHMM>` appended for an unclean
