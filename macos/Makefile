@@ -1,4 +1,6 @@
-.PHONY: help build test debug reload release release-universal install uninstall pkg prepare update-resources clean-resources clean log log-js log-history preview
+.PHONY: help prepare update-resources build test debug reload release \
+	release-universal install uninstall pkg clean clean-resources log log-js \
+	log-history preview
 
 APP_NAME = MacishType
 BUNDLE_ID = net.lukechang.inputmethod.$(APP_NAME)
@@ -99,7 +101,7 @@ fi
 endef
 
 help:
-	@echo "$(APP_NAME) - Available Commands:"
+	@echo "$(APP_NAME) (macOS) - Available Commands:"
 	@echo ""
 	@echo "  make prepare            - Sync external resources to lock state (incremental; auto-run by builds)"
 	@echo "  make update-resources   - Bump pinned upstream SHAs in lock and re-prepare"
@@ -122,6 +124,12 @@ help:
 	@echo "Quick Start:"
 	@echo "  make debug"
 	@echo "  Then go to System Settings → Keyboard → Input Sources to add $(APP_NAME)"
+
+prepare:
+	@../scripts/external-resources.py --prepare
+
+update-resources:
+	@../scripts/external-resources.py --update
 
 build: prepare
 	@$(XCODE_CHECK)
@@ -157,6 +165,65 @@ release-universal: prepare
 
 install: release
 	@$(call INSTALL_APP,Release)
+
+# Container metadata is owned by containermanagerd via a kernel sandbox profile
+# and cannot be removed from user space — Data/ is wiped, shell is left in place.
+uninstall:
+	@echo "Uninstalling $(APP_NAME) input method..."
+	@removed=0; failed=0; removed_app=false; \
+	for path in \
+		"$$HOME/Library/Input Methods/$(APP_NAME).app" \
+		"$$HOME/Library/Application Scripts/$(BUNDLE_ID)"; \
+	do \
+		if [ -e "$$path" ]; then \
+			if rm -rf "$$path" 2>/dev/null && [ ! -e "$$path" ]; then \
+				echo "  ✓ Removed $$path"; \
+				removed=$$((removed+1)); \
+				case "$$path" in *"Input Methods/$(APP_NAME).app") removed_app=true ;; esac; \
+			else \
+				echo "  ✗ Could not remove $$path"; \
+				failed=$$((failed+1)); \
+			fi; \
+		fi; \
+	done; \
+	container="$$HOME/Library/Containers/$(BUNDLE_ID)"; \
+	if [ -d "$$container/Data" ]; then \
+		rm -rf "$$container/Data" 2>/dev/null; \
+		if [ ! -e "$$container/Data" ]; then \
+			echo "  ✓ Wiped user data in $$container (containermanagerd metadata kept — will be reused on reinstall)"; \
+			removed=$$((removed+1)); \
+		else \
+			echo "  ✗ Could not remove $$container/Data"; \
+			failed=$$((failed+1)); \
+		fi; \
+	fi; \
+	killall -9 $(APP_NAME) 2>/dev/null || true; \
+	if [ $$removed -eq 0 ] && [ $$failed -eq 0 ]; then \
+		echo "Nothing found, $(APP_NAME) appears to be already uninstalled."; \
+	else \
+		echo ""; \
+		if [ $$removed -gt 0 ]; then echo "✓ Removed $$removed item(s)"; fi; \
+		if [ $$failed -gt 0 ]; then echo "⚠ $$failed item(s) could not be removed (see above)"; fi; \
+		if $$removed_app; then \
+			echo ""; \
+			echo "ℹ $(APP_NAME) will still appear in System Settings → Keyboard → Input Sources"; \
+			echo "  until you log out and back in to fully unregister it."; \
+			if [ -t 0 ]; then \
+				echo ""; \
+				printf "  Log out now? [y/N] "; \
+				read answer; \
+				case "$$answer" in \
+					[Yy]*) \
+						echo "  Logging out (save your work — apps may prompt)..."; \
+						osascript -e 'tell application "System Events" to log out'; \
+						;; \
+					*) \
+						echo "  Skipped. Log out manually when convenient."; \
+						;; \
+				esac; \
+			fi; \
+		fi; \
+	fi
 
 # Build a double-clickable installer. enable_currentUserHome installs into
 # ~/Library/Input Methods without admin rights. A postinstall script kills any
@@ -231,69 +298,13 @@ pkg: release-universal
 	echo ""; \
 	echo "✓ Installer package created: $$OUTPUT_PKG"
 
-# Container metadata is owned by containermanagerd via a kernel sandbox profile
-# and cannot be removed from user space — Data/ is wiped, shell is left in place.
-uninstall:
-	@echo "Uninstalling $(APP_NAME) input method..."
-	@removed=0; failed=0; removed_app=false; \
-	for path in \
-		"$$HOME/Library/Input Methods/$(APP_NAME).app" \
-		"$$HOME/Library/Application Scripts/$(BUNDLE_ID)"; \
-	do \
-		if [ -e "$$path" ]; then \
-			if rm -rf "$$path" 2>/dev/null && [ ! -e "$$path" ]; then \
-				echo "  ✓ Removed $$path"; \
-				removed=$$((removed+1)); \
-				case "$$path" in *"Input Methods/$(APP_NAME).app") removed_app=true ;; esac; \
-			else \
-				echo "  ✗ Could not remove $$path"; \
-				failed=$$((failed+1)); \
-			fi; \
-		fi; \
-	done; \
-	container="$$HOME/Library/Containers/$(BUNDLE_ID)"; \
-	if [ -d "$$container/Data" ]; then \
-		rm -rf "$$container/Data" 2>/dev/null; \
-		if [ ! -e "$$container/Data" ]; then \
-			echo "  ✓ Wiped user data in $$container (containermanagerd metadata kept — will be reused on reinstall)"; \
-			removed=$$((removed+1)); \
-		else \
-			echo "  ✗ Could not remove $$container/Data"; \
-			failed=$$((failed+1)); \
-		fi; \
-	fi; \
-	killall -9 $(APP_NAME) 2>/dev/null || true; \
-	if [ $$removed -eq 0 ] && [ $$failed -eq 0 ]; then \
-		echo "Nothing found, $(APP_NAME) appears to be already uninstalled."; \
-	else \
-		echo ""; \
-		if [ $$removed -gt 0 ]; then echo "✓ Removed $$removed item(s)"; fi; \
-		if [ $$failed -gt 0 ]; then echo "⚠ $$failed item(s) could not be removed (see above)"; fi; \
-		if $$removed_app; then \
-			echo ""; \
-			echo "ℹ $(APP_NAME) will still appear in System Settings → Keyboard → Input Sources"; \
-			echo "  until you log out and back in to fully unregister it."; \
-			if [ -t 0 ]; then \
-				echo ""; \
-				printf "  Log out now? [y/N] "; \
-				read answer; \
-				case "$$answer" in \
-					[Yy]*) \
-						echo "  Logging out (save your work — apps may prompt)..."; \
-						osascript -e 'tell application "System Events" to log out'; \
-						;; \
-					*) \
-						echo "  Skipped. Log out manually when convenient."; \
-						;; \
-				esac; \
-			fi; \
-		fi; \
-	fi
-
 clean:
 	@echo "Cleaning build artifacts..."
 	rm -rf ./build
 	@echo "✓ Clean complete"
+
+clean-resources:
+	@../scripts/external-resources.py --clean
 
 log:
 	@echo "Streaming OSLog for $(APP_NAME) ($(BUNDLE_ID))..."
@@ -319,12 +330,3 @@ preview: prepare
 	@killall CandidateWindowPreview 2>/dev/null || true
 	@sleep 0.3
 	@open ./build/Debug/CandidateWindowPreview.app
-
-prepare:
-	@../scripts/external-resources.py --prepare
-
-update-resources:
-	@../scripts/external-resources.py --update
-
-clean-resources:
-	@../scripts/external-resources.py --clean

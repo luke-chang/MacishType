@@ -5,6 +5,10 @@ BUILD_DIR := build
 # Build parallelism; empty lets ninja decide. Low-memory machines want
 # JOBS=2 — full parallelism can starve the compiler into a crash.
 JOBS ?=
+# Passed on every configure: CMake's own default only applies to an empty
+# cache, so a build dir configured once as Debug would keep that type for
+# every later build. BUILD_TYPE=Debug gives an unoptimized build on purpose.
+BUILD_TYPE ?= RelWithDebInfo
 USER_LIB := $(HOME)/.local/lib/fcitx5
 USER_SHARE := $(HOME)/.local/share/fcitx5
 # Where the addon links engine icons at runtime (XDG data home, not fcitx's
@@ -20,9 +24,9 @@ ADDON_DIRS := $(USER_LIB):$(shell test/system-addon-dir.sh)
 # VERSION_STAMP to change or omit it.
 VERSION_STAMP ?= $(shell scripts/version-stamp.sh)
 
-.PHONY: help build prepare pkg update-resources clean-resources debug \
-	dev-install dev-uninstall install uninstall remove-icon-links restart \
-	test clean log log-js log-history
+.PHONY: help prepare update-resources build test debug restart dev-install \
+	dev-uninstall install uninstall remove-icon-links pkg clean \
+	clean-resources log log-js log-history
 .DEFAULT_GOAL := help
 
 # Window for `make log-history`, systemd time syntax (override:
@@ -54,65 +58,83 @@ LOG_SCOPE_JS = perl -ne 'BEGIN{$$|=1} if(/^[A-Z][0-9]{4}-[0-9]{2}-[0-9]{2} /){$$
 LOG_SIMPLIFY = sed -u -E 's/^([A-Z])[0-9]{4}-([0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3})[0-9]* ([A-Za-z0-9_]+\.cpp:[0-9]+)\]/[\2 \1] \3/'
 
 help:
-	@echo "fcitx5-macishtype development entry points:"
+	@echo "fcitx5-macishtype - Available Commands:"
 	@echo ""
-	@echo "  make build          - CMake configure + build"
-	@echo "  make prepare        - Sync pinned module data tables"
-	@echo "  make update-resources - Bump pinned upstream SHAs and re-prepare"
-	@echo "  make clean-resources  - Remove downloaded tables and cache/stamp"
-	@echo "  make test           - Acceptance suite against an isolated fcitx5"
-	@echo "  make debug          - prepare + build + dev-install + restart"
-	@echo "  make dev-install    - Install into ~/.local (no restart)"
-	@echo "  make dev-uninstall  - Remove the ~/.local install (keeps engines)"
-	@echo "  make install        - Production install into /usr (sudo) + restart"
-	@echo "  make pkg            - Build a native package (deb/rpm) via CPack"
-	@echo "  make uninstall      - Remove the production install + restart"
-	@echo "  make restart        - Restart the live fcitx5 (interrupts typing;"
-	@echo "                        LOG_DEBUG=1 enables per-key Debug logging)"
-	@echo "  make log            - Follow the addon's log (user journal)"
-	@echo "  make log-js         - Follow engine console.* output only"
-	@echo "  make log-history    - Recent addon log (default $(LOG_SHOW_LAST); LOG_SHOW_LAST=24h)"
-	@echo "  make clean          - Remove the build directory"
+	@echo "  make prepare           - Sync external resources to lock state (incremental; auto-run by builds)"
+	@echo "  make update-resources  - Bump pinned upstream SHAs in lock and re-prepare"
+	@echo "  make build             - CMake configure + build (BUILD_TYPE=Debug for an unoptimized build)"
+	@echo "  make test              - Acceptance suite against an isolated fcitx5"
+	@echo "  make debug             - prepare + build + dev-install + restart"
+	@echo "  make restart           - Restart the live fcitx5 (LOG_DEBUG=1 enables per-key Debug logging)"
+	@echo "  make dev-install       - Install into ~/.local (no restart)"
+	@echo "  make dev-uninstall     - Remove the ~/.local install (keeps engines)"
+	@echo "  make install           - Production install into /usr (sudo) + restart"
+	@echo "  make uninstall         - Remove the production install + restart"
+	@echo "  make pkg               - Build a native package (deb/rpm) via CPack"
+	@echo "  make clean             - Clean build artifacts"
+	@echo "  make clean-resources   - Remove downloaded external resources and cache/stamp"
+	@echo "  make log               - Follow the addon's log (user journal)"
+	@echo "  make log-js            - Follow engine console.* output only"
+	@echo "  make log-history       - Recent addon log (default $(LOG_SHOW_LAST), use LOG_SHOW_LAST=24h to override)"
 	@echo ""
-	@echo "Quick start: make debug, then add the input methods in fcitx5-configtool."
-
-build:
-	cmake -B $(BUILD_DIR) -G Ninja
-	cmake --build $(BUILD_DIR) -j $(JOBS)
+	@echo "Quick Start:"
+	@echo "  make debug"
+	@echo "  Symlink engine folders into ~/.local/share/fcitx5/macishtype/engines/"
+	@echo "  Then add the input methods in fcitx5-configtool"
 
 # Module data tables (wordFrequency / symbolNames), pinned in the repo-level
 # scripts/external-resources.lock and shared with the other platforms.
 prepare:
-	../scripts/external-resources.py --prepare
-
-# Native package for the current environment: deb on Debian-family, rpm on
-# RPM-family (run inside a matching container to produce the other format).
-pkg:
-	$(MAKE) prepare
-	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
-	VERSION_STAMP="$(VERSION_STAMP)" cmake --build $(BUILD_DIR) -j $(JOBS)
-	@gen=$$(. /etc/os-release 2> /dev/null; \
-	    case "$$ID $$ID_LIKE" in \
-	        *debian*) echo DEB ;; \
-	        *fedora*|*rhel*|*suse*) echo RPM ;; \
-	        *) echo TGZ ;; \
-	    esac); \
-	set -x; \
-	cpack -G $$gen --config $(BUILD_DIR)/CPackConfig.cmake -B $(BUILD_DIR)
+	@../scripts/external-resources.py --prepare
 
 update-resources:
 	@../scripts/external-resources.py --update
 
-clean-resources:
-	@../scripts/external-resources.py --clean
+build: prepare
+	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+	cmake --build $(BUILD_DIR) -j $(JOBS)
+
+# Acceptance suite against an isolated fcitx5; safe to run any time.
+test: build
+	test/acceptance.sh
+	test/navigation.sh
+	test/modifier.sh
+	test/reload.sh
+	test/storage.sh
+	test/settings.sh
+	test/orientation.sh
+	test/segmenter.sh
+	test/datetime.sh
+	test/number.sh
+	test/plural.sh
+	test/collator.sh
+	test/errorstack.sh
+	test/fullwidth.sh
+	test/compositionend.sh
+	test/associated.sh
+	test/contract.sh
+	test/asyncfetch.sh
+	test/toggle.sh
+	test/discovery.sh
+	test/textcodec.sh
+	test/reverselookup.sh
+	test/modules.sh
+	test/icontheme.sh
 
 # Development install into ~/.local plus a fcitx5 restart. Restarting
 # interrupts typing in the current session — run this yourself.
 debug:
-	$(MAKE) prepare
 	$(MAKE) build
 	$(MAKE) dev-install
 	$(MAKE) restart
+
+# Restarts the LIVE fcitx5 with the user-dir addon visible — interrupts
+# typing, so run it yourself. Output goes to the user journal (see `make
+# log`), same as a session-autostarted fcitx5. Per-key Debug logging is
+# off by default; enable with LOG_DEBUG=1.
+restart:
+	FCITX_ADDON_DIRS="$(ADDON_DIRS)" systemd-cat -t fcitx5 \
+	    fcitx5 -rd $(if $(LOG_DEBUG),--verbose macishtype=5)
 
 # User-dir install; no root needed. Engine folders go into
 # ~/.local/share/fcitx5/macishtype/engines/<name>/. The freshness check keeps
@@ -148,10 +170,9 @@ dev-uninstall:
 	@rmdir $(USER_SHARE)/macishtype/engines $(USER_SHARE)/macishtype \
 	    2> /dev/null || true
 
-# Production install (addon .so, confs, shared runtime, and any prepared
-# module data). Run `make prepare` first if the data tables should be
-# included. The distro fcitx5 only loads addons from /usr, so the install
-# prefix must be /usr — /usr/local would be ignored.
+# Production install (addon .so, confs, shared runtime, and the prepared
+# module data). The distro fcitx5 only loads addons from /usr, so the
+# install prefix must be /usr — /usr/local would be ignored.
 install:
 	@if [ -f $(USER_LIB)/libmacishtype.so ] || \
 	    [ -f $(USER_SHARE)/addon/macishtype.conf ]; then \
@@ -161,33 +182,11 @@ install:
 	    exit 1; \
 	fi
 	$(MAKE) prepare
-	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
+	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+	    -DCMAKE_INSTALL_PREFIX=/usr
 	cmake --build $(BUILD_DIR) -j $(JOBS)
 	sudo cmake --install $(BUILD_DIR)
 	$(MAKE) restart
-
-# Restarts the LIVE fcitx5 with the user-dir addon visible — interrupts
-# typing, so run it yourself. Output goes to the user journal (see `make
-# log`), same as a session-autostarted fcitx5. Per-key Debug logging is
-# off by default; enable with LOG_DEBUG=1.
-restart:
-	FCITX_ADDON_DIRS="$(ADDON_DIRS)" systemd-cat -t fcitx5 \
-	    fcitx5 -rd $(if $(LOG_DEBUG),--verbose macishtype=5)
-
-# Live addon log stream from the user journal, both launch paths included.
-# For the full fcitx5 stream use journalctl directly.
-log:
-	@journalctl --user -f -o cat $(LOG_MATCH) | $(LOG_SCOPE) | $(LOG_SIMPLIFY)
-
-# JS-originated lines only: engine console.* arrives via the host's log
-# bridge, prefixed with the engine id in brackets.
-log-js:
-	@journalctl --user -f -o cat $(LOG_MATCH) | $(LOG_SCOPE_JS) \
-	    | $(LOG_SIMPLIFY) | sed -u -E 's/ [A-Za-z0-9_]+\.cpp:[0-9]+//'
-
-log-history:
-	@journalctl --user --since "-$(LOG_SHOW_LAST)" -o cat $(LOG_MATCH) \
-	    | $(LOG_SCOPE) | $(LOG_SIMPLIFY) || true
 
 # Removes a production install, using the manifest cmake wrote during the
 # last `make install`, and restarts fcitx5 so the removal takes effect —
@@ -215,32 +214,39 @@ remove-icon-links:
 	@find $(ICON_LINK_DIR) -maxdepth 3 -mindepth 3 -type l \
 	    -name 'macishtype-*' -delete 2> /dev/null || true
 
-# Acceptance suite against an isolated fcitx5; safe to run any time.
-test: build
-	test/acceptance.sh
-	test/navigation.sh
-	test/modifier.sh
-	test/reload.sh
-	test/storage.sh
-	test/settings.sh
-	test/orientation.sh
-	test/segmenter.sh
-	test/datetime.sh
-	test/number.sh
-	test/plural.sh
-	test/collator.sh
-	test/errorstack.sh
-	test/fullwidth.sh
-	test/compositionend.sh
-	test/associated.sh
-	test/contract.sh
-	test/asyncfetch.sh
-	test/toggle.sh
-	test/discovery.sh
-	test/textcodec.sh
-	test/reverselookup.sh
-	test/modules.sh
-	test/icontheme.sh
+# Native package for the current environment: deb on Debian-family, rpm on
+# RPM-family (run inside a matching container to produce the other format).
+pkg:
+	$(MAKE) prepare
+	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+	    -DCMAKE_INSTALL_PREFIX=/usr
+	VERSION_STAMP="$(VERSION_STAMP)" cmake --build $(BUILD_DIR) -j $(JOBS)
+	@gen=$$(. /etc/os-release 2> /dev/null; \
+	    case "$$ID $$ID_LIKE" in \
+	        *debian*) echo DEB ;; \
+	        *fedora*|*rhel*|*suse*) echo RPM ;; \
+	        *) echo TGZ ;; \
+	    esac); \
+	set -x; \
+	cpack -G $$gen --config $(BUILD_DIR)/CPackConfig.cmake -B $(BUILD_DIR)
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+clean-resources:
+	@../scripts/external-resources.py --clean
+
+# Live addon log stream from the user journal, both launch paths included.
+# For the full fcitx5 stream use journalctl directly.
+log:
+	@journalctl --user -f -o cat $(LOG_MATCH) | $(LOG_SCOPE) | $(LOG_SIMPLIFY)
+
+# JS-originated lines only: engine console.* arrives via the host's log
+# bridge, prefixed with the engine id in brackets.
+log-js:
+	@journalctl --user -f -o cat $(LOG_MATCH) | $(LOG_SCOPE_JS) \
+	    | $(LOG_SIMPLIFY) | sed -u -E 's/ [A-Za-z0-9_]+\.cpp:[0-9]+//'
+
+log-history:
+	@journalctl --user --since "-$(LOG_SHOW_LAST)" -o cat $(LOG_MATCH) \
+	    | $(LOG_SCOPE) | $(LOG_SIMPLIFY) || true
