@@ -143,6 +143,10 @@ public:
     // Follow-up phrases for held text, keyed on its last character, from
     // the locale dictionary (lazily loaded); empty when no entry.
     std::vector<std::string> associatedFollowups(const std::string &heldChar);
+    // Grapheme cluster boundaries as byte offsets; see graphemeBoundariesUtf8.
+    std::vector<size_t> graphemeBoundaries(const std::string &utf8) {
+        return graphemeBoundariesUtf8(intlCache(), utf8);
+    }
 
     using FieldValue = std::variant<bool, double, std::string>;
     // Bridge-visible candidate window field: engine write overlay first,

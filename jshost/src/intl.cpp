@@ -117,6 +117,47 @@ IntlCache &JsEngineHost::intlCache() {
     return *intlCache_;
 }
 
+std::vector<size_t> graphemeBoundariesUtf8(IntlCache &cache,
+                                           const std::string &utf8) {
+    // Re-acquire from the cache on every call: the per-kind cap can have
+    // closed the iterator since. No JS runs while it is held, so the eviction
+    // re-entrancy hazard of the Intl natives does not apply here.
+    int openStatus = U_ZERO_ERROR;
+    auto *iterator = static_cast<UBreakIterator *>(
+        cache.breakIterator(UBRK_CHARACTER, "", &openStatus));
+    if (iterator == nullptr) {
+        return {};
+    }
+    UErrorCode status = U_ZERO_ERROR;
+    UText text = UTEXT_INITIALIZER;
+    utext_openUTF8(&text, utf8.data(), static_cast<int64_t>(utf8.size()),
+                   &status);
+    if (U_FAILURE(status)) {
+        return {};
+    }
+    // The iterator holds a shallow clone of `text`, which reads `utf8`'s
+    // buffer directly; both must outlive the iteration.
+    ubrk_setUText(iterator, &text, &status);
+    if (U_FAILURE(status)) {
+        utext_close(&text);
+        return {};
+    }
+    // UTF-8 UText boundaries are native indexes, i.e. byte offsets.
+    std::vector<size_t> boundaries;
+    boundaries.push_back(static_cast<size_t>(ubrk_first(iterator)));
+    for (int32_t next = ubrk_next(iterator); next != UBRK_DONE;
+         next = ubrk_next(iterator)) {
+        boundaries.push_back(static_cast<size_t>(next));
+    }
+    utext_close(&text);
+    return boundaries;
+}
+
+bool warmGraphemeSegmenter(IntlCache &cache) {
+    int status = U_ZERO_ERROR;
+    return cache.breakIterator(UBRK_CHARACTER, "", &status) != nullptr;
+}
+
 namespace {
 
 // Converts a BCP-47 language tag to an ICU locale ID (e.g. "zh-Hant" →

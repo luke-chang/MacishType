@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace macishtype {
 
@@ -47,5 +49,15 @@ private:
     std::map<std::string, void *> collators_;
     std::map<std::string, void *> pluralRules_;
 };
+
+// Byte offsets of every extended grapheme cluster boundary in `utf8`: starts
+// at 0, ends at utf8.size(), so the cluster count is size() - 1. Empty input
+// yields {0}; an empty vector means ICU is unusable.
+std::vector<size_t> graphemeBoundariesUtf8(IntlCache &cache,
+                                           const std::string &utf8);
+
+// get-or-open the grapheme break iterator so the first segmentation on the
+// typing path pays no ICU data load. Returns false when ICU fails.
+bool warmGraphemeSegmenter(IntlCache &cache);
 
 } // namespace macishtype

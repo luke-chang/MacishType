@@ -566,26 +566,20 @@ MacishTypeEngine::resolveLookupQuery(fcitx::InputContext *inputContext) {
             query = surrounding.selectedText();
         }
     }
-    // Keep only non-ASCII characters, bounded to 256 code points, before the
-    // display iterates (it caps again at 200 unique characters). A single-byte
-    // code point (U+0000–U+007F: letters, digits, punctuation, whitespace) is
-    // ASCII — typed directly, with no input code to look up — so it is dropped;
-    // an all-ASCII selection thus yields an empty query and the select-text
-    // hint rather than a window full of dashes.
-    std::string capped;
-    size_t count = 0;
-    auto range = fcitx::utf8::MakeUTF8CharRange(query);
-    for (auto it = std::begin(range); it != std::end(range); ++it) {
-        auto charRange = it.charRange();
-        if (charRange.second - charRange.first == 1) {
-            continue;
+    // Bound the session's segmentation cost on a pathological selection (it
+    // caps again at 200 unique characters). Trim back to a code point
+    // boundary: a mid-sequence cut would turn a valid selection invalid,
+    // which renders as the select-text hint instead of its rows.
+    constexpr size_t kMaxQueryBytes = 16 * 1024;
+    if (query.size() > kMaxQueryBytes) {
+        size_t end = kMaxQueryBytes;
+        while (end > 0 &&
+               (static_cast<unsigned char>(query[end]) & 0xC0) == 0x80) {
+            end--;
         }
-        if (count++ >= 256) {
-            break;
-        }
-        capped.append(charRange.first, charRange.second);
+        query.resize(end);
     }
-    return capped;
+    return query;
 }
 
 void MacishTypeEngine::deactivate(const fcitx::InputMethodEntry &entry,

@@ -181,6 +181,18 @@ check "a mixed selection looks up its non-ASCII character" \
 check_absent "a mixed selection drops its ASCII characters" \
     "$mixed" '"text": "a '
 
+# --- Multi-code-point clusters stay whole ------------------------------------
+# ⚙︎ (U+2699 U+FE0E) yields one row for the full grapheme cluster — not a
+# split gear plus an orphan variation selector. Built from explicit bytes:
+# editors silently normalize variation sequences.
+gear="$(printf '\342\232\231\357\270\216')"
+cluster="$("$root/test/isolated.sh" reverselookupfixture \
+    "setsurrounding:a${gear}b" "$hotkey" sleep:1500 2>/dev/null)"
+check "a variation sequence renders as one whole-cluster row" \
+    "$cluster" "\"text\": \"${gear} —\""
+check_absent "the cluster is not split at its variation selector" \
+    "$cluster" '"text": "⚙ —"'
+
 # --- No capability: the hotkey is inert -------------------------------------
 # navfixture declares no reverseLookup capability, so the hotkey is not
 # intercepted (forwarded, handled=false) and no reverse window opens.

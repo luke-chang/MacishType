@@ -115,6 +115,7 @@ test: build
 	test/fullwidth.sh
 	test/compositionend.sh
 	test/associated.sh
+	test/grapheme.sh
 	test/contract.sh
 	test/asyncfetch.sh
 	test/toggle.sh

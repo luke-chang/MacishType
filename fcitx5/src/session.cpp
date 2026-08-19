@@ -55,31 +55,48 @@ joinReverseCodes(const std::vector<JsEngineHost::ReverseCode> &codes) {
     return result;
 }
 
-// Character indices in the JS contract count grapheme clusters; code points
-// approximate that (correct for the CJK text engines emit; ZWJ sequences
-// and combining marks would need a real segmenter).
-int characterCount(const std::string &text) {
-    if (!fcitx::utf8::validate(text)) {
-        return static_cast<int>(text.size());
+// Character indices in the JS contract count extended grapheme clusters.
+// Resolves one string's boundaries once, so every character index -> byte
+// offset lookup below is O(1).
+class GraphemeIndex {
+public:
+    GraphemeIndex(JsEngineHost &host, const std::string &text) {
+        if (fcitx::utf8::validate(text)) {
+            boundaries_ = host.graphemeBoundaries(text);
+        }
+        if (boundaries_.empty()) {
+            // Invalid UTF-8 (or unusable ICU) degrades to byte indices.
+            boundaries_.resize(text.size() + 1);
+            for (size_t i = 0; i < boundaries_.size(); i++) {
+                boundaries_[i] = i;
+            }
+        }
     }
-    return static_cast<int>(fcitx::utf8::length(text));
-}
+    int count() const { return static_cast<int>(boundaries_.size()) - 1; }
+    size_t byteOffset(int characterIndex) const {
+        return boundaries_[static_cast<size_t>(
+            std::clamp(characterIndex, 0, count()))];
+    }
 
-size_t byteOffsetForCharacter(const std::string &text, int characterIndex) {
-    if (characterIndex <= 0) {
-        return 0;
-    }
-    if (!fcitx::utf8::validate(text)) {
-        return std::min(text.size(), static_cast<size_t>(characterIndex));
-    }
-    int total = characterCount(text);
-    int clamped = std::min(characterIndex, total);
-    return static_cast<size_t>(
-        fcitx::utf8::ncharByteLength(text.begin(), clamped));
-}
+private:
+    std::vector<size_t> boundaries_;
+};
 
-std::string characterPrefix(const std::string &text, int characterCount) {
-    return text.substr(0, byteOffsetForCharacter(text, characterCount));
+// True when `text` is exactly one extended grapheme cluster. The all-ASCII
+// path keeps the per-keystroke gates (including named keys like "Enter")
+// off the segmenter.
+bool isSingleGrapheme(JsEngineHost &host, const std::string &text) {
+    bool allAscii = std::all_of(text.begin(), text.end(), [](char byte) {
+        return static_cast<unsigned char>(byte) <= 0x7F;
+    });
+    if (allAscii || !fcitx::utf8::validate(text)) {
+        return text.size() == 1;
+    }
+    auto boundaries = host.graphemeBoundaries(text);
+    if (boundaries.empty()) {
+        return text.size() == 1;
+    }
+    return boundaries.size() == 2;
 }
 
 bool isEscapeLikeKey(const WebKeyEvent &web) {
@@ -237,7 +254,7 @@ bool EngineSession::dispatchCandidateWindowKey(const WebKeyEvent &web) {
     // " " labels are blank slots (position reserved, not selectable), so a
     // space key never matches them.
     if (windowConfig_.handleIndexLabelKeys && !web.altKey &&
-        characterCount(web.key) == 1 && web.key != " ") {
+        isSingleGrapheme(*host_, web.key) && web.key != " ") {
         int labelIndex = 0;
         bool matched = false;
         auto range = fcitx::utf8::MakeUTF8CharRange(windowConfig_.indexLabels);
@@ -585,14 +602,15 @@ void EngineSession::applyActions(std::vector<Action> actions) {
 void EngineSession::applyUpdateMarkedText(
     const UpdateMarkedTextAction &action) {
     markedText_ = action.text;
-    int total = characterCount(markedText_);
+    GraphemeIndex index(*host_, markedText_);
+    int total = index.count();
     int stagedCount = 0;
     if (action.staged) {
         stagedCount = *action.staged < 0
                           ? total
                           : std::min(std::max(*action.staged, 0), total);
     }
-    stagedText_ = characterPrefix(markedText_, stagedCount);
+    stagedText_ = markedText_.substr(0, index.byteOffset(stagedCount));
 
     fcitx::Text preedit;
     if (!markedText_.empty()) {
@@ -628,16 +646,15 @@ void EngineSession::applyUpdateMarkedText(
                 from < emphasisEnd) {
                 flags |= fcitx::TextFormatFlag::Bold;
             }
-            size_t byteFrom = byteOffsetForCharacter(markedText_, from);
-            size_t byteTo = byteOffsetForCharacter(markedText_, to);
+            size_t byteFrom = index.byteOffset(from);
+            size_t byteTo = index.byteOffset(to);
             preedit.append(markedText_.substr(byteFrom, byteTo - byteFrom),
                            flags);
         }
         int cursorCharacters =
             action.cursor ? std::min(std::max(*action.cursor, 0), total)
                           : total;
-        preedit.setCursor(static_cast<int>(
-            byteOffsetForCharacter(markedText_, cursorCharacters)));
+        preedit.setCursor(static_cast<int>(index.byteOffset(cursorCharacters)));
     }
     auto &inputPanel = inputContext_->inputPanel();
     if (inputContext_->capabilityFlags().test(
@@ -831,9 +848,22 @@ void EngineSession::showReverseLookup(const std::string &query) {
     }
     reverseLookupVisible_ = true;
 
-    if (query.empty()) {
-        // Nothing to look up (no selection, or an all-ASCII one dropped by the
-        // query filter): a hint row teaches the operation.
+    // One entry per grapheme cluster, dropping single-byte (ASCII) ones:
+    // those are typed directly, with no input code to look up.
+    std::vector<std::string> characters;
+    if (fcitx::utf8::validate(query)) {
+        auto boundaries = host_->graphemeBoundaries(query);
+        for (size_t i = 0; i + 1 < boundaries.size(); i++) {
+            if (boundaries[i + 1] - boundaries[i] > 1) {
+                characters.push_back(query.substr(
+                    boundaries[i], boundaries[i + 1] - boundaries[i]));
+            }
+        }
+    }
+
+    if (characters.empty()) {
+        // Nothing to look up (no selection, or an all-ASCII one): a hint row
+        // teaches the operation.
         std::vector<CandidateData> rows(1);
         rows[0].text = translated("Select text first, then run Find Input Code");
         renderReverseLookup(std::move(rows));
@@ -842,20 +872,17 @@ void EngineSession::showReverseLookup(const std::string &query) {
 
     reverseLookupRendered_ = false;
     reverseLookupToken_ =
-        host_->prepareReverseLookup([this, query](bool ready) {
+        host_->prepareReverseLookup([this, characters](bool ready) {
             if (!ready) {
                 reverseLookupAux(translated("Failed to load this input method"));
                 reverseLookupRendered_ = true;
                 return;
             }
             // One row per unique character (capped); its codes are joined
-            // into the comment. The query is already ASCII-filtered and
-            // non-empty (see the hint branch above).
+            // into the comment.
             std::vector<CandidateData> rows;
             std::set<std::string> seen;
-            auto range = fcitx::utf8::MakeUTF8CharRange(query);
-            for (auto it = std::begin(range); it != std::end(range); ++it) {
-                std::string ch(it.charRange().first, it.charRange().second);
+            for (const auto &ch : characters) {
                 if (!seen.insert(ch).second) {
                     continue;
                 }
@@ -1078,7 +1105,7 @@ void EngineSession::confirmCandidate(const CandidateData &candidate,
     // reads the candidate alone (not staged + candidate) and the staged
     // prefix folds into the held text so it is never dropped.
     std::string committed = stagedText_ + candidate.text;
-    if (!associating_ && characterCount(candidate.text) == 1) {
+    if (!associating_ && isSingleGrapheme(*host_, candidate.text)) {
         enterAssociatedMode(committed, std::nullopt);
         return;
     }

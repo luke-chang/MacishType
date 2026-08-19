@@ -146,21 +146,6 @@ std::optional<std::string> decodeStorageKey(const std::string &filename) {
 // Defined with the UTF-8 codec natives below.
 bool isStrictUtf8(const uint8_t *data, size_t size);
 
-// Byte length of the leading UTF-8 character; call after validation.
-size_t utf8LeadingCharLength(std::string_view text) {
-    auto lead = static_cast<unsigned char>(text.front());
-    if (lead >= 0xF0) {
-        return 4;
-    }
-    if (lead >= 0xE0) {
-        return 3;
-    }
-    if (lead >= 0xC0) {
-        return 2;
-    }
-    return 1;
-}
-
 // Textual normalization of "/"-separated segments; rejects escapes above
 // the root. Empty result is allowed (caller decides).
 std::optional<std::string> normalizeRelativePath(const std::string &path) {
@@ -330,6 +315,13 @@ bool JsEngineHost::initialize() {
         return false;
     }
     if (!pushSettings(settingsValuesJson_) || !injectModules()) {
+        return false;
+    }
+    // Warm at load so ICU's character-break data is paid here, not on the
+    // first keystroke.
+    if (!warmGraphemeSegmenter(intlCache())) {
+        MACISHTYPE_ERROR() << "ICU grapheme segmentation unavailable; "
+                              "is the ICU data bundle installed?";
         return false;
     }
     if (!evaluateEntryModule()) {
@@ -599,13 +591,12 @@ JsEngineHost::associatedFollowups(const std::string &heldChar) {
     // Key on the last character: follow-ups attach after the held text, so
     // multi-character held text (staged prefix + candidate) chains off its
     // trailing character.
-    std::string_view remaining(heldChar);
-    std::string_view lastChar;
-    while (!remaining.empty()) {
-        lastChar = remaining.substr(0, utf8LeadingCharLength(remaining));
-        remaining.remove_prefix(lastChar.size());
+    auto boundaries = graphemeBoundariesUtf8(intlCache(), heldChar);
+    if (boundaries.size() < 2) {
+        return {};
     }
-    auto found = associatedDictionary_.find(std::string(lastChar));
+    auto found = associatedDictionary_.find(
+        heldChar.substr(boundaries[boundaries.size() - 2]));
     return found != associatedDictionary_.end() ? found->second
                                                 : std::vector<std::string>{};
 }

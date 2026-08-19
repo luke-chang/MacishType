@@ -85,4 +85,20 @@ check "a dictionary miss ends the chain, committing the accumulated text" \
     "$hostchain" '{"event": "commit", "text": "存錢包"}'
 check "an engine-supplied empty candidates array ends the chain" \
     "$enginechain" '{"event": "commit", "text": "存錢包"}'
+
+# --- Grapheme-cluster dictionary keying ---
+# graphemefixture KeyB=98:56 holds 存⚙︎; the gear ends in U+FE0E, so a
+# last-code-point key would miss — the dictionary key is the full trailing
+# cluster. digit1=49:10 picks the follow-up. The gear is built from explicit
+# bytes: editors silently normalize variation sequences.
+gear="$(printf '\342\232\231\357\270\216')"
+cluster_held="$("$root/test/isolated.sh" graphemefixture 98:56 2> /dev/null)"
+cluster_out="$("$root/test/isolated.sh" graphemefixture 98:56 49:10 2> /dev/null)"
+
+check "a multi-code-point trailing cluster keys the dictionary" \
+    "$cluster_held" '"auxUp": "關聯字"'
+check "its follow-ups come from the full-cluster entry" \
+    "$cluster_held" '"text": "齒"'
+check "picking a follow-up commits the held text plus the follow-up" \
+    "$cluster_out" "{\"event\": \"commit\", \"text\": \"存${gear}齒\"}"
 echo "Associated-mode checks passed."

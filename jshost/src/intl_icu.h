@@ -16,6 +16,7 @@
 #include <unicode/utypes.h>
 #include <unicode/uenum.h>
 #include <unicode/ustring.h>
+#include <unicode/utext.h>
 #include <unicode/uloc.h>
 #include <unicode/ubrk.h>
 #include <unicode/ucal.h>
