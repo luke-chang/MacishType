@@ -35,6 +35,11 @@ CHECK_RE = re.compile(
     r'\s*(?:\'(?P<single>[^\']*)\'|"(?P<double>[^"]*)")',
     re.M,
 )
+# Call sites CHECK_RE must account for. Shapes it does not cover (expected on
+# the first line, a log variable other than $out, desc alone on the first line)
+# would otherwise be skipped or capture the wrong field silently.
+CHECK_CALL_RE = re.compile(r'^[ \t]*check[ \t]', re.M)
+CHECK_ABSENT_CALL_RE = re.compile(r'^[ \t]*check_absent[ \t]', re.M)
 
 
 def parse_checks(sh_name):
@@ -44,9 +49,24 @@ def parse_checks(sh_name):
         expected = match.group("single")
         if expected is None:
             expected = match.group("double")
+        if expected.startswith("$"):
+            raise RuntimeError(
+                f"{sh_name}.sh: check {match.group('desc')!r} parsed "
+                f"{expected!r} as its expected string; the shell variable "
+                f"holding the log belongs on the check's first line")
         checks.append((match.group("desc"), expected))
     if not checks:
         raise RuntimeError(f"no check lines parsed from {sh_name}.sh")
+    calls = len(CHECK_CALL_RE.findall(content))
+    if len(checks) != calls:
+        raise RuntimeError(
+            f"{sh_name}.sh has {calls} check call(s) but {len(checks)} "
+            f"parsed; CHECK_RE misses a line shape used in this file")
+    absent = len(CHECK_ABSENT_CALL_RE.findall(content))
+    if absent:
+        raise RuntimeError(
+            f"{sh_name}.sh has {absent} check_absent call(s), which this "
+            f"runner does not port; assert them here by hand")
     return checks
 
 
@@ -106,6 +126,11 @@ def main():
         if not candidates:
             sys.exit("no built macishtype-jshost-cli found under jshost/build; "
                      "pass --cli")
+        if len(candidates) > 1:
+            listed = "\n  ".join(str(path.relative_to(REPO_ROOT))
+                                 for path in candidates)
+            sys.exit("multiple macishtype-jshost-cli builds under jshost/build; "
+                     f"pass --cli to choose one:\n  {listed}")
         cli = candidates[0]
 
     failures = Failures()
