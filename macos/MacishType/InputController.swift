@@ -478,9 +478,19 @@ class InputController: IMKInputController {
 
     // MARK: - Candidate Window
 
-    private func showCandidateWindow(anchorAt: Int, client: IMKTextInput) {
+    /// Window geometry measured before a candidate update reaches the window:
+    /// applying it can run a selection hook that rewrites marked text.
+    private struct CandidateAnchor {
+        let nearRect: NSRect
+        let startX: CGFloat
+        let font: NSFont?
+    }
+
+    private func measureCandidateAnchor(anchorAt: Int, client: IMKTextInput) -> CandidateAnchor? {
         let text = engineContext.markedText
-        guard !text.isEmpty else { return }
+        // Nothing to measure against, and the past-the-end branch below would
+        // take prefix(-1).
+        guard !text.isEmpty else { return nil }
         let length = text.count
         let fontKey = NSAttributedString.Key.font.rawValue
 
@@ -507,38 +517,39 @@ class InputController: IMKInputController {
 
         var startRect = NSRect.zero
         _ = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &startRect)
-        CandidateWindow.shared.compositionStartX = startRect.origin != .zero
-            ? startRect.minX : lineHeightRect.minX
+        return CandidateAnchor(
+            nearRect: lineHeightRect,
+            startX: startRect.origin != .zero ? startRect.minX : lineHeightRect.minX,
+            font: attrs?[fontKey] as? NSFont
+        )
+    }
 
-        let font = attrs?[fontKey] as? NSFont
-        let compositionText = text
-        let utf16Count = compositionText.utf16.count
-        let startX = CandidateWindow.shared.compositionStartX
+    private func applyCandidateAnchor(_ anchor: CandidateAnchor, client: IMKTextInput) {
+        let startX = anchor.startX
+        let font = anchor.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        CandidateWindow.shared.compositionStartX = startX
 
-        if anchorAt < length {
-            // Existing provider: lazily compute the marked-text end x.
-            CandidateWindow.shared.setCompositionEndXProvider { [weak client] in
-                guard let client, let font else { return startX }
-                guard utf16Count >= 2 else {
-                    return startX + compositionText.size(withAttributes: [.font: font]).width
-                }
-                let lastCharStart = compositionText.index(before: compositionText.endIndex)
-                let lastIndex = compositionText.utf16.distance(
-                    from: compositionText.startIndex, to: lastCharStart)
-                var lastRect = NSRect.zero
-                _ = client.attributes(forCharacterIndex: lastIndex, lineHeightRectangle: &lastRect)
-                guard lastRect.origin != .zero else { return startX }
-                let lastChar = String(compositionText[lastCharStart...])
-                return lastRect.minX + lastChar.size(withAttributes: [.font: font]).width
+        // Lazy because each queried index freezes in the client's position
+        // cache. Resolved at call time rather than captured — navigation
+        // rewrites marked text without going through updateCandidates, so a
+        // snapshot would query past the end of the live composition.
+        CandidateWindow.shared.setCompositionEndXProvider { [weak self, weak client] in
+            guard let self, let client else { return startX }
+            let text = self.engineContext.markedText
+            guard !text.isEmpty else { return startX }
+            guard text.utf16.count >= 2 else {
+                return startX + text.size(withAttributes: [.font: font]).width
             }
-        } else {
-            // anchorAt == length: lineHeightRect.origin.x is already the end x,
-            // so the provider just returns the precomputed value.
-            let endX = lineHeightRect.origin.x
-            CandidateWindow.shared.setCompositionEndXProvider { endX }
+            let lastCharStart = text.index(before: text.endIndex)
+            let lastIndex = text.utf16.distance(from: text.startIndex, to: lastCharStart)
+            var lastRect = NSRect.zero
+            _ = client.attributes(forCharacterIndex: lastIndex, lineHeightRectangle: &lastRect)
+            guard lastRect.origin != .zero else { return startX }
+            let lastChar = String(text[lastCharStart...])
+            return lastRect.minX + lastChar.size(withAttributes: [.font: font]).width
         }
 
-        CandidateWindow.shared.show(near: lineHeightRect)
+        CandidateWindow.shared.show(near: anchor.nearRect)
     }
 
     private func hideCandidateWindow() {
@@ -553,10 +564,17 @@ class InputController: IMKInputController {
             hideCandidateWindow()
             return
         }
+        // Applying the update fires candidateSelectionChanged synchronously and
+        // that hook may rewrite marked text; anchorAt indexes the current text.
+        let anchor = measureCandidateAnchor(anchorAt: anchorAt, client: client)
         CandidateWindow.shared.updateCandidates(candidates,
                                                 initialHighlight: initialHighlight,
                                                 configuration: configuration)
-        showCandidateWindow(anchorAt: anchorAt, client: client)
+        // The hook may also have ended the composition (flushStaged /
+        // resetContext) and hidden the window. Re-showing it would leave a
+        // window with no composition on screen, swallowing the client's keys.
+        guard let anchor, !engineContext.markedText.isEmpty else { return }
+        applyCandidateAnchor(anchor, client: client)
     }
 }
 

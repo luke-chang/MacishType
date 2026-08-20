@@ -137,8 +137,10 @@ export interface CandidateUpdateOptions {
    * Cursor position in `markedText` where the candidate window's left
    * edge anchors. Range `0...markedText.length` — `0` = before the
    * first character, `length` = after the last. Grapheme clusters,
-   * not UTF-16. Currently only supported by the macOS host — under
-   * fcitx5, window placement is frontend-driven.
+   * not UTF-16. Resolved against the marked text as the host applies
+   * this update; rewrites that land later leave the anchor in place.
+   * Currently only supported by the macOS host — under fcitx5, window
+   * placement is frontend-driven.
    */
   anchorAt?: number;
   /**
@@ -177,7 +179,10 @@ export interface EventMutators {
   updateMarkedText(text: string, options?: MarkedTextOptions): void;
   /**
    * Replace the candidate list shown in the candidate window. Pass an
-   * empty array to hide the window.
+   * empty array to hide the window. Declare candidates alongside a
+   * non-empty `markedText`: on macOS the window anchors to the
+   * composition, and some clients deliver keys to the input method only
+   * while a composition is active.
    */
   updateCandidates(items: readonly CandidateInput[], options?: CandidateUpdateOptions): void;
   /** Engine-driven commit. Triggers `candidateConfirmed` if defined. */
@@ -418,7 +423,9 @@ export interface InputEngine {
    */
   candidateConfirmed?(event: ConfirmEvent): boolean | void;
   /**
-   * Called when the highlighted candidate changes (e.g. after navigation).
+   * Called when the highlighted candidate changes (e.g. after
+   * navigation), including as a candidate update applies its
+   * `initialHighlight`.
    *
    * Return `true` to mark as handled. Returning `false` / `undefined`
    * (including omitting the method) makes the host fall back to its

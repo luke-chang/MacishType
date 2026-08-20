@@ -644,7 +644,10 @@ source of truth. Highlights:
   nothing highlighted. See [Host fallback](#host-fallback) for the
   return-value contract.
 - `candidateSelectionChanged(event)` — after the highlight moves (e.g.
-  arrow keys). Same return-value contract as `candidateConfirmed`.
+  arrow keys). It also fires while a candidate update is being applied,
+  as the highlight lands on `initialHighlight`; with
+  `initialHighlight: -1` it waits for the first navigation to reveal the
+  highlight. Same return-value contract as `candidateConfirmed`.
 - `compositionEnded()` — fires when the host ends composition: an in-app
   commit (mouse click elsewhere, Cmd+A) or session `deactivate()` (app
   switch, focus loss). Clear any composing state held on `this` here. The
@@ -741,13 +744,20 @@ Replace the candidate list shown in the candidate window.
   - `annotation` *(string)* — optional disambiguator shown beside the candidate (e.g. description of a symbol).
   - `payload` *(any)* — opaque value round-tripped back via `candidateConfirmed` / `candidateSelectionChanged`, so engines can attach IDs without parsing display text.
 - Pass an **empty array** to hide the window.
-- `options.anchorAt` *(integer, default `0`)* — cursor position in `markedText` where the window's left edge anchors. Range `0...markedText.length`: `0` = before the first character, `length` = after the last. Currently only supported by the macOS host — under fcitx5, window placement is frontend-driven.
+- `options.anchorAt` *(integer, default `0`)* — cursor position in `markedText` where the window's left edge anchors. Range `0...markedText.length`: `0` = before the first character, `length` = after the last. The index resolves against the marked text as the host applies this update, which includes an `updateMarkedText` queued ahead of it in the same batch; marked-text rewrites that land later — from `candidateSelectionChanged`, for instance — leave the anchor where this update put it. Currently only supported by the macOS host — under fcitx5, window placement is frontend-driven.
 - `options.initialHighlight` *(integer, default `0`)* — initial selection. `0` highlights the first candidate; a positive `n` highlights absolute index `n` (clamped to the displayed range, independent of `pageSize`); `-1` suspends the initial highlight — the first navigation action reveals it and normal behavior resumes.
 - `options.layoutDirection` *(`"horizontal"` \| `"vertical"`)* — override the candidate window's layout direction for this update only.
 - `options.indexLabels` *(string)* — override the index-label characters for this update only. Same `""`-collapses-vs-`" "`-blank-slot semantics as the manifest field.
 - `options.pageSize` *(integer)* — override the per-page candidate count for this update only.
 - `options.handleNavigationKeys` *(boolean)* — override host nav-key handling for this update only.
 - `options.handleIndexLabelKeys` *(boolean)* — override host index-label key handling for this update only.
+
+Declare candidates alongside a non-empty `markedText`. On macOS the window
+anchors to the composition, and some clients deliver keys to the input method
+only while a composition is active — the arrow keys reach the window through it
+as well. A palette-style list keeps a short composition alive to hold the
+session; `enterAssociatedMode` works this way, carrying the held text as staged
+marked text.
 
 #### `commit(candidate)`
 

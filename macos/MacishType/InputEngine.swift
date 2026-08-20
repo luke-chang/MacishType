@@ -49,10 +49,11 @@ enum EngineAction {
     // staged: leading chars confirmed for commit on session end (negative = whole text).
     case updateMarkedText(String, cursor: Int? = nil, emphasis: Range<Int>? = nil, staged: Int = 0)
     // `anchorAt`: cursor position in markedText (0...markedText.count)
-    // where the window's left edge anchors. `initialHighlight`: 0 =
-    // first candidate; n > 0 = absolute index (clamped); negative = no
-    // selection. `configure` overrides engine default per-update; nil
-    // keeps the engine default.
+    // where the window's left edge anchors, resolved as this action is
+    // applied — a later marked-text rewrite leaves it in place.
+    // `initialHighlight`: 0 = first candidate; n > 0 = absolute index
+    // (clamped); negative = no selection. `configure` overrides engine
+    // default per-update; nil keeps the engine default.
     case updateCandidates([Candidate], anchorAt: Int = 0, initialHighlight: Int = 0,
                           configure: ((inout CandidateWindowConfiguration) -> Void)? = nil)
     // Engine-confirmed candidate: routes through engine.candidateConfirmed.
