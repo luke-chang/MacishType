@@ -54,12 +54,33 @@
   // Assembles the event object handed to engine hooks. `data` is built by
   // the C++ session per invocation; mutators queue through the
   // __MacishTypeHost_action dispatcher and apply after the hook returns.
+  const digitKeyPattern = /^(?:Digit|Numpad)([0-9])$/;
+
   globalThis.__MacishTypeHost_makeEvent = function (data) {
     const event = Object.assign({}, data.fields);
     const states = data.modifierStates || {};
     event.getModifierState = (name) => states[name] === true;
 
     const cw = data.candidateWindow;
+    const digitsRequireShift = cw.indexLabelDigitsRequireShift === true;
+    // indexLabels is contract-validated ASCII printable, so code-unit
+    // indices are character indices.
+    const lookupLabel = (label) => {
+      const index = cw.indexLabels.indexOf(label);
+      return index < 0 || index >= cw.pageSize ? null : index;
+    };
+    const matchCharacter = (text) => {
+      if (typeof text !== "string" || text.length === 0) return null;
+      // Only the first character is looked up, never a whitespace one (a
+      // " " label is a blank slot: it reserves the position but is not
+      // selectable).
+      const first = Array.from(text)[0];
+      if (/\s/u.test(first)) return null;
+      // A bare character carries no keystroke identity, so digit labels
+      // never match through it while the Shift requirement is on.
+      if (digitsRequireShift && first >= "0" && first <= "9") return null;
+      return lookupLabel(first);
+    };
     event.candidateWindow = {
       isVisible: cw.isVisible,
       indexLabels: cw.indexLabels,
@@ -67,17 +88,22 @@
       layoutDirection: cw.layoutDirection,
       handleNavigationKeys: cw.handleNavigationKeys,
       handleIndexLabelKeys: cw.handleIndexLabelKeys,
-      candidateIndex(char) {
-        if (typeof char !== "string" || char.length === 0) return null;
-        // Only the first character is looked up, never a whitespace one (a
-        // " " label is a blank slot: it reserves the position but is not
-        // selectable), and only within pageSize — labels keep answering on
-        // a short last page.
-        const first = Array.from(char)[0];
-        if (/\s/u.test(first)) return null;
-        const index = Array.from(cw.indexLabels).indexOf(first);
-        if (index < 0 || index >= cw.pageSize) return null;
-        return index;
+      indexLabelDigitsRequireShift: digitsRequireShift,
+      candidateIndex(value) {
+        if (typeof value === "string") return matchCharacter(value);
+        if (!value || typeof value !== "object") return null;
+        // Option-modified keys never select, mirroring the host dispatch.
+        if (value.altKey === true) return null;
+        // Physical digit keys — main row or keypad; the key's digit looks
+        // itself up in the labels, independent of layout.
+        const digitMatch = digitKeyPattern.exec(value.code || "");
+        if (digitsRequireShift && digitMatch) {
+          return value.shiftKey === true ? lookupLabel(digitMatch[1]) : null;
+        }
+        // Named keys ("Enter", "Tab") are not label characters.
+        const key = value.key;
+        if (typeof key !== "string" || Array.from(key).length !== 1) return null;
+        return matchCharacter(key);
       },
       // Mirrors the host's nav-key table (dispatchCandidateWindowKey) for
       // engines that opt out of handleNavigationKeys. Tab is the only nav
