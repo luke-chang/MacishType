@@ -58,6 +58,10 @@ nonisolated final class CINTable: Sendable {
     /// input alphabet.
     private let codeKeys: Set<Character>
 
+    /// Distinct (normalized) characters that begin any chardef code — the
+    /// keys that can start a new composition.
+    let leadingCodeKeys: Set<Character>
+
     /// One chardef line: code and candidate as byte ranges into `buf`.
     /// `Int32` is ample — cin files never approach 2 GB — and halves the
     /// entry footprint versus `Int`.
@@ -98,6 +102,7 @@ nonisolated final class CINTable: Sendable {
         entries.reserveCapacity(buf.count / 8)
         var maxLength = 0
         var codeKeyBytes = Set<UInt8>()
+        var leadingCodeKeyBytes = Set<UInt8>()
 
         buf.withUnsafeMutableBufferPointer { p in
             let n = p.count
@@ -186,6 +191,7 @@ nonisolated final class CINTable: Sendable {
                     }
                     var keyIndex = cs
                     while keyIndex < tokEnd { codeKeyBytes.insert(p[keyIndex]); keyIndex += 1 }
+                    leadingCodeKeyBytes.insert(p[cs])
                     entries.append(Entry(codeStart: Int32(cs), codeEnd: Int32(tokEnd),
                                          valStart: Int32(valStart), valEnd: Int32(valEnd)))
                     let len = tokEnd - cs
@@ -224,6 +230,7 @@ nonisolated final class CINTable: Sendable {
         self.keepKeyCase = keepCase
         self.keyToRoot = keyToRoot
         self.codeKeys = Set(codeKeyBytes.map { Character(Unicode.Scalar($0)) })
+        self.leadingCodeKeys = Set(leadingCodeKeyBytes.map { Character(Unicode.Scalar($0)) })
         self.buf = buf
         self.entries = entries
         self.maxCodeLength = max(maxLength, 1)

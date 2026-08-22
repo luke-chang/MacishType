@@ -52,6 +52,7 @@ class MacishCandidateItemView: NSView {
         templateView = nil
     }
 
+
     let style: CandidateWindow.Style
     private var contentInset: CGFloat { style == .tahoe ? 2 : 0 }
     private var highlightView: NSView?
@@ -71,6 +72,21 @@ class MacishCandidateItemView: NSView {
     var highlightColor: NSColor = .selectedContentBackgroundColor {
         didSet {
             guard highlightColor != oldValue else { return }
+            updateAppearance()
+        }
+    }
+
+    /// Raw (unadjusted) client accent used to tint digit index labels.
+    var indexAccentColor: NSColor = .controlAccentColor {
+        didSet {
+            guard indexAccentColor != oldValue else { return }
+            updateAppearance()
+        }
+    }
+
+    var tintsDigitIndexLabels = false {
+        didSet {
+            guard tintsDigitIndexLabels != oldValue else { return }
             updateAppearance()
         }
     }
@@ -216,6 +232,9 @@ class MacishCandidateItemView: NSView {
             annotationZeroWidthConstraint.isActive = shouldZeroAnnotation
         }
 
+        // Digit-ness rides the label, so tinting must follow a label change.
+        if tintsDigitIndexLabels { updateAppearance() }
+
         invalidateIntrinsicContentSize()
     }
 
@@ -298,7 +317,10 @@ class MacishCandidateItemView: NSView {
                 layer?.backgroundColor = highlightColor.cgColor
             }
         } else {
-            indexLabel.textColor = .secondaryLabelColor
+            // Only digit labels carry the Shift requirement.
+            let isDigitLabel = indexLabel.stringValue.first?.isDigitIndexLabel == true
+            indexLabel.textColor = tintsDigitIndexLabels && isDigitLabel
+                ? indexAccentColor : .secondaryLabelColor
             candidateLabel.textColor = .labelColor
             annotationLabel.textColor = .secondaryLabelColor
             if let hv = highlightView {

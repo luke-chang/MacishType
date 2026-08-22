@@ -186,12 +186,16 @@ extension JavaScriptEngine {
             var expandable: Bool?
             var handleNavigationKeys: Bool?
             var handleIndexLabelKeys: Bool?
+            var indexLabelDigitsRequireShift: Bool?
+            var associatedModeIndexLabels: InputEngine.AssociatedModeIndexLabels?
 
             private enum CodingKeys: String, CodingKey {
                 case layoutDirection, fontSize, indexLabels, pageSize
                 case widerExpandedColumns, moveOnExpand
                 case horizontalMaxVisibleRows, verticalMinVisibleRows, expandable
                 case handleNavigationKeys, handleIndexLabelKeys
+                case indexLabelDigitsRequireShift
+                case associatedModeIndexLabels
             }
 
             init(
@@ -205,7 +209,9 @@ extension JavaScriptEngine {
                 verticalMinVisibleRows: Int? = nil,
                 expandable: Bool? = nil,
                 handleNavigationKeys: Bool? = nil,
-                handleIndexLabelKeys: Bool? = nil
+                handleIndexLabelKeys: Bool? = nil,
+                indexLabelDigitsRequireShift: Bool? = nil,
+                associatedModeIndexLabels: InputEngine.AssociatedModeIndexLabels? = nil
             ) {
                 self.layoutDirection = layoutDirection
                 self.fontSize = fontSize
@@ -218,6 +224,8 @@ extension JavaScriptEngine {
                 self.expandable = expandable
                 self.handleNavigationKeys = handleNavigationKeys
                 self.handleIndexLabelKeys = handleIndexLabelKeys
+                self.indexLabelDigitsRequireShift = indexLabelDigitsRequireShift
+                self.associatedModeIndexLabels = associatedModeIndexLabels
             }
 
             init(from decoder: Decoder) throws {
@@ -231,6 +239,10 @@ extension JavaScriptEngine {
                 expandable = Self.tolerant(c, .expandable, as: Bool.self)
                 handleNavigationKeys = Self.tolerant(c, .handleNavigationKeys, as: Bool.self)
                 handleIndexLabelKeys = Self.tolerant(c, .handleIndexLabelKeys, as: Bool.self)
+                indexLabelDigitsRequireShift = Self.tolerant(
+                    c, .indexLabelDigitsRequireShift, as: Bool.self)
+                associatedModeIndexLabels = Self.tolerant(
+                    c, .associatedModeIndexLabels, as: InputEngine.AssociatedModeIndexLabels.self)
 
                 // CandidateWindowConfiguration has didSet preconditions on
                 // these two (always-on, not stripped in release). Validate

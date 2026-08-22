@@ -53,6 +53,21 @@ struct CINTableTests {
         #expect(table.pageSize == 9)
     }
 
+    /// Leading code characters are tracked separately from the full input
+    /// alphabet: tone-style digits at the code tail are code keys but can
+    /// never begin a composition.
+    @Test func leadingCodeKeysTrackOnlyCodeHeads() throws {
+        let table = try makeTable("""
+            %chardef begin
+            fan1 分
+            fan2 焚
+            Ba 八
+            %chardef end
+            """)
+        #expect(table.leadingCodeKeys == ["f", "b"])  // "Ba" normalized to lowercase
+        #expect(table.isCodeKey("1") && table.isCodeKey("2"))
+    }
+
     /// Directives are only honored between sections; the same tokens
     /// inside a chardef block are noise, not entries or settings.
     @Test func directivesInsideChardefAreIgnored() throws {

@@ -384,7 +384,11 @@ class InputController: IMKInputController {
                 let effective = staged < 0 ? text.count : min(max(staged, 0), text.count)
                 engineContext.stagedText = String(text.prefix(effective))
             case .updateCandidates(let candidates, let anchorAt, let initialHighlight, let configure):
-                var cfg = engine.candidateWindowConfiguration
+                // Associated mode rebases every update on the session snapshot,
+                // so engine-driven refreshes keep the policy window.
+                var cfg = engineContext.isAssociating
+                    ? engine.associatedCandidateWindowConfiguration
+                    : engine.candidateWindowConfiguration
                 configure?(&cfg)
                 updateCandidates(candidates, anchorAt: anchorAt,
                                  initialHighlight: initialHighlight,
@@ -414,7 +418,8 @@ class InputController: IMKInputController {
                 // Clear any leftover composing state from the emitting engine
                 // (e.g. composingBuffer that produced this committed char).
                 engineContext.reset()
-                // reset() clears isAssociating, so set it after.
+                // reset() clears isAssociating, so set it after — the
+                // updateCandidates below rebases on it.
                 engineContext.isAssociating = true
                 executeActions([
                     .updateMarkedText(heldText, staged: -1),
@@ -620,11 +625,15 @@ private extension InputController {
         let pureMods = keyEvent.pureModifiers
         if !pureMods.intersection([.command, .control]).isEmpty { return false }
 
-        if cfg.handleIndexLabelKeys, !pureMods.contains(.option),
-           let text = keyEvent.characters, text.count == 1, let char = text.first,
-           let index = cfg.candidateIndex(for: char) {
-            CandidateWindow.shared.commitCandidate(at: index)
-            return true
+        if cfg.handleIndexLabelKeys {
+            let character = keyEvent.characters.flatMap { $0.count == 1 ? $0.first : nil }
+            if let index = cfg.candidateIndex(
+                forWebCode: KeyboardEventMapping.webCode(for: keyEvent.keyCode),
+                shift: pureMods.contains(.shift),
+                option: pureMods.contains(.option), character: character) {
+                CandidateWindow.shared.commitCandidate(at: index)
+                return true
+            }
         }
         if cfg.handleNavigationKeys {
             if let intent = cfg.navigationIntent(

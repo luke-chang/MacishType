@@ -31,6 +31,123 @@ struct CandidateWindowConfigurationTests {
         #expect(config.candidateIndex(for: "a") == 1)
     }
 
+    // MARK: Keystroke lookup
+
+    /// Without the Shift requirement the keystroke form reduces to plain
+    /// character matching; a shifted key just produces a different character.
+    @Test func keystrokeLookupWithoutShiftRequirementMatchesByCharacter() {
+        let config = CandidateWindowConfiguration()  // "1234567890", pageSize 9
+        #expect(config.candidateIndex(
+            forWebCode: "Digit1", shift: false, option: false, character: "1") == 0)
+        // Shift+1 produces "!" — no label matches, so nothing selects.
+        #expect(config.candidateIndex(
+            forWebCode: "Digit1", shift: true, option: false, character: "!") == nil)
+        #expect(config.candidateIndex(
+            forWebCode: "Digit1", shift: false, option: false, character: nil) == nil)
+    }
+
+    @Test func shiftRequirementMatchesPhysicalDigitsOnly() {
+        var config = CandidateWindowConfiguration()
+        config.indexLabelDigitsRequireShift = true
+        config.pageSize = 10
+        #expect(config.candidateIndex(
+            forWebCode: "Digit1", shift: true, option: false, character: "!") == 0)
+        #expect(config.candidateIndex(
+            forWebCode: "Digit9", shift: true, option: false, character: "(") == 8)
+        #expect(config.candidateIndex(
+            forWebCode: "Digit0", shift: true, option: false, character: ")") == 9)
+        // Without Shift the digit stays with the engine / client.
+        #expect(config.candidateIndex(
+            forWebCode: "Digit1", shift: false, option: false, character: "1") == nil)
+        // A non-digit key never selects, whatever character it produces.
+        #expect(config.candidateIndex(
+            forWebCode: "KeyA", shift: true, option: false, character: "A") == nil)
+    }
+
+    @Test func shiftRequirementHonorsThePageSizePrefix() {
+        var config = CandidateWindowConfiguration()  // pageSize 9
+        config.indexLabelDigitsRequireShift = true
+        #expect(config.candidateIndex(
+            forWebCode: "Digit0", shift: true, option: false, character: ")") == nil)
+    }
+
+    @Test func optionNeverSelects() {
+        var config = CandidateWindowConfiguration()
+        #expect(config.candidateIndex(
+            forWebCode: "Digit1", shift: false, option: true, character: "1") == nil)
+        config.indexLabelDigitsRequireShift = true
+        config.pageSize = 10
+        #expect(config.candidateIndex(
+            forWebCode: "Digit1", shift: true, option: true, character: "!") == nil)
+    }
+
+    /// Unknown or empty codes degrade to character matching (parity with
+    /// the QuickJS glue).
+    @Test func unknownCodesDegradeToCharacterMatching() {
+        var config = CandidateWindowConfiguration()
+        #expect(config.candidateIndex(
+            forWebCode: "", shift: false, option: false, character: "1") == 0)
+        config.indexLabelDigitsRequireShift = true
+        config.indexLabels = "a1b2"
+        config.pageSize = 4
+        #expect(config.candidateIndex(
+            forWebCode: "", shift: false, option: false, character: "a") == 0)
+    }
+
+    /// Matching is by label content, not key position: each digit key
+    /// selects the position where its digit appears in the labels.
+    @Test func shiftedDigitsFollowTheLabelOrder() {
+        var config = CandidateWindowConfiguration()
+        config.indexLabelDigitsRequireShift = true
+        config.indexLabels = "01234"
+        config.pageSize = 5
+        #expect(config.candidateIndex(
+            forWebCode: "Digit0", shift: true, option: false, character: ")") == 0)
+        #expect(config.candidateIndex(
+            forWebCode: "Digit1", shift: true, option: false, character: "!") == 1)
+        #expect(config.candidateIndex(
+            forWebCode: "Digit5", shift: true, option: false, character: "%") == nil)
+    }
+
+    @Test func keypadDigitsSelectWithShift() {
+        var config = CandidateWindowConfiguration()
+        config.indexLabelDigitsRequireShift = true
+        config.pageSize = 10
+        #expect(config.candidateIndex(
+            forWebCode: "Numpad1", shift: true, option: false, character: "1") == 0)
+        #expect(config.candidateIndex(
+            forWebCode: "Numpad1", shift: false, option: false, character: "1") == nil)
+    }
+
+    /// Non-digit labels keep plain character selection under the digit
+    /// Shift requirement; digit characters from non-digit keys never select.
+    @Test func nonDigitLabelsIgnoreTheShiftRequirement() {
+        var config = CandidateWindowConfiguration()
+        config.indexLabelDigitsRequireShift = true
+        config.indexLabels = "a1b2"
+        config.pageSize = 4
+        #expect(config.candidateIndex(
+            forWebCode: "KeyA", shift: false, option: false, character: "a") == 0)
+        #expect(config.candidateIndex(
+            forWebCode: "Digit1", shift: true, option: false, character: "!") == 1)
+        #expect(config.candidateIndex(
+            forWebCode: "KeyA", shift: false, option: false, character: "1") == nil)
+    }
+
+    @Test func missingAndEmptyLabelsNeverMatch() {
+        var config = CandidateWindowConfiguration()
+        config.indexLabelDigitsRequireShift = true
+        config.pageSize = 10
+        config.indexLabels = " 234567890"
+        #expect(config.candidateIndex(
+            forWebCode: "Digit1", shift: true, option: false, character: "!") == nil)
+        #expect(config.candidateIndex(
+            forWebCode: "Digit2", shift: true, option: false, character: "@") == 1)
+        config.indexLabels = ""
+        #expect(config.candidateIndex(
+            forWebCode: "Digit2", shift: true, option: false, character: "@") == nil)
+    }
+
     // MARK: Navigation intent
 
     @Test func tabNavigatesItemsWithWrapping() throws {

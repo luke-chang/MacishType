@@ -57,11 +57,24 @@ export interface CandidateWindowState {
    */
   readonly handleIndexLabelKeys: boolean;
   /**
-   * Maps an index-label character to its page-relative 0-based candidate
-   * position, or null if the character is not a valid label. Pair with
-   * `commitCandidateAtIndex` to commit by index label.
+   * When true (an associated-mode window under the Shift + number keys
+   * policy), each digit label is selected with Shift + the physical key
+   * that names it — main row `Digit1`…`Digit0` or keypad
+   * `Numpad1`…`Numpad0` — independent of keyboard layout. Non-digit
+   * labels keep plain character matching.
    */
-  candidateIndex(char: string): number | null;
+  readonly indexLabelDigitsRequireShift: boolean;
+  /**
+   * Maps a keystroke to its page-relative 0-based candidate position,
+   * or null when it selects nothing. Pair with `commitCandidateAtIndex`
+   * to commit by index label. Passing the key event applies the host's
+   * full rule — Option-modified keys never select, and digit labels
+   * require Shift + a physical digit key under
+   * `indexLabelDigitsRequireShift`; a bare character matches by produced
+   * character, so digit labels never match through the string form while
+   * the requirement is on.
+   */
+  candidateIndex(event: KeyEvent | string): number | null;
   /**
    * Standard nav-key lookup: returns the `direction` / `options` pair
    * to pass straight to `navigateCandidates`, or null if the event
@@ -160,6 +173,11 @@ export interface CandidateUpdateOptions {
   handleNavigationKeys?: boolean;
   /** Override host index-label key handling for this update only. */
   handleIndexLabelKeys?: boolean;
+  /**
+   * Override the digit-label Shift requirement for this update only —
+   * same matching the host's associated-mode windows use.
+   */
+  indexLabelDigitsRequireShift?: boolean;
 }
 
 /** Options for `navigateCandidates`. */
@@ -197,7 +215,7 @@ export interface EventMutators {
   commitSelectedCandidate(): void;
   /**
    * Commit the candidate at the given page-relative index (0-based, within
-   * the current `pageSize`). Pair with `candidateWindow.candidateIndex(char)`
+   * the current `pageSize`). Pair with `candidateWindow.candidateIndex(event)`
    * to commit by index label.
    */
   commitCandidateAtIndex(index: number): void;
@@ -579,6 +597,27 @@ export interface CandidateWindow {
    * mode, `handleAssociatedKey` in associated mode).
    */
   handleIndexLabelKeys?: boolean;
+  /**
+   * When true, each digit label is selected with Shift + the physical
+   * key that names it — main row or keypad; non-digit labels keep plain
+   * character matching. How the requirement is presented to the user is
+   * host-specific. The same field the host's associated-mode policy
+   * sets on its own windows.
+   */
+  indexLabelDigitsRequireShift?: boolean;
+  /**
+   * The engine's preference for the associated-mode window's selection
+   * keys, honored unless the user forces number keys or Shift + number
+   * keys in the host's settings.
+   * `numbers` (the default) / `shiftNumbers` request digit selection;
+   * `inherit` keeps the engine's own `indexLabels` / `pageSize`.
+   *
+   * A declaration, not a window field: the host expands it into
+   * `indexLabels`, `pageSize`, and `indexLabelDigitsRequireShift` when
+   * an associated-mode window opens. It lives only here — the per-event
+   * snapshot carries the expanded fields instead.
+   */
+  associatedModeIndexLabels?: "numbers" | "shiftNumbers" | "inherit";
 }
 
 /** A frozen, read-only host-provided table. `query(key)` returns the value

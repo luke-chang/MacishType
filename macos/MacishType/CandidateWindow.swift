@@ -80,6 +80,12 @@ struct CandidateWindowConfiguration: Equatable {
     /// false to route them to the engine.
     var handleIndexLabelKeys: Bool = true
 
+    /// When true, digit labels select only with Shift + a physical digit key
+    /// (main row or keypad); the key's digit looks itself up in `indexLabels`,
+    /// so matching is layout-independent (the digit row is shifted on AZERTY).
+    /// Non-digit labels keep plain character matching.
+    var indexLabelDigitsRequireShift: Bool = false
+
     /// Page-relative 0-based index for `char` if it maps to a labelled
     /// position within `pageSize`. Whitespace returns nil — engines
     /// decide what space (and other whitespace) keys do.
@@ -89,6 +95,29 @@ struct CandidateWindowConfiguration: Equatable {
             return index
         }
         return nil
+    }
+
+    /// Keystroke lookup shared by the controller and the JS bridge.
+    /// Option-modified keys never select; an unknown `code` degrades to
+    /// character matching.
+    func candidateIndex(
+        forWebCode code: String, shift: Bool, option: Bool, character: Character?
+    ) -> Int? {
+        guard !option else { return nil }
+        if indexLabelDigitsRequireShift,
+           let digit = KeyboardEventMapping.digitCharacter(forWebCode: code) {
+            return shift ? candidateIndex(for: digit) : nil
+        }
+        guard let character else { return nil }
+        return candidateIndex(forTypedCharacter: character)
+    }
+
+    /// `candidateIndex(for:)` with the Shift-requirement gate: a bare
+    /// character carries no keystroke identity, so digit labels never match
+    /// through it while `indexLabelDigitsRequireShift` is on.
+    func candidateIndex(forTypedCharacter character: Character) -> Int? {
+        if indexLabelDigitsRequireShift, character.isDigitIndexLabel { return nil }
+        return candidateIndex(for: character)
     }
 
     /// Standard nav-key lookup: arrows / Tab / Page / Home / End. Returns nil
@@ -126,6 +155,11 @@ extension Character {
     nonisolated var isValidIndexLabel: Bool {
         guard unicodeScalars.count == 1, let s = unicodeScalars.first else { return false }
         return s.value >= 0x20 && s.value <= 0x7E
+    }
+
+    /// ASCII digit — the label class `indexLabelDigitsRequireShift` governs.
+    nonisolated var isDigitIndexLabel: Bool {
+        ("0"..."9").contains(self)
     }
 }
 

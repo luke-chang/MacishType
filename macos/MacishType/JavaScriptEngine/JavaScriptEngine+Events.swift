@@ -92,9 +92,25 @@ extension JavaScriptEngine {
                      forKeyedSubscript: "handleNavigationKeys" as NSString)
         cw.setObject(candidateWindow.configuration.handleIndexLabelKeys,
                      forKeyedSubscript: "handleIndexLabelKeys" as NSString)
-        let candidateIndex: @convention(block) (String) -> Any = { char in
-            guard let firstChar = char.first,
-                  let index = candidateWindow.configuration.candidateIndex(for: firstChar) else {
+        cw.setObject(candidateWindow.configuration.indexLabelDigitsRequireShift,
+                     forKeyedSubscript: "indexLabelDigitsRequireShift" as NSString)
+        let candidateIndex: @convention(block) (JSValue) -> Any = { value in
+            let configuration = candidateWindow.configuration
+            // The string form matches by first character only.
+            if value.isString {
+                guard let char = (value.toString() ?? "").first,
+                      let index = configuration.candidateIndex(forTypedCharacter: char) else {
+                    return NSNull()
+                }
+                return index
+            }
+            let code = value.objectForKeyedSubscript("code")?.toString() ?? ""
+            let shift = value.objectForKeyedSubscript("shiftKey")?.toBool() ?? false
+            let option = value.objectForKeyedSubscript("altKey")?.toBool() ?? false
+            let keyText = value.objectForKeyedSubscript("key")?.toString()
+            guard let index = configuration.candidateIndex(
+                forWebCode: code, shift: shift, option: option,
+                character: keyText.flatMap { $0.count == 1 ? $0.first : nil }) else {
                 return NSNull()
             }
             return index
@@ -171,9 +187,11 @@ extension JavaScriptEngine {
         let pageSize = Self.optInt(opts, "pageSize")
         let handleNavigationKeys = Self.optBool(opts, "handleNavigationKeys")
         let handleIndexLabelKeys = Self.optBool(opts, "handleIndexLabelKeys")
+        let indexLabelDigitsRequireShift = Self.optBool(opts, "indexLabelDigitsRequireShift")
 
         if layoutDirection == nil && indexLabels == nil && pageSize == nil
-            && handleNavigationKeys == nil && handleIndexLabelKeys == nil {
+            && handleNavigationKeys == nil && handleIndexLabelKeys == nil
+            && indexLabelDigitsRequireShift == nil {
             return nil
         }
         return { config in
@@ -182,6 +200,9 @@ extension JavaScriptEngine {
             if let pageSize { config.pageSize = pageSize }
             if let handleNavigationKeys { config.handleNavigationKeys = handleNavigationKeys }
             if let handleIndexLabelKeys { config.handleIndexLabelKeys = handleIndexLabelKeys }
+            if let indexLabelDigitsRequireShift {
+                config.indexLabelDigitsRequireShift = indexLabelDigitsRequireShift
+            }
         }
     }
 

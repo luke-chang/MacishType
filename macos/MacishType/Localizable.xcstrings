@@ -1,6 +1,70 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Completions here are selected with Shift + number keys — adjust in General settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completions here are selected with Shift + number keys — adjust in General settings."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此引擎的關聯字以 Shift + 數字鍵選擇；可在「一般」設定調整。"
+          }
+        }
+      }
+    },
+    "Completions here are selected with the arrow keys and Enter — adjust in General settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completions here are selected with the arrow keys and Enter — adjust in General settings."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此引擎的關聯字以方向鍵與 Enter 選擇；可在「一般」設定調整。"
+          }
+        }
+      }
+    },
+    "Completions here are selected with the keys “%@” — adjust in General settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completions here are selected with the keys “%@” — adjust in General settings."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此引擎的關聯字以「%@」選擇；可在「一般」設定調整。"
+          }
+        }
+      }
+    },
+    "Completions here are selected with the number keys — adjust in General settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completions here are selected with the number keys — adjust in General settings."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此引擎的關聯字以數字鍵選擇；可在「一般」設定調整。"
+          }
+        }
+      }
+    },
     "Detected a change to %@; reloading automatically." : {
       "localizations" : {
         "en" : {
@@ -97,6 +161,38 @@
         }
       }
     },
+    "Follow engine" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Follow engine"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依引擎設定"
+          }
+        }
+      }
+    },
+    "Follow engine uses the engine's declared selection keys — number keys when it declares none — switching to Shift + number keys when they would collide with a CIN table's roots. Tinted number labels mean Shift is required." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Follow engine uses the engine's declared selection keys — number keys when it declares none — switching to Shift + number keys when they would collide with a CIN table's roots. Tinted number labels mean Shift is required."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依引擎設定採用引擎宣告的選字鍵，未宣告時使用數字鍵；與 CIN 表格的字根衝突時自動改用 Shift + 數字鍵。數字標籤變色代表需按住 Shift。"
+          }
+        }
+      }
+    },
     "Notifications help you spot unexpected edits to an external engine's files. Change this later in the General settings tab." : {
       "localizations" : {
         "en" : {
@@ -113,6 +209,38 @@
         }
       }
     },
+    "Number keys" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Number keys"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "數字鍵"
+          }
+        }
+      }
+    },
+    "Predictive completions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Predictive completions"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關聯字"
+          }
+        }
+      }
+    },
     "Reload automatically when files change" : {
       "localizations" : {
         "en" : {
@@ -125,6 +253,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "檔案變動時自動重新載入"
+          }
+        }
+      }
+    },
+    "Selection keys" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selection keys"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選字鍵"
+          }
+        }
+      }
+    },
+    "Shift + number keys" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shift + number keys"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shift + 數字鍵"
           }
         }
       }

@@ -21,7 +21,7 @@ import OSLog
 ///
 /// Uses WebKit's private JavaScriptCore module API (declared in
 /// `JSCSPI.h` bridging header) to load engine code as ES modules.
-class JavaScriptEngine: InputEngine, ObservableObject {
+class JavaScriptEngine: InputEngine {
 
     var engineFolderURL: URL? { nil }
 
@@ -644,6 +644,21 @@ class JavaScriptEngine: InputEngine, ObservableObject {
                 warnInvalidWrite(field, "must be boolean", jsValue); return
             }
             candidateWindowCache.handleIndexLabelKeys = jsValue.toBool()
+        case "indexLabelDigitsRequireShift":
+            guard jsValue.isBoolean else {
+                warnInvalidWrite(field, "must be boolean", jsValue); return
+            }
+            candidateWindowCache.indexLabelDigitsRequireShift = jsValue.toBool()
+        case "associatedModeIndexLabels":
+            guard let s = jsValue.toString(),
+                  let mode = AssociatedModeIndexLabels(rawValue: s) else {
+                warnInvalidWrite(
+                    field,
+                    "must be \"numbers\", \"shiftNumbers\", or \"inherit\"",
+                    jsValue)
+                return
+            }
+            candidateWindowCache.associatedModeIndexLabels = mode
         default:
             // Unknown field — typo or forward-compat (engine wrote a name
             // the host doesn't recognize, possibly because the field hasn't
@@ -665,17 +680,20 @@ class JavaScriptEngine: InputEngine, ObservableObject {
     private func readCandidateWindowField(_ field: String) -> Any? {
         let c = candidateWindowCache
         switch field {
-        case "layoutDirection":          return Self.toAny(c.layoutDirection?.rawValue)
-        case "fontSize":                 return Self.toAny(c.fontSize)
-        case "indexLabels":              return Self.toAny(c.indexLabels)
-        case "pageSize":                 return Self.toAny(c.pageSize)
-        case "widerExpandedColumns":     return Self.toAny(c.widerExpandedColumns)
-        case "moveOnExpand":             return Self.toAny(c.moveOnExpand)
-        case "horizontalMaxVisibleRows": return Self.toAny(c.horizontalMaxVisibleRows)
-        case "verticalMinVisibleRows":   return Self.toAny(c.verticalMinVisibleRows)
-        case "expandable":               return Self.toAny(c.expandable)
-        case "handleNavigationKeys":     return Self.toAny(c.handleNavigationKeys)
-        case "handleIndexLabelKeys":     return Self.toAny(c.handleIndexLabelKeys)
+        case "layoutDirection":           return Self.toAny(c.layoutDirection?.rawValue)
+        case "fontSize":                  return Self.toAny(c.fontSize)
+        case "indexLabels":               return Self.toAny(c.indexLabels)
+        case "pageSize":                  return Self.toAny(c.pageSize)
+        case "widerExpandedColumns":      return Self.toAny(c.widerExpandedColumns)
+        case "moveOnExpand":              return Self.toAny(c.moveOnExpand)
+        case "horizontalMaxVisibleRows":  return Self.toAny(c.horizontalMaxVisibleRows)
+        case "verticalMinVisibleRows":    return Self.toAny(c.verticalMinVisibleRows)
+        case "expandable":                return Self.toAny(c.expandable)
+        case "handleNavigationKeys":      return Self.toAny(c.handleNavigationKeys)
+        case "handleIndexLabelKeys":      return Self.toAny(c.handleIndexLabelKeys)
+        case "indexLabelDigitsRequireShift":
+            return Self.toAny(c.indexLabelDigitsRequireShift)
+        case "associatedModeIndexLabels": return Self.toAny(c.associatedModeIndexLabels?.rawValue)
         default: return nil
         }
     }
@@ -686,7 +704,8 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         "layoutDirection", "fontSize", "indexLabels", "pageSize",
         "widerExpandedColumns", "moveOnExpand", "horizontalMaxVisibleRows",
         "verticalMinVisibleRows", "expandable", "handleNavigationKeys",
-        "handleIndexLabelKeys",
+        "handleIndexLabelKeys", "indexLabelDigitsRequireShift",
+        "associatedModeIndexLabels",
     ]
 
     private func listCandidateWindowFields() -> [String] {
@@ -1712,6 +1731,11 @@ class JavaScriptEngine: InputEngine, ObservableObject {
         return config
     }
 
+    // A declaration, not a window field — deliberately absent from apply(_:).
+    override var associatedModeIndexLabels: AssociatedModeIndexLabels {
+        candidateWindowCache.associatedModeIndexLabels ?? .numbers
+    }
+
     override func unload() {
         teardownContext()
         super.unload()
@@ -1932,5 +1956,9 @@ extension CandidateWindowConfiguration {
         if let v = overrides.expandable { expandable = v }
         if let v = overrides.handleNavigationKeys { handleNavigationKeys = v }
         if let v = overrides.handleIndexLabelKeys { handleIndexLabelKeys = v }
+        if let v = overrides.indexLabelDigitsRequireShift { indexLabelDigitsRequireShift = v }
+        // associatedModeIndexLabels is deliberately absent: it is a policy
+        // declaration the associated-mode resolution consumes, not a window
+        // field, and never reaches CandidateWindowConfiguration.
     }
 }

@@ -147,6 +147,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     @Published var indexLabels: String = "1234567890"
     @Published var pageSize: Int = 9
     @Published var appearanceOverride: AppearanceOverride = .system
+    @Published var indexLabelDigitsRequireShift = false
     @Published var isEditing = false
     @Published var isEditingIndexLabels = false
     @Published var suspendHighlight = false
@@ -212,6 +213,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
         config.widerExpandedColumns = widerColumns
         config.moveOnExpand = moveOnExpand
         config.expandable = expandable
+        config.indexLabelDigitsRequireShift = indexLabelDigitsRequireShift
         if slowMotion { config.animationDuration = 1.0 }
         candidateWindow.configure(config)
         attachCandidatePanel()
@@ -571,6 +573,7 @@ struct PreviewContentView: View {
                     Divider()
                     Toggle("Slow animations (1s)", isOn: $state.slowMotion)
                     Toggle("Suspend highlight", isOn: $state.suspendHighlight)
+                    Toggle("Shift-tinted index labels", isOn: $state.indexLabelDigitsRequireShift)
                 }
                 .toggleStyle(.checkbox)
             }
@@ -590,6 +593,7 @@ struct PreviewContentView: View {
         .onChange(of: state.fontSize) { state.applyConfiguration() }
         .onChange(of: state.indexLabels) { state.applyConfiguration() }
         .onChange(of: state.pageSize) { state.applyConfiguration() }
+        .onChange(of: state.indexLabelDigitsRequireShift) { state.applyConfiguration() }
         .onChange(of: state.suspendHighlight) {
             if state.skipNextSuspendApply {
                 state.skipNextSuspendApply = false

@@ -4,10 +4,13 @@ import SwiftUI
 import UserNotifications
 
 /// The "General" settings page: the keyboard-layout override (which Roman
-/// layout keystrokes are read as) and how external engines respond to their
-/// files changing (automatic reload, notification).
+/// layout keystrokes are read as), the predictive-completions selection-key
+/// policy, and how external engines respond to their files changing
+/// (automatic reload, notification).
 struct GeneralSettingsView: View {
     @AppStorage(KeyboardLayouts.overrideDefaultsKey) private var layoutID = ""
+    @AppStorage(InputEngine.associatedModeSelectionKeysKey)
+    private var associatedSelectionKeys = InputEngine.AssociatedModeSelectionKeys.followEngine
     @AppStorage(InputEngine.autoReloadEnabledKey)
     private var autoReloadOnModified = InputEngine.defaultAutoReloadOnModified
     @AppStorage(EngineModifiedNotifier.enabledKey) private var notifyOnEngineModified = false
@@ -26,6 +29,18 @@ struct GeneralSettingsView: View {
                             }
                         }
                     }
+                }
+            }
+            Section("Predictive completions") {
+                VStack(alignment: .leading, spacing: 2) {
+                    Picker("Selection keys", selection: $associatedSelectionKeys) {
+                        Text("Follow engine").tag(InputEngine.AssociatedModeSelectionKeys.followEngine)
+                        Text("Number keys").tag(InputEngine.AssociatedModeSelectionKeys.numbers)
+                        Text("Shift + number keys").tag(InputEngine.AssociatedModeSelectionKeys.shiftNumbers)
+                    }
+                    Text("Follow engine uses the engine's declared selection keys — number keys when it declares none — switching to Shift + number keys when they would collide with a CIN table's roots. Tinted number labels mean Shift is required.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
             }
             Section("External engines") {

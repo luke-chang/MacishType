@@ -80,7 +80,7 @@ escaping paths.
 fcitx5-macishtype probes `<icon>-symbolic.svg`, `<icon>.svg`, then
 `<icon>.png`. A monochrome `-symbolic.svg` is recolored to the panel
 foreground, so one file works on light and dark panels alike; other files
-render as-is. A Windows host would probe `<icon>.ico`.
+render as-is.
 
 Currently only supported by fcitx5-macishtype.
 
@@ -131,6 +131,8 @@ default below applies.
 | `verticalMinVisibleRows` | integer ≥ 1 | `pageSize` | Minimum visible rows. Vertical mode only. |
 | `handleNavigationKeys` | boolean | `true` | When true, the host intercepts standard nav keys (arrows / Tab / Page / Home / End) and Enter while the candidate window is visible — `handleKey` / `handleAssociatedKey` never see them. Set false to route those keys to the engine. |
 | `handleIndexLabelKeys` | boolean | `true` | When true, the host intercepts `indexLabels` keys while the candidate window is visible. Set false to route them to the engine. |
+| `indexLabelDigitsRequireShift` | boolean | `false` | Digit labels select only with Shift + the physical key that names them (main row or keypad); non-digit labels keep plain character matching. How the requirement is presented to the user is host-specific. The same matching the host's [associated-mode windows](#associated-mode-selection-keys) use — set it directly for engine-driven windows that want it. |
+| `associatedModeIndexLabels` | `"numbers"` \| `"shiftNumbers"` \| `"inherit"` | `"numbers"` | The engine's preference for the associated-mode window's selection keys, honored unless the user forces number keys or Shift + number keys in the host's settings. A declaration, not a window field: the host expands it into `indexLabels`, `pageSize`, and `indexLabelDigitsRequireShift` when an associated-mode window opens, and it never appears in the per-event snapshot. See [Associated-mode selection keys](#associated-mode-selection-keys). |
 
 `indexLabels` distinguishes two empty-looking values:
 
@@ -147,6 +149,40 @@ makes position 0 blank while positions 1-3 render `"1"` / `"2"` / `"3"`.
 Whitespace characters anywhere in `indexLabels` never match an
 index-label key input — `event.candidateWindow.candidateIndex(" ")`
 returns `null`, so the space key remains available for engine logic.
+
+#### Associated-mode selection keys
+
+The associated-mode window's selection keys are a host policy, distinct
+from the engine's own `indexLabels`. The host's settings let the user
+force plain number keys or Shift + number keys; an explicit choice
+overrides the engine. Otherwise the host follows the engine's
+`associatedModeIndexLabels` declaration — `numbers` when not declared:
+`numbers` / `shiftNumbers` request digit selection; `inherit` keeps the
+engine's own `indexLabels` / `pageSize`.
+
+Declare a value when the default would fight the engine's own input —
+an engine whose codes begin with digit characters declares `shiftNumbers`,
+keeping plain digits typeable while completions show. Only a code's first
+key contests the labels: associated mode starts on a fresh context and the
+first unbound key dismisses it, so digits later in a code are never
+contested.
+
+Digit selection uses the fixed labels `"1234567890"` with `pageSize`
+capped at 10. Under **Shift + number keys**, each digit label is
+selected with Shift + the physical key that names it — main row
+(`Digit1`…`Digit0`) or keypad (`Numpad1`…`Numpad0`) — independent of
+keyboard layout. Non-digit labels are unaffected by the requirement and
+keep plain character matching. Each host signals the requirement in its
+own presentation. The per-event snapshot exposes this as
+`event.candidateWindow.indexLabelDigitsRequireShift`; pass the whole
+event to `candidateIndex` to match the same rule (see
+[`commitCandidateAtIndex`](#commitcandidateatindexindex)).
+
+The Shift requirement itself is the ordinary
+`indexLabelDigitsRequireShift` configuration field: an engine running a
+completion-style flow of its own sets it — in the manifest or per
+update — and gets the same matching and host presentation on its own
+windows.
 
 ### `modules` (optional)
 
@@ -671,7 +707,10 @@ if (event.code.startsWith("Numpad") && event.code !== "NumpadEnter"
 While the candidate window is visible, keypad digits matching an index
 label are consumed by the host's label dispatch before `handleKey`
 reaches the engine (it matches by character, so keypad and main-row
-digits select alike).
+digits select alike). Under an associated-mode window that requires
+Shift on digit labels, Shift + a keypad digit selects just like Shift +
+a main-row digit, while plain keypad digits stay with the engine (see
+[Associated-mode selection keys](#associated-mode-selection-keys)).
 
 Two named keypad keys:
 
@@ -751,6 +790,7 @@ Replace the candidate list shown in the candidate window.
 - `options.pageSize` *(integer)* — override the per-page candidate count for this update only.
 - `options.handleNavigationKeys` *(boolean)* — override host nav-key handling for this update only.
 - `options.handleIndexLabelKeys` *(boolean)* — override host index-label key handling for this update only.
+- `options.indexLabelDigitsRequireShift` *(boolean)* — override the digit-label Shift requirement for this update only. Same matching as the manifest field — see [Associated-mode selection keys](#associated-mode-selection-keys).
 
 Declare candidates alongside a non-empty `markedText`. On macOS the window
 anchors to the composition, and some clients deliver keys to the input method
@@ -783,18 +823,22 @@ check `event.candidateWindow.isVisible` first when in doubt.
 Commit the candidate at a page-relative position.
 
 - `index` *(integer, required)* — 0-based position within the current
-  `pageSize`. Pair with `event.candidateWindow.candidateIndex(char)` to
+  `pageSize`. Pair with `event.candidateWindow.candidateIndex(event)` to
   commit by index label:
 
   ```js
-  // event.key is the layout-aware character (or a named string like "Tab"
-  // for non-printable keys), so guard on length before treating it as a
-  // candidate-label char.
-  if (event.key && event.key.length === 1) {
-    const idx = event.candidateWindow.candidateIndex(event.key);
-    if (idx !== null) event.commitCandidateAtIndex(idx);
-  }
+  const idx = event.candidateWindow.candidateIndex(event);
+  if (idx !== null) event.commitCandidateAtIndex(idx);
   ```
+
+  Passing the key event applies the host's full keystroke rule:
+  Option-modified keys never select, and digit labels require Shift + a
+  physical digit key when
+  `event.candidateWindow.indexLabelDigitsRequireShift` is on (see
+  [Associated-mode selection keys](#associated-mode-selection-keys)).
+  Passing a bare character string matches by produced character; a
+  character carries no keystroke identity, so digit labels never match
+  through the string form while the requirement is on.
 
 #### `navigateCandidates(direction, options?)`
 
@@ -849,6 +893,12 @@ miss, or the opt-in absent — the host commits `heldChar` and ends the
 composition. Chained engines lean on this: each round re-enters with the
 accumulated text, and the round that finds no follow-ups commits the whole
 thing.
+
+The window's selection keys and labels are a host policy — resolved from
+the host's selection-keys setting and the engine's
+`associatedModeIndexLabels` declaration — rather than taken from the
+engine's own `indexLabels`. See
+[Associated-mode selection keys](#associated-mode-selection-keys).
 
 ### Event context (read-only)
 

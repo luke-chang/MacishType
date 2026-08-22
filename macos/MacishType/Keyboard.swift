@@ -56,6 +56,19 @@ enum KeyboardEventMapping {
             .keys
     )
 
+    /// The digit a physical digit key names — main row (`Digit7`) or
+    /// keypad (`Numpad7`).
+    static func digitCharacter(forWebCode code: String) -> Character? {
+        for prefix in ["Digit", "Numpad"] where code.hasPrefix(prefix) {
+            let rest = code.dropFirst(prefix.count)
+            if rest.count == 1, let digit = rest.first, digit.isDigitIndexLabel { return digit }
+        }
+        return nil
+    }
+
+    /// Characters the Shift+digit keys produce on the US layout.
+    static let usShiftedDigitCharacters: Set<Character> = Set("!@#$%^&*()")
+
     static func webKey(for keyCode: UInt16, characters: String?) -> String {
         if let namedKey = macKeyCodeToWebKey[keyCode] {
             return namedKey

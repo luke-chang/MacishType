@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 
 /// CIN engine that loads a user-picked `.cin` file (security-scoped) and
 /// hot-reloads it on edit.
-final class CINExternalEngine: CINEngine, ObservableObject {
+final class CINExternalEngine: CINEngine {
     static let shared = CINExternalEngine()
 
     override var engineID: String { "CINExternal" }

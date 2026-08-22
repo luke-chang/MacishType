@@ -179,7 +179,7 @@ struct KeyEventInput {
     }
 }
 
-class InputEngine {
+class InputEngine: ObservableObject {
 
     // MARK: Engine Registry (static)
 
@@ -229,6 +229,10 @@ class InputEngine {
         directionSubKey, fontSizeSubKey, enableAssociatedModeSubKey, outputToSimplifiedSubKey,
         characterSetScopeSubKey,
     ]
+
+    /// Host-level (cross-engine) UserDefaults key for the associated-mode
+    /// selection-key policy — deliberately not a per-engine `composedKey`.
+    nonisolated static let associatedModeSelectionKeysKey = "associatedModeSelectionKeys"
 
     /// Per-instance: same class may have multiple instances with distinct
     /// IDs (e.g. multi-slot subclasses). Subclass override required;
@@ -296,6 +300,29 @@ class InputEngine {
         static let all = ScopeAvailability(displayable: true, full: true)
         static let standardOnly = ScopeAvailability(displayable: false, full: false)
     }
+
+    // MARK: Associated-Mode Selection Keys
+
+    /// User policy for the associated-mode selection keys: an explicit
+    /// choice applies as-is; `followEngine` resolves through
+    /// `resolveAssociatedCandidateWindowConfiguration`.
+    enum AssociatedModeSelectionKeys: String {
+        case followEngine
+        case numbers
+        case shiftNumbers
+    }
+
+    /// Engine-declared preference, honored only while the user policy is
+    /// `followEngine`. The contract default is `numbers`; `inherit` keeps
+    /// the engine's own indexLabels / pageSize.
+    enum AssociatedModeIndexLabels: String, Decodable {
+        case numbers
+        case shiftNumbers
+        case inherit
+    }
+
+    nonisolated static let digitIndexLabels = "1234567890"
+    nonisolated private static let digitConflictKeys = Set(digitIndexLabels)
 
     // MARK: Input Source Monitoring
 
@@ -425,6 +452,9 @@ class InputEngine {
         }
         // Catches toggle changes from between sessions — load() runs only once.
         reconcileAssociatedDictionary(handle: &associatedDictionaryHandle)
+        // After load(), so table-derived conflicts are current; subclass
+        // writes after super land in the next session's snapshot.
+        associatedCandidateWindowConfiguration = resolveAssociatedCandidateWindowConfiguration()
     }
 
     // Override for per-session cleanup (persist learning model, flush caches).
@@ -571,6 +601,64 @@ class InputEngine {
             layoutDirection: candidateWindowDirection,
             fontSize: CGFloat(candidateWindowFontSize)
         )
+    }
+
+    /// Engine-declared preference for the associated-mode selection keys.
+    var associatedModeIndexLabels: AssociatedModeIndexLabels { .numbers }
+
+    /// Characters that can begin a new code, used to detect selection-key
+    /// conflicts. Only leading characters matter: associated mode starts on a
+    /// fresh context and the first unbound key dismisses it, so non-leading
+    /// code characters are never contested.
+    var associatedSelectionKeyConflicts: Set<Character> { [] }
+
+    /// Snapshotted at activate — the associated window's behavior is fixed
+    /// for the session (every input changes only across activate boundaries).
+    private(set) var associatedCandidateWindowConfiguration = CandidateWindowConfiguration()
+
+    /// Applies the selection-key policy to the current configuration. Pure
+    /// read — Settings previews call it live; typing uses the snapshot above.
+    func resolveAssociatedCandidateWindowConfiguration() -> CandidateWindowConfiguration {
+        var configuration = candidateWindowConfiguration
+        let stored = UserDefaults.standard.string(forKey: Self.associatedModeSelectionKeysKey)
+        switch stored.flatMap(AssociatedModeSelectionKeys.init(rawValue:)) ?? .followEngine {
+        case .numbers:
+            Self.applyDigitIndexLabels(&configuration, requireShift: false)
+        case .shiftNumbers:
+            Self.applyDigitIndexLabels(&configuration, requireShift: true)
+        case .followEngine:
+            var mode = associatedModeIndexLabels
+            let conflicts = associatedSelectionKeyConflicts
+            if mode == .numbers, !conflicts.isDisjoint(with: Self.digitConflictKeys) {
+                mode = .shiftNumbers
+            }
+            switch mode {
+            case .inherit:
+                break
+            case .numbers:
+                Self.applyDigitIndexLabels(&configuration, requireShift: false)
+            case .shiftNumbers:
+                // Table codes are ASCII written against the US layout, so
+                // character comparison stands in for the physical keys.
+                if conflicts.isDisjoint(with: KeyboardEventMapping.usShiftedDigitCharacters) {
+                    Self.applyDigitIndexLabels(&configuration, requireShift: true)
+                } else {
+                    // Both digit sets collide with leading roots: drop the
+                    // label column; navigation keys must stay host-handled.
+                    configuration.indexLabels = ""
+                    configuration.handleNavigationKeys = true
+                }
+            }
+        }
+        return configuration
+    }
+
+    private static func applyDigitIndexLabels(
+        _ configuration: inout CandidateWindowConfiguration, requireShift: Bool
+    ) {
+        configuration.indexLabels = digitIndexLabels
+        configuration.pageSize = min(configuration.pageSize, digitIndexLabels.count)
+        configuration.indexLabelDigitsRequireShift = requireShift
     }
 
     // Associated-phrase lookup backed by the locale-keyed associated
@@ -974,16 +1062,44 @@ extension InputEngine {
     /// Toggle for the associated mode opt-in. Engines opting in to the
     /// feature include this in their `settingsView`.
     struct EnableAssociatedModeToggle: View {
+        // Observed so the description recomputes when the engine publishes
+        // (manifest reload, table swap); a plain reference would render stale.
+        @ObservedObject private var engine: InputEngine
         @AppStorage private var value: Bool
+        @AppStorage(InputEngine.associatedModeSelectionKeysKey)
+        private var selectionKeys: AssociatedModeSelectionKeys = .followEngine
 
         init(engine: InputEngine, defaultOverride: Bool? = nil) {
+            self.engine = engine
             self._value = AppStorage(
                 wrappedValue: defaultOverride ?? type(of: engine).defaultEnableAssociatedMode,
                 InputEngine.composedKey(engineID: engine.engineID, subKey: InputEngine.enableAssociatedModeSubKey))
         }
 
         var body: some View {
-            Toggle("Show predictive completions", isOn: $value)
+            VStack(alignment: .leading, spacing: 2) {
+                Toggle("Show predictive completions", isOn: $value)
+                Text(selectionKeysDescription(policy: selectionKeys))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        /// `policy` is unused directly — the resolution reads the defaults
+        /// itself — but reading it in `body` makes SwiftUI re-render this
+        /// description when the global setting changes.
+        private func selectionKeysDescription(policy: AssociatedModeSelectionKeys) -> String {
+            let configuration = engine.resolveAssociatedCandidateWindowConfiguration()
+            if configuration.indexLabels.isEmpty {
+                return String(localized: "Completions here are selected with the arrow keys and Enter — adjust in General settings.")
+            }
+            if configuration.indexLabelDigitsRequireShift {
+                return String(localized: "Completions here are selected with Shift + number keys — adjust in General settings.")
+            }
+            if configuration.indexLabels == InputEngine.digitIndexLabels {
+                return String(localized: "Completions here are selected with the number keys — adjust in General settings.")
+            }
+            return String(localized: "Completions here are selected with the keys “\(configuration.indexLabels)” — adjust in General settings.")
         }
     }
 

@@ -177,6 +177,10 @@ class CINEngine: InputEngine {
         return configuration
     }
 
+    override var associatedSelectionKeyConflicts: Set<Character> {
+        table?.leadingCodeKeys ?? []
+    }
+
     // MARK: - Key handling
 
     override func handleKey(
