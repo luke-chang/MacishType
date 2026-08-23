@@ -52,6 +52,10 @@ class MacishCandidateWindow: CandidateWindowImpl {
         activePanel.syncTheme()
     }
 
+    override func shiftHeldChanged() {
+        activePanel?.refreshShiftHeld()
+    }
+
     // MARK: - Delegated Interface
 
     override var isVisible: Bool { activePanel.isVisible }

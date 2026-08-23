@@ -298,7 +298,19 @@ class InputController: IMKInputController {
 
     // MARK: - Event Handling
 
+    /// keyDown plus flagsChanged — the latter only feeds the Shift-gated
+    /// digit labels and is never consumed.
+    override func recognizedEvents(_ sender: Any!) -> Int {
+        Int(NSEvent.EventTypeMask([.keyDown, .flagsChanged]).rawValue)
+    }
+
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
+        // Before anything touches `characters` — NSEvent raises on non-key
+        // events.
+        if event.type == .flagsChanged {
+            CandidateWindow.shared.shiftHeld = event.modifierFlags.contains(.shift)
+            return false
+        }
         guard let client = sender as? IMKTextInput,
               let engine, let engineContext else { return false }
         var themeStale = false

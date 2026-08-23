@@ -38,7 +38,7 @@ struct GeneralSettingsView: View {
                         Text("Number keys").tag(InputEngine.AssociatedModeSelectionKeys.numbers)
                         Text("Shift + number keys").tag(InputEngine.AssociatedModeSelectionKeys.shiftNumbers)
                     }
-                    Text("Follow engine uses the engine's declared selection keys — number keys when it declares none — switching to Shift + number keys when they would collide with a CIN table's roots. Tinted number labels mean Shift is required.")
+                    Text("Follow engine uses the engine's declared selection keys — number keys when it declares none — switching to Shift + number keys when they would collide with a CIN table's roots. Number labels light up while Shift is held.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }

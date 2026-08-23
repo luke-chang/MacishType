@@ -15,9 +15,6 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     static let defaultCornerRadius: CGFloat = 6
 
     private(set) var highlightColor: NSColor = .selectedContentBackgroundColor
-    /// Raw client accent for tinted index labels — `highlightColor` is the
-    /// adjusted fill color and unfit as a text color.
-    private(set) var indexAccentColor: NSColor = .controlAccentColor
     private(set) var didDrag = false
     private(set) var configuration = CandidateWindowConfiguration()
     var animationDuration: TimeInterval { configuration.animationDuration }
@@ -161,11 +158,9 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     func syncTheme() {
         self.appearance = impl.clientAppearance
 
-        let bundleAccent: NSColor? = ThemeManager.shared.isMulticolor
-            ? impl.bundleIdentifier.flatMap { ThemeManager.shared.bundleAccentColor(bundleIdentifier: $0) }
-            : nil
-        indexAccentColor = bundleAccent ?? .controlAccentColor
-        if let color = bundleAccent {
+        if ThemeManager.shared.isMulticolor,
+           let bundleID = impl.bundleIdentifier,
+           let color = ThemeManager.shared.bundleAccentColor(bundleIdentifier: bundleID) {
             if #available(macOS 26, *) {
                 highlightColor = tahoeAdjustedColor(color)
             } else {
@@ -178,10 +173,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
                 highlightColor = .selectedContentBackgroundColor
             }
         }
-        for item in allItemViews {
-            item.highlightColor = highlightColor
-            item.indexAccentColor = indexAccentColor
-        }
+        for item in allItemViews { item.highlightColor = highlightColor }
     }
 
     // MARK: - Positioning
@@ -477,8 +469,8 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     func createItemView() -> MacishCandidateItemView {
         let item = MacishCandidateItemView(style: style)
         item.highlightColor = highlightColor
-        item.indexAccentColor = indexAccentColor
-        item.tintsDigitIndexLabels = configuration.indexLabelDigitsRequireShift
+        item.digitLabelsShiftGated = configuration.indexLabelDigitsRequireShift
+        item.shiftHeld = impl.shiftHeld
         return item
     }
 
@@ -528,8 +520,13 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         }
         self.configuration = configuration
         for item in allItemViews {
-            item.tintsDigitIndexLabels = configuration.indexLabelDigitsRequireShift
+            item.digitLabelsShiftGated = configuration.indexLabelDigitsRequireShift
+            item.shiftHeld = impl.shiftHeld
         }
+    }
+
+    func refreshShiftHeld() {
+        for item in allItemViews { item.shiftHeld = impl.shiftHeld }
     }
     /// Shared tail for subclass `apply` overrides. `reposition` re-anchors
     /// the window for panels whose `buildCandidateLayout` doesn't do it

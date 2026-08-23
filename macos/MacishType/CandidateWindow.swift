@@ -272,6 +272,14 @@ class CandidateWindow {
     weak var candidateDelegate: CandidateWindowDelegate?
     var clientWindowLevel: CGWindowLevel = CGWindowLevel(CGWindowLevelForKey(.floatingWindow))
 
+    /// Live Shift state driving the Shift-gated digit labels.
+    var shiftHeld = false {
+        didSet {
+            guard shiftHeld != oldValue else { return }
+            _impl?.shiftHeldChanged()
+        }
+    }
+
     var bundleIdentifier: String?
 
     var clientAppearance: NSAppearance?
@@ -300,6 +308,9 @@ class CandidateWindow {
     /// same rebuild as candidates to avoid configure-then-render flicker.
     func updateCandidates(_ candidates: [Candidate], initialHighlight: Int,
                          configuration: CandidateWindowConfiguration? = nil) {
+        // A window can open with Shift already down; seed from the hardware
+        // state rather than waiting for a flagsChanged transition.
+        shiftHeld = NSEvent.modifierFlags.contains(.shift)
         let cfgToApply: CandidateWindowConfiguration?
         if let cfg = configuration, engineConfiguration != cfg {
             applyEngineConfiguration(cfg)
@@ -366,6 +377,7 @@ class CandidateWindowImpl {
 
     var candidateDelegate: CandidateWindowDelegate? { owner?.candidateDelegate }
     var bundleIdentifier: String? { owner?.bundleIdentifier }
+    var shiftHeld: Bool { owner?.shiftHeld ?? false }
     var clientWindowLevel: CGWindowLevel { owner?.clientWindowLevel ?? CGWindowLevel(CGWindowLevelForKey(.floatingWindow)) }
     var clientAppearance: NSAppearance? { owner?.clientAppearance }
     var lastShowNearRect: NSRect { owner?.lastShowNearRect ?? .zero }
@@ -391,6 +403,8 @@ class CandidateWindowImpl {
     var isVisible: Bool { false }
 
     func syncTheme() {}
+
+    func shiftHeldChanged() {}
 
     func apply(_ configuration: CandidateWindowConfiguration) {}
     func updateCandidates(_ candidates: [Candidate], initialHighlight: Int,

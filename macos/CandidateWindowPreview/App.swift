@@ -159,6 +159,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     var isEditingAnyText: Bool { isEditing || isEditingIndexLabels }
 
     private var keyMonitor: Any?
+    private var flagsMonitor: Any?
     private var mouseMonitor: Any?
     private var resignKeyObserver: (any NSObjectProtocol)?
     private var didMoveObserver: (any NSObjectProtocol)?
@@ -170,11 +171,15 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
         candidateText = randomCandidates().joined(separator: " ")
         applyConfiguration()
         installKeyMonitor()
+        installFlagsMonitor()
         installMouseMonitor()
     }
 
     deinit {
         if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = flagsMonitor {
             NSEvent.removeMonitor(monitor)
         }
         if let monitor = mouseMonitor {
@@ -358,6 +363,15 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
                 }
                 return event
             }
+        }
+    }
+
+    /// Live Shift tracking so the Shift-gated digit labels behave as they
+    /// do in the real input method.
+    private func installFlagsMonitor() {
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.candidateWindow.shiftHeld = event.modifierFlags.contains(.shift)
+            return event
         }
     }
 
@@ -573,7 +587,7 @@ struct PreviewContentView: View {
                     Divider()
                     Toggle("Slow animations (1s)", isOn: $state.slowMotion)
                     Toggle("Suspend highlight", isOn: $state.suspendHighlight)
-                    Toggle("Shift-tinted index labels", isOn: $state.indexLabelDigitsRequireShift)
+                    Toggle("Shift-gated digit labels", isOn: $state.indexLabelDigitsRequireShift)
                 }
                 .toggleStyle(.checkbox)
             }

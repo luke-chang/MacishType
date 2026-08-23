@@ -177,18 +177,18 @@
         }
       }
     },
-    "Follow engine uses the engine's declared selection keys — number keys when it declares none — switching to Shift + number keys when they would collide with a CIN table's roots. Tinted number labels mean Shift is required." : {
+    "Follow engine uses the engine's declared selection keys — number keys when it declares none — switching to Shift + number keys when they would collide with a CIN table's roots. Number labels light up while Shift is held." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Follow engine uses the engine's declared selection keys — number keys when it declares none — switching to Shift + number keys when they would collide with a CIN table's roots. Tinted number labels mean Shift is required."
+            "value" : "Follow engine uses the engine's declared selection keys — number keys when it declares none — switching to Shift + number keys when they would collide with a CIN table's roots. Number labels light up while Shift is held."
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "依引擎設定採用引擎宣告的選字鍵，未宣告時使用數字鍵；與 CIN 表格的字根衝突時自動改用 Shift + 數字鍵。數字標籤變色代表需按住 Shift。"
+            "value" : "依引擎設定採用引擎宣告的選字鍵，未宣告時使用數字鍵；與 CIN 表格的字根衝突時自動改用 Shift + 數字鍵。數字標籤在按住 Shift 時亮起。"
           }
         }
       }

@@ -52,7 +52,6 @@ class MacishCandidateItemView: NSView {
         templateView = nil
     }
 
-
     let style: CandidateWindow.Style
     private var contentInset: CGFloat { style == .tahoe ? 2 : 0 }
     private var highlightView: NSView?
@@ -76,17 +75,16 @@ class MacishCandidateItemView: NSView {
         }
     }
 
-    /// Raw (unadjusted) client accent used to tint digit index labels.
-    var indexAccentColor: NSColor = .controlAccentColor {
+    var digitLabelsShiftGated = false {
         didSet {
-            guard indexAccentColor != oldValue else { return }
+            guard digitLabelsShiftGated != oldValue else { return }
             updateAppearance()
         }
     }
 
-    var tintsDigitIndexLabels = false {
+    var shiftHeld = false {
         didSet {
-            guard tintsDigitIndexLabels != oldValue else { return }
+            guard shiftHeld != oldValue else { return }
             updateAppearance()
         }
     }
@@ -232,8 +230,8 @@ class MacishCandidateItemView: NSView {
             annotationZeroWidthConstraint.isActive = shouldZeroAnnotation
         }
 
-        // Digit-ness rides the label, so tinting must follow a label change.
-        if tintsDigitIndexLabels { updateAppearance() }
+        // Digit-ness rides the label, so gating must follow a label change.
+        if digitLabelsShiftGated { updateAppearance() }
 
         invalidateIntrinsicContentSize()
     }
@@ -302,8 +300,13 @@ class MacishCandidateItemView: NSView {
     }
 
     private func updateAppearance() {
+        // In a shift-gated window each label selects under exactly one
+        // Shift state — digits with Shift held, other characters without.
+        // The half that can't select right now dims.
+        let isDigitLabel = indexLabel.stringValue.first?.isDigitIndexLabel == true
+        let gatedInactive = digitLabelsShiftGated && isDigitLabel != shiftHeld
         if isHighlighted {
-            indexLabel.textColor = .white
+            indexLabel.textColor = gatedInactive ? NSColor.white.withAlphaComponent(0.25) : .white
             candidateLabel.textColor = .white
             annotationLabel.textColor = .white
             if let hv = highlightView {
@@ -317,10 +320,9 @@ class MacishCandidateItemView: NSView {
                 layer?.backgroundColor = highlightColor.cgColor
             }
         } else {
-            // Only digit labels carry the Shift requirement.
-            let isDigitLabel = indexLabel.stringValue.first?.isDigitIndexLabel == true
-            indexLabel.textColor = tintsDigitIndexLabels && isDigitLabel
-                ? indexAccentColor : .secondaryLabelColor
+            indexLabel.textColor = gatedInactive
+                ? .quaternaryLabelColor
+                : (digitLabelsShiftGated && isDigitLabel ? .labelColor : .secondaryLabelColor)
             candidateLabel.textColor = .labelColor
             annotationLabel.textColor = .secondaryLabelColor
             if let hv = highlightView {
