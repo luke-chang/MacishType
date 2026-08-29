@@ -441,9 +441,9 @@ void EngineSession::queueAction(const std::string &name, int argc,
             uint32_t count = 0;
             JS_ToUint32(ctx, &count, length.get());
             if (count > kMaxListItems) {
-                MACISHTYPE_WARN() << host_->engineId()
-                                  << ": candidate list truncated from "
-                                  << count << " to " << kMaxListItems;
+                MACISHTYPE_NOTICE() << host_->engineId()
+                                    << ": candidate list truncated from "
+                                    << count << " to " << kMaxListItems;
                 count = kMaxListItems;
             }
             for (uint32_t i = 0; i < count; i++) {
@@ -524,9 +524,9 @@ void EngineSession::queueAction(const std::string &name, int argc,
             uint32_t count = 0;
             JS_ToUint32(ctx, &count, length.get());
             if (count > kMaxListItems) {
-                MACISHTYPE_WARN() << host_->engineId()
-                                  << ": associated list truncated from "
-                                  << count << " to " << kMaxListItems;
+                MACISHTYPE_NOTICE() << host_->engineId()
+                                    << ": associated list truncated from "
+                                    << count << " to " << kMaxListItems;
                 count = kMaxListItems;
             }
             for (uint32_t i = 0; i < count; i++) {
@@ -538,8 +538,8 @@ void EngineSession::queueAction(const std::string &name, int argc,
         queue.push_back(std::move(action));
         return;
     }
-    MACISHTYPE_WARN() << host_->engineId() << ": unknown mutator ignored: "
-                      << name;
+    MACISHTYPE_NOTICE() << host_->engineId() << ": unknown mutator ignored: "
+                        << name;
 }
 
 // Action executor -----------------------------------------------------------
@@ -887,7 +887,7 @@ void EngineSession::showReverseLookup(const std::string &query) {
                     continue;
                 }
                 if (rows.size() >= kReverseLookupMaxChars) {
-                    MACISHTYPE_WARN()
+                    MACISHTYPE_NOTICE()
                         << host_->engineId()
                         << ": reverse lookup query truncated at "
                         << kReverseLookupMaxChars << " characters";
@@ -1063,8 +1063,8 @@ void EngineSession::navigate(const std::string &direction, bool wrapping) {
                      ? total - 1
                      : std::min(pageStart + pageSize, total) - 1;
     } else {
-        MACISHTYPE_WARN() << host_->engineId()
-                          << ": unknown navigation direction: " << direction;
+        MACISHTYPE_NOTICE() << host_->engineId()
+                            << ": unknown navigation direction: " << direction;
         return;
     }
     // Cursor first, then page (see renderCandidates): keeps the absolute cursor

@@ -16,8 +16,8 @@ namespace {
 
 std::string computeCoverage() {
     if (FcInit() != FcTrue) {
-        MACISHTYPE_WARN() << "fontCoverage: FcInit failed; claiming full "
-                             "coverage";
+        MACISHTYPE_NOTICE() << "fontCoverage: FcInit failed; claiming full "
+                               "coverage";
         return fullCoverageBitmapBase64();
     }
     FcPattern *pattern = FcPatternCreate();
@@ -26,8 +26,8 @@ std::string computeCoverage() {
     FcObjectSetDestroy(objects);
     FcPatternDestroy(pattern);
     if (fonts == nullptr) {
-        MACISHTYPE_WARN() << "fontCoverage: FcFontList failed; claiming "
-                             "full coverage";
+        MACISHTYPE_NOTICE() << "fontCoverage: FcFontList failed; claiming "
+                               "full coverage";
         return fullCoverageBitmapBase64();
     }
 
@@ -72,8 +72,8 @@ std::string computeCoverage() {
     FcFontSetDestroy(fonts);
 
     if (planes.empty() || codepointCount == 0) {
-        MACISHTYPE_WARN() << "fontCoverage: no charsets found; claiming "
-                             "full coverage";
+        MACISHTYPE_NOTICE() << "fontCoverage: no charsets found; claiming "
+                               "full coverage";
         return fullCoverageBitmapBase64();
     }
     MACISHTYPE_INFO() << "fontCoverage: " << codepointCount

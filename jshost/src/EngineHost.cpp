@@ -1278,15 +1278,15 @@ void JsEngineHost::setCandidateWindowField(const std::string &field,
     const auto &types = candidateWindowFieldTypes();
     auto typeEntry = types.find(field);
     if (typeEntry == types.end()) {
-        MACISHTYPE_WARN() << "candidateWindow: unknown field ignored: "
-                          << field;
+        MACISHTYPE_NOTICE() << "candidateWindow: unknown field ignored: "
+                            << field;
         return;
     }
     switch (typeEntry->second) {
     case FieldType::Boolean:
         if (!JS_IsBool(value)) {
-            MACISHTYPE_WARN() << "candidateWindow." << field
-                              << ": expected boolean, write ignored";
+            MACISHTYPE_NOTICE() << "candidateWindow." << field
+                                << ": expected boolean, write ignored";
             return;
         }
         engineCandidateWindow_[field] = JS_ToBool(ctx_, value) == 1;
@@ -1295,13 +1295,13 @@ void JsEngineHost::setCandidateWindowField(const std::string &field,
         double number = 0;
         if (!JS_IsNumber(value) || JS_ToFloat64(ctx_, &number, value) != 0 ||
             number <= 0) {
-            MACISHTYPE_WARN() << "candidateWindow." << field
-                              << ": expected positive number, write ignored";
+            MACISHTYPE_NOTICE() << "candidateWindow." << field
+                                << ": expected positive number, write ignored";
             return;
         }
         if (field == "pageSize" && number > 11) {
-            MACISHTYPE_WARN() << "candidateWindow.pageSize: out of range "
-                                 "(1-11), write ignored";
+            MACISHTYPE_NOTICE() << "candidateWindow.pageSize: out of range "
+                                   "(1-11), write ignored";
             return;
         }
         engineCandidateWindow_[field] = number;
@@ -1309,14 +1309,14 @@ void JsEngineHost::setCandidateWindowField(const std::string &field,
     }
     case FieldType::String: {
         if (!JS_IsString(value)) {
-            MACISHTYPE_WARN() << "candidateWindow." << field
-                              << ": expected string, write ignored";
+            MACISHTYPE_NOTICE() << "candidateWindow." << field
+                                << ": expected string, write ignored";
             return;
         }
         std::string text = Qjs::toString(ctx_, value);
         if (field == "layoutDirection" && text != "horizontal" &&
             text != "vertical") {
-            MACISHTYPE_WARN()
+            MACISHTYPE_NOTICE()
                 << "candidateWindow.layoutDirection: invalid value ignored: "
                 << text;
             return;
@@ -1324,7 +1324,7 @@ void JsEngineHost::setCandidateWindowField(const std::string &field,
         if (field == "indexLabels") {
             for (unsigned char ch : text) {
                 if (ch < 0x20 || ch > 0x7E) {
-                    MACISHTYPE_WARN()
+                    MACISHTYPE_NOTICE()
                         << "candidateWindow.indexLabels: expected ASCII "
                            "printable (0x20-0x7E), write ignored";
                     return;
@@ -1361,8 +1361,8 @@ JsEngineHost::safeStoragePath(const std::string &key) const {
     auto path = storagePathForKey(key);
     std::error_code errorCode;
     if (std::filesystem::is_symlink(path, errorCode)) {
-        MACISHTYPE_WARN() << "[" << engineId_
-                          << "] refusing symlinked storage file: " << path;
+        MACISHTYPE_NOTICE() << "[" << engineId_
+                            << "] refusing symlinked storage file: " << path;
         return std::nullopt;
     }
     return path;
@@ -1466,7 +1466,7 @@ JSValue JsEngineHost::nativeLog(JSContext *ctx, JSValueConst thisVal,
     if (level == "error" || level == "fault") {
         MACISHTYPE_ERROR() << "[" << host->engineId_ << "] " << message;
     } else if (level == "notice") {
-        MACISHTYPE_WARN() << "[" << host->engineId_ << "] " << message;
+        MACISHTYPE_NOTICE() << "[" << host->engineId_ << "] " << message;
     } else if (level == "debug") {
         MACISHTYPE_DEBUG() << "[" << host->engineId_ << "] " << message;
     } else {
@@ -1602,12 +1602,12 @@ JSValue JsEngineHost::nativeSetMenuValue(JSContext *ctx, JSValueConst thisVal,
     std::string key = Qjs::toString(ctx, argv[0]);
     auto found = host->menuValues_.find(key);
     if (found == host->menuValues_.end()) {
-        MACISHTYPE_WARN() << "menu: write to undeclared key ignored: " << key;
+        MACISHTYPE_NOTICE() << "menu: write to undeclared key ignored: " << key;
         return JS_UNDEFINED;
     }
     if (!JS_IsBool(argv[1])) {
-        MACISHTYPE_WARN() << "menu." << key
-                          << ": expected boolean, write ignored";
+        MACISHTYPE_NOTICE() << "menu." << key
+                            << ": expected boolean, write ignored";
         return JS_UNDEFINED;
     }
     found->second = JS_ToBool(ctx, argv[1]) == 1;
@@ -1657,13 +1657,13 @@ JSValue JsEngineHost::nativeSetToggleValue(JSContext *ctx,
     std::string key = Qjs::toString(ctx, argv[0]);
     auto found = host->toggleDelegates_.find(key);
     if (found == host->toggleDelegates_.end()) {
-        MACISHTYPE_WARN() << "toggle: write to unavailable key ignored: "
-                          << key;
+        MACISHTYPE_NOTICE() << "toggle: write to unavailable key ignored: "
+                            << key;
         return JS_UNDEFINED;
     }
     if (!JS_IsBool(argv[1])) {
-        MACISHTYPE_WARN() << "toggle." << key
-                          << ": expected boolean, write ignored";
+        MACISHTYPE_NOTICE() << "toggle." << key
+                            << ": expected boolean, write ignored";
         return JS_UNDEFINED;
     }
     found->second.set(JS_ToBool(ctx, argv[1]) == 1);
@@ -1942,8 +1942,8 @@ JSValue JsEngineHost::nativeAction(JSContext *ctx, JSValueConst thisVal,
     }
     std::string name = Qjs::toString(ctx, argv[0]);
     if (!host->actionHandler_) {
-        MACISHTYPE_WARN() << host->engineId_ << ": mutator '" << name
-                          << "' called outside an engine hook, ignored";
+        MACISHTYPE_NOTICE() << host->engineId_ << ": mutator '" << name
+                            << "' called outside an engine hook, ignored";
         return JS_UNDEFINED;
     }
     host->actionHandler_(name, argc - 1, argv + 1);

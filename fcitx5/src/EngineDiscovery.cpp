@@ -98,8 +98,8 @@ ResolvedIcon resolveIcon(const std::filesystem::path &root,
         // Candidates sit inside the root by construction, but a symlinked
         // file may still point elsewhere.
         if (path.string().rfind(rootPrefix, 0) != 0) {
-            MACISHTYPE_WARN() << "Manifest icon escapes the engine folder: "
-                              << path;
+            MACISHTYPE_NOTICE() << "Manifest icon escapes the engine folder: "
+                                << path;
             continue;
         }
         return {path.string(), candidate.kind};
@@ -107,8 +107,8 @@ ResolvedIcon resolveIcon(const std::filesystem::path &root,
     // Silence is correct for the probe of the implicit default; only a
     // base the manifest asked for deserves a warning.
     if (!icon.empty()) {
-        MACISHTYPE_WARN() << "Manifest icon matches no file: " << root / icon
-                          << "{-symbolic.svg,.svg,.png}";
+        MACISHTYPE_NOTICE() << "Manifest icon matches no file: " << root / icon
+                            << "{-symbolic.svg,.svg,.png}";
     }
     return {};
 }
@@ -122,9 +122,9 @@ buildEngineInfo(const std::string &id, const std::filesystem::path &fullPath,
                 const std::vector<std::string> &languages) {
     auto manifest = parseManifest(fullPath / "manifest.json", languages);
     if (!manifest) {
-        MACISHTYPE_WARN() << "Skipping engine folder without a valid "
-                             "manifest.json: "
-                          << fullPath;
+        MACISHTYPE_NOTICE() << "Skipping engine folder without a valid "
+                               "manifest.json: "
+                            << fullPath;
         return std::nullopt;
     }
     // Assigned field by field: positional aggregate init would silently
@@ -168,7 +168,7 @@ discoverEngines(const std::vector<std::string> &languages,
         const auto u8id = name.u8string();
         std::string id(u8id.begin(), u8id.end());
         if (!isValidEngineId(id)) {
-            MACISHTYPE_WARN()
+            MACISHTYPE_NOTICE()
                 << "Skipping engine folder with invalid name (want "
                    "[A-Za-z0-9_-]): "
                 << fullPath;

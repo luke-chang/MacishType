@@ -191,8 +191,8 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     std::error_code errorCode;
     std::filesystem::create_directories(userEngines, errorCode);
     if (errorCode) {
-        MACISHTYPE_WARN() << "Cannot create user engines directory "
-                          << userEngines << ": " << errorCode.message();
+        MACISHTYPE_NOTICE() << "Cannot create user engines directory "
+                            << userEngines << ": " << errorCode.message();
     }
     for (const auto &dataDir :
          paths.directories(fcitx::StandardPathsType::PkgData)) {
@@ -926,7 +926,7 @@ void MacishTypeEngine::setChttransEnabled(const std::string &inputMethodName,
                                           bool enabled) {
     auto *chttrans = instance_->addonManager().addon("chttrans", true);
     if (chttrans == nullptr) {
-        MACISHTYPE_WARN() << "outputToSimplified: chttrans is unavailable";
+        MACISHTYPE_NOTICE() << "outputToSimplified: chttrans is unavailable";
         return;
     }
     const auto *config = chttrans->getConfig();

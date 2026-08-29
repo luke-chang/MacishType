@@ -37,7 +37,7 @@ EngineWatcher::EngineWatcher(fcitx::EventLoop *eventLoop, Callback callback,
       rootCallback_(std::move(rootCallback)) {
     inotifyFd_ = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     if (inotifyFd_ < 0) {
-        MACISHTYPE_WARN() << "inotify unavailable; hot reload disabled";
+        MACISHTYPE_NOTICE() << "inotify unavailable; hot reload disabled";
         return;
     }
     ioSource_ = eventLoop_->addIOEvent(
@@ -82,7 +82,7 @@ void EngineWatcher::watchStorage(const std::string &engineId,
     int descriptor =
         inotify_add_watch(inotifyFd_, directory.c_str(), kWatchMask);
     if (descriptor < 0) {
-        MACISHTYPE_WARN() << "Cannot watch storage directory " << directory;
+        MACISHTYPE_NOTICE() << "Cannot watch storage directory " << directory;
         return;
     }
     watches_[descriptor] = {engineId, directory, WatchKind::Storage};
@@ -103,8 +103,8 @@ void EngineWatcher::watchEnginesRoot(const std::filesystem::path &directory) {
     int descriptor = inotify_add_watch(inotifyFd_, canonicalDirectory.c_str(),
                                        kWatchMask);
     if (descriptor < 0) {
-        MACISHTYPE_WARN() << "Cannot watch engines directory "
-                          << canonicalDirectory;
+        MACISHTYPE_NOTICE() << "Cannot watch engines directory "
+                            << canonicalDirectory;
         return;
     }
     watches_[descriptor] = {std::string(), canonicalDirectory,

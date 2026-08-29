@@ -179,9 +179,9 @@ std::string pickerDefaultToken(const SettingsField &field) {
                     return option.token;
                 }
             }
-            MACISHTYPE_WARN() << "Settings field " << field.key
-                              << ": default matches no option, using the "
-                                 "first";
+            MACISHTYPE_NOTICE() << "Settings field " << field.key
+                                << ": default matches no option, using the "
+                                   "first";
         }
     }
     return field.options.front().token;
@@ -226,7 +226,7 @@ EngineSettings::EngineSettings(const std::vector<SettingsSection> &sections,
             if (field.key.empty() ||
                 field.key.find('/') != std::string::npos ||
                 !usedKeys.insert(field.key).second) {
-                MACISHTYPE_WARN()
+                MACISHTYPE_NOTICE()
                     << "Settings field skipped (invalid or duplicate key): "
                     << field.key;
                 continue;
@@ -323,7 +323,7 @@ void EngineSettings::materializeField(const SettingsField &field) {
             int defaultInt = static_cast<int>(*defaultValue);
             if (low > high) {
                 // An inconsistent range makes every value invalid.
-                MACISHTYPE_WARN()
+                MACISHTYPE_NOTICE()
                     << "Number field with min > max hidden: " << field.key;
             } else {
                 // fcitx's Option constructor throws when the default violates
@@ -331,7 +331,7 @@ void EngineSettings::materializeField(const SettingsField &field) {
                 // cannot crash the addon (and, via a watched reload, fcitx5).
                 int clamped = std::min(std::max(defaultInt, low), high);
                 if (clamped != defaultInt) {
-                    MACISHTYPE_WARN()
+                    MACISHTYPE_NOTICE()
                         << "Number field default out of [min, max], clamped: "
                         << field.key;
                 }
@@ -344,13 +344,13 @@ void EngineSettings::materializeField(const SettingsField &field) {
                 options_.push_back(std::move(option));
             }
         } else {
-            MACISHTYPE_WARN() << "Fractional number field hidden: "
-                              << field.key;
+            MACISHTYPE_NOTICE() << "Fractional number field hidden: "
+                                << field.key;
         }
     } else if (field.type == "picker") {
         if (field.options.empty()) {
-            MACISHTYPE_WARN() << "Picker without options hidden: "
-                              << field.key;
+            MACISHTYPE_NOTICE() << "Picker without options hidden: "
+                                << field.key;
         } else {
             for (const auto &choice : field.options) {
                 annotation.enumTokens.push_back(choice.token);
@@ -368,8 +368,8 @@ void EngineSettings::materializeField(const SettingsField &field) {
         // multiSelect has no equivalent widget; unknown types are future
         // schema. Either way the manifest default still reaches the
         // engine.
-        MACISHTYPE_WARN() << "Unsupported settings field type '"
-                          << field.type << "' hidden: " << field.key;
+        MACISHTYPE_NOTICE() << "Unsupported settings field type '"
+                            << field.type << "' hidden: " << field.key;
     }
     fields_.push_back(std::move(bound));
 }

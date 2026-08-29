@@ -473,7 +473,7 @@ parseManifest(const std::filesystem::path &manifestPath,
               const std::vector<std::string> &languages) {
     auto content = readFile(manifestPath);
     if (!content) {
-        MACISHTYPE_WARN() << "Cannot read manifest: " << manifestPath;
+        MACISHTYPE_NOTICE() << "Cannot read manifest: " << manifestPath;
         return std::nullopt;
     }
 
@@ -487,11 +487,11 @@ parseManifest(const std::filesystem::path &manifestPath,
                                           content->size(),
                                           manifestPathText.c_str()));
         if (root.isException()) {
-            MACISHTYPE_WARN() << "Invalid manifest JSON " << manifestPath
-                              << ": " << Qjs::exceptionText(ctx);
+            MACISHTYPE_NOTICE() << "Invalid manifest JSON " << manifestPath
+                                << ": " << Qjs::exceptionText(ctx);
         } else if (!JS_IsObject(root.get())) {
-            MACISHTYPE_WARN() << "Manifest is not a JSON object: "
-                              << manifestPath;
+            MACISHTYPE_NOTICE() << "Manifest is not a JSON object: "
+                                << manifestPath;
         } else {
             ManifestData data;
 
@@ -602,7 +602,7 @@ parseManifest(const std::filesystem::path &manifestPath,
                         return JS_ToBool(ctx, flag.get()) == 1;
                     }
                     if (!JS_IsUndefined(flag.get())) {
-                        MACISHTYPE_WARN()
+                        MACISHTYPE_NOTICE()
                             << "capabilities." << name
                             << " must be a boolean, treated as undeclared: "
                             << manifestPath;
@@ -617,7 +617,7 @@ parseManifest(const std::filesystem::path &manifestPath,
             }
 
             if (data.entry.empty()) {
-                MACISHTYPE_WARN()
+                MACISHTYPE_NOTICE()
                     << "Manifest `entry` must be a non-empty string "
                        "(required): "
                     << manifestPath;

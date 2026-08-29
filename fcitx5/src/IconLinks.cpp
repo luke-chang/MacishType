@@ -248,9 +248,9 @@ size_t IconLinks::removeMatching(const std::set<std::string> &keep) {
             if (std::filesystem::remove(entry.path(), errorCode)) {
                 removed++;
             } else if (errorCode) {
-                MACISHTYPE_WARN() << "Cannot remove stale icon theme entry "
-                                  << entry.path() << ": "
-                                  << errorCode.message();
+                MACISHTYPE_NOTICE() << "Cannot remove stale icon theme entry "
+                                    << entry.path() << ": "
+                                    << errorCode.message();
             }
         }
     }
@@ -284,9 +284,9 @@ void IconLinks::refreshNow() {
     auto now = std::filesystem::file_time_type::clock::now();
     std::filesystem::last_write_time(iconsRoot_, now, errorCode);
     if (errorCode) {
-        MACISHTYPE_WARN() << "Cannot touch " << iconsRoot_
-                          << " to trigger an icon theme rescan: "
-                          << errorCode.message();
+        MACISHTYPE_NOTICE() << "Cannot touch " << iconsRoot_
+                            << " to trigger an icon theme rescan: "
+                            << errorCode.message();
         return;
     }
     std::filesystem::last_write_time(iconsRoot_ / "hicolor", now, errorCode);
@@ -323,7 +323,7 @@ void IconLinks::removeEntry(const std::string &fileName) {
 void IconLinks::warnOnce(const std::string &engineId,
                          const std::string &message) {
     if (warned_.insert(engineId).second) {
-        MACISHTYPE_WARN() << engineId << ": " << message;
+        MACISHTYPE_NOTICE() << engineId << ": " << message;
     }
 }
 
