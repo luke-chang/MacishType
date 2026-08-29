@@ -4,7 +4,7 @@
 // included here so the addon's call sites keep their original shape.
 #include <MacishType/HostSeams.h>
 
-namespace macishtype {
+namespace MacishType {
 
 // gettext domain of this addon; bound by registerTextDomain, consumed by
 // the Translator seam adapter.
@@ -16,4 +16,4 @@ inline constexpr char kTextDomain[] = "fcitx5-macishtype";
 // directory per domain, so pick whichever applies.
 void registerTextDomain();
 
-} // namespace macishtype
+} // namespace MacishType

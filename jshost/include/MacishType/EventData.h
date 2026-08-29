@@ -4,7 +4,7 @@
 
 #include <quickjs.h>
 
-namespace macishtype {
+namespace MacishType {
 
 class JsEngineHost;
 
@@ -63,4 +63,4 @@ JSValue buildEventData(JSContext *ctx, const EventStaging &staging,
                        const EventCandidate *candidate, int absoluteIndex,
                        const CandidateWindowConfig &window);
 
-} // namespace macishtype
+} // namespace MacishType

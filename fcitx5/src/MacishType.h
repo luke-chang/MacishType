@@ -30,7 +30,7 @@
 #include "IconLinks.h"
 #include "Session.h"
 
-namespace macishtype {
+namespace MacishType {
 
 FCITX_CONFIGURATION(
     MacishTypeConfig,
@@ -232,4 +232,4 @@ public:
     fcitx::AddonInstance *create(fcitx::AddonManager *manager) override;
 };
 
-} // namespace macishtype
+} // namespace MacishType

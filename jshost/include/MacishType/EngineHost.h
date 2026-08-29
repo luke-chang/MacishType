@@ -19,7 +19,7 @@
 #include "MacishType/Intl.h"
 #include "MacishType/Manifest.h"
 
-namespace macishtype {
+namespace MacishType {
 
 // One fully loaded JS engine: its own QuickJS runtime/context, the shared
 // runtime.js globals, and the evaluated entry module. Created lazily on the
@@ -499,4 +499,4 @@ private:
 // before any engine is loaded, mirroring macOS `isAvailable(for:)`.
 bool associatedDictionaryAvailable(const std::string &intendedLanguage);
 
-} // namespace macishtype
+} // namespace MacishType

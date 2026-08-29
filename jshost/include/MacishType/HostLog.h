@@ -4,7 +4,7 @@
 
 #include "MacishType/HostSeams.h"
 
-namespace macishtype {
+namespace MacishType {
 
 // Stream-shaped log line: MACISHTYPE_ERROR() << "engine " << id << " gone".
 // Flushes one message to the installed Logger on destruction; dropped
@@ -28,14 +28,14 @@ private:
 };
 
 #define MACISHTYPE_DEBUG()                                                     \
-    ::macishtype::LogLine(::macishtype::Logger::Level::Debug)
+    ::MacishType::LogLine(::MacishType::Logger::Level::Debug)
 #define MACISHTYPE_INFO()                                                      \
-    ::macishtype::LogLine(::macishtype::Logger::Level::Info)
+    ::MacishType::LogLine(::MacishType::Logger::Level::Info)
 #define MACISHTYPE_WARN()                                                      \
-    ::macishtype::LogLine(::macishtype::Logger::Level::Notice)
+    ::MacishType::LogLine(::MacishType::Logger::Level::Notice)
 #define MACISHTYPE_ERROR()                                                     \
-    ::macishtype::LogLine(::macishtype::Logger::Level::Error)
+    ::MacishType::LogLine(::MacishType::Logger::Level::Error)
 #define MACISHTYPE_FAULT()                                                     \
-    ::macishtype::LogLine(::macishtype::Logger::Level::Fault)
+    ::MacishType::LogLine(::MacishType::Logger::Level::Fault)
 
-} // namespace macishtype
+} // namespace MacishType

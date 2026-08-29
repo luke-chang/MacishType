@@ -28,7 +28,7 @@
 #include "Log.h"
 #include "VersionStamp.h"
 
-namespace macishtype {
+namespace MacishType {
 
 FCITX_DEFINE_LOG_CATEGORY(macishtype_logcategory, "macishtype");
 
@@ -1103,6 +1103,6 @@ MacishTypeAddonFactory::create(fcitx::AddonManager *manager) {
     return new MacishTypeEngine(manager->instance());
 }
 
-} // namespace macishtype
+} // namespace MacishType
 
-FCITX_ADDON_FACTORY_V2(macishtype, macishtype::MacishTypeAddonFactory)
+FCITX_ADDON_FACTORY_V2(macishtype, MacishType::MacishTypeAddonFactory)

@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-namespace macishtype {
+namespace MacishType {
 
 // Escapes text for embedding inside a JSON string literal.
 inline std::string jsonEscape(std::string_view text) {
@@ -41,4 +41,4 @@ inline std::string jsonEscape(std::string_view text) {
     return escaped;
 }
 
-} // namespace macishtype
+} // namespace MacishType

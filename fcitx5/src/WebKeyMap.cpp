@@ -4,7 +4,7 @@
 
 #include <fcitx-utils/keysym.h>
 
-namespace macishtype {
+namespace MacishType {
 
 namespace {
 
@@ -208,4 +208,4 @@ WebKeyEvent translateKeyEvent(const fcitx::Key &rawKey) {
     return event;
 }
 
-} // namespace macishtype
+} // namespace MacishType

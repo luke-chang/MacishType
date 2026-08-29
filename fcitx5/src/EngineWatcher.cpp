@@ -8,7 +8,7 @@
 
 #include "Log.h"
 
-namespace macishtype {
+namespace MacishType {
 
 namespace {
 
@@ -241,4 +241,4 @@ void EngineWatcher::scheduleCallback(const std::string &engineId,
         });
 }
 
-} // namespace macishtype
+} // namespace MacishType

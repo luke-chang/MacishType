@@ -8,7 +8,7 @@
 
 #include "Log.h"
 
-namespace macishtype {
+namespace MacishType {
 
 namespace {
 
@@ -212,4 +212,4 @@ discoverEngine(const std::string &id,
     return std::nullopt;
 }
 
-} // namespace macishtype
+} // namespace MacishType

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace macishtype {
+namespace MacishType {
 
 // Codepoint-coverage bitmap format shared by every platform's
 // FontCoverageProvider: plane 0's 8192-byte bitmap leads unconditionally;
@@ -24,4 +24,4 @@ std::string serializeCoveragePlanes(
 // FontCoverageProvider is installed at all.
 const std::string &fullCoverageBitmapBase64();
 
-} // namespace macishtype
+} // namespace MacishType

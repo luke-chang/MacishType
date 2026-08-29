@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-namespace macishtype {
+namespace MacishType {
 
 // Host seam interfaces: the platform capabilities the core engine host
 // needs from whichever process embeds it. Implementations are installed
@@ -99,4 +99,4 @@ const HostServices &hostServices();
 // against the addon-side helper.
 std::string translated(const char *text);
 
-} // namespace macishtype
+} // namespace MacishType

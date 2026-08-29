@@ -31,7 +31,7 @@ endfunction()
 write_if_changed("${OUTPUT_DIR}/VersionFull.txt" "${full_version}\n")
 write_if_changed("${OUTPUT_DIR}/VersionStamp.cpp"
     "// Generated at build time; do not edit.
-namespace macishtype {
+namespace MacishType {
 const char *versionStampFull() { return \"${full_version}\"; }
-} // namespace macishtype
+} // namespace MacishType
 ")

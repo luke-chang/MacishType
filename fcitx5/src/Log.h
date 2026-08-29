@@ -2,17 +2,17 @@
 
 #include <fcitx-utils/log.h>
 
-namespace macishtype {
+namespace MacishType {
 
 FCITX_DECLARE_LOG_CATEGORY(macishtype_logcategory);
 
 #define MACISHTYPE_DEBUG()                                                     \
-    FCITX_LOGC(::macishtype::macishtype_logcategory, Debug)
+    FCITX_LOGC(::MacishType::macishtype_logcategory, Debug)
 #define MACISHTYPE_INFO()                                                      \
-    FCITX_LOGC(::macishtype::macishtype_logcategory, Info)
+    FCITX_LOGC(::MacishType::macishtype_logcategory, Info)
 #define MACISHTYPE_WARN()                                                      \
-    FCITX_LOGC(::macishtype::macishtype_logcategory, Warn)
+    FCITX_LOGC(::MacishType::macishtype_logcategory, Warn)
 #define MACISHTYPE_ERROR()                                                     \
-    FCITX_LOGC(::macishtype::macishtype_logcategory, Error)
+    FCITX_LOGC(::MacishType::macishtype_logcategory, Error)
 
-} // namespace macishtype
+} // namespace MacishType

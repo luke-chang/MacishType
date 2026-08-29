@@ -4,7 +4,7 @@
 
 #include <fcitx-utils/key.h>
 
-namespace macishtype {
+namespace MacishType {
 
 // A fcitx key event translated into the web KeyboardEvent shape the
 // MacishType JS contract uses.
@@ -28,4 +28,4 @@ struct WebKeyEvent {
 // position); `key` from the keysym (layout-aware).
 WebKeyEvent translateKeyEvent(const fcitx::Key &rawKey);
 
-} // namespace macishtype
+} // namespace MacishType

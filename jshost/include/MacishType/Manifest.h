@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace macishtype {
+namespace MacishType {
 
 // One choice of a picker field. `token` identifies the option in host
 // storage and in the configtool enum: the manifest tag when declared, else
@@ -101,4 +101,4 @@ parseManifest(const std::filesystem::path &manifestPath,
 // first; empty when none is installed.
 std::vector<std::string> preferredLanguages();
 
-} // namespace macishtype
+} // namespace MacishType

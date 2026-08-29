@@ -8,7 +8,7 @@
 
 #include "FontCoverage.h"
 
-namespace macishtype {
+namespace MacishType {
 
 // HostEventLoop over the fcitx event loop; the EventDispatcher backs the
 // one thread-safe entry (post), used by the core fetch worker.
@@ -67,4 +67,4 @@ private:
     FontconfigCoverageProvider fontCoverage_;
 };
 
-} // namespace macishtype
+} // namespace MacishType

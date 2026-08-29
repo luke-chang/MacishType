@@ -10,7 +10,7 @@
 #include "MacishType/HostSeams.h"
 #include "MacishType/QjsUtil.h"
 
-namespace macishtype {
+namespace MacishType {
 
 namespace {
 
@@ -70,16 +70,16 @@ std::vector<std::string> lookupKeysForLanguage(const std::string &language) {
 std::string resolveLocalizedName(JSContext *ctx, JSValueConst nameValue,
                                  const std::vector<std::string> &languages) {
     if (JS_IsString(nameValue)) {
-        return qjs::toString(ctx, nameValue);
+        return Qjs::toString(ctx, nameValue);
     }
     if (!JS_IsObject(nameValue)) {
         return {};
     }
     auto tryKey = [&](const std::string &key) -> std::optional<std::string> {
-        qjs::Value value(ctx,
+        Qjs::Value value(ctx,
                          JS_GetPropertyStr(ctx, nameValue, key.c_str()));
         if (JS_IsString(value.get())) {
-            return qjs::toString(ctx, value.get());
+            return Qjs::toString(ctx, value.get());
         }
         return std::nullopt;
     };
@@ -128,34 +128,34 @@ parseSettingsOption(JSContext *ctx, JSValueConst optionValue,
                     const std::vector<std::string> &languages) {
     SettingsFieldOption option;
     if (JS_IsString(optionValue)) {
-        std::string text = qjs::toString(ctx, optionValue);
+        std::string text = Qjs::toString(ctx, optionValue);
         option.token = text;
         option.label = text;
-        option.valueJson = qjs::jsonStringify(ctx, optionValue);
+        option.valueJson = Qjs::jsonStringify(ctx, optionValue);
         return option;
     }
     if (!JS_IsObject(optionValue)) {
         return std::nullopt;
     }
-    qjs::Value text(ctx, JS_GetPropertyStr(ctx, optionValue, "text"));
+    Qjs::Value text(ctx, JS_GetPropertyStr(ctx, optionValue, "text"));
     option.label = resolveLocalizedName(ctx, text.get(), languages);
     const bool plainText = JS_IsString(text.get());
 
-    qjs::Value value(ctx, JS_GetPropertyStr(ctx, optionValue, "value"));
+    Qjs::Value value(ctx, JS_GetPropertyStr(ctx, optionValue, "value"));
     if (!JS_IsUndefined(value.get())) {
-        option.valueJson = qjs::jsonStringify(ctx, value.get());
+        option.valueJson = Qjs::jsonStringify(ctx, value.get());
     } else if (plainText) {
         // Value defaults to the text literal.
-        option.valueJson = qjs::jsonStringify(ctx, text.get());
+        option.valueJson = Qjs::jsonStringify(ctx, text.get());
     }
 
-    qjs::Value tag(ctx, JS_GetPropertyStr(ctx, optionValue, "tag"));
+    Qjs::Value tag(ctx, JS_GetPropertyStr(ctx, optionValue, "tag"));
     if (JS_IsString(tag.get())) {
-        option.token = qjs::toString(ctx, tag.get());
+        option.token = Qjs::toString(ctx, tag.get());
     } else if (JS_IsString(value.get())) {
-        option.token = qjs::toString(ctx, value.get());
+        option.token = Qjs::toString(ctx, value.get());
     } else if (plainText) {
-        option.token = qjs::toString(ctx, text.get());
+        option.token = Qjs::toString(ctx, text.get());
     } else {
         option.token = option.valueJson;
     }
@@ -193,7 +193,7 @@ const SettingsField *findField(const std::vector<SettingsSection> &sections,
 // the referenced field is a picker, else the bare string / JSON literal.
 std::string conditionValueText(JSContext *ctx, JSValueConst value,
                                const SettingsField *target) {
-    std::string json = qjs::jsonStringify(ctx, value);
+    std::string json = Qjs::jsonStringify(ctx, value);
     if (target != nullptr) {
         for (const auto &option : target->options) {
             if (option.valueJson == json || option.token == json) {
@@ -223,11 +223,11 @@ std::string conditionToText(JSContext *ctx, JSValueConst condition,
     }
     auto joinChildren = [&](JSValueConst array, const std::string &glue) {
         std::string joined;
-        qjs::Value length(ctx, JS_GetPropertyStr(ctx, array, "length"));
+        Qjs::Value length(ctx, JS_GetPropertyStr(ctx, array, "length"));
         uint32_t count = 0;
         JS_ToUint32(ctx, &count, length.get());
         for (uint32_t i = 0; i < count; i++) {
-            qjs::Value child(ctx, JS_GetPropertyUint32(ctx, array, i));
+            Qjs::Value child(ctx, JS_GetPropertyUint32(ctx, array, i));
             std::string text = conditionToText(ctx, child.get(), sections);
             if (text.empty()) {
                 continue;
@@ -244,43 +244,43 @@ std::string conditionToText(JSContext *ctx, JSValueConst condition,
     if (JS_IsArray(condition)) {
         return joinChildren(condition, translated(" and "));
     }
-    qjs::Value allOf(ctx, JS_GetPropertyStr(ctx, condition, "allOf"));
+    Qjs::Value allOf(ctx, JS_GetPropertyStr(ctx, condition, "allOf"));
     if (JS_IsArray(allOf.get())) {
         return joinChildren(allOf.get(), translated(" and "));
     }
-    qjs::Value anyOf(ctx, JS_GetPropertyStr(ctx, condition, "anyOf"));
+    Qjs::Value anyOf(ctx, JS_GetPropertyStr(ctx, condition, "anyOf"));
     if (JS_IsArray(anyOf.get())) {
         return joinChildren(anyOf.get(), translated(" or "));
     }
-    qjs::Value negated(ctx, JS_GetPropertyStr(ctx, condition, "not"));
+    Qjs::Value negated(ctx, JS_GetPropertyStr(ctx, condition, "not"));
     if (JS_IsObject(negated.get())) {
         return replaceFirst(translated("not (%1)"), "%1",
                             conditionToText(ctx, negated.get(), sections));
     }
 
-    qjs::Value key(ctx, JS_GetPropertyStr(ctx, condition, "key"));
+    Qjs::Value key(ctx, JS_GetPropertyStr(ctx, condition, "key"));
     if (!JS_IsString(key.get())) {
         return {};
     }
-    std::string keyText = qjs::toString(ctx, key.get());
+    std::string keyText = Qjs::toString(ctx, key.get());
     const SettingsField *target = findField(sections, keyText);
     std::string label =
         target != nullptr && !target->label.empty() ? target->label : keyText;
 
     auto relation = [&](const char *name,
                         const std::string &sentence) -> std::string {
-        qjs::Value operand(ctx, JS_GetPropertyStr(ctx, condition, name));
+        Qjs::Value operand(ctx, JS_GetPropertyStr(ctx, condition, name));
         if (operand.isUndefined()) {
             return {};
         }
         std::string values;
         if (JS_IsArray(operand.get())) {
-            qjs::Value length(
+            Qjs::Value length(
                 ctx, JS_GetPropertyStr(ctx, operand.get(), "length"));
             uint32_t count = 0;
             JS_ToUint32(ctx, &count, length.get());
             for (uint32_t i = 0; i < count; i++) {
-                qjs::Value item(ctx,
+                Qjs::Value item(ctx,
                                 JS_GetPropertyUint32(ctx, operand.get(), i));
                 if (!values.empty()) {
                     values += translated(", ");
@@ -321,14 +321,14 @@ parseSettingsSections(JSContext *ctx, JSValueConst settingsValue,
         return sections;
     }
     auto arrayLength = [&](JSValueConst array) {
-        qjs::Value length(ctx, JS_GetPropertyStr(ctx, array, "length"));
+        Qjs::Value length(ctx, JS_GetPropertyStr(ctx, array, "length"));
         uint32_t count = 0;
         JS_ToUint32(ctx, &count, length.get());
         return count;
     };
     auto numberProperty = [&](JSValueConst object,
                               const char *name) -> std::optional<double> {
-        qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
+        Qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
         if (!JS_IsNumber(value.get())) {
             return std::nullopt;
         }
@@ -349,14 +349,14 @@ parseSettingsSections(JSContext *ctx, JSValueConst settingsValue,
 
     uint32_t sectionCount = arrayLength(settingsValue);
     for (uint32_t si = 0; si < sectionCount; si++) {
-        qjs::Value sectionValue(ctx,
+        Qjs::Value sectionValue(ctx,
                                 JS_GetPropertyUint32(ctx, settingsValue, si));
         SettingsSection section;
-        qjs::Value title(ctx,
+        Qjs::Value title(ctx,
                          JS_GetPropertyStr(ctx, sectionValue.get(), "title"));
         section.title = resolveLocalizedName(ctx, title.get(), languages);
 
-        qjs::Value fields(ctx,
+        Qjs::Value fields(ctx,
                           JS_GetPropertyStr(ctx, sectionValue.get(),
                                             "fields"));
         if (!JS_IsArray(fields.get())) {
@@ -364,21 +364,21 @@ parseSettingsSections(JSContext *ctx, JSValueConst settingsValue,
         }
         uint32_t fieldCount = arrayLength(fields.get());
         for (uint32_t fi = 0; fi < fieldCount; fi++) {
-            qjs::Value fieldValue(
+            Qjs::Value fieldValue(
                 ctx, JS_GetPropertyUint32(ctx, fields.get(), fi));
-            qjs::Value key(ctx,
+            Qjs::Value key(ctx,
                            JS_GetPropertyStr(ctx, fieldValue.get(), "key"));
-            qjs::Value type(ctx,
+            Qjs::Value type(ctx,
                             JS_GetPropertyStr(ctx, fieldValue.get(), "type"));
             if (!JS_IsString(key.get()) || !JS_IsString(type.get())) {
                 continue;
             }
             SettingsField field;
-            field.key = qjs::toString(ctx, key.get());
-            field.type = qjs::toString(ctx, type.get());
+            field.key = Qjs::toString(ctx, key.get());
+            field.type = Qjs::toString(ctx, type.get());
 
             auto localized = [&](const char *name) {
-                qjs::Value value(
+                Qjs::Value value(
                     ctx, JS_GetPropertyStr(ctx, fieldValue.get(), name));
                 return resolveLocalizedName(ctx, value.get(), languages);
             };
@@ -387,9 +387,9 @@ parseSettingsSections(JSContext *ctx, JSValueConst settingsValue,
             field.placeholder = localized("placeholder");
 
             auto rawJson = [&](const char *name) {
-                qjs::Value value(
+                Qjs::Value value(
                     ctx, JS_GetPropertyStr(ctx, fieldValue.get(), name));
-                return qjs::jsonStringify(ctx, value.get());
+                return Qjs::jsonStringify(ctx, value.get());
             };
             field.defaultJson = rawJson("default");
             std::string disabledJson = rawJson("disabledWhen");
@@ -405,12 +405,12 @@ parseSettingsSections(JSContext *ctx, JSValueConst settingsValue,
             field.max = numberProperty(fieldValue.get(), "max");
             field.step = numberProperty(fieldValue.get(), "step");
 
-            qjs::Value options(
+            Qjs::Value options(
                 ctx, JS_GetPropertyStr(ctx, fieldValue.get(), "options"));
             if (JS_IsArray(options.get())) {
                 uint32_t optionCount = arrayLength(options.get());
                 for (uint32_t oi = 0; oi < optionCount; oi++) {
-                    qjs::Value optionValue(
+                    Qjs::Value optionValue(
                         ctx, JS_GetPropertyUint32(ctx, options.get(), oi));
                     if (auto parsed = parseSettingsOption(
                             ctx, optionValue.get(), languages)) {
@@ -426,7 +426,7 @@ parseSettingsSections(JSContext *ctx, JSValueConst settingsValue,
     for (const auto &pending : pendingConditions) {
         auto &field = sections[pending.section].fields[pending.field];
         auto render = [&](const std::string &json, const char *sentence) {
-            qjs::Value condition(ctx, JS_ParseJSON(ctx, json.c_str(),
+            Qjs::Value condition(ctx, JS_ParseJSON(ctx, json.c_str(),
                                                    json.size(), "condition"));
             std::string text = conditionToText(ctx, condition.get(), sections);
             return text.empty()
@@ -483,53 +483,53 @@ parseManifest(const std::filesystem::path &manifestPath,
 
     {
         const std::string manifestPathText = manifestPath.string();
-        qjs::Value root(ctx, JS_ParseJSON(ctx, content->c_str(),
+        Qjs::Value root(ctx, JS_ParseJSON(ctx, content->c_str(),
                                           content->size(),
                                           manifestPathText.c_str()));
         if (root.isException()) {
             MACISHTYPE_WARN() << "Invalid manifest JSON " << manifestPath
-                              << ": " << qjs::exceptionText(ctx);
+                              << ": " << Qjs::exceptionText(ctx);
         } else if (!JS_IsObject(root.get())) {
             MACISHTYPE_WARN() << "Manifest is not a JSON object: "
                               << manifestPath;
         } else {
             ManifestData data;
 
-            qjs::Value entry(ctx,
+            Qjs::Value entry(ctx,
                              JS_GetPropertyStr(ctx, root.get(), "entry"));
             if (JS_IsString(entry.get())) {
-                data.entry = qjs::toString(ctx, entry.get());
+                data.entry = Qjs::toString(ctx, entry.get());
             }
 
-            qjs::Value name(ctx, JS_GetPropertyStr(ctx, root.get(), "name"));
+            Qjs::Value name(ctx, JS_GetPropertyStr(ctx, root.get(), "name"));
             data.displayName = resolveLocalizedName(ctx, name.get(), languages);
 
-            qjs::Value label(ctx,
+            Qjs::Value label(ctx,
                              JS_GetPropertyStr(ctx, root.get(), "label"));
             if (JS_IsString(label.get())) {
-                data.label = qjs::toString(ctx, label.get());
+                data.label = Qjs::toString(ctx, label.get());
             }
 
-            qjs::Value icon(ctx, JS_GetPropertyStr(ctx, root.get(), "icon"));
+            Qjs::Value icon(ctx, JS_GetPropertyStr(ctx, root.get(), "icon"));
             if (JS_IsString(icon.get())) {
-                data.icon = qjs::toString(ctx, icon.get());
+                data.icon = Qjs::toString(ctx, icon.get());
             }
 
-            qjs::Value intendedLanguage(
+            Qjs::Value intendedLanguage(
                 ctx, JS_GetPropertyStr(ctx, root.get(), "intendedLanguage"));
             if (JS_IsString(intendedLanguage.get())) {
                 data.intendedLanguage =
-                    qjs::toString(ctx, intendedLanguage.get());
+                    Qjs::toString(ctx, intendedLanguage.get());
                 data.languageCode = fcitxLanguageCode(data.intendedLanguage);
             }
 
-            qjs::Value settings(
+            Qjs::Value settings(
                 ctx, JS_GetPropertyStr(ctx, root.get(), "settings"));
             data.settingsSections =
                 parseSettingsSections(ctx, settings.get(), languages);
 
             // modules: {name: true, ...}
-            qjs::Value modules(ctx,
+            Qjs::Value modules(ctx,
                                JS_GetPropertyStr(ctx, root.get(), "modules"));
             if (JS_IsObject(modules.get())) {
                 JSPropertyEnum *properties = nullptr;
@@ -539,7 +539,7 @@ parseManifest(const std::filesystem::path &manifestPath,
                                            JS_GPN_STRING_MASK |
                                                JS_GPN_ENUM_ONLY) == 0) {
                     for (uint32_t i = 0; i < count; i++) {
-                        qjs::Value enabled(
+                        Qjs::Value enabled(
                             ctx, JS_GetProperty(ctx, modules.get(),
                                                 properties[i].atom));
                         if (JS_ToBool(ctx, enabled.get()) != 1) {
@@ -556,12 +556,12 @@ parseManifest(const std::filesystem::path &manifestPath,
                 }
             }
 
-            qjs::Value candidateWindow(
+            Qjs::Value candidateWindow(
                 ctx, JS_GetPropertyStr(ctx, root.get(), "candidateWindow"));
             if (JS_IsObject(candidateWindow.get())) {
                 data.candidateWindowJson =
-                    qjs::jsonStringify(ctx, candidateWindow.get());
-                qjs::Value direction(
+                    Qjs::jsonStringify(ctx, candidateWindow.get());
+                Qjs::Value direction(
                     ctx, JS_GetPropertyStr(ctx, candidateWindow.get(),
                                            "layoutDirection"));
                 data.candidateWindowHasLayoutDirection =
@@ -569,20 +569,20 @@ parseManifest(const std::filesystem::path &manifestPath,
             }
 
             // menu: [{key, ...} | divider], collect declared keys
-            qjs::Value menu(ctx, JS_GetPropertyStr(ctx, root.get(), "menu"));
+            Qjs::Value menu(ctx, JS_GetPropertyStr(ctx, root.get(), "menu"));
             if (JS_IsArray(menu.get())) {
-                qjs::Value menuCount(
+                Qjs::Value menuCount(
                     ctx, JS_GetPropertyStr(ctx, menu.get(), "length"));
                 uint32_t items = 0;
                 JS_ToUint32(ctx, &items, menuCount.get());
                 for (uint32_t i = 0; i < items; i++) {
-                    qjs::Value item(ctx,
+                    Qjs::Value item(ctx,
                                     JS_GetPropertyUint32(ctx, menu.get(), i));
-                    qjs::Value key(
+                    Qjs::Value key(
                         ctx, JS_GetPropertyStr(ctx, item.get(), "key"));
                     if (JS_IsString(key.get())) {
                         data.menuKeys.push_back(
-                            qjs::toString(ctx, key.get()));
+                            Qjs::toString(ctx, key.get()));
                     }
                 }
             }
@@ -591,12 +591,12 @@ parseManifest(const std::filesystem::path &manifestPath,
             // flags, not surfaced on the JS `manifest`. A declared non-
             // boolean value is treated as undeclared (spec: back to the
             // default/language gate) and warned about.
-            qjs::Value capabilities(
+            Qjs::Value capabilities(
                 ctx, JS_GetPropertyStr(ctx, root.get(), "capabilities"));
             if (JS_IsObject(capabilities.get())) {
                 auto capabilityFlag =
                     [&](const char *name) -> std::optional<bool> {
-                    qjs::Value flag(
+                    Qjs::Value flag(
                         ctx, JS_GetPropertyStr(ctx, capabilities.get(), name));
                     if (JS_IsBool(flag.get())) {
                         return JS_ToBool(ctx, flag.get()) == 1;
@@ -630,4 +630,4 @@ parseManifest(const std::filesystem::path &manifestPath,
     return result;
 }
 
-} // namespace macishtype
+} // namespace MacishType

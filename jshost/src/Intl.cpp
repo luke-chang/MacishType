@@ -10,7 +10,7 @@
 
 #include "IntlIcu.h"
 
-namespace macishtype {
+namespace MacishType {
 
 // Bounds the ICU handles cached per kind. The cache keys embed engine-
 // controlled locale/skeleton/pattern strings, so without a cap an engine could
@@ -521,10 +521,10 @@ JSValue JsEngineHost::nativeIntlSegment(JSContext *ctx, JSValueConst thisVal,
         return JS_ThrowTypeError(ctx, "intlSegment: expected 3 arguments");
     }
     UBreakIteratorType type;
-    if (!granularityType(qjs::toString(ctx, argv[1]), &type)) {
+    if (!granularityType(Qjs::toString(ctx, argv[1]), &type)) {
         return JS_ThrowTypeError(ctx, "intlSegment: unknown granularity");
     }
-    std::string locale = toIcuLocale(qjs::toString(ctx, argv[0]));
+    std::string locale = toIcuLocale(Qjs::toString(ctx, argv[0]));
 
     // UTF-16 throughout: the offsets ICU reports are already in String#length
     // units, so they need no conversion before reaching the shim.
@@ -602,9 +602,9 @@ JSValue JsEngineHost::nativeIntlDateTimeResolve(JSContext *ctx,
         return JS_ThrowTypeError(ctx, "intlDateTimeResolve: expected 5 "
                                       "arguments");
     }
-    std::string localeTag = qjs::toString(ctx, argv[0]);
-    std::string skeleton = qjs::toString(ctx, argv[1]);
-    std::string requestedZone = qjs::toString(ctx, argv[2]);
+    std::string localeTag = Qjs::toString(ctx, argv[0]);
+    std::string skeleton = Qjs::toString(ctx, argv[1]);
+    std::string requestedZone = Qjs::toString(ctx, argv[2]);
     int32_t dateStyle = -1;
     int32_t timeStyle = -1;
     JS_ToInt32(ctx, &dateStyle, argv[3]);
@@ -752,13 +752,13 @@ JSValue JsEngineHost::nativeIntlDateTimeFormat(JSContext *ctx,
         return JS_ThrowTypeError(ctx, "intlDateTimeFormat: expected 4 "
                                       "arguments");
     }
-    std::string localeTag = qjs::toString(ctx, argv[0]);
+    std::string localeTag = Qjs::toString(ctx, argv[0]);
     size_t patternLength = 0;
     const uint16_t *pattern = JS_ToCStringLenUTF16(ctx, &patternLength, argv[1]);
     if (pattern == nullptr) {
         return JS_EXCEPTION;
     }
-    std::string timeZone = qjs::toString(ctx, argv[2]);
+    std::string timeZone = Qjs::toString(ctx, argv[2]);
     double epochMs = 0;
     JS_ToFloat64(ctx, &epochMs, argv[3]);
 
@@ -804,13 +804,13 @@ JSValue JsEngineHost::nativeIntlDateTimeFormatToParts(JSContext *ctx,
         return JS_ThrowTypeError(ctx, "intlDateTimeFormatToParts: expected 4 "
                                       "arguments");
     }
-    std::string localeTag = qjs::toString(ctx, argv[0]);
+    std::string localeTag = Qjs::toString(ctx, argv[0]);
     size_t patternLength = 0;
     const uint16_t *pattern = JS_ToCStringLenUTF16(ctx, &patternLength, argv[1]);
     if (pattern == nullptr) {
         return JS_EXCEPTION;
     }
-    std::string timeZone = qjs::toString(ctx, argv[2]);
+    std::string timeZone = Qjs::toString(ctx, argv[2]);
     double epochMs = 0;
     JS_ToFloat64(ctx, &epochMs, argv[3]);
 
@@ -881,7 +881,7 @@ JSValue JsEngineHost::nativeIntlResolveLocale(JSContext *ctx,
                                               JSValueConst thisVal, int argc,
                                               JSValueConst *argv) {
     (void)thisVal;
-    std::string localeTag = argc > 0 ? qjs::toString(ctx, argv[0]) : std::string();
+    std::string localeTag = argc > 0 ? Qjs::toString(ctx, argv[0]) : std::string();
     std::string icuLocale = toIcuLocale(localeTag);
     JSValue result = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, result, "locale",
@@ -898,7 +898,7 @@ JSValue JsEngineHost::nativeIntlNumberFormat(JSContext *ctx,
     if (argc < 3) {
         return JS_ThrowTypeError(ctx, "intlNumberFormat: expected 3 arguments");
     }
-    std::string localeTag = qjs::toString(ctx, argv[0]);
+    std::string localeTag = Qjs::toString(ctx, argv[0]);
     size_t skeletonLength = 0;
     const uint16_t *skeleton =
         JS_ToCStringLenUTF16(ctx, &skeletonLength, argv[1]);
@@ -907,7 +907,7 @@ JSValue JsEngineHost::nativeIntlNumberFormat(JSContext *ctx,
     }
     // The number arrives as a decimal string to keep BigInt/large-int
     // precision that a double round-trip would lose.
-    std::string number = qjs::toString(ctx, argv[2]);
+    std::string number = Qjs::toString(ctx, argv[2]);
 
     int error = U_ZERO_ERROR;
     UNumberFormatter *formatter = numberFormatter(
@@ -954,14 +954,14 @@ JSValue JsEngineHost::nativeIntlNumberFormatToParts(JSContext *ctx,
         return JS_ThrowTypeError(ctx, "intlNumberFormatToParts: expected 3 "
                                       "arguments");
     }
-    std::string localeTag = qjs::toString(ctx, argv[0]);
+    std::string localeTag = Qjs::toString(ctx, argv[0]);
     size_t skeletonLength = 0;
     const uint16_t *skeleton =
         JS_ToCStringLenUTF16(ctx, &skeletonLength, argv[1]);
     if (skeleton == nullptr) {
         return JS_EXCEPTION;
     }
-    std::string number = qjs::toString(ctx, argv[2]);
+    std::string number = Qjs::toString(ctx, argv[2]);
 
     int error = U_ZERO_ERROR;
     UNumberFormatter *formatter = numberFormatter(
@@ -1061,7 +1061,7 @@ JSValue JsEngineHost::nativeIntlPluralSelect(JSContext *ctx,
     if (argc < 4) {
         return JS_ThrowTypeError(ctx, "intlPluralSelect: expected 4 arguments");
     }
-    std::string localeTag = qjs::toString(ctx, argv[0]);
+    std::string localeTag = Qjs::toString(ctx, argv[0]);
     int32_t type = 0;
     JS_ToInt32(ctx, &type, argv[1]);
     size_t skeletonLength = 0;
@@ -1070,7 +1070,7 @@ JSValue JsEngineHost::nativeIntlPluralSelect(JSContext *ctx,
     if (skeleton == nullptr) {
         return JS_EXCEPTION;
     }
-    std::string number = qjs::toString(ctx, argv[3]);
+    std::string number = Qjs::toString(ctx, argv[3]);
 
     IntlCache &cache = hostOf(ctx)->intlCache();
     int error = U_ZERO_ERROR;
@@ -1118,7 +1118,7 @@ JSValue JsEngineHost::nativeIntlPluralCategories(JSContext *ctx,
         return JS_ThrowTypeError(ctx, "intlPluralCategories: expected 2 "
                                       "arguments");
     }
-    std::string localeTag = qjs::toString(ctx, argv[0]);
+    std::string localeTag = Qjs::toString(ctx, argv[0]);
     int32_t type = 0;
     JS_ToInt32(ctx, &type, argv[1]);
 
@@ -1169,8 +1169,8 @@ JSValue JsEngineHost::nativeIntlCollatorCompare(JSContext *ctx,
         return JS_ThrowTypeError(ctx, "intlCollatorCompare: expected 4 "
                                       "arguments");
     }
-    std::string localeTag = qjs::toString(ctx, argv[0]);
-    std::string signature = qjs::toString(ctx, argv[1]);
+    std::string localeTag = Qjs::toString(ctx, argv[0]);
+    std::string signature = Qjs::toString(ctx, argv[1]);
 
     // Coerce both operands to owned buffers BEFORE acquiring the cached
     // collator. JS_ToCStringLenUTF16 can run engine toString/valueOf, which
@@ -1208,4 +1208,4 @@ JSValue JsEngineHost::nativeIntlCollatorCompare(JSContext *ctx,
     return JS_NewInt32(ctx, order);
 }
 
-} // namespace macishtype
+} // namespace MacishType

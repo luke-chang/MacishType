@@ -15,7 +15,7 @@
 #include "I18n.h"
 #include "Log.h"
 
-namespace macishtype {
+namespace MacishType {
 
 // FcitxHostEventLoop ------------------------------------------------------
 
@@ -244,4 +244,4 @@ std::string FcitxCoreServices::FcitxTranslator::translate(const char *text) {
     return fcitx::translateDomain(kTextDomain, text);
 }
 
-} // namespace macishtype
+} // namespace MacishType

@@ -4,7 +4,7 @@
 #include <functional>
 #include <memory>
 
-namespace macishtype {
+namespace MacishType {
 
 // Scheduling seam for the host's main loop. Injected per engine host at
 // load() time — unlike the ambient HostServices — so tests can pair each
@@ -37,4 +37,4 @@ public:
     virtual void post(std::function<void()> callback) = 0;
 };
 
-} // namespace macishtype
+} // namespace MacishType

@@ -10,7 +10,7 @@
 
 #include "Log.h"
 
-namespace macishtype {
+namespace MacishType {
 
 namespace {
 
@@ -327,4 +327,4 @@ void IconLinks::warnOnce(const std::string &engineId,
     }
 }
 
-} // namespace macishtype
+} // namespace MacishType

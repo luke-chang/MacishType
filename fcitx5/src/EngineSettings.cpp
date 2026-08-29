@@ -11,7 +11,7 @@
 #include "I18n.h"
 #include "Log.h"
 
-namespace macishtype {
+namespace MacishType {
 
 namespace {
 
@@ -477,4 +477,4 @@ bool EngineSettings::associatedModeEnabled() const {
     return false;
 }
 
-} // namespace macishtype
+} // namespace MacishType

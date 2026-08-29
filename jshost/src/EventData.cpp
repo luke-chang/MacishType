@@ -6,7 +6,7 @@
 
 #include "MacishType/EngineHost.h"
 
-namespace macishtype {
+namespace MacishType {
 
 namespace {
 
@@ -142,4 +142,4 @@ JSValue buildEventData(JSContext *ctx, const EventStaging &staging,
     return data;
 }
 
-} // namespace macishtype
+} // namespace MacishType

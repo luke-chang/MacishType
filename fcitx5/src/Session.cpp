@@ -13,7 +13,7 @@
 #include <MacishType/QjsUtil.h>
 #include "Log.h"
 
-namespace macishtype {
+namespace MacishType {
 
 namespace {
 
@@ -105,7 +105,7 @@ bool isEscapeLikeKey(const WebKeyEvent &web) {
 
 std::optional<int> intProperty(JSContext *ctx, JSValueConst object,
                                const char *name) {
-    qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
+    Qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
     if (value.isUndefined() || value.isException() ||
         JS_IsNull(value.get()) || !JS_IsNumber(value.get())) {
         return std::nullopt;
@@ -119,7 +119,7 @@ std::optional<int> intProperty(JSContext *ctx, JSValueConst object,
 
 std::optional<bool> boolProperty(JSContext *ctx, JSValueConst object,
                                  const char *name) {
-    qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
+    Qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
     if (value.isUndefined() || value.isException() ||
         !JS_IsBool(value.get())) {
         return std::nullopt;
@@ -129,12 +129,12 @@ std::optional<bool> boolProperty(JSContext *ctx, JSValueConst object,
 
 std::optional<std::string> stringProperty(JSContext *ctx, JSValueConst object,
                                           const char *name) {
-    qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
+    Qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
     if (value.isUndefined() || value.isException() ||
         !JS_IsString(value.get())) {
         return std::nullopt;
     }
-    return qjs::toString(ctx, value.get());
+    return Qjs::toString(ctx, value.get());
 }
 
 } // namespace
@@ -392,7 +392,7 @@ void EngineSession::queueAction(const std::string &name, int argc,
     auto candidateFromValue = [&](JSValueConst value) -> CandidateData {
         CandidateData candidate;
         if (JS_IsString(value)) {
-            candidate.text = qjs::toString(ctx, value);
+            candidate.text = Qjs::toString(ctx, value);
             return candidate;
         }
         if (JS_IsObject(value)) {
@@ -402,7 +402,7 @@ void EngineSession::queueAction(const std::string &name, int argc,
             if (auto annotation = stringProperty(ctx, value, "annotation")) {
                 candidate.annotation = *annotation;
             }
-            qjs::Value payload(ctx,
+            Qjs::Value payload(ctx,
                                JS_GetPropertyStr(ctx, value, "payload"));
             if (!payload.isUndefined() && !payload.isException()) {
                 candidate.payload = payload.release();
@@ -415,12 +415,12 @@ void EngineSession::queueAction(const std::string &name, int argc,
     if (name == "updateMarkedText") {
         UpdateMarkedTextAction action;
         if (argc >= 1) {
-            action.text = qjs::toString(ctx, argv[0]);
+            action.text = Qjs::toString(ctx, argv[0]);
         }
         if (argc >= 2 && JS_IsObject(argv[1])) {
             action.cursor = intProperty(ctx, argv[1], "cursor");
             action.staged = intProperty(ctx, argv[1], "staged");
-            qjs::Value emphasis(ctx,
+            Qjs::Value emphasis(ctx,
                                 JS_GetPropertyStr(ctx, argv[1], "emphasis"));
             if (JS_IsObject(emphasis.get())) {
                 auto start = intProperty(ctx, emphasis.get(), "start");
@@ -436,7 +436,7 @@ void EngineSession::queueAction(const std::string &name, int argc,
     if (name == "updateCandidates") {
         UpdateCandidatesAction action;
         if (argc >= 1 && JS_IsArray(argv[0])) {
-            qjs::Value length(ctx,
+            Qjs::Value length(ctx,
                               JS_GetPropertyStr(ctx, argv[0], "length"));
             uint32_t count = 0;
             JS_ToUint32(ctx, &count, length.get());
@@ -447,7 +447,7 @@ void EngineSession::queueAction(const std::string &name, int argc,
                 count = kMaxListItems;
             }
             for (uint32_t i = 0; i < count; i++) {
-                qjs::Value item(ctx, JS_GetPropertyUint32(ctx, argv[0], i));
+                Qjs::Value item(ctx, JS_GetPropertyUint32(ctx, argv[0], i));
                 action.items.push_back(candidateFromValue(item.get()));
             }
         }
@@ -491,7 +491,7 @@ void EngineSession::queueAction(const std::string &name, int argc,
     if (name == "navigateCandidates") {
         NavigateAction action;
         if (argc >= 1) {
-            action.direction = qjs::toString(ctx, argv[0]);
+            action.direction = Qjs::toString(ctx, argv[0]);
         }
         if (argc >= 2 && JS_IsObject(argv[1])) {
             action.wrapping =
@@ -507,7 +507,7 @@ void EngineSession::queueAction(const std::string &name, int argc,
     if (name == "flushStaged") {
         FlushStagedAction action;
         if (argc >= 1 && JS_IsString(argv[0])) {
-            action.append = qjs::toString(ctx, argv[0]);
+            action.append = Qjs::toString(ctx, argv[0]);
         }
         queue.push_back(std::move(action));
         return;
@@ -515,11 +515,11 @@ void EngineSession::queueAction(const std::string &name, int argc,
     if (name == "enterAssociatedMode") {
         EnterAssociatedAction action;
         if (argc >= 1) {
-            action.heldChar = qjs::toString(ctx, argv[0]);
+            action.heldChar = Qjs::toString(ctx, argv[0]);
         }
         if (argc >= 2 && JS_IsArray(argv[1])) {
             std::vector<std::string> candidates;
-            qjs::Value length(ctx,
+            Qjs::Value length(ctx,
                               JS_GetPropertyStr(ctx, argv[1], "length"));
             uint32_t count = 0;
             JS_ToUint32(ctx, &count, length.get());
@@ -530,8 +530,8 @@ void EngineSession::queueAction(const std::string &name, int argc,
                 count = kMaxListItems;
             }
             for (uint32_t i = 0; i < count; i++) {
-                qjs::Value item(ctx, JS_GetPropertyUint32(ctx, argv[1], i));
-                candidates.push_back(qjs::toString(ctx, item.get()));
+                Qjs::Value item(ctx, JS_GetPropertyUint32(ctx, argv[1], i));
+                candidates.push_back(Qjs::toString(ctx, item.get()));
             }
             action.candidates = std::move(candidates);
         }
@@ -1211,11 +1211,11 @@ JSValue EngineSession::makeEvent(const WebKeyEvent *web,
                       candidate->payload, candidate->hasPayload};
         confirmingPtr = &confirming;
     }
-    qjs::Value data(ctx, buildEventData(ctx, staging, keyFields,
+    Qjs::Value data(ctx, buildEventData(ctx, staging, keyFields,
                                         confirmingPtr, absoluteIndex,
                                         windowConfig_));
-    qjs::Value global(ctx, JS_GetGlobalObject(ctx));
-    qjs::Value maker(
+    Qjs::Value global(ctx, JS_GetGlobalObject(ctx));
+    Qjs::Value maker(
         ctx, JS_GetPropertyStr(ctx, global.get(), c_MakeEventHook));
     if (!maker.isFunction()) {
         MACISHTYPE_ERROR() << "hostglue.js did not define "
@@ -1225,7 +1225,7 @@ JSValue EngineSession::makeEvent(const WebKeyEvent *web,
     JSValue argument = data.get();
     JSValue event = JS_Call(ctx, maker.get(), JS_UNDEFINED, 1, &argument);
     if (JS_IsException(event)) {
-        MACISHTYPE_ERROR() << "makeEvent failed: " << qjs::exceptionText(ctx);
+        MACISHTYPE_ERROR() << "makeEvent failed: " << Qjs::exceptionText(ctx);
         return data.release();
     }
     return event;
@@ -1255,4 +1255,4 @@ void EngineSession::freeCandidates(std::vector<CandidateData> &candidates) {
     candidates.clear();
 }
 
-} // namespace macishtype
+} // namespace MacishType

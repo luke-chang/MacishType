@@ -11,7 +11,7 @@
 #include "MacishType/HostSeams.h"
 #include "MacishType/QjsUtil.h"
 
-namespace macishtype {
+namespace MacishType {
 
 namespace {
 
@@ -275,14 +275,14 @@ bool JsEngineHost::initialize() {
     // Manifest-declared candidate window fields become the read fallback
     // for the manifest.candidateWindow proxy.
     if (!manifest_.candidateWindowJson.empty()) {
-        qjs::Value declared(
+        Qjs::Value declared(
             ctx_, JS_ParseJSON(ctx_, manifest_.candidateWindowJson.c_str(),
                                manifest_.candidateWindowJson.size(),
                                "manifest.candidateWindow"));
         if (JS_IsObject(declared.get())) {
             for (const auto &[field, type] : candidateWindowFieldTypes()) {
                 (void)type;
-                qjs::Value value(
+                Qjs::Value value(
                     ctx_,
                     JS_GetPropertyStr(ctx_, declared.get(), field.c_str()));
                 if (!value.isUndefined() && !value.isException()) {
@@ -339,11 +339,11 @@ bool JsEngineHost::evaluateScript(const std::filesystem::path &path,
         return false;
     }
     Entry entry(*this);
-    qjs::Value result(ctx_, JS_Eval(ctx_, content->c_str(), content->size(),
+    Qjs::Value result(ctx_, JS_Eval(ctx_, content->c_str(), content->size(),
                                     scriptName, JS_EVAL_TYPE_GLOBAL));
     if (result.isException()) {
         MACISHTYPE_ERROR() << scriptName
-                           << " failed: " << qjs::exceptionText(ctx_);
+                           << " failed: " << Qjs::exceptionText(ctx_);
         return false;
     }
     return true;
@@ -351,27 +351,27 @@ bool JsEngineHost::evaluateScript(const std::filesystem::path &path,
 
 bool JsEngineHost::pushSettings(const std::string &valuesJson) {
     Entry entry(*this);
-    qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
-    qjs::Value setter(
+    Qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
+    Qjs::Value setter(
         ctx_, JS_GetPropertyStr(ctx_, global.get(), "__MacishType_setSettings"));
     if (!setter.isFunction()) {
         MACISHTYPE_ERROR() << "runtime.js did not define "
                               "__MacishType_setSettings";
         return false;
     }
-    qjs::Value values(ctx_, JS_ParseJSON(ctx_, valuesJson.c_str(),
+    Qjs::Value values(ctx_, JS_ParseJSON(ctx_, valuesJson.c_str(),
                                          valuesJson.size(), "settings"));
     if (values.isException()) {
         MACISHTYPE_ERROR() << "Invalid settings values: "
-                           << qjs::exceptionText(ctx_);
+                           << Qjs::exceptionText(ctx_);
         return false;
     }
     JSValue argument = values.get();
-    qjs::Value result(
+    Qjs::Value result(
         ctx_, JS_Call(ctx_, setter.get(), JS_UNDEFINED, 1, &argument));
     if (result.isException()) {
         MACISHTYPE_ERROR() << "Settings push failed: "
-                           << qjs::exceptionText(ctx_);
+                           << Qjs::exceptionText(ctx_);
         return false;
     }
     return true;
@@ -418,7 +418,7 @@ bool JsEngineHost::injectModules() {
         return true;
     }
     Entry entry(*this);
-    qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
+    Qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
     for (const auto &moduleName : manifest_.enabledModules) {
         // A module the host does not back (unknown name, or no table installed)
         // injects an empty view, so it answers with its miss value.
@@ -426,13 +426,13 @@ bool JsEngineHost::injectModules() {
         const char *setterName = moduleName == "fontCoverage"
                                      ? "__MacishType_setCoverageModule"
                                      : "__MacishType_setModuleData";
-        qjs::Value setter(
+        Qjs::Value setter(
             ctx_, JS_GetPropertyStr(ctx_, global.get(), setterName));
         if (!setter.isFunction()) {
             MACISHTYPE_ERROR() << "runtime.js did not define " << setterName;
             return false;
         }
-        qjs::Value result;
+        Qjs::Value result;
         if (moduleName == "fontCoverage") {
             // Platform-provided coverage when installed; otherwise the
             // full-coverage bitmap, which disables candidate filtering.
@@ -444,7 +444,7 @@ bool JsEngineHost::injectModules() {
                 JS_NewString(ctx_, moduleName.c_str()),
                 JS_NewString(ctx_, coverage.c_str()),
             };
-            result = qjs::Value(
+            result = Qjs::Value(
                 ctx_, JS_Call(ctx_, setter.get(), JS_UNDEFINED, 2, arguments));
             JS_FreeValue(ctx_, arguments[0]);
             JS_FreeValue(ctx_, arguments[1]);
@@ -464,7 +464,7 @@ bool JsEngineHost::injectModules() {
                 table,
                 missValue,
             };
-            result = qjs::Value(
+            result = Qjs::Value(
                 ctx_, JS_Call(ctx_, setter.get(), JS_UNDEFINED, 3, arguments));
             JS_FreeValue(ctx_, arguments[0]);
             JS_FreeValue(ctx_, arguments[1]);
@@ -472,7 +472,7 @@ bool JsEngineHost::injectModules() {
         }
         if (result.isException()) {
             MACISHTYPE_ERROR() << "Module injection failed for " << moduleName
-                               << ": " << qjs::exceptionText(ctx_);
+                               << ": " << Qjs::exceptionText(ctx_);
             return false;
         }
     }
@@ -627,25 +627,25 @@ bool JsEngineHost::evaluateEntryModule() {
                     entryPath.url.c_str(),
                     JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
     }
-    qjs::Value compiled(ctx_, compiledModule);
+    Qjs::Value compiled(ctx_, compiledModule);
     if (compiled.isException()) {
         MACISHTYPE_ERROR() << "Entry module compile failed: "
-                           << qjs::exceptionText(ctx_);
+                           << Qjs::exceptionText(ctx_);
         return false;
     }
     auto *module =
         static_cast<JSModuleDef *>(JS_VALUE_GET_PTR(compiled.get()));
-    qjs::Value meta(ctx_, JS_GetImportMeta(ctx_, module));
+    Qjs::Value meta(ctx_, JS_GetImportMeta(ctx_, module));
     if (JS_IsObject(meta.get())) {
         JS_DefinePropertyValueStr(ctx_, meta.get(), "url",
                                   JS_NewString(ctx_, entryPath.url.c_str()),
                                   JS_PROP_C_W_E);
     }
 
-    qjs::Value evaluation(ctx_, JS_EvalFunction(ctx_, compiled.release()));
+    Qjs::Value evaluation(ctx_, JS_EvalFunction(ctx_, compiled.release()));
     if (evaluation.isException()) {
         MACISHTYPE_ERROR() << "Entry module threw: "
-                           << qjs::exceptionText(ctx_);
+                           << Qjs::exceptionText(ctx_);
         return false;
     }
     drainJobs();
@@ -667,10 +667,10 @@ bool JsEngineHost::evaluateEntryModule() {
         case JS_PROMISE_FULFILLED:
             break;
         case JS_PROMISE_REJECTED: {
-            qjs::Value reason(ctx_,
+            Qjs::Value reason(ctx_,
                               JS_PromiseResult(ctx_, evaluation.get()));
             MACISHTYPE_ERROR() << "Entry module rejected: "
-                               << qjs::errorText(ctx_, reason.get());
+                               << Qjs::errorText(ctx_, reason.get());
             return false;
         }
         default:
@@ -681,13 +681,13 @@ bool JsEngineHost::evaluateEntryModule() {
         }
     }
 
-    qjs::Value moduleNamespace(ctx_, JS_GetModuleNamespace(ctx_, module));
+    Qjs::Value moduleNamespace(ctx_, JS_GetModuleNamespace(ctx_, module));
     if (moduleNamespace.isException()) {
         MACISHTYPE_ERROR() << "Cannot access entry module namespace: "
-                           << qjs::exceptionText(ctx_);
+                           << Qjs::exceptionText(ctx_);
         return false;
     }
-    qjs::Value defaultExport(
+    Qjs::Value defaultExport(
         ctx_, JS_GetPropertyStr(ctx_, moduleNamespace.get(), "default"));
     if (!defaultExport.isFunction()) {
         MACISHTYPE_ERROR()
@@ -702,11 +702,11 @@ bool JsEngineHost::evaluateEntryModule() {
 
 uint64_t JsEngineHost::createInstance() {
     Entry entry(*this);
-    qjs::Value instance(
+    Qjs::Value instance(
         ctx_, JS_CallConstructor(ctx_, engineClass_, 0, nullptr));
     if (instance.isException()) {
         MACISHTYPE_ERROR() << "Engine constructor threw: "
-                           << qjs::exceptionText(ctx_);
+                           << Qjs::exceptionText(ctx_);
         return 0;
     }
     uint64_t instanceId = nextInstanceId_++;
@@ -726,23 +726,23 @@ void JsEngineHost::destroyInstance(uint64_t instanceId) {
 std::optional<bool> JsEngineHost::invokeHook(uint64_t instanceId,
                                              const char *method,
                                              JSValue argument) {
-    qjs::Value argumentGuard(ctx_, argument);
+    Qjs::Value argumentGuard(ctx_, argument);
     auto found = instances_.find(instanceId);
     if (found == instances_.end()) {
         return std::nullopt;
     }
-    qjs::Value hook(ctx_, JS_GetPropertyStr(ctx_, found->second, method));
+    Qjs::Value hook(ctx_, JS_GetPropertyStr(ctx_, found->second, method));
     if (!hook.isFunction()) {
         return std::nullopt;
     }
     Entry entry(*this);
     int argc = JS_IsUndefined(argumentGuard.get()) ? 0 : 1;
     JSValue argv = argumentGuard.get();
-    qjs::Value result(
+    Qjs::Value result(
         ctx_, JS_Call(ctx_, hook.get(), found->second, argc, &argv));
     if (result.isException()) {
         MACISHTYPE_ERROR() << engineId_ << "." << method
-                           << " threw: " << qjs::exceptionText(ctx_);
+                           << " threw: " << Qjs::exceptionText(ctx_);
         return std::nullopt;
     }
     return JS_ToBool(ctx_, result.get()) == 1;
@@ -756,18 +756,18 @@ uint64_t JsEngineHost::prepareReverseLookup(std::function<void(bool)> onReady) {
     // A fresh lookup cancels any pending idle release of the index.
     reverseLookupReleaseTimer_.reset();
     Entry entry(*this);
-    qjs::Value method(
+    Qjs::Value method(
         ctx_, JS_GetPropertyStr(ctx_, engineClass_, "prepareReverseLookup"));
     if (!method.isFunction()) {
         settleReverseLookup(token, true); // absent => ready
         return token;
     }
     reverseLookupPrepared_ = true;
-    qjs::Value result(
+    Qjs::Value result(
         ctx_, JS_Call(ctx_, method.get(), engineClass_, 0, nullptr));
     if (result.isException()) {
         MACISHTYPE_ERROR() << engineId_ << ".prepareReverseLookup threw: "
-                           << qjs::exceptionText(ctx_);
+                           << Qjs::exceptionText(ctx_);
         settleReverseLookup(token, false);
         return token;
     }
@@ -778,24 +778,24 @@ uint64_t JsEngineHost::prepareReverseLookup(std::function<void(bool)> onReady) {
     // Attach C++ reactions carrying the token (onResolve magic 1, onReject
     // magic 0). A synchronously-settled promise runs them during this Entry's
     // drainJobs (before we return); a pending one settles on a later turn.
-    qjs::Value tokenValue(ctx_, JS_NewInt64(ctx_, static_cast<int64_t>(token)));
+    Qjs::Value tokenValue(ctx_, JS_NewInt64(ctx_, static_cast<int64_t>(token)));
     JSValueConst data = tokenValue.get();
-    qjs::Value onResolve(
+    Qjs::Value onResolve(
         ctx_, JS_NewCFunctionData(ctx_, reverseLookupReaction, 1, 1, 1, &data));
-    qjs::Value onReject(
+    Qjs::Value onReject(
         ctx_, JS_NewCFunctionData(ctx_, reverseLookupReaction, 1, 0, 1, &data));
-    qjs::Value thenFn(ctx_, JS_GetPropertyStr(ctx_, result.get(), "then"));
+    Qjs::Value thenFn(ctx_, JS_GetPropertyStr(ctx_, result.get(), "then"));
     if (!thenFn.isFunction()) {
         settleReverseLookup(token, true);
         return token;
     }
     JSValue args[2] = {onResolve.get(), onReject.get()};
-    qjs::Value chained(
+    Qjs::Value chained(
         ctx_, JS_Call(ctx_, thenFn.get(), result.get(), 2, args));
     if (chained.isException()) {
         MACISHTYPE_ERROR() << engineId_
                            << ": prepareReverseLookup .then failed: "
-                           << qjs::exceptionText(ctx_);
+                           << Qjs::exceptionText(ctx_);
         settleReverseLookup(token, false);
     }
     return token;
@@ -822,45 +822,45 @@ std::vector<JsEngineHost::ReverseCode>
 JsEngineHost::reverseLookup(const std::string &character) {
     std::vector<ReverseCode> codes;
     Entry entry(*this);
-    qjs::Value method(
+    Qjs::Value method(
         ctx_, JS_GetPropertyStr(ctx_, engineClass_, "reverseLookup"));
     if (!method.isFunction()) {
         return codes;
     }
-    qjs::Value arg(
+    Qjs::Value arg(
         ctx_, JS_NewStringLen(ctx_, character.c_str(), character.size()));
     JSValue argv = arg.get();
-    qjs::Value result(
+    Qjs::Value result(
         ctx_, JS_Call(ctx_, method.get(), engineClass_, 1, &argv));
     if (result.isException()) {
         MACISHTYPE_ERROR() << engineId_ << ".reverseLookup threw: "
-                           << qjs::exceptionText(ctx_);
+                           << Qjs::exceptionText(ctx_);
         return codes;
     }
     if (!JS_IsArray(result.get())) {
         return codes;
     }
-    qjs::Value lengthValue(ctx_,
+    Qjs::Value lengthValue(ctx_,
                            JS_GetPropertyStr(ctx_, result.get(), "length"));
     uint32_t length = 0;
     JS_ToUint32(ctx_, &length, lengthValue.get());
     uint32_t limit = std::min(length, kReverseLookupMaxMarshaledCodes);
     for (uint32_t i = 0; i < limit; i++) {
-        qjs::Value item(ctx_, JS_GetPropertyUint32(ctx_, result.get(), i));
+        Qjs::Value item(ctx_, JS_GetPropertyUint32(ctx_, result.get(), i));
         ReverseCode code;
         if (JS_IsString(item.get())) {
-            code.code = qjs::toString(ctx_, item.get());
+            code.code = Qjs::toString(ctx_, item.get());
         } else if (JS_IsObject(item.get())) {
-            qjs::Value codeValue(
+            Qjs::Value codeValue(
                 ctx_, JS_GetPropertyStr(ctx_, item.get(), "code"));
             if (!JS_IsString(codeValue.get())) {
                 continue; // require a string `code`
             }
-            code.code = qjs::toString(ctx_, codeValue.get());
-            qjs::Value annotation(
+            code.code = Qjs::toString(ctx_, codeValue.get());
+            Qjs::Value annotation(
                 ctx_, JS_GetPropertyStr(ctx_, item.get(), "annotation"));
             if (JS_IsString(annotation.get())) {
-                code.annotation = qjs::toString(ctx_, annotation.get());
+                code.annotation = Qjs::toString(ctx_, annotation.get());
             }
         } else {
             continue;
@@ -878,14 +878,14 @@ void JsEngineHost::releaseReverseLookup() {
     ++reverseLookupToken_; // invalidate any straggler reaction
     reverseLookupOnReady_ = nullptr;
     Entry entry(*this);
-    qjs::Value method(
+    Qjs::Value method(
         ctx_, JS_GetPropertyStr(ctx_, engineClass_, "endReverseLookup"));
     if (method.isFunction()) {
-        qjs::Value result(
+        Qjs::Value result(
             ctx_, JS_Call(ctx_, method.get(), engineClass_, 0, nullptr));
         if (result.isException()) {
             MACISHTYPE_ERROR() << engineId_ << ".endReverseLookup threw: "
-                               << qjs::exceptionText(ctx_);
+                               << Qjs::exceptionText(ctx_);
         }
     }
 }
@@ -908,7 +908,7 @@ bool JsEngineHost::instanceHasHook(uint64_t instanceId, const char *method) {
     if (found == instances_.end()) {
         return false;
     }
-    qjs::Value hook(ctx_, JS_GetPropertyStr(ctx_, found->second, method));
+    Qjs::Value hook(ctx_, JS_GetPropertyStr(ctx_, found->second, method));
     return hook.isFunction();
 }
 
@@ -950,7 +950,7 @@ void JsEngineHost::drainJobs() {
         }
         if (status < 0 && jobCtx != nullptr) {
             MACISHTYPE_ERROR() << "Microtask threw: "
-                               << qjs::exceptionText(jobCtx);
+                               << Qjs::exceptionText(jobCtx);
         }
     }
 }
@@ -964,7 +964,7 @@ void JsEngineHost::rejectionTracker(JSContext *ctx, JSValueConst promise,
         host->pendingRejections_.erase(key);
         return;
     }
-    host->pendingRejections_[key] = qjs::errorText(ctx, reason);
+    host->pendingRejections_[key] = Qjs::errorText(ctx, reason);
 }
 
 // Async fetch pipeline ---------------------------------------------------
@@ -1136,7 +1136,7 @@ void JsEngineHost::settleFetches(std::vector<PendingFetch> batch) {
             JS_FreeValue(ctx_, buffer);
             if (JS_IsException(response)) {
                 MACISHTYPE_ERROR() << engineId_ << ": fetch response failed: "
-                                   << qjs::exceptionText(ctx_);
+                                   << Qjs::exceptionText(ctx_);
             } else {
                 JSValue result =
                     JS_Call(ctx_, fetch.resolve, JS_UNDEFINED, 1, &response);
@@ -1360,7 +1360,7 @@ void JsEngineHost::setCandidateWindowField(const std::string &field,
                               << ": expected string, write ignored";
             return;
         }
-        std::string text = qjs::toString(ctx_, value);
+        std::string text = Qjs::toString(ctx_, value);
         if (field == "layoutDirection" && text != "horizontal" &&
             text != "vertical") {
             MACISHTYPE_WARN()
@@ -1476,8 +1476,8 @@ void JsEngineHost::handleStorageChanges(
 }
 
 void JsEngineHost::dispatchStorageEvent(const std::string &key) {
-    qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
-    qjs::Value dispatch(
+    Qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
+    Qjs::Value dispatch(
         ctx_,
         JS_GetPropertyStr(ctx_, global.get(),
                           "__MacishType_dispatchStorageEvent"));
@@ -1488,13 +1488,13 @@ void JsEngineHost::dispatchStorageEvent(const std::string &key) {
     // host->JS entry point; a storage listener is arbitrary engine code.
     Entry entry(*this);
     JSValue keyValue = JS_NewStringLen(ctx_, key.c_str(), key.size());
-    qjs::Value result(ctx_, JS_Call(ctx_, dispatch.get(), JS_UNDEFINED, 1,
+    Qjs::Value result(ctx_, JS_Call(ctx_, dispatch.get(), JS_UNDEFINED, 1,
                                     &keyValue));
     JS_FreeValue(ctx_, keyValue);
     if (result.isException()) {
         MACISHTYPE_ERROR() << "[" << engineId_
                            << "] storage event dispatch failed: "
-                           << qjs::exceptionText(ctx_);
+                           << Qjs::exceptionText(ctx_);
     }
 }
 
@@ -1508,8 +1508,8 @@ JSValue JsEngineHost::nativeLog(JSContext *ctx, JSValueConst thisVal,
                                 int argc, JSValueConst *argv) {
     (void)thisVal;
     auto *host = hostOf(ctx);
-    std::string level = argc > 0 ? qjs::toString(ctx, argv[0]) : "info";
-    std::string message = argc > 1 ? qjs::toString(ctx, argv[1]) : "";
+    std::string level = argc > 0 ? Qjs::toString(ctx, argv[0]) : "info";
+    std::string message = argc > 1 ? Qjs::toString(ctx, argv[1]) : "";
     if (level == "error" || level == "fault") {
         MACISHTYPE_ERROR() << "[" << host->engineId_ << "] " << message;
     } else if (level == "notice") {
@@ -1544,7 +1544,7 @@ JSValue JsEngineHost::nativeGetCandidateWindowField(JSContext *ctx,
     if (argc < 1) {
         return JS_NULL;
     }
-    auto value = host->candidateWindowField(qjs::toString(ctx, argv[0]));
+    auto value = host->candidateWindowField(Qjs::toString(ctx, argv[0]));
     if (!value) {
         return JS_NULL;
     }
@@ -1564,7 +1564,7 @@ JSValue JsEngineHost::nativeSetCandidateWindowField(JSContext *ctx,
     (void)thisVal;
     auto *host = hostOf(ctx);
     if (argc >= 2) {
-        host->setCandidateWindowField(qjs::toString(ctx, argv[0]), argv[1]);
+        host->setCandidateWindowField(Qjs::toString(ctx, argv[0]), argv[1]);
     }
     return JS_UNDEFINED;
 }
@@ -1600,8 +1600,8 @@ void JsEngineHost::dispatchToggleChange(const std::string &key) {
     if (toggleDelegates_.count(key) == 0) {
         return;
     }
-    qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
-    qjs::Value dispatch(ctx_,
+    Qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
+    Qjs::Value dispatch(ctx_,
                         JS_GetPropertyStr(ctx_, global.get(),
                                           "__MacishType_dispatchGlobal"));
     if (!JS_IsFunction(ctx_, dispatch.get())) {
@@ -1614,13 +1614,13 @@ void JsEngineHost::dispatchToggleChange(const std::string &key) {
     JS_SetPropertyStr(ctx_, event, "type", JS_NewString(ctx_, "togglechange"));
     JS_SetPropertyStr(ctx_, event, "key",
                       JS_NewStringLen(ctx_, key.c_str(), key.size()));
-    qjs::Value result(ctx_, JS_Call(ctx_, dispatch.get(), JS_UNDEFINED, 1,
+    Qjs::Value result(ctx_, JS_Call(ctx_, dispatch.get(), JS_UNDEFINED, 1,
                                     &event));
     JS_FreeValue(ctx_, event);
     if (result.isException()) {
         MACISHTYPE_ERROR() << "[" << engineId_
                            << "] togglechange dispatch failed: "
-                           << qjs::exceptionText(ctx_);
+                           << Qjs::exceptionText(ctx_);
     }
 }
 
@@ -1631,7 +1631,7 @@ JSValue JsEngineHost::nativeGetMenuValue(JSContext *ctx, JSValueConst thisVal,
     if (argc < 1) {
         return JS_NULL;
     }
-    std::string key = qjs::toString(ctx, argv[0]);
+    std::string key = Qjs::toString(ctx, argv[0]);
     auto found = host->menuValues_.find(key);
     if (found == host->menuValues_.end()) {
         return JS_NULL;
@@ -1646,7 +1646,7 @@ JSValue JsEngineHost::nativeSetMenuValue(JSContext *ctx, JSValueConst thisVal,
     if (argc < 2) {
         return JS_UNDEFINED;
     }
-    std::string key = qjs::toString(ctx, argv[0]);
+    std::string key = Qjs::toString(ctx, argv[0]);
     auto found = host->menuValues_.find(key);
     if (found == host->menuValues_.end()) {
         MACISHTYPE_WARN() << "menu: write to undeclared key ignored: " << key;
@@ -1685,7 +1685,7 @@ JSValue JsEngineHost::nativeGetToggleValue(JSContext *ctx,
     if (argc < 1) {
         return JS_NULL;
     }
-    std::string key = qjs::toString(ctx, argv[0]);
+    std::string key = Qjs::toString(ctx, argv[0]);
     auto found = host->toggleDelegates_.find(key);
     if (found == host->toggleDelegates_.end()) {
         return JS_NULL;
@@ -1701,7 +1701,7 @@ JSValue JsEngineHost::nativeSetToggleValue(JSContext *ctx,
     if (argc < 2) {
         return JS_UNDEFINED;
     }
-    std::string key = qjs::toString(ctx, argv[0]);
+    std::string key = Qjs::toString(ctx, argv[0]);
     auto found = host->toggleDelegates_.find(key);
     if (found == host->toggleDelegates_.end()) {
         MACISHTYPE_WARN() << "toggle: write to unavailable key ignored: "
@@ -1741,7 +1741,7 @@ JSValue JsEngineHost::nativeStorageGetItem(JSContext *ctx,
     if (argc < 1) {
         return JS_NULL;
     }
-    auto path = host->safeStoragePath(qjs::toString(ctx, argv[0]));
+    auto path = host->safeStoragePath(Qjs::toString(ctx, argv[0]));
     if (!path) {
         return JS_NULL;
     }
@@ -1760,7 +1760,7 @@ JSValue JsEngineHost::nativeStorageSetItem(JSContext *ctx,
     if (argc < 2) {
         return JS_UNDEFINED;
     }
-    std::string key = qjs::toString(ctx, argv[0]);
+    std::string key = Qjs::toString(ctx, argv[0]);
     if (key.empty()) {
         return JS_ThrowTypeError(ctx, "localStorage: key must not be empty");
     }
@@ -1769,7 +1769,7 @@ JSValue JsEngineHost::nativeStorageSetItem(JSContext *ctx,
             ctx, "localStorage: encoded key exceeds %zu bytes",
             kStorageMaxEncodedKeyBytes);
     }
-    std::string value = qjs::toString(ctx, argv[1]);
+    std::string value = Qjs::toString(ctx, argv[1]);
     if (value.size() > kStorageMaxValueBytes) {
         return JS_ThrowRangeError(ctx,
                                   "localStorage: value exceeds %zu bytes",
@@ -1799,7 +1799,7 @@ JSValue JsEngineHost::nativeStorageRemoveItem(JSContext *ctx,
     if (argc < 1) {
         return JS_UNDEFINED;
     }
-    auto path = host->safeStoragePath(qjs::toString(ctx, argv[0]));
+    auto path = host->safeStoragePath(Qjs::toString(ctx, argv[0]));
     if (!path) {
         return JS_UNDEFINED;
     }
@@ -1931,7 +1931,7 @@ JSValue JsEngineHost::nativeBeginFetch(JSContext *ctx, JSValueConst thisVal,
                                  "beginFetch: expected (path, resolve, "
                                  "reject)");
     }
-    auto resolved = host->resolveEnginePath(qjs::toString(ctx, argv[0]));
+    auto resolved = host->resolveEnginePath(Qjs::toString(ctx, argv[0]));
     if (auto *errorText = std::get_if<std::string>(&resolved)) {
         // Path-level failures reject at fetch() time (the spec's "background
         // stat" semantics); only the disk read is deferred. Call the reject
@@ -1987,7 +1987,7 @@ JSValue JsEngineHost::nativeAction(JSContext *ctx, JSValueConst thisVal,
     if (argc < 1) {
         return JS_UNDEFINED;
     }
-    std::string name = qjs::toString(ctx, argv[0]);
+    std::string name = Qjs::toString(ctx, argv[0]);
     if (!host->actionHandler_) {
         MACISHTYPE_WARN() << host->engineId_ << ": mutator '" << name
                           << "' called outside an engine hook, ignored";
@@ -2131,7 +2131,7 @@ JSValue JsEngineHost::nativeEncodeUtf8(JSContext *ctx, JSValueConst thisVal,
 }
 
 void JsEngineHost::registerBridgeGlobals() {
-    qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
+    Qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
     auto define = [&](const char *name, JSCFunction *function, int length) {
         JS_SetPropertyStr(ctx_, global.get(), name,
                           JS_NewCFunction(ctx_, function, name, length));
@@ -2194,4 +2194,4 @@ void JsEngineHost::registerBridgeGlobals() {
                       JS_NewString(ctx_, userAgent_.c_str()));
 }
 
-} // namespace macishtype
+} // namespace MacishType

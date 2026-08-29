@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace macishtype {
+namespace MacishType {
 
 // Per-JsEngineHost cache of ICU handles backing the Intl bindings. Handles are
 // stored type-erased (void*) so this header stays free of ICU headers; intl.cpp
@@ -60,4 +60,4 @@ std::vector<size_t> graphemeBoundariesUtf8(IntlCache &cache,
 // typing path pays no ICU data load. Returns false when ICU fails.
 bool warmGraphemeSegmenter(IntlCache &cache);
 
-} // namespace macishtype
+} // namespace MacishType

@@ -16,7 +16,7 @@ namespace fcitx {
 class CommonCandidateList;
 }
 
-namespace macishtype {
+namespace MacishType {
 
 // Candidate emitted by the engine; `payload` is an opaque JS value that
 // round-trips back through confirm/selection events.
@@ -183,4 +183,4 @@ private:
     std::vector<std::vector<Action>> queueStack_;
 };
 
-} // namespace macishtype
+} // namespace MacishType

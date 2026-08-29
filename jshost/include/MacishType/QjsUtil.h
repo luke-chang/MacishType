@@ -5,7 +5,7 @@
 
 #include <quickjs.h>
 
-namespace macishtype::qjs {
+namespace MacishType::Qjs {
 
 // Move-only RAII owner for a JSValue reference.
 class Value {
@@ -104,4 +104,4 @@ inline std::string exceptionText(JSContext *ctx) {
     return errorText(ctx, exception.get());
 }
 
-} // namespace macishtype::qjs
+} // namespace MacishType::Qjs

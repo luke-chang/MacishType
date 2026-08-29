@@ -2,7 +2,7 @@
 
 #include "MacishType/HostLog.h"
 
-namespace macishtype {
+namespace MacishType {
 
 namespace {
 
@@ -29,4 +29,4 @@ LogLine::~LogLine() {
     }
 }
 
-} // namespace macishtype
+} // namespace MacishType

@@ -2,7 +2,7 @@
 
 #include <MacishType/HostSeams.h>
 
-namespace macishtype {
+namespace MacishType {
 
 // FontCoverageProvider over fontconfig: unions the charsets of every
 // installed font into the shared coverage bitmap format. Falls back to
@@ -13,4 +13,4 @@ public:
     const std::string &coverageBitmapBase64() override;
 };
 
-} // namespace macishtype
+} // namespace MacishType

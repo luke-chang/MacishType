@@ -10,7 +10,7 @@
 
 #include "Log.h"
 
-namespace macishtype {
+namespace MacishType {
 
 namespace {
 
@@ -89,4 +89,4 @@ const std::string &FontconfigCoverageProvider::coverageBitmapBase64() {
     return cached;
 }
 
-} // namespace macishtype
+} // namespace MacishType

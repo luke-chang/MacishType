@@ -50,7 +50,7 @@
 
 namespace {
 
-using namespace macishtype;
+using namespace MacishType;
 
 // Output ------------------------------------------------------------------
 
@@ -274,7 +274,7 @@ struct CliStaging {
 };
 
 std::string serializeJsValue(JSContext *ctx, JSValueConst value) {
-    std::string json = qjs::jsonStringify(ctx, value);
+    std::string json = Qjs::jsonStringify(ctx, value);
     return json.empty() ? "null" : json;
 }
 
@@ -284,12 +284,12 @@ bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
     // The stdin vocabulary: short modifier names, keyIgnoringModifiers
     // defaulting to key; repeat/numLock/location keep the struct defaults.
     auto stringProp = [&](const char *name, const std::string &fallback = {}) {
-        qjs::Value value(ctx, JS_GetPropertyStr(ctx, keyFields, name));
+        Qjs::Value value(ctx, JS_GetPropertyStr(ctx, keyFields, name));
         return value.isUndefined() ? fallback
-                                   : qjs::toString(ctx, value.get());
+                                   : Qjs::toString(ctx, value.get());
     };
     auto boolProp = [&](const char *name) {
-        qjs::Value value(ctx, JS_GetPropertyStr(ctx, keyFields, name));
+        Qjs::Value value(ctx, JS_GetPropertyStr(ctx, keyFields, name));
         return JS_ToBool(ctx, value.get()) == 1;
     };
     EventKeyFields keys;
@@ -306,11 +306,11 @@ bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
     EventStaging eventStaging{staging.markedText, c_NoStagedText, false,
                               staging.candidatesVisible, 0};
 
-    qjs::Value data(ctx,
+    Qjs::Value data(ctx,
                     buildEventData(ctx, eventStaging, &keys, nullptr, -1,
                                    resolvedCandidateWindowConfig(host)));
-    qjs::Value global(ctx, JS_GetGlobalObject(ctx));
-    qjs::Value maker(ctx,
+    Qjs::Value global(ctx, JS_GetGlobalObject(ctx));
+    Qjs::Value maker(ctx,
                      JS_GetPropertyStr(ctx, global.get(), c_MakeEventHook));
     JSValue event;
     if (maker.isFunction()) {
@@ -318,7 +318,7 @@ bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
         event = JS_Call(ctx, maker.get(), JS_UNDEFINED, 1, &argument);
         if (JS_IsException(event)) {
             emitLine("{\"event\":\"error\",\"text\":\"makeEvent failed: " +
-                     jsonEscape(qjs::exceptionText(ctx)) + "\"}");
+                     jsonEscape(Qjs::exceptionText(ctx)) + "\"}");
             return false;
         }
     } else {
@@ -340,7 +340,7 @@ bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
                      "\",\"args\":[" + args + "]}");
             if (name == "updateMarkedText" && argc >= 1) {
                 staging.markedText = JS_IsString(argv[0])
-                                         ? qjs::toString(ctx, argv[0])
+                                         ? Qjs::toString(ctx, argv[0])
                                          : std::string();
             } else if (name == "updateCandidates" && argc >= 1) {
                 JSValue length = JS_GetPropertyStr(ctx, argv[0], "length");
@@ -508,16 +508,16 @@ int main(int argc, char **argv) {
             if (line.empty()) {
                 continue;
             }
-            qjs::Value command(
+            Qjs::Value command(
                 ctx, JS_ParseJSON(ctx, line.c_str(), line.size(), "<stdin>"));
             if (command.isException() || !JS_IsObject(command.get())) {
                 emitLine("{\"event\":\"error\",\"text\":\"bad command\"}");
                 continue;
             }
-            qjs::Value verb(ctx,
+            Qjs::Value verb(ctx,
                             JS_GetPropertyStr(ctx, command.get(), "do"));
             std::string action =
-                JS_IsString(verb.get()) ? qjs::toString(ctx, verb.get()) : "";
+                JS_IsString(verb.get()) ? Qjs::toString(ctx, verb.get()) : "";
             if (action == "quit") {
                 break;
             }

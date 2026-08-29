@@ -1,6 +1,6 @@
 #include "MacishType/FontCoverage.h"
 
-namespace macishtype {
+namespace MacishType {
 
 std::string base64Encode(const std::string &data) {
     static const char alphabet[] =
@@ -62,4 +62,4 @@ const std::string &fullCoverageBitmapBase64() {
     return cached;
 }
 
-} // namespace macishtype
+} // namespace MacishType
