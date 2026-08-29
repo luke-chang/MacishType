@@ -9,14 +9,14 @@ JavaScriptCore host and does not use it.
 
 ## Layout
 
-- [`include/macishtype/`](include/macishtype/) — public headers. The host
+- [`include/MacishType/`](include/MacishType/) — public headers. The host
   seams are the platform boundary:
-  - [`hostseams.h`](include/macishtype/hostseams.h) — `Logger`,
+  - [`HostSeams.h`](include/MacishType/HostSeams.h) — `Logger`,
     `ResourceLocator`, `PlatformInfo`, `Translator`,
     `FontCoverageProvider`, installed process-wide via `setHostServices()`
-  - [`hosteventloop.h`](include/macishtype/hosteventloop.h) —
+  - [`HostEventLoop.h`](include/MacishType/HostEventLoop.h) —
     `HostEventLoop`, injected per engine host at `load()` time
-  - [`hostlog.h`](include/macishtype/hostlog.h) — the `MACISHTYPE_*` log
+  - [`HostLog.h`](include/MacishType/HostLog.h) — the `MACISHTYPE_*` log
     macro facade over the `Logger` seam
 - `src/` — implementation
 - [`external/quickjs-ng/`](external/quickjs-ng/) — the JS

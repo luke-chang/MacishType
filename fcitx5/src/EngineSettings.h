@@ -8,7 +8,7 @@
 #include <fcitx-config/option.h>
 #include <fcitx-config/rawconfig.h>
 
-#include <macishtype/manifest.h>
+#include <MacishType/Manifest.h>
 
 namespace macishtype {
 

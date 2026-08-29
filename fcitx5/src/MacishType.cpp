@@ -1,4 +1,4 @@
-#include "macishtype.h"
+#include "MacishType.h"
 
 #include <algorithm>
 #include <string>
@@ -24,9 +24,9 @@
 #include <fcitx/text.h>
 #include <fcitx/userinterfacemanager.h>
 
-#include "i18n.h"
-#include "log.h"
-#include "versionstamp.h"
+#include "I18n.h"
+#include "Log.h"
+#include "VersionStamp.h"
 
 namespace macishtype {
 

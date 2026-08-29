@@ -1,4 +1,4 @@
-#include "macishtype/fontcoverage.h"
+#include "MacishType/FontCoverage.h"
 
 namespace macishtype {
 

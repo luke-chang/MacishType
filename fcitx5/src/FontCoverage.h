@@ -1,6 +1,6 @@
 #pragma once
 
-#include <macishtype/hostseams.h>
+#include <MacishType/HostSeams.h>
 
 namespace macishtype {
 

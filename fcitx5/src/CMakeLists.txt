@@ -1,14 +1,14 @@
 add_library(macishtype SHARED
-    coreadapters.cpp
-    enginediscovery.cpp
-    enginesettings.cpp
-    enginewatcher.cpp
-    fontcoverage.cpp
-    i18n.cpp
-    iconlinks.cpp
-    webkeymap.cpp
-    macishtype.cpp
-    session.cpp
+    CoreAdapters.cpp
+    EngineDiscovery.cpp
+    EngineSettings.cpp
+    EngineWatcher.cpp
+    FontCoverage.cpp
+    I18n.cpp
+    IconLinks.cpp
+    WebKeyMap.cpp
+    MacishType.cpp
+    Session.cpp
 )
 target_compile_definitions(macishtype PRIVATE
     FCITX_INSTALL_LOCALEDIR="${FCITX_INSTALL_LOCALEDIR}"

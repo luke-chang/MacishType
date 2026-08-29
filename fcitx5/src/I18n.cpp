@@ -1,4 +1,4 @@
-#include "i18n.h"
+#include "I18n.h"
 
 #include <cstdlib>
 #include <filesystem>

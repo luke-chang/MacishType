@@ -1,4 +1,4 @@
-#include "session.h"
+#include "Session.h"
 
 #include <algorithm>
 #include <set>
@@ -9,9 +9,9 @@
 #include <fcitx/inputpanel.h>
 #include <fcitx/text.h>
 
-#include "i18n.h"
-#include <macishtype/qjsutil.h>
-#include "log.h"
+#include "I18n.h"
+#include <MacishType/QjsUtil.h>
+#include "Log.h"
 
 namespace macishtype {
 

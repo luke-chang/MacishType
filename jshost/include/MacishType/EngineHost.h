@@ -15,9 +15,9 @@
 
 #include <quickjs.h>
 
-#include "macishtype/hosteventloop.h"
-#include "macishtype/intl.h"
-#include "macishtype/manifest.h"
+#include "MacishType/HostEventLoop.h"
+#include "MacishType/Intl.h"
+#include "MacishType/Manifest.h"
 
 namespace macishtype {
 

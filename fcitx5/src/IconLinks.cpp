@@ -1,4 +1,4 @@
-#include "iconlinks.h"
+#include "IconLinks.h"
 
 #include <algorithm>
 #include <string_view>
@@ -8,7 +8,7 @@
 
 #include <fcitx-utils/standardpaths.h>
 
-#include "log.h"
+#include "Log.h"
 
 namespace macishtype {
 

@@ -2,7 +2,7 @@
 
 // translated() lives in the core seams (installed by FcitxCoreServices);
 // included here so the addon's call sites keep their original shape.
-#include <macishtype/hostseams.h>
+#include <MacishType/HostSeams.h>
 
 namespace macishtype {
 

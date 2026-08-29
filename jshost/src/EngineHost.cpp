@@ -1,4 +1,4 @@
-#include "macishtype/enginehost.h"
+#include "MacishType/EngineHost.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -6,10 +6,10 @@
 #include <fstream>
 #include <sstream>
 
-#include "macishtype/fontcoverage.h"
-#include "macishtype/hostlog.h"
-#include "macishtype/hostseams.h"
-#include "macishtype/qjsutil.h"
+#include "MacishType/FontCoverage.h"
+#include "MacishType/HostLog.h"
+#include "MacishType/HostSeams.h"
+#include "MacishType/QjsUtil.h"
 
 namespace macishtype {
 

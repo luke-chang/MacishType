@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.25)
 # project — the headless CLI and contract tests build from here — and
 # equally consumable with add_subdirectory (the fcitx5 project folds it
 # into the addon .so). Platform capabilities enter through the host seams
-# (include/macishtype/hostseams.h, hosteventloop.h).
+# (include/MacishType/HostSeams.h, HostEventLoop.h).
 project(macishtype-jshost LANGUAGES C CXX)
 
 # The embedded interpreter runs on every keystroke; never build it
@@ -26,12 +26,12 @@ endif()
 add_subdirectory(external/quickjs-ng EXCLUDE_FROM_ALL)
 
 add_library(macishtype-jshost STATIC
-    src/enginehost.cpp
-    src/eventdata.cpp
-    src/fontcoverage.cpp
-    src/hostseams.cpp
-    src/intl.cpp
-    src/manifest.cpp
+    src/EngineHost.cpp
+    src/EventData.cpp
+    src/FontCoverage.cpp
+    src/HostSeams.cpp
+    src/Intl.cpp
+    src/Manifest.cpp
 )
 target_include_directories(macishtype-jshost PUBLIC include)
 target_compile_features(macishtype-jshost PUBLIC cxx_std_20)
@@ -44,5 +44,5 @@ find_package(ICU REQUIRED COMPONENTS i18n uc)
 target_link_libraries(macishtype-jshost PRIVATE ICU::i18n ICU::uc)
 
 # Headless CLI: the reference seam embedding, driven by the contract tests.
-add_executable(macishtype-jshost-cli cli/main.cpp)
+add_executable(macishtype-jshost-cli cli/Main.cpp)
 target_link_libraries(macishtype-jshost-cli PRIVATE macishtype-jshost)

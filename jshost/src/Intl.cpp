@@ -1,14 +1,14 @@
-#include "macishtype/intl.h"
+#include "MacishType/Intl.h"
 
 #include <cstdint>
 #include <cstdio>
 #include <string>
 #include <vector>
 
-#include "macishtype/enginehost.h"
-#include "macishtype/qjsutil.h"
+#include "MacishType/EngineHost.h"
+#include "MacishType/QjsUtil.h"
 
-#include "intl_icu.h"
+#include "IntlIcu.h"
 
 namespace macishtype {
 

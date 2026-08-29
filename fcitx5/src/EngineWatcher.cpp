@@ -1,4 +1,4 @@
-#include "enginewatcher.h"
+#include "EngineWatcher.h"
 
 #include <sys/inotify.h>
 #include <unistd.h>
@@ -6,7 +6,7 @@
 #include <system_error>
 #include <vector>
 
-#include "log.h"
+#include "Log.h"
 
 namespace macishtype {
 

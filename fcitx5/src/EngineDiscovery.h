@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include <macishtype/manifest.h>
+#include <MacishType/Manifest.h>
 
 namespace macishtype {
 

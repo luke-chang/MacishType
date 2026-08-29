@@ -40,13 +40,13 @@
 
 #include <quickjs.h>
 
-#include "macishtype/enginehost.h"
-#include "macishtype/eventdata.h"
-#include "macishtype/hosteventloop.h"
-#include "macishtype/hostseams.h"
-#include "macishtype/jsonutil.h"
-#include "macishtype/manifest.h"
-#include "macishtype/qjsutil.h"
+#include "MacishType/EngineHost.h"
+#include "MacishType/EventData.h"
+#include "MacishType/HostEventLoop.h"
+#include "MacishType/HostSeams.h"
+#include "MacishType/JsonUtil.h"
+#include "MacishType/Manifest.h"
+#include "MacishType/QjsUtil.h"
 
 namespace {
 

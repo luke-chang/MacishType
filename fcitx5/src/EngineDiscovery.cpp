@@ -1,4 +1,4 @@
-#include "enginediscovery.h"
+#include "EngineDiscovery.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -6,7 +6,7 @@
 
 #include <fcitx-utils/standardpaths.h>
 
-#include "log.h"
+#include "Log.h"
 
 namespace macishtype {
 

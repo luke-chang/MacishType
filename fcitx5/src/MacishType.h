@@ -20,15 +20,15 @@
 #include <fcitx/inputmethodentry.h>
 #include <fcitx/instance.h>
 
-#include <macishtype/enginehost.h>
+#include <MacishType/EngineHost.h>
 
-#include "coreadapters.h"
-#include "enginediscovery.h"
-#include "enginesettings.h"
-#include "enginewatcher.h"
-#include "i18n.h"
-#include "iconlinks.h"
-#include "session.h"
+#include "CoreAdapters.h"
+#include "EngineDiscovery.h"
+#include "EngineSettings.h"
+#include "EngineWatcher.h"
+#include "I18n.h"
+#include "IconLinks.h"
+#include "Session.h"
 
 namespace macishtype {
 
@@ -187,7 +187,7 @@ private:
     std::map<fcitx::InputContext *, std::unique_ptr<EngineSession>> sessions_;
     std::unique_ptr<EngineWatcher> watcher_;
     // Installs engine icons into the user's hicolor theme so panels can be
-    // served a theme name; see iconlinks.h for why a name beats a path.
+    // served a theme name; see IconLinks.h for why a name beats a path.
     std::unique_ptr<IconLinks> iconLinks_;
     // Where this addon's library was loaded from; empty when unknown. The
     // destructor's uninstall probe.

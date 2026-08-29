@@ -8,7 +8,7 @@
 
 #include <fcitx-utils/event.h>
 
-#include "enginediscovery.h"
+#include "EngineDiscovery.h"
 
 namespace macishtype {
 

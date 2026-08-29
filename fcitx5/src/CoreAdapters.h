@@ -3,10 +3,10 @@
 #include <fcitx-utils/event.h>
 #include <fcitx-utils/eventdispatcher.h>
 
-#include <macishtype/hosteventloop.h>
-#include <macishtype/hostseams.h>
+#include <MacishType/HostEventLoop.h>
+#include <MacishType/HostSeams.h>
 
-#include "fontcoverage.h"
+#include "FontCoverage.h"
 
 namespace macishtype {
 

@@ -1,4 +1,4 @@
-#include "macishtype/manifest.h"
+#include "MacishType/Manifest.h"
 
 #include <algorithm>
 #include <fstream>
@@ -6,9 +6,9 @@
 
 #include <quickjs.h>
 
-#include "macishtype/hostlog.h"
-#include "macishtype/hostseams.h"
-#include "macishtype/qjsutil.h"
+#include "MacishType/HostLog.h"
+#include "MacishType/HostSeams.h"
+#include "MacishType/QjsUtil.h"
 
 namespace macishtype {
 

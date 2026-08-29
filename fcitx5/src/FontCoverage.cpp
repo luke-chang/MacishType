@@ -1,4 +1,4 @@
-#include "fontcoverage.h"
+#include "FontCoverage.h"
 
 #include <cstdint>
 #include <map>
@@ -6,9 +6,9 @@
 
 #include <fontconfig/fontconfig.h>
 
-#include <macishtype/fontcoverage.h>
+#include <MacishType/FontCoverage.h>
 
-#include "log.h"
+#include "Log.h"
 
 namespace macishtype {
 

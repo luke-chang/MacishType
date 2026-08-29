@@ -1,10 +1,10 @@
-#include "macishtype/eventdata.h"
+#include "MacishType/EventData.h"
 
 #include <algorithm>
 #include <optional>
 #include <variant>
 
-#include "macishtype/enginehost.h"
+#include "MacishType/EngineHost.h"
 
 namespace macishtype {
 

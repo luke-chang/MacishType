@@ -1,4 +1,4 @@
-#include "enginesettings.h"
+#include "EngineSettings.h"
 
 #include <algorithm>
 #include <climits>
@@ -6,10 +6,10 @@
 #include <cstdlib>
 #include <set>
 
-#include <macishtype/jsonutil.h>
+#include <MacishType/JsonUtil.h>
 
-#include "i18n.h"
-#include "log.h"
+#include "I18n.h"
+#include "Log.h"
 
 namespace macishtype {
 

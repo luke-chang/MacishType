@@ -8,9 +8,9 @@
 
 #include <fcitx/inputcontext.h>
 
-#include <macishtype/enginehost.h>
-#include <macishtype/eventdata.h>
-#include "webkeymap.h"
+#include <MacishType/EngineHost.h>
+#include <MacishType/EventData.h>
+#include "WebKeyMap.h"
 
 namespace fcitx {
 class CommonCandidateList;

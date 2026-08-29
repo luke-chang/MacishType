@@ -2,7 +2,7 @@
 
 #include <sstream>
 
-#include "macishtype/hostseams.h"
+#include "MacishType/HostSeams.h"
 
 namespace macishtype {
 

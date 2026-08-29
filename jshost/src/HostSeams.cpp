@@ -1,6 +1,6 @@
-#include "macishtype/hostseams.h"
+#include "MacishType/HostSeams.h"
 
-#include "macishtype/hostlog.h"
+#include "MacishType/HostLog.h"
 
 namespace macishtype {
 

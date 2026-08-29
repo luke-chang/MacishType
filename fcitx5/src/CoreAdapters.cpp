@@ -1,4 +1,4 @@
-#include "coreadapters.h"
+#include "CoreAdapters.h"
 
 #include <sys/utsname.h>
 
@@ -12,8 +12,8 @@
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/standardpaths.h>
 
-#include "i18n.h"
-#include "log.h"
+#include "I18n.h"
+#include "Log.h"
 
 namespace macishtype {
 
