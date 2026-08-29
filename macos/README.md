@@ -28,7 +28,7 @@ Requires Xcode (used by `make install` to build the Release binary). All `make` 
 ### First install
 
 1. `make install`
-   - Builds Release, copies the app to `~/Library/Input Methods/`, and kills any running input method process. The build first downloads the external data files and licenses pinned in [`scripts/external-resources.lock`](../scripts/external-resources.lock); this is incremental, so later builds re-download only when the lock changes.
+   - Builds Release, copies the app to `~/Library/Input Methods/`, and kills any running input method process. The build first downloads the external data files and licenses pinned in [`scripts/ExternalResources.lock`](../scripts/ExternalResources.lock); this is incremental, so later builds re-download only when the lock changes.
 2. **Log out and back in.**
    - On first install, MacishType won't show up in the input source picker until you log back in.
 3. Open **System Settings → Keyboard → Input Sources → +** and pick the input sources you want from the MacishType section.

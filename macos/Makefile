@@ -126,10 +126,10 @@ help:
 	@echo "  Then go to System Settings → Keyboard → Input Sources to add $(APP_NAME)"
 
 prepare:
-	@../scripts/external-resources.py --prepare
+	@../scripts/ExternalResources.py --prepare
 
 update-resources:
-	@../scripts/external-resources.py --update
+	@../scripts/ExternalResources.py --update
 
 build: prepare
 	@$(XCODE_CHECK)
@@ -304,7 +304,7 @@ clean:
 	@echo "✓ Clean complete"
 
 clean-resources:
-	@../scripts/external-resources.py --clean
+	@../scripts/ExternalResources.py --clean
 
 log:
 	@echo "Streaming OSLog for $(APP_NAME) ($(BUNDLE_ID))..."

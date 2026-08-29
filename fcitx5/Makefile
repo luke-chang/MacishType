@@ -16,13 +16,13 @@ USER_SHARE := $(HOME)/.local/share/fcitx5
 ICON_LINK_DIR := $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)/icons/hicolor
 # FCITX_ADDON_DIRS replaces fcitx5's default addon search path, so the
 # system directory must stay listed.
-ADDON_DIRS := $(USER_LIB):$(shell test/system-addon-dir.sh)
-# Build stamp for `make pkg`, computed by scripts/version-stamp.sh (date plus
+ADDON_DIRS := $(USER_LIB):$(shell test/SystemAddonDir.sh)
+# Build stamp for `make pkg`, computed by scripts/VersionStamp.sh (date plus
 # commit, `.dirty.<HHMM>` when the tree carries uncommitted changes). Handed
 # to the build as an environment variable so the binary and the package share
 # one value; other builds compute their own at build time. Override
 # VERSION_STAMP to change or omit it.
-VERSION_STAMP ?= $(shell scripts/version-stamp.sh)
+VERSION_STAMP ?= $(shell scripts/VersionStamp.sh)
 
 .PHONY: help prepare update-resources build test debug restart dev-install \
 	dev-uninstall install-engines install uninstall remove-icon-links pkg \
@@ -86,12 +86,12 @@ help:
 	@echo "  Then add the input methods in fcitx5-configtool"
 
 # Module data tables (wordFrequency / symbolNames), pinned in the repo-level
-# scripts/external-resources.lock and shared with the other platforms.
+# scripts/ExternalResources.lock and shared with the other platforms.
 prepare:
-	@../scripts/external-resources.py --prepare
+	@../scripts/ExternalResources.py --prepare
 
 update-resources:
-	@../scripts/external-resources.py --update
+	@../scripts/ExternalResources.py --update
 
 build: prepare
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
@@ -99,31 +99,31 @@ build: prepare
 
 # Acceptance suite against an isolated fcitx5; safe to run any time.
 test: build
-	test/acceptance.sh
-	test/navigation.sh
-	test/modifier.sh
-	test/reload.sh
-	test/storage.sh
-	test/settings.sh
-	test/orientation.sh
-	test/segmenter.sh
-	test/datetime.sh
-	test/number.sh
-	test/plural.sh
-	test/collator.sh
-	test/errorstack.sh
-	test/fullwidth.sh
-	test/compositionend.sh
-	test/associated.sh
-	test/grapheme.sh
-	test/contract.sh
-	test/asyncfetch.sh
-	test/toggle.sh
-	test/discovery.sh
-	test/textcodec.sh
-	test/reverselookup.sh
-	test/modules.sh
-	test/icontheme.sh
+	test/Acceptance.sh
+	test/Navigation.sh
+	test/Modifier.sh
+	test/Reload.sh
+	test/Storage.sh
+	test/Settings.sh
+	test/Orientation.sh
+	test/Segmenter.sh
+	test/DateTime.sh
+	test/Number.sh
+	test/Plural.sh
+	test/Collator.sh
+	test/ErrorStack.sh
+	test/FullWidth.sh
+	test/CompositionEnd.sh
+	test/Associated.sh
+	test/Grapheme.sh
+	test/Contract.sh
+	test/AsyncFetch.sh
+	test/Toggle.sh
+	test/Discovery.sh
+	test/TextCodec.sh
+	test/ReverseLookup.sh
+	test/Modules.sh
+	test/IconTheme.sh
 
 # Development install into ~/.local plus a fcitx5 restart. Restarting
 # interrupts typing in the current session — run this yourself.
@@ -144,7 +144,7 @@ restart:
 # ~/.local/share/fcitx5/macishtype/engines/<name>/. The freshness check keeps
 # stale data tables from being copied silently (`make prepare` to sync).
 dev-install:
-	@../scripts/external-resources.py --check
+	@../scripts/ExternalResources.py --check
 	install -D -m 755 $(BUILD_DIR)/src/libmacishtype.so $(USER_LIB)/libmacishtype.so
 	install -D -m 644 $(BUILD_DIR)/src/macishtype-addon.conf $(USER_SHARE)/addon/macishtype.conf
 	install -D -m 644 ../runtime/runtime.js $(USER_SHARE)/macishtype/runtime.js
@@ -179,7 +179,7 @@ dev-uninstall:
 # symlinks. Independent of the addon build — engines are user data, installed
 # and removed on their own.
 install-engines:
-	@scripts/install-engines.py
+	@scripts/InstallEngines.py
 
 # Production install (addon .so, confs, shared runtime, and the prepared
 # module data). The distro fcitx5 only loads addons from /usr, so the
@@ -245,7 +245,7 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 clean-resources:
-	@../scripts/external-resources.py --clean
+	@../scripts/ExternalResources.py --clean
 
 # Live addon log stream from the user journal, both launch paths included.
 # For the full fcitx5 stream use journalctl directly.

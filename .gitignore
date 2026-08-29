@@ -2,7 +2,7 @@
 engines/**/_storage/
 
 # Outputs and state of the shared external-resources pipeline
-# (scripts/external-resources.py).
+# (scripts/ExternalResources.py).
 /tables/
 /.external-resources/
 

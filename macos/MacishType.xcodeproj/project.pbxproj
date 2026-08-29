@@ -303,7 +303,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "${SRCROOT}/../scripts/external-resources.py --check\n";
+			shellScript = "${SRCROOT}/../scripts/ExternalResources.py --check\n";
 		};
 		8648E1062FACEBD100465485 /* Stage Engine Resources */ = {
 			isa = PBXShellScriptBuildPhase;

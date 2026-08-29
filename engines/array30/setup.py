@@ -19,7 +19,7 @@ TABLES = [
 
 
 def main():
-    driver = os.path.join(REPO_ROOT, "scripts", "external-resources.py")
+    driver = os.path.join(REPO_ROOT, "scripts", "ExternalResources.py")
     if subprocess.run([sys.executable, driver, "--check"]).returncode:
         print("→ Tables are missing or stale; running the resource"
               " pipeline...")

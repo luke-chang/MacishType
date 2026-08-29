@@ -15,17 +15,17 @@ target_compile_definitions(macishtype PRIVATE
     MACISHTYPE_VERSION="${PROJECT_VERSION}")
 # The full version (with build stamp) is baked into a generated source at
 # build time — not at configure time, so a new stamp never triggers a full
-# rebuild and the CMake cache holds no stale copy. version-full.txt feeds
-# CPack the same value (see cmake/cpack-version.cmake.in).
+# rebuild and the CMake cache holds no stale copy. VersionFull.txt feeds
+# CPack the same value (see cmake/CPackVersion.cmake.in).
 add_custom_target(versionstamp
-    BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/versionstamp.cpp"
-               "${CMAKE_CURRENT_BINARY_DIR}/version-full.txt"
+    BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/VersionStamp.cpp"
+               "${CMAKE_CURRENT_BINARY_DIR}/VersionFull.txt"
     COMMAND "${CMAKE_COMMAND}"
         -DPROJECT_VERSION=${PROJECT_VERSION}
-        "-DSTAMP_SCRIPT=${PROJECT_SOURCE_DIR}/scripts/version-stamp.sh"
+        "-DSTAMP_SCRIPT=${PROJECT_SOURCE_DIR}/scripts/VersionStamp.sh"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}"
-        -P "${PROJECT_SOURCE_DIR}/cmake/versionstamp.cmake")
-target_sources(macishtype PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/versionstamp.cpp")
+        -P "${PROJECT_SOURCE_DIR}/cmake/VersionStamp.cmake")
+target_sources(macishtype PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/VersionStamp.cpp")
 add_dependencies(macishtype versionstamp)
 target_link_libraries(macishtype PRIVATE Fcitx5::Core Fcitx5::Module::Notifications
     macishtype-jshost Fontconfig::Fontconfig)

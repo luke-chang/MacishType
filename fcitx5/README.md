@@ -43,7 +43,7 @@ this host and on the macOS one ([`macos/`](../macos/)).
 - A C++20 compiler, CMake ≥ 3.25, Ninja, pkg-config
 - Fcitx5, fontconfig, ICU, and gettext development files
 - `python3` for the data-table pipeline (`make prepare`)
-- `python3-fonttools` for the icon generator (`scripts/generate-icon.py`)
+- `python3-fonttools` for the icon generator (`scripts/GenerateIcon.py`)
 - Tests additionally need `python3-gi`, `dbus-run-session`, an installed
   fcitx5 to run against, and an available `zh_TW` locale (the suite asserts
   translated labels)
