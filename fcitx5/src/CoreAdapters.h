@@ -40,7 +40,8 @@ public:
 private:
     class FcitxLogger : public Logger {
     public:
-        void write(Level level, std::string_view message) override;
+        void write(Level level, std::string_view message,
+                   const std::source_location &where) override;
     };
     class FcitxResourceLocator : public ResourceLocator {
     public:

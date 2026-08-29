@@ -1,5 +1,7 @@
 #include "CoreAdapters.h"
 
+#include <cstring>
+
 #include <sys/utsname.h>
 
 #include <algorithm>
@@ -81,24 +83,41 @@ FcitxCoreServices::FcitxCoreServices() {
 }
 
 void FcitxCoreServices::FcitxLogger::write(Level level,
-                                           std::string_view message) {
-    const std::string text(message);
+                                           std::string_view message,
+                                           const std::source_location &where) {
+    fcitx::LogLevel mapped = fcitx::LogLevel::Info;
     switch (level) {
     case Level::Debug:
-        FCITX_LOGC(macishtype_logcategory, Debug) << text;
+        mapped = fcitx::LogLevel::Debug;
         break;
     case Level::Info:
-        FCITX_LOGC(macishtype_logcategory, Info) << text;
+        mapped = fcitx::LogLevel::Info;
         break;
     case Level::Notice:
-        FCITX_LOGC(macishtype_logcategory, Warn) << text;
+        // fcitx5 has no notice level.
+        mapped = fcitx::LogLevel::Warn;
         break;
     case Level::Error:
     case Level::Fault:
         // fcitx has no level above Error; fold Fault into it.
-        FCITX_LOGC(macishtype_logcategory, Error) << text;
+        mapped = fcitx::LogLevel::Error;
         break;
     }
+    if (!macishtype_logcategory().fatalWrapper(mapped)) {
+        return;
+    }
+    // Built by hand rather than through FCITX_LOGC: that macro bakes its own
+    // __FILE__/__LINE__ in as template arguments, which would name this
+    // adapter instead of the call site. fcitx5 prints base names only, so
+    // trim to match what its own lines look like.
+    const char *file = where.file_name();
+    if (const char *slash = std::strrchr(file, '/')) {
+        file = slash + 1;
+    }
+    fcitx::LogMessageBuilder(fcitx::Log::logStream(), mapped, file,
+                             static_cast<int>(where.line()))
+        << std::string(message);
+    macishtype_logcategory().fatalWrapper2(mapped);
 }
 
 std::filesystem::path FcitxCoreServices::FcitxResourceLocator::

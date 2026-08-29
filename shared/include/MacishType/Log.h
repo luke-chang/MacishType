@@ -1,5 +1,6 @@
 #pragma once
 
+#include <source_location>
 #include <sstream>
 
 #include "MacishType/Logger.h"
@@ -11,7 +12,12 @@ namespace MacishType {
 // silently when no logger is installed.
 class LogLine {
 public:
-    explicit LogLine(Logger::Level level) : level_(level) {}
+    // The default argument is evaluated where the macro expands, so `where`
+    // names the logging call site rather than anything in here.
+    explicit LogLine(
+        Logger::Level level,
+        std::source_location where = std::source_location::current())
+        : level_(level), where_(where) {}
     ~LogLine();
     LogLine(const LogLine &) = delete;
     LogLine &operator=(const LogLine &) = delete;
@@ -24,6 +30,7 @@ public:
 
 private:
     Logger::Level level_;
+    std::source_location where_;
     std::ostringstream stream_;
 };
 

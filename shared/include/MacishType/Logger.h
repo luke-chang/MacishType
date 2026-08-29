@@ -1,5 +1,6 @@
 #pragma once
 
+#include <source_location>
 #include <string_view>
 
 namespace MacishType {
@@ -24,7 +25,12 @@ public:
     enum class Level { Debug, Info, Notice, Error, Fault };
 
     virtual ~Logger() = default;
-    virtual void write(Level level, std::string_view message) = 0;
+    // `where` is the MACISHTYPE_* call site, not this seam. Sinks that carry
+    // structured fields (ETW) should record it; ones writing a text line
+    // should follow their platform's convention — fcitx5 prints the base
+    // name only.
+    virtual void write(Level level, std::string_view message,
+                       const std::source_location &where) = 0;
 };
 
 // Borrowed; the installer keeps it alive for the process lifetime. A null

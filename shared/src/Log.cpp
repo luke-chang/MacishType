@@ -14,7 +14,7 @@ Logger *logger() { return installedLogger; }
 
 LogLine::~LogLine() {
     if (installedLogger != nullptr) {
-        installedLogger->write(level_, stream_.str());
+        installedLogger->write(level_, stream_.str(), where_);
     }
 }
 

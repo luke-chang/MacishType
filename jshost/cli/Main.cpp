@@ -35,6 +35,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <source_location>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -65,7 +66,8 @@ void emitLine(const std::string &line) {
 
 class CliLogger : public Logger {
 public:
-    void write(Level level, std::string_view message) override {
+    void write(Level level, std::string_view message,
+               const std::source_location &where) override {
         const char *name = "info";
         switch (level) {
         case Level::Debug:
@@ -85,7 +87,9 @@ public:
             break;
         }
         emitLine(std::string("{\"event\":\"log\",\"level\":\"") + name +
-                 "\",\"text\":\"" + jsonEscape(message) + "\"}");
+                 "\",\"where\":\"" + jsonEscape(where.file_name()) + ":" +
+                 std::to_string(where.line()) + "\",\"text\":\"" +
+                 jsonEscape(message) + "\"}");
     }
 };
 
