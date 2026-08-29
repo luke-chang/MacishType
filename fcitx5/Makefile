@@ -147,8 +147,9 @@ dev-install:
 	@../scripts/ExternalResources.py --check
 	install -D -m 755 $(BUILD_DIR)/src/libmacishtype.so $(USER_LIB)/libmacishtype.so
 	install -D -m 644 $(BUILD_DIR)/src/macishtype-addon.conf $(USER_SHARE)/addon/macishtype.conf
-	install -D -m 644 ../runtime/runtime.js $(USER_SHARE)/macishtype/runtime.js
-	install -D -m 644 ../runtime/hostglue.js $(USER_SHARE)/macishtype/hostglue.js
+	install -D -m 644 ../shared/js/globals.js $(USER_SHARE)/macishtype/globals.js
+	install -D -m 644 ../jshost/js/hostglue.js $(USER_SHARE)/macishtype/hostglue.js
+	@rm -f $(USER_SHARE)/macishtype/runtime.js  # globals.js's name before 0.3
 	@mkdir -p $(USER_SHARE)/macishtype/engines
 	@for mo in $(BUILD_DIR)/po/*.mo; do \
 	    lang=$$(basename $$mo .mo); \
@@ -167,8 +168,10 @@ dev-install:
 dev-uninstall:
 	rm -f $(USER_LIB)/libmacishtype.so
 	rm -f $(USER_SHARE)/addon/macishtype.conf
-	rm -f $(USER_SHARE)/macishtype/runtime.js
+	rm -f $(USER_SHARE)/macishtype/globals.js
 	rm -f $(USER_SHARE)/macishtype/hostglue.js
+	# runtime.js was globals.js's name before 0.3; drop a stale dev copy.
+	rm -f $(USER_SHARE)/macishtype/runtime.js
 	rm -rf $(USER_SHARE)/macishtype/tables
 	rm -f $(HOME)/.local/share/locale/*/LC_MESSAGES/fcitx5-macishtype.mo
 	@rmdir $(USER_SHARE)/macishtype/engines $(USER_SHARE)/macishtype \

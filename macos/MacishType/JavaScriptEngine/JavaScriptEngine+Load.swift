@@ -39,7 +39,7 @@ extension JavaScriptEngine {
 
     /// Resolves a `URL?` and reads its contents as UTF-8 text. Faults +
     /// returns nil on missing URL or read failure; `label` shows up in the
-    /// fault log to disambiguate the call site (e.g. "runtime.js" vs
+    /// fault log to disambiguate the call site (e.g. "globals.js" vs
     /// "entry script for 'JSExternal'").
     static func loadJSSource(_ url: URL?, label: String) -> (source: String, url: URL)? {
         guard let url else {

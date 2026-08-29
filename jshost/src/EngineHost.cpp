@@ -301,15 +301,15 @@ bool JsEngineHost::initialize() {
 
     ResourceLocator *resources = hostServices().resources;
     auto glue = resources->locateRuntimeScript("hostglue.js");
-    auto runtimeJs = resources->locateRuntimeScript("runtime.js");
+    auto runtimeJs = resources->locateRuntimeScript("globals.js");
     if (glue.empty() || runtimeJs.empty()) {
         MACISHTYPE_ERROR()
-            << "Shared runtime scripts not found (hostglue.js / runtime.js); "
+            << "Shared runtime scripts not found (hostglue.js / globals.js); "
                "is the host fully installed?";
         return false;
     }
     if (!evaluateScript(glue, "hostglue.js") ||
-        !evaluateScript(runtimeJs, "runtime.js")) {
+        !evaluateScript(runtimeJs, "globals.js")) {
         return false;
     }
     if (!pushSettings(settingsValuesJson_) || !injectModules()) {
@@ -353,7 +353,7 @@ bool JsEngineHost::pushSettings(const std::string &valuesJson) {
     Qjs::Value setter(
         ctx_, JS_GetPropertyStr(ctx_, global.get(), "__MacishType_setSettings"));
     if (!setter.isFunction()) {
-        MACISHTYPE_ERROR() << "runtime.js did not define "
+        MACISHTYPE_ERROR() << "globals.js did not define "
                               "__MacishType_setSettings";
         return false;
     }
@@ -427,7 +427,7 @@ bool JsEngineHost::injectModules() {
         Qjs::Value setter(
             ctx_, JS_GetPropertyStr(ctx_, global.get(), setterName));
         if (!setter.isFunction()) {
-            MACISHTYPE_ERROR() << "runtime.js did not define " << setterName;
+            MACISHTYPE_ERROR() << "globals.js did not define " << setterName;
             return false;
         }
         Qjs::Value result;
@@ -1969,7 +1969,7 @@ JSValue JsEngineHost::nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
 }
 
 // TextDecoder fast path: decodes a whole valid buffer natively; anything
-// invalid returns null and stays with the runtime.js state machine.
+// invalid returns null and stays with the globals.js state machine.
 JSValue JsEngineHost::nativeDecodeUtf8(JSContext *ctx, JSValueConst thisVal,
                                        int argc, JSValueConst *argv) {
     (void)thisVal;

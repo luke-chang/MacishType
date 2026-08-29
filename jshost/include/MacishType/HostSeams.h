@@ -23,7 +23,7 @@ public:
     virtual ~ResourceLocator() = default;
 
     // Shared runtime script installed by the platform package
-    // ("hostglue.js", "runtime.js"). Empty path = not installed.
+    // ("hostglue.js", "globals.js"). Empty path = not installed.
     virtual std::filesystem::path
     locateRuntimeScript(std::string_view fileName) = 0;
 

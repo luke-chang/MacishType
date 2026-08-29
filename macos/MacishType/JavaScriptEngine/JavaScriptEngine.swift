@@ -124,7 +124,7 @@ class JavaScriptEngine: InputEngine {
 
     /// Mutable mirror of `manifest?.candidateWindow`, re-seeded on every
     /// `reloadManifest()`. Engine JS code writes here via the
-    /// `manifest.candidateWindow.x = y` Proxy (see runtime.js); reads
+    /// `manifest.candidateWindow.x = y` Proxy (see globals.js); reads
     /// return cache values (manifest declarations OR engine writes).
     /// Settings UI continues to read `engine.manifest` (immutable static
     /// declarations) for its hide-logic — engine writes are invisible
@@ -435,8 +435,8 @@ class JavaScriptEngine: InputEngine {
     }
 
     /// No-op when `jsContext` is nil (engine not yet loaded). In the live
-    /// path, runtime.js has already registered `__MacishType_setSettings`
-    /// before `jsContext` is set, so a missing global means runtime.js
+    /// path, globals.js has already registered `__MacishType_setSettings`
+    /// before `jsContext` is set, so a missing global means globals.js
     /// failed to evaluate — a bridge-structural fault.
     private func pushSettingsToJS() {
         guard let context = jsContext else { return }
@@ -449,7 +449,7 @@ class JavaScriptEngine: InputEngine {
         guard let updater = context.objectForKeyedSubscript("__MacishType_setSettings"),
               updater.isObject else {
             Logger.javaScriptEngine.fault(
-                "__MacishType_setSettings missing — runtime.js not loaded?"
+                "__MacishType_setSettings missing — globals.js not loaded?"
             )
             return
         }
@@ -481,7 +481,7 @@ class JavaScriptEngine: InputEngine {
               let updater = context.objectForKeyedSubscript("__MacishType_setModuleData"),
               updater.isObject else {
             Logger.javaScriptEngine.fault(
-                "__MacishType_setModuleData missing — runtime.js not loaded?"
+                "__MacishType_setModuleData missing — globals.js not loaded?"
             )
             return
         }
@@ -551,7 +551,7 @@ class JavaScriptEngine: InputEngine {
               let updater = context.objectForKeyedSubscript("__MacishType_setCoverageModule"),
               updater.isObject else {
             Logger.javaScriptEngine.fault(
-                "__MacishType_setCoverageModule missing — runtime.js not loaded?"
+                "__MacishType_setCoverageModule missing — globals.js not loaded?"
             )
             return
         }
@@ -1284,7 +1284,7 @@ class JavaScriptEngine: InputEngine {
 
         context.moduleLoaderDelegate = moduleLoader
 
-        // Inject __MacishType_log BEFORE evaluating runtime.js — its console
+        // Inject __MacishType_log BEFORE evaluating globals.js — its console
         // polyfill builds wrapper closures that call this primitive.
         let logFn: @convention(block) (String, String) -> Void = { level, message in
             switch level {
@@ -1306,7 +1306,7 @@ class JavaScriptEngine: InputEngine {
         }
         context.setObject(logFn, forKeyedSubscript: "__MacishType_log" as NSString)
 
-        // candidateWindow Proxy bridges — must exist before runtime.js eval
+        // candidateWindow Proxy bridges — must exist before globals.js eval
         // (which builds the Proxy referencing these) and before the first
         // reloadManifest() below (which seeds candidateWindowCache).
         let setCWField: @convention(block) (String, JSValue) -> Void = { [weak self] field, jsValue in
@@ -1357,14 +1357,14 @@ class JavaScriptEngine: InputEngine {
         context.setObject(listToggleKeysFn, forKeyedSubscript: "__MacishType_toggleKeys" as NSString)
 
         // manifest.name bridge — authored name, or NSNull (→ JS undefined)
-        // when `name` is absent. Read lazily by the runtime.js getter.
+        // when `name` is absent. Read lazily by the globals.js getter.
         let manifestName: @convention(block) () -> Any = { [weak self] in
             guard let name = self?.manifest?.name?.resolved() else { return NSNull() }
             return name
         }
         context.setObject(manifestName, forKeyedSubscript: "__MacishType_manifestName" as NSString)
 
-        // localStorage bridges — must register before runtime.js eval.
+        // localStorage bridges — must register before globals.js eval.
         let storageGetItem: @convention(block) (String) -> Any = { [weak self] key in
             guard let storage = self?.storage else {
                 Self.logStorageUnavailable("getItem")
@@ -1456,11 +1456,11 @@ class JavaScriptEngine: InputEngine {
         }
         context.setObject(fetchFn, forKeyedSubscript: "__MacishType_fetch" as NSString)
 
-        // Auto-evaluate runtime.js before any engine code runs;
+        // Auto-evaluate globals.js before any engine code runs;
         // must follow bridge registration above.
         guard let runtime = Self.loadJSSource(
-            Bundle.main.url(forResource: "runtime", withExtension: "js", subdirectory: "JavaScript"),
-            label: "runtime.js"
+            Bundle.main.url(forResource: "globals", withExtension: "js", subdirectory: "JavaScript"),
+            label: "globals.js"
         ) else { return }
         context.evaluateScript(runtime.source, withSourceURL: runtime.url)
 

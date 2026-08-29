@@ -22,7 +22,7 @@ function __MacishType_format(args) {
 function __MacishType_callerStack() {
   const stack = new Error().stack;
   if (!stack) return "";
-  return stack.split("\n").filter((line) => !line.includes("runtime.js")).join("\n");
+  return stack.split("\n").filter((line) => !line.includes("globals.js")).join("\n");
 }
 
 globalThis.console = {

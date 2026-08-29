@@ -3,7 +3,8 @@
 // also the reference embedding of the host seams.
 //
 //   macishtype-jshost-cli [options] <engine-dir>
-//     --runtime DIR     directory with runtime.js + hostglue.js (required)
+//     --runtime DIR     directory holding a shared runtime script; repeat
+//                       once per source directory (required)
 //     --tables DIR      per-language data table directory
 //     --languages LIST  comma-separated BCP-47 preferences (default en-US)
 //     --settings JSON   manifest.settings values pushed at load (default {})
@@ -90,12 +91,21 @@ public:
 
 class CliResourceLocator : public ResourceLocator {
 public:
-    std::filesystem::path runtimeDir;
+    // A search path, not one directory: the shared runtime scripts live
+    // beside the libraries that own them, so they come from two places in
+    // a source tree and from one after install.
+    std::vector<std::filesystem::path> runtimeDirs;
     std::filesystem::path tablesDir;
 
     std::filesystem::path
     locateRuntimeScript(std::string_view fileName) override {
-        return existingOrEmpty(runtimeDir / fileName);
+        for (const auto &dir : runtimeDirs) {
+            auto found = existingOrEmpty(dir / fileName);
+            if (!found.empty()) {
+                return found;
+            }
+        }
+        return {};
     }
 
     std::filesystem::path locateDataTable(std::string_view fileBase,
@@ -362,7 +372,7 @@ bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
 
 struct CliOptions {
     std::filesystem::path engineDir;
-    std::filesystem::path runtimeDir;
+    std::vector<std::filesystem::path> runtimeDirs;
     std::filesystem::path tablesDir;
     std::vector<std::string> languages{"en-US"};
     std::string settingsJson = "{}";
@@ -386,7 +396,7 @@ std::optional<CliOptions> parseArguments(int argc, char **argv) {
             if (dir == nullptr) {
                 return std::nullopt;
             }
-            options.runtimeDir = dir;
+            options.runtimeDirs.emplace_back(dir);
         } else if (argument == "--tables") {
             const char *dir = value();
             if (dir == nullptr) {
@@ -426,8 +436,9 @@ std::optional<CliOptions> parseArguments(int argc, char **argv) {
             return std::nullopt;
         }
     }
-    if (options.engineDir.empty() || options.runtimeDir.empty()) {
-        std::cerr << "usage: macishtype-jshost-cli --runtime DIR [--tables DIR]"
+    if (options.engineDir.empty() || options.runtimeDirs.empty()) {
+        std::cerr << "usage: macishtype-jshost-cli --runtime DIR [--runtime DIR]"
+                     " [--tables DIR]"
                      " [--languages LIST] [--settings JSON] [--activate]"
                      " [--load-only] <engine-dir>\n";
         return std::nullopt;
@@ -446,7 +457,7 @@ int main(int argc, char **argv) {
     static CliLogger logger;
     static CliResourceLocator resources;
     static CliPlatformInfo platform;
-    resources.runtimeDir = options->runtimeDir;
+    resources.runtimeDirs = options->runtimeDirs;
     resources.tablesDir = options->tablesDir;
     platform.languages = options->languages;
     HostServices services;

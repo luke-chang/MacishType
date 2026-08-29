@@ -3,8 +3,8 @@ import JavaScriptCore
 import Testing
 
 /// Conformance tests for the UTF-8 `TextDecoder` / `TextEncoder` that
-/// `runtime.js` adds to the JS engine's global scope. Each test loads the
-/// real `runtime.js` into a bare `JSContext` (the test bundle stages no
+/// `globals.js` adds to the JS engine's global scope. Each test loads the
+/// real `globals.js` into a bare `JSContext` (the test bundle stages no
 /// engine resources, so the source is read from disk via `#filePath`) and
 /// drives the classes through evaluated expressions.
 struct TextCodecTests {
@@ -19,7 +19,7 @@ struct TextCodecTests {
     private static func makeRuntimeContext() throws -> JSContext {
         let context = JSContext()!
 
-        // Bridges runtime.js touches while evaluating (the navigator IIFE
+        // Bridges globals.js touches while evaluating (the navigator IIFE
         // caches languages / user agent at load; console bridges log lazily).
         let languages: @convention(block) () -> [String] = { ["en"] }
         context.setObject(languages, forKeyedSubscript: "__MacishType_getLanguages" as NSString)
@@ -31,7 +31,7 @@ struct TextCodecTests {
             .deletingLastPathComponent()   // MacishTypeTests/
             .deletingLastPathComponent()   // macos/
             .deletingLastPathComponent()   // repo root
-            .appendingPathComponent("runtime/runtime.js")
+            .appendingPathComponent("shared/js/globals.js")
         let source = try String(contentsOf: runtimeURL, encoding: .utf8)
         context.evaluateScript(source, withSourceURL: runtimeURL)
         if let exception = context.exception {

@@ -31,11 +31,13 @@ target_link_libraries(macishtype PRIVATE Fcitx5::Core Fcitx5::Module::Notificati
     macishtype-jshost Fontconfig::Fontconfig)
 install(TARGETS macishtype DESTINATION "${FCITX_INSTALL_LIBDIR}/fcitx5")
 
-# The runtime assets are shared across platforms and live at the repo level,
-# one directory above this platform's CMake source root.
+# The shared runtime scripts live beside the libraries that own them:
+# globals.js is contract-level and shared by every host, hostglue.js only
+# serves QuickJS hosts. Both install into one directory, which is where
+# locateRuntimeScript() looks.
 install(FILES
-    "${PROJECT_SOURCE_DIR}/../runtime/hostglue.js"
-    "${PROJECT_SOURCE_DIR}/../runtime/runtime.js"
+    "${PROJECT_SOURCE_DIR}/../jshost/js/hostglue.js"
+    "${PROJECT_SOURCE_DIR}/../shared/js/globals.js"
     DESTINATION "${FCITX_INSTALL_PKGDATADIR}/macishtype")
 
 configure_file(macishtype-addon.conf.in macishtype-addon.conf @ONLY)

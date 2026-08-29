@@ -16,6 +16,11 @@ JavaScriptCore host and does not use it.
     `FontCoverageProvider`, installed process-wide via `setHostServices()`
   - [`HostEventLoop.h`](include/MacishType/HostEventLoop.h) —
     `HostEventLoop`, injected per engine host at `load()` time
+- [`js/hostglue.js`](js/hostglue.js) — glue for **QuickJS hosts only**,
+  evaluated before `globals.js`. Defines the bridge globals that are easier
+  to express in JS than through the QuickJS C API, plus the `Intl` polyfill
+  quickjs-ng does not ship. JavaScriptCore hosts (macOS) register the
+  equivalents natively and never load this file
 - `src/` — implementation
 - [`../shared/`](../shared/) — the platform-independent library this one
   links `PUBLIC`; `Logger` and the `MACISHTYPE_*` facade live there, and

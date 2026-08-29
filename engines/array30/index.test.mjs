@@ -14,7 +14,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-// A frozen lookup view mirroring runtime.js's module facade: query(key)
+// A frozen lookup view mirroring globals.js's module facade: query(key)
 // returns the mapped value, or `miss` when absent.
 function makeModule(entries, miss) {
   const inner = new Map(Object.entries(entries));
@@ -22,7 +22,7 @@ function makeModule(entries, miss) {
 }
 
 // A frozen coverage view: query(value) is true iff `covered(scalar)` holds for
-// every scalar. Mirrors runtime.js's fontCoverage facade.
+// every scalar. Mirrors globals.js's fontCoverage facade.
 function makeCoverage(covered) {
   return Object.freeze({
     query(value) {

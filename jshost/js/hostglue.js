@@ -1,4 +1,4 @@
-// Host-side glue evaluated before runtime.js. Defines the bridge globals
+// Host-side glue evaluated before globals.js. Defines the bridge globals
 // that are more convenient to express in JS than through the QuickJS C API;
 // the primitive natives it builds on (__MacishTypeHost_*) are registered by
 // the C++ host beforehand.

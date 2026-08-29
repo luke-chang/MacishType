@@ -17,7 +17,11 @@ natives, the manifest parser — stays in [`jshost/`](../jshost/).
   under the same `MacishType/` prefix `jshost/` uses, so a consumer sees
   one coherent header namespace across both libraries
 - `src/` — implementation
-- `js/` — shared JavaScript assets loaded by every host
+- [`js/globals.js`](js/globals.js) — the contract globals **every** host
+  evaluates in an engine's context before the engine's own code: `console`,
+  `TextDecoder`/`TextEncoder`, `fetch`, `addEventListener`, the `manifest`
+  proxy. macOS stages this same file into its bundle; the QuickJS hosts
+  install it beside [`jshost/js/hostglue.js`](../jshost/js/hostglue.js)
 
 ## Consumers
 

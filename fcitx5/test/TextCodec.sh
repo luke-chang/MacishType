@@ -1,5 +1,5 @@
 #!/bin/sh
-# TextDecoder/TextEncoder from runtime.js (WHATWG UTF-8 subset), mirroring
+# TextDecoder/TextEncoder from globals.js (WHATWG UTF-8 subset), mirroring
 # the upstream TextCodec test cases. textcodecfixture logs hex code-point /
 # byte lists at load; U+FFFD is "fffd", U+FEFF "feff".
 set -e

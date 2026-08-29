@@ -23,7 +23,7 @@
 namespace MacishType {
 
 // One fully loaded JS engine: its own QuickJS runtime/context, the shared
-// runtime.js globals, and the evaluated entry module. Created lazily on the
+// globals.js globals, and the evaluated entry module. Created lazily on the
 // first activate of the corresponding input method.
 class JsEngineHost {
 public:
@@ -340,7 +340,7 @@ private:
                                               JSValueConst *argv);
     static JSValue nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
                                     int argc, JSValueConst *argv);
-    // Optional TextDecoder/TextEncoder fast paths consumed by runtime.js.
+    // Optional TextDecoder/TextEncoder fast paths consumed by globals.js.
     // Decode is strict: invalid UTF-8 returns null so the runtime's state
     // machine keeps the WHATWG replacement/fatal semantics.
     static JSValue nativeDecodeUtf8(JSContext *ctx, JSValueConst thisVal,

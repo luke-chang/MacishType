@@ -19,7 +19,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-RUNTIME_DIR = REPO_ROOT / "runtime"
+# The shared runtime scripts now live beside their owning libraries, so the
+# CLI takes a search path rather than one directory.
+RUNTIME_DIRS = [REPO_ROOT / "shared" / "js", REPO_ROOT / "jshost" / "js"]
+RUNTIME_ARGS = [arg for d in RUNTIME_DIRS for arg in ("--runtime", str(d))]
 FIXTURES = REPO_ROOT / "fcitx5" / "test" / "fixtures" / "share" / "fcitx5" / "macishtype"
 FIXTURE_ENGINES = FIXTURES / "engines"
 FIXTURE_TABLES = FIXTURES / "tables"
@@ -75,7 +78,7 @@ def run_cli(cli, fixture, extra_args=(), allow_failure=False):
     line, mirroring the daemon log the .sh suite greps."""
     cmd = [
         str(cli),
-        "--runtime", str(RUNTIME_DIR),
+        *RUNTIME_ARGS,
         "--load-only", "--activate",
         *extra_args,
         str(FIXTURE_ENGINES / fixture),
@@ -193,7 +196,7 @@ def main():
         '{"do":"quit"}',
     ]) + "\n"
     result = subprocess.run(
-        [str(cli), "--runtime", str(RUNTIME_DIR),
+        [str(cli), *RUNTIME_ARGS,
          str(REPO_ROOT / "engines" / "example")],
         input=commands, capture_output=True, text=True, encoding="utf-8",
         timeout=120)
