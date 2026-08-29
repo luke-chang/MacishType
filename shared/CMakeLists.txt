@@ -7,6 +7,17 @@ cmake_minimum_required(VERSION 3.25)
 # host can link it without pulling in QuickJS.
 project(macishtype-shared LANGUAGES CXX)
 
+# Keep the build machine's directory layout out of the artifacts: __FILE__,
+# std::source_location and debug info all record whatever path the compiler
+# was handed, which for an out-of-tree CMake build is absolute. Mapping the
+# repo root makes them relative, so a shipped package carries no trace of
+# where it was built.
+get_filename_component(MACISHTYPE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.."
+                       ABSOLUTE)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options("-ffile-prefix-map=${MACISHTYPE_REPO_ROOT}=.")
+endif()
+
 add_library(macishtype-shared STATIC
     src/AssociatedDictionary.cpp
     src/IntlCache.cpp

@@ -3,6 +3,17 @@
 cmake_minimum_required(VERSION 3.25)
 project(fcitx5-macishtype VERSION 0.2.0)
 
+# Keep the build machine's directory layout out of the artifacts: __FILE__,
+# std::source_location and debug info all record whatever path the compiler
+# was handed, which for an out-of-tree CMake build is absolute. Mapping the
+# repo root makes them relative, so a shipped package carries no trace of
+# where it was built.
+get_filename_component(MACISHTYPE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.."
+                       ABSOLUTE)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options("-ffile-prefix-map=${MACISHTYPE_REPO_ROOT}=.")
+endif()
+
 # The embedded interpreter runs on every keystroke; never build it
 # unoptimized by accident.
 if(NOT CMAKE_BUILD_TYPE)
