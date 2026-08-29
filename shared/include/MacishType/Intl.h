@@ -7,9 +7,9 @@
 
 namespace MacishType {
 
-// Per-JsEngineHost cache of ICU handles backing the Intl bindings. Handles are
-// stored type-erased (void*) so this header stays free of ICU headers; intl.cpp
-// casts and closes them. One cache per JS context, single-threaded, no locking.
+// Cache of ICU handles, one per owning host instance. Handles are stored
+// type-erased (void*) so this header stays free of ICU headers; IntlCache.cpp
+// casts and closes them. Single-threaded, no locking.
 class IntlCache {
 public:
     IntlCache() = default;

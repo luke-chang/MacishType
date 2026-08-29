@@ -7,7 +7,8 @@
 #include <sstream>
 
 #include "MacishType/FontCoverage.h"
-#include "MacishType/HostLog.h"
+#include "MacishType/Log.h"
+#include "MacishType/Utf8.h"
 #include "MacishType/HostSeams.h"
 #include "MacishType/QjsUtil.h"
 
@@ -142,9 +143,6 @@ std::optional<std::string> decodeStorageKey(const std::string &filename) {
     }
     return key;
 }
-
-// Defined with the UTF-8 codec natives below.
-bool isStrictUtf8(const uint8_t *data, size_t size);
 
 // Textual normalization of "/"-separated segments; rejects escapes above
 // the root. Empty result is allowed (caller decides).
@@ -546,59 +544,14 @@ bool associatedDictionaryAvailable(const std::string &intendedLanguage) {
     return !associatedDictionaryPath(intendedLanguage).empty();
 }
 
-void JsEngineHost::ensureAssociatedDictionary() {
-    if (associatedDictionaryLoaded_) {
-        return;
-    }
-    associatedDictionaryLoaded_ = true;
-    auto path = associatedDictionaryPath(manifest_.intendedLanguage);
-    if (path.empty()) {
-        return;
-    }
-    std::ifstream stream(path, std::ios::binary);
-    std::string line;
-    while (std::getline(stream, line)) {
-        if (line.empty() || line[0] == '#') {
-            continue;
-        }
-        auto tab = line.find('\t');
-        if (tab == std::string::npos) {
-            continue;
-        }
-        std::string key = line.substr(0, tab);
-        std::vector<std::string> followups;
-        std::istringstream values(line.substr(tab + 1));
-        std::string phrase;
-        while (values >> phrase) {
-            followups.push_back(phrase);
-        }
-        if (!key.empty() && !followups.empty()) {
-            associatedDictionary_[key] = std::move(followups);
-        }
-    }
-    MACISHTYPE_INFO() << "AssociatedDictionary." << manifest_.intendedLanguage
-                      << ": " << associatedDictionary_.size() << " prefixes";
-}
-
 std::vector<std::string>
 JsEngineHost::associatedFollowups(const std::string &heldChar) {
-    ensureAssociatedDictionary();
-    if (heldChar.empty() ||
-        !isStrictUtf8(reinterpret_cast<const uint8_t *>(heldChar.data()),
-                      heldChar.size())) {
-        return {};
+    if (!associatedDictionary_) {
+        associatedDictionary_.emplace(
+            associatedDictionaryPath(manifest_.intendedLanguage),
+            manifest_.intendedLanguage);
     }
-    // Key on the last character: follow-ups attach after the held text, so
-    // multi-character held text (staged prefix + candidate) chains off its
-    // trailing character.
-    auto boundaries = graphemeBoundariesUtf8(intlCache(), heldChar);
-    if (boundaries.size() < 2) {
-        return {};
-    }
-    auto found = associatedDictionary_.find(
-        heldChar.substr(boundaries[boundaries.size() - 2]));
-    return found != associatedDictionary_.end() ? found->second
-                                                : std::vector<std::string>{};
+    return associatedDictionary_->followups(intlCache(), heldChar);
 }
 
 bool JsEngineHost::evaluateEntryModule() {
@@ -1997,59 +1950,6 @@ JSValue JsEngineHost::nativeAction(JSContext *ctx, JSValueConst thisVal,
     return JS_UNDEFINED;
 }
 
-namespace {
-
-// Strict WHATWG UTF-8 validation: rejects overlongs, surrogates, and
-// anything past U+10FFFF, and scans embedded NULs like any other byte.
-bool isStrictUtf8(const uint8_t *data, size_t size) {
-    size_t i = 0;
-    while (i < size) {
-        uint8_t byte = data[i];
-        if (byte <= 0x7F) {
-            i += 1;
-            continue;
-        }
-        size_t continuations;
-        uint8_t lower = 0x80;
-        uint8_t upper = 0xBF;
-        if (byte >= 0xC2 && byte <= 0xDF) {
-            continuations = 1;
-        } else if (byte == 0xE0) {
-            continuations = 2;
-            lower = 0xA0; // reject overlongs
-        } else if (byte == 0xED) {
-            continuations = 2;
-            upper = 0x9F; // reject surrogates
-        } else if (byte >= 0xE1 && byte <= 0xEF) {
-            continuations = 2;
-        } else if (byte == 0xF0) {
-            continuations = 3;
-            lower = 0x90; // reject overlongs
-        } else if (byte == 0xF4) {
-            continuations = 3;
-            upper = 0x8F; // reject > U+10FFFF
-        } else if (byte >= 0xF1 && byte <= 0xF3) {
-            continuations = 3;
-        } else {
-            return false; // C0/C1, F5-FF, or a stray continuation byte
-        }
-        if (size - i - 1 < continuations) {
-            return false;
-        }
-        if (data[i + 1] < lower || data[i + 1] > upper) {
-            return false;
-        }
-        for (size_t k = 2; k <= continuations; ++k) {
-            if (data[i + k] < 0x80 || data[i + k] > 0xBF) {
-                return false;
-            }
-        }
-        i += continuations + 1;
-    }
-    return true;
-}
-
-} // namespace
 
 JSValue JsEngineHost::nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
                                        int argc, JSValueConst *argv) {

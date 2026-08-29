@@ -1,6 +1,6 @@
 #include "MacishType/HostSeams.h"
 
-#include "MacishType/HostLog.h"
+#include "MacishType/Log.h"
 
 namespace MacishType {
 
@@ -12,6 +12,9 @@ HostServices installedServices;
 
 void setHostServices(const HostServices &services) {
     installedServices = services;
+    // The log facade lives in the shared library and keeps its own sink,
+    // so a host that only links that library still gets MACISHTYPE_*.
+    setLogger(services.logger);
 }
 
 const HostServices &hostServices() { return installedServices; }
@@ -21,12 +24,6 @@ std::string translated(const char *text) {
         return translator->translate(text);
     }
     return text;
-}
-
-LogLine::~LogLine() {
-    if (Logger *logger = installedServices.logger) {
-        logger->write(level_, stream_.str());
-    }
 }
 
 } // namespace MacishType

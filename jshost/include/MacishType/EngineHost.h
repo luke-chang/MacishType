@@ -15,6 +15,7 @@
 
 #include <quickjs.h>
 
+#include "MacishType/AssociatedDictionary.h"
 #include "MacishType/HostEventLoop.h"
 #include "MacishType/Intl.h"
 #include "MacishType/Manifest.h"
@@ -250,7 +251,6 @@ private:
     bool injectModules();
     void loadModuleTable(JSValue table, const std::string &fileBase,
                          bool numericValues);
-    void ensureAssociatedDictionary();
     void registerBridgeGlobals();
     void drainJobs();
     void reportRejections();
@@ -439,9 +439,8 @@ private:
     std::map<std::string, StorageFileState> recentSelfWrites_;
     bool storageListening_ = false;
     std::function<void(bool)> storageListeningObserver_;
-    // Leading character (UTF-8) → follow-up phrases; loaded on first query.
-    std::map<std::string, std::vector<std::string>> associatedDictionary_;
-    bool associatedDictionaryLoaded_ = false;
+    // Built on first query from the seam-resolved table path.
+    std::optional<AssociatedDictionary> associatedDictionary_;
     bool associatedModeEnabled_ = false;
     bool layoutVertical_ = false;
     ManifestData manifest_;

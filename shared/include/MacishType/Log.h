@@ -2,7 +2,7 @@
 
 #include <sstream>
 
-#include "MacishType/HostSeams.h"
+#include "MacishType/Logger.h"
 
 namespace MacishType {
 
@@ -31,7 +31,7 @@ private:
     ::MacishType::LogLine(::MacishType::Logger::Level::Debug)
 #define MACISHTYPE_INFO()                                                      \
     ::MacishType::LogLine(::MacishType::Logger::Level::Info)
-#define MACISHTYPE_WARN()                                                      \
+#define MACISHTYPE_WARN()                                                    \
     ::MacishType::LogLine(::MacishType::Logger::Level::Notice)
 #define MACISHTYPE_ERROR()                                                     \
     ::MacishType::LogLine(::MacishType::Logger::Level::Error)

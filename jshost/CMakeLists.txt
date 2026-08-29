@@ -25,6 +25,9 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/quickjs-ng/CMakeLists.txt")
 endif()
 add_subdirectory(external/quickjs-ng EXCLUDE_FROM_ALL)
 
+# The platform-independent pieces this host shares with native hosts.
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../shared" shared EXCLUDE_FROM_ALL)
+
 add_library(macishtype-jshost STATIC
     src/EngineHost.cpp
     src/EventData.cpp
@@ -36,7 +39,7 @@ add_library(macishtype-jshost STATIC
 target_include_directories(macishtype-jshost PUBLIC include)
 target_compile_features(macishtype-jshost PUBLIC cxx_std_20)
 set_target_properties(macishtype-jshost PROPERTIES CXX_EXTENSIONS OFF)
-target_link_libraries(macishtype-jshost PUBLIC qjs)
+target_link_libraries(macishtype-jshost PUBLIC qjs macishtype-shared)
 
 # System ICU backs the JS Intl bindings; we link the system library rather
 # than bundling CLDR data.

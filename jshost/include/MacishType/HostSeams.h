@@ -5,6 +5,8 @@
 #include <string_view>
 #include <vector>
 
+#include "MacishType/Logger.h"
+
 namespace MacishType {
 
 // Host seam interfaces: the platform capabilities the core engine host
@@ -13,21 +15,8 @@ namespace MacishType {
 // core call — several consumers are free functions with no instance to
 // hang a reference on.
 //
-// Threading contract: core runs on a single loop thread. Every seam
-// method is invoked on that thread only. Logger::write SHOULD still be
-// thread-safe as defense in depth (core logs only from the loop thread
-// today, but the seam does not promise that forever).
-
-class Logger {
-public:
-    // fault = should-never-happen errors (missing file, malformed data),
-    // error = ordinary failures, notice/info = state changes and routine
-    // events. Matches the level vocabulary of the JS contract.
-    enum class Level { Debug, Info, Notice, Error, Fault };
-
-    virtual ~Logger() = default;
-    virtual void write(Level level, std::string_view message) = 0;
-};
+// Threading contract: the host runs on a single loop thread. Every seam
+// method is invoked on that thread only.
 
 class ResourceLocator {
 public:

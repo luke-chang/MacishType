@@ -6,7 +6,7 @@
 
 #include <quickjs.h>
 
-#include "MacishType/HostLog.h"
+#include "MacishType/Log.h"
 #include "MacishType/HostSeams.h"
 #include "MacishType/QjsUtil.h"
 

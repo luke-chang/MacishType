@@ -16,9 +16,10 @@ JavaScriptCore host and does not use it.
     `FontCoverageProvider`, installed process-wide via `setHostServices()`
   - [`HostEventLoop.h`](include/MacishType/HostEventLoop.h) —
     `HostEventLoop`, injected per engine host at `load()` time
-  - [`HostLog.h`](include/MacishType/HostLog.h) — the `MACISHTYPE_*` log
-    macro facade over the `Logger` seam
 - `src/` — implementation
+- [`../shared/`](../shared/) — the platform-independent library this one
+  links `PUBLIC`; `Logger` and the `MACISHTYPE_*` facade live there, and
+  `setHostServices()` forwards the seam's logger into it
 - [`external/quickjs-ng/`](external/quickjs-ng/) — the JS
   interpreter, pinned as the repo's only git submodule
 - [`CMakePresets.json`](CMakePresets.json) — build presets; this directory
