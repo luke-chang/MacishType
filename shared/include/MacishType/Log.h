@@ -34,15 +34,18 @@ private:
     std::ostringstream stream_;
 };
 
-#define MACISHTYPE_DEBUG()                                                     \
-    ::MacishType::LogLine(::MacishType::Logger::Level::Debug)
-#define MACISHTYPE_INFO()                                                      \
-    ::MacishType::LogLine(::MacishType::Logger::Level::Info)
+// The `if (!x) {} else` shape keeps the macro a single statement that cannot
+// steal a trailing else from the caller.
+#define MACISHTYPE_LOG_AT(level)                                               \
+    if (!::MacishType::logEnabled(level)) {                                    \
+    } else                                                                     \
+        ::MacishType::LogLine(level)
+
+#define MACISHTYPE_DEBUG() MACISHTYPE_LOG_AT(::MacishType::Logger::Level::Debug)
+#define MACISHTYPE_INFO() MACISHTYPE_LOG_AT(::MacishType::Logger::Level::Info)
 #define MACISHTYPE_NOTICE()                                                    \
-    ::MacishType::LogLine(::MacishType::Logger::Level::Notice)
-#define MACISHTYPE_ERROR()                                                     \
-    ::MacishType::LogLine(::MacishType::Logger::Level::Error)
-#define MACISHTYPE_FAULT()                                                     \
-    ::MacishType::LogLine(::MacishType::Logger::Level::Fault)
+    MACISHTYPE_LOG_AT(::MacishType::Logger::Level::Notice)
+#define MACISHTYPE_ERROR() MACISHTYPE_LOG_AT(::MacishType::Logger::Level::Error)
+#define MACISHTYPE_FAULT() MACISHTYPE_LOG_AT(::MacishType::Logger::Level::Fault)
 
 } // namespace MacishType

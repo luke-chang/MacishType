@@ -1,6 +1,5 @@
 #include "MacishType/HostSeams.h"
 
-#include "MacishType/Log.h"
 
 namespace MacishType {
 
@@ -12,9 +11,6 @@ HostServices installedServices;
 
 void setHostServices(const HostServices &services) {
     installedServices = services;
-    // The log facade lives in the shared library and keeps its own sink,
-    // so a host that only links that library still gets MACISHTYPE_*.
-    setLogger(services.logger);
 }
 
 const HostServices &hostServices() { return installedServices; }

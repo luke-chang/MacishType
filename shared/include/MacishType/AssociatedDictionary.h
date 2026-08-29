@@ -16,8 +16,8 @@ namespace MacishType {
 // a native host can construct one without installing host services.
 class AssociatedDictionary {
 public:
-    AssociatedDictionary(std::filesystem::path path, std::string language)
-        : path_(std::move(path)), language_(std::move(language)) {}
+    explicit AssociatedDictionary(std::filesystem::path path)
+        : path_(std::move(path)) {}
 
     // Follow-ups for the last grapheme cluster of `heldText`; empty when the
     // text is not valid UTF-8, has no clusters, or misses the table.
@@ -28,7 +28,6 @@ private:
     void ensureLoaded();
 
     std::filesystem::path path_;
-    std::string language_;
     std::map<std::string, std::vector<std::string>> entries_;
     bool loaded_ = false;
 };

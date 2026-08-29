@@ -5,6 +5,7 @@
 
 #include <MacishType/HostEventLoop.h>
 #include <MacishType/HostSeams.h>
+#include <MacishType/Logger.h>
 
 #include "FontCoverage.h"
 
@@ -40,6 +41,7 @@ public:
 private:
     class FcitxLogger : public Logger {
     public:
+        bool enabled(Level level) const override;
         void write(Level level, std::string_view message,
                    const std::source_location &where) override;
     };

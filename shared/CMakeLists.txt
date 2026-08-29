@@ -7,16 +7,9 @@ cmake_minimum_required(VERSION 3.25)
 # host can link it without pulling in QuickJS.
 project(macishtype-shared LANGUAGES CXX)
 
-# Keep the build machine's directory layout out of the artifacts: __FILE__,
-# std::source_location and debug info all record whatever path the compiler
-# was handed, which for an out-of-tree CMake build is absolute. Mapping the
-# repo root makes them relative, so a shipped package carries no trace of
-# where it was built.
-get_filename_component(MACISHTYPE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.."
-                       ABSOLUTE)
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options("-ffile-prefix-map=${MACISHTYPE_REPO_ROOT}=.")
-endif()
+# Applied here rather than per-project: this is the innermost of the three
+# CMake projects, so every build reaches it.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SourcePathMap.cmake")
 
 add_library(macishtype-shared STATIC
     src/AssociatedDictionary.cpp
@@ -31,6 +24,8 @@ set_target_properties(macishtype-shared PROPERTIES CXX_EXTENSIONS OFF)
 set_target_properties(macishtype-shared PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # System ICU backs grapheme segmentation and the Intl handle cache; we link
-# the system library rather than bundling CLDR data.
+# the system library rather than bundling CLDR data. PUBLIC because
+# IntlIcu.h is a public header — linking this target is what makes it the
+# single ICU include/link isolation point it claims to be.
 find_package(ICU REQUIRED COMPONENTS i18n uc)
-target_link_libraries(macishtype-shared PRIVATE ICU::i18n ICU::uc)
+target_link_libraries(macishtype-shared PUBLIC ICU::i18n ICU::uc)

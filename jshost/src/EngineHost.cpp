@@ -7,10 +7,10 @@
 #include <sstream>
 
 #include "MacishType/FontCoverage.h"
-#include "MacishType/Log.h"
-#include "MacishType/Utf8.h"
 #include "MacishType/HostSeams.h"
+#include "MacishType/Log.h"
 #include "MacishType/QjsUtil.h"
+#include "MacishType/Utf8.h"
 
 namespace MacishType {
 
@@ -548,8 +548,7 @@ std::vector<std::string>
 JsEngineHost::associatedFollowups(const std::string &heldChar) {
     if (!associatedDictionary_) {
         associatedDictionary_.emplace(
-            associatedDictionaryPath(manifest_.intendedLanguage),
-            manifest_.intendedLanguage);
+            associatedDictionaryPath(manifest_.intendedLanguage));
     }
     return associatedDictionary_->followups(intlCache(), heldChar);
 }
@@ -1949,7 +1948,6 @@ JSValue JsEngineHost::nativeAction(JSContext *ctx, JSValueConst thisVal,
     host->actionHandler_(name, argc - 1, argv + 1);
     return JS_UNDEFINED;
 }
-
 
 JSValue JsEngineHost::nativeUtf8Decode(JSContext *ctx, JSValueConst thisVal,
                                        int argc, JSValueConst *argv) {

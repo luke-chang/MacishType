@@ -37,8 +37,8 @@ void AssociatedDictionary::ensureLoaded() {
             entries_[key] = std::move(followups);
         }
     }
-    MACISHTYPE_INFO() << "AssociatedDictionary." << language_ << ": "
-                      << entries_.size() << " prefixes";
+    MACISHTYPE_INFO() << path_.stem().string() << ": " << entries_.size()
+                      << " prefixes";
 }
 
 std::vector<std::string>

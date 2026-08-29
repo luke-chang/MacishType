@@ -72,40 +72,45 @@ void FcitxHostEventLoop::post(std::function<void()> callback) {
 
 // FcitxCoreServices -------------------------------------------------------
 
+namespace {
+
+// The shared vocabulary has no warn level and nothing above error; fcitx5
+// has no notice and stops at error. Both directions of that squeeze live
+// here so enabled() and write() cannot disagree.
+fcitx::LogLevel toFcitxLevel(Logger::Level level) {
+    switch (level) {
+    case Logger::Level::Debug:
+        return fcitx::LogLevel::Debug;
+    case Logger::Level::Info:
+        return fcitx::LogLevel::Info;
+    case Logger::Level::Notice:
+        return fcitx::LogLevel::Warn;
+    case Logger::Level::Error:
+    case Logger::Level::Fault:
+        return fcitx::LogLevel::Error;
+    }
+    return fcitx::LogLevel::Info;
+}
+
+} // namespace
+
 FcitxCoreServices::FcitxCoreServices() {
     HostServices services;
-    services.logger = &logger_;
     services.resources = &resources_;
     services.platform = &platform_;
     services.translator = &translator_;
     services.fontCoverage = &fontCoverage_;
+    setLogger(&logger_);
     setHostServices(services);
+}
+
+bool FcitxCoreServices::FcitxLogger::enabled(Level level) const {
+    return macishtype_logcategory().checkLogLevel(toFcitxLevel(level));
 }
 
 void FcitxCoreServices::FcitxLogger::write(Level level,
                                            std::string_view message,
                                            const std::source_location &where) {
-    fcitx::LogLevel mapped = fcitx::LogLevel::Info;
-    switch (level) {
-    case Level::Debug:
-        mapped = fcitx::LogLevel::Debug;
-        break;
-    case Level::Info:
-        mapped = fcitx::LogLevel::Info;
-        break;
-    case Level::Notice:
-        // fcitx5 has no notice level.
-        mapped = fcitx::LogLevel::Warn;
-        break;
-    case Level::Error:
-    case Level::Fault:
-        // fcitx has no level above Error; fold Fault into it.
-        mapped = fcitx::LogLevel::Error;
-        break;
-    }
-    if (!macishtype_logcategory().fatalWrapper(mapped)) {
-        return;
-    }
     // Built by hand rather than through FCITX_LOGC: that macro bakes its own
     // __FILE__/__LINE__ in as template arguments, which would name this
     // adapter instead of the call site. fcitx5 prints base names only, so
@@ -114,10 +119,9 @@ void FcitxCoreServices::FcitxLogger::write(Level level,
     if (const char *slash = std::strrchr(file, '/')) {
         file = slash + 1;
     }
-    fcitx::LogMessageBuilder(fcitx::Log::logStream(), mapped, file,
+    fcitx::LogMessageBuilder(fcitx::Log::logStream(), toFcitxLevel(level), file,
                              static_cast<int>(where.line()))
-        << std::string(message);
-    macishtype_logcategory().fatalWrapper2(mapped);
+        << message;
 }
 
 std::filesystem::path FcitxCoreServices::FcitxResourceLocator::

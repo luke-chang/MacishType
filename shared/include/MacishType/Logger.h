@@ -25,6 +25,17 @@ public:
     enum class Level { Debug, Info, Notice, Error, Fault };
 
     virtual ~Logger() = default;
+
+    // Answered live at every logging call site, so a sink whose backend has
+    // its own verbosity control (fcitx5's log category, an ETW provider's
+    // enable state) stays authoritative without anything having to mirror
+    // it. Lines that fail this never build their LogLine. Default admits
+    // everything, so a sink that does not filter need not override.
+    virtual bool enabled(Level level) const {
+        (void)level;
+        return true;
+    }
+
     // `where` is the MACISHTYPE_* call site, not this seam. Sinks that carry
     // structured fields (ETW) should record it; ones writing a text line
     // should follow their platform's convention — fcitx5 prints the base
@@ -33,9 +44,15 @@ public:
                        const std::source_location &where) = 0;
 };
 
-// Borrowed; the installer keeps it alive for the process lifetime. A null
-// logger degrades gracefully — lines are dropped.
+// Borrowed; the installer keeps it alive for the process lifetime. With no
+// logger installed nothing is emitted, and logEnabled() reports everything
+// off so callers do not format lines that have nowhere to go.
 void setLogger(Logger *logger);
 Logger *logger();
+
+inline bool logEnabled(Logger::Level level) {
+    const Logger *sink = logger();
+    return sink != nullptr && sink->enabled(level);
+}
 
 } // namespace MacishType

@@ -5,7 +5,6 @@
 #include <string_view>
 #include <vector>
 
-#include "MacishType/Logger.h"
 
 namespace MacishType {
 
@@ -68,7 +67,6 @@ public:
 };
 
 struct HostServices {
-    Logger *logger = nullptr;
     ResourceLocator *resources = nullptr;
     PlatformInfo *platform = nullptr;
     Translator *translator = nullptr;
@@ -77,9 +75,10 @@ struct HostServices {
 };
 
 // Pointers are borrowed; the host keeps them alive for the process
-// lifetime. A missing logger or translator degrades gracefully (the line
-// is dropped / the msgid comes back untranslated); resources and platform
-// are required before any engine loads.
+// lifetime. A missing translator degrades gracefully (the msgid comes back
+// untranslated); resources and platform are required before any engine
+// loads. The log sink is installed separately with MacishType::setLogger(),
+// so it has exactly one owner.
 void setHostServices(const HostServices &services);
 const HostServices &hostServices();
 

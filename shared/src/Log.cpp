@@ -14,7 +14,7 @@ Logger *logger() { return installedLogger; }
 
 LogLine::~LogLine() {
     if (installedLogger != nullptr) {
-        installedLogger->write(level_, stream_.str(), where_);
+        installedLogger->write(level_, std::move(stream_).str(), where_);
     }
 }
 

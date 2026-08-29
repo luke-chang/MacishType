@@ -8,16 +8,7 @@ cmake_minimum_required(VERSION 3.25)
 # (include/MacishType/HostSeams.h, HostEventLoop.h).
 project(macishtype-jshost LANGUAGES C CXX)
 
-# Keep the build machine's directory layout out of the artifacts: __FILE__,
-# std::source_location and debug info all record whatever path the compiler
-# was handed, which for an out-of-tree CMake build is absolute. Mapping the
-# repo root makes them relative, so a shipped package carries no trace of
-# where it was built.
-get_filename_component(MACISHTYPE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.."
-                       ABSOLUTE)
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options("-ffile-prefix-map=${MACISHTYPE_REPO_ROOT}=.")
-endif()
+include("${CMAKE_CURRENT_SOURCE_DIR}/../shared/cmake/SourcePathMap.cmake")
 
 # The embedded interpreter runs on every keystroke; never build it
 # unoptimized by accident.
@@ -51,11 +42,6 @@ target_include_directories(macishtype-jshost PUBLIC include)
 target_compile_features(macishtype-jshost PUBLIC cxx_std_20)
 set_target_properties(macishtype-jshost PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(macishtype-jshost PUBLIC qjs macishtype-shared)
-
-# System ICU backs the JS Intl bindings; we link the system library rather
-# than bundling CLDR data.
-find_package(ICU REQUIRED COMPONENTS i18n uc)
-target_link_libraries(macishtype-jshost PRIVATE ICU::i18n ICU::uc)
 
 # Headless CLI: the reference seam embedding, driven by the contract tests.
 add_executable(macishtype-jshost-cli cli/Main.cpp)

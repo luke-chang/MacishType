@@ -47,6 +47,7 @@
 #include "MacishType/HostEventLoop.h"
 #include "MacishType/HostSeams.h"
 #include "MacishType/JsonUtil.h"
+#include "MacishType/Logger.h"
 #include "MacishType/Manifest.h"
 #include "MacishType/QjsUtil.h"
 
@@ -464,8 +465,8 @@ int main(int argc, char **argv) {
     resources.runtimeDirs = options->runtimeDirs;
     resources.tablesDir = options->tablesDir;
     platform.languages = options->languages;
+    setLogger(&logger);
     HostServices services;
-    services.logger = &logger;
     services.resources = &resources;
     services.platform = &platform;
     setHostServices(services);
