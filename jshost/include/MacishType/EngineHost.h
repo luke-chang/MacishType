@@ -128,10 +128,10 @@ public:
 
     // Associated-mode host dictionary. `associatedModeEnabled_` mirrors the
     // engine's enableAssociatedMode setting (set by the addon); it gates the
-    // dictionary fallback, matching the macOS host.
-    void setAssociatedModeEnabled(bool enabled) {
-        associatedModeEnabled_ = enabled;
-    }
+    // dictionary fallback, matching the macOS host. Turning it on takes a
+    // reference to the shared dictionary, turning it off drops it; idempotent,
+    // since the addon calls it on every keystroke of the sessionless path.
+    void setAssociatedModeEnabled(bool enabled);
     bool associatedModeEnabled() const { return associatedModeEnabled_; }
 
     // Base candidate orientation used when the manifest does not fix
@@ -141,8 +141,9 @@ public:
     // manifest/updateCandidates values still override per candidate window.
     void setLayoutVertical(bool vertical) { layoutVertical_ = vertical; }
     bool layoutVertical() const { return layoutVertical_; }
-    // Follow-up phrases for held text, keyed on its last character, from
-    // the locale dictionary (lazily loaded); empty when no entry.
+    // Follow-up phrases for held text, keyed on its last character, from the
+    // shared locale dictionary; empty when no entry, and when associated mode
+    // is off (no reference is held then).
     std::vector<std::string> associatedFollowups(const std::string &heldChar);
     // Grapheme cluster boundaries as byte offsets; see graphemeBoundariesUtf8.
     std::vector<size_t> graphemeBoundaries(const std::string &utf8) {
@@ -439,8 +440,11 @@ private:
     std::map<std::string, StorageFileState> recentSelfWrites_;
     bool storageListening_ = false;
     std::function<void(bool)> storageListeningObserver_;
-    // Built on first query from the seam-resolved table path.
-    std::optional<AssociatedDictionary> associatedDictionary_;
+    // Reference to the process-wide dictionary, held while associated mode is
+    // enabled. The path is resolved at construction because the reconcile runs
+    // on every keystroke of the sessionless path.
+    std::filesystem::path associatedTablePath_;
+    AssociatedDictionary::Handle associatedDictionary_;
     bool associatedModeEnabled_ = false;
     bool layoutVertical_ = false;
     ManifestData manifest_;

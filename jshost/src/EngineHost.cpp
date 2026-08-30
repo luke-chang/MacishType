@@ -173,6 +173,17 @@ std::optional<std::string> normalizeRelativePath(const std::string &path) {
     return result;
 }
 
+std::filesystem::path associatedDictionaryPath(const std::string &language) {
+    if (language.empty()) {
+        return {};
+    }
+    ResourceLocator *resources = hostServices().resources;
+    if (resources == nullptr) {
+        return {};
+    }
+    return resources->locateDataTable("AssociatedDictionary", language);
+}
+
 } // namespace
 
 // Loading --------------------------------------------------------------
@@ -210,7 +221,9 @@ JsEngineHost::JsEngineHost(std::string engineId,
                                                      : std::move(
                                                            settingsValuesJson)),
       manifest_(std::move(manifest)), languages_(std::move(languages)),
-      toggleDelegates_(std::move(toggleDelegates)), eventLoop_(eventLoop) {}
+      toggleDelegates_(std::move(toggleDelegates)), eventLoop_(eventLoop) {
+    associatedTablePath_ = associatedDictionaryPath(manifest_.intendedLanguage);
+}
 
 JsEngineHost::~JsEngineHost() {
     // Async-fetch teardown, strictly before the JS context dies:
@@ -527,30 +540,24 @@ void JsEngineHost::loadModuleTable(JSValue table, const std::string &fileBase,
                       << count << " entries";
 }
 
-namespace {
-std::filesystem::path associatedDictionaryPath(const std::string &language) {
-    if (language.empty()) {
-        return {};
-    }
-    ResourceLocator *resources = hostServices().resources;
-    if (resources == nullptr) {
-        return {};
-    }
-    return resources->locateDataTable("AssociatedDictionary", language);
-}
-} // namespace
-
 bool associatedDictionaryAvailable(const std::string &intendedLanguage) {
     return !associatedDictionaryPath(intendedLanguage).empty();
 }
 
+void JsEngineHost::setAssociatedModeEnabled(bool enabled) {
+    associatedModeEnabled_ = enabled;
+    if (!enabled) {
+        associatedDictionary_.reset();
+        return;
+    }
+    if (!associatedDictionary_) {
+        associatedDictionary_ = AssociatedDictionary::acquire(associatedTablePath_);
+    }
+}
+
 std::vector<std::string>
 JsEngineHost::associatedFollowups(const std::string &heldChar) {
-    if (!associatedDictionary_) {
-        associatedDictionary_.emplace(
-            associatedDictionaryPath(manifest_.intendedLanguage));
-    }
-    return associatedDictionary_->followups(intlCache(), heldChar);
+    return associatedDictionary_.followups(intlCache(), heldChar);
 }
 
 bool JsEngineHost::evaluateEntryModule() {

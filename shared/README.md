@@ -17,6 +17,8 @@ natives, the manifest parser — stays in [`jshost/`](../jshost/).
   under the same `MacishType/` prefix `jshost/` uses, so a consumer sees
   one coherent header namespace across both libraries
 - `src/` — implementation
+- [`tests/`](tests/) — the self-test that doubles as the acceptance check
+  below
 - [`js/globals.js`](js/globals.js) — the contract globals **every** host
   evaluates in an engine's context before the engine's own code: `console`,
   `TextDecoder`/`TextEncoder`, `fetch`, `addEventListener`, the `manifest`
@@ -30,7 +32,11 @@ natives, the manifest parser — stays in [`jshost/`](../jshost/).
   QuickJS. Keeping that possible is why this library exists, so the
   acceptance check is that `libmacishtype-shared.a` plus ICU links a
   program on its own — the contract tests cannot catch a regression here,
-  because the addon folds both libraries into one `.so`.
+  because the addon folds both libraries into one `.so`. Run it with
+  `cmake -S shared -B <dir> && cmake --build <dir> && ctest --test-dir <dir>`;
+  the test target exists only under that standalone configure, and it links
+  the whole archive so every source file is covered, not just the ones the
+  test happens to call.
 
 ## Conventions
 
@@ -40,3 +46,6 @@ natives, the manifest parser — stays in [`jshost/`](../jshost/).
 - No exceptions across the library boundary: failures come back as return
   values (`nullptr` / `std::nullopt` / empty containers).
 - Strings are UTF-8 `std::string` throughout.
+- Parsed data tables are shared, not copied: `RefCountedDictionary` keys one
+  parsed value per file path and frees it when the last handle drops, so
+  several hosts wanting the same table hold one copy between them.

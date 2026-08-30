@@ -1,5 +1,6 @@
 #include "MacishType/AssociatedDictionary.h"
 
+#include <cstdint>
 #include <fstream>
 #include <sstream>
 
@@ -7,16 +8,16 @@
 #include "MacishType/Utf8.h"
 
 namespace MacishType {
+namespace {
 
-void AssociatedDictionary::ensureLoaded() {
-    if (loaded_) {
-        return;
+AssociatedDictionary::Entries parseTable(const std::filesystem::path &path) {
+    AssociatedDictionary::Entries entries;
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) {
+        MACISHTYPE_FAULT() << "Associated dictionary could not be read: "
+                           << path.string();
+        return entries;
     }
-    loaded_ = true;
-    if (path_.empty()) {
-        return;
-    }
-    std::ifstream stream(path_, std::ios::binary);
     std::string line;
     while (std::getline(stream, line)) {
         if (line.empty() || line[0] == '#') {
@@ -34,17 +35,31 @@ void AssociatedDictionary::ensureLoaded() {
             followups.push_back(phrase);
         }
         if (!key.empty() && !followups.empty()) {
-            entries_[key] = std::move(followups);
+            entries[key] = std::move(followups);
         }
     }
-    MACISHTYPE_INFO() << path_.stem().string() << ": " << entries_.size()
+    MACISHTYPE_INFO() << path.stem().string() << ": " << entries.size()
                       << " prefixes";
+    return entries;
+}
+
+RefCountedDictionary<AssociatedDictionary::Entries> &store() {
+    static RefCountedDictionary<AssociatedDictionary::Entries> instance(
+        parseTable);
+    return instance;
+}
+
+} // namespace
+
+AssociatedDictionary::Handle
+AssociatedDictionary::acquire(const std::filesystem::path &path) {
+    return Handle(store().acquire(path));
 }
 
 std::vector<std::string>
-AssociatedDictionary::followups(IntlCache &cache, const std::string &heldText) {
-    ensureLoaded();
-    if (heldText.empty() ||
+AssociatedDictionary::Handle::followups(IntlCache &cache,
+                                        const std::string &heldText) const {
+    if (!inner_ || heldText.empty() ||
         !isStrictUtf8(reinterpret_cast<const uint8_t *>(heldText.data()),
                       heldText.size())) {
         return {};
@@ -56,8 +71,10 @@ AssociatedDictionary::followups(IntlCache &cache, const std::string &heldText) {
     if (boundaries.size() < 2) {
         return {};
     }
-    auto found = entries_.find(heldText.substr(boundaries[boundaries.size() - 2]));
-    return found != entries_.end() ? found->second : std::vector<std::string>{};
+    const Entries &entries = inner_.value();
+    auto found =
+        entries.find(heldText.substr(boundaries[boundaries.size() - 2]));
+    return found != entries.end() ? found->second : std::vector<std::string>{};
 }
 
 } // namespace MacishType
