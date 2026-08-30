@@ -161,7 +161,9 @@ void testRefCounting(Checks &checks, const std::filesystem::path &dir) {
 void testAssociatedDictionary(Checks &checks, const std::filesystem::path &dir,
                               CountingLogger &logger) {
     const auto table = dir / "AssociatedDictionary.test.txt";
-    writeFile(table, std::string("# comment\n") + kCluster + "\tone two\n");
+    // The blank and TAB-less lines exercise what forEachTableLine drops.
+    writeFile(table, std::string("# comment\n\nno tab here\n") + kCluster +
+                         "\tone two\n");
 
     IntlCache cache;
     const std::string held = std::string("A") + kCluster;
@@ -185,6 +187,8 @@ void testAssociatedDictionary(Checks &checks, const std::filesystem::path &dir,
                       "lookup keys on the whole trailing grapheme cluster");
         checks.expect(held2.followups(cache, "A").empty(),
                       "a cluster with no entry has no follow-ups");
+        checks.expect(held2.followups(cache, "no tab here").empty(),
+                      "a line with no TAB never becomes an entry");
     }
     checks.expect(logger.unloads == 1,
                   "releasing the last handle unloads the table");

@@ -16,6 +16,7 @@ add_library(macishtype-shared STATIC
     src/IntlCache.cpp
     src/Log.cpp
     src/RefCountedDictionary.cpp
+    src/TableFile.cpp
     src/Utf8.cpp
 )
 target_include_directories(macishtype-shared PUBLIC include)

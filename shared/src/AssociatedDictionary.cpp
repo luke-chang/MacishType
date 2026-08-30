@@ -1,10 +1,10 @@
 #include "MacishType/AssociatedDictionary.h"
 
 #include <cstdint>
-#include <fstream>
 #include <sstream>
 
 #include "MacishType/Log.h"
+#include "MacishType/TableFile.h"
 #include "MacishType/Utf8.h"
 
 namespace MacishType {
@@ -12,31 +12,22 @@ namespace {
 
 AssociatedDictionary::Entries parseTable(const std::filesystem::path &path) {
     AssociatedDictionary::Entries entries;
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream) {
+    bool read = forEachTableLine(
+        path, [&entries](const std::string &key, const std::string &value) {
+            std::vector<std::string> followups;
+            std::istringstream values(value);
+            std::string phrase;
+            while (values >> phrase) {
+                followups.push_back(phrase);
+            }
+            if (!key.empty() && !followups.empty()) {
+                entries[key] = std::move(followups);
+            }
+        });
+    if (!read) {
         MACISHTYPE_FAULT() << "Associated dictionary could not be read: "
                            << path.string();
         return entries;
-    }
-    std::string line;
-    while (std::getline(stream, line)) {
-        if (line.empty() || line[0] == '#') {
-            continue;
-        }
-        auto tab = line.find('\t');
-        if (tab == std::string::npos) {
-            continue;
-        }
-        std::string key = line.substr(0, tab);
-        std::vector<std::string> followups;
-        std::istringstream values(line.substr(tab + 1));
-        std::string phrase;
-        while (values >> phrase) {
-            followups.push_back(phrase);
-        }
-        if (!key.empty() && !followups.empty()) {
-            entries[key] = std::move(followups);
-        }
     }
     MACISHTYPE_INFO() << path.stem().string() << ": " << entries.size()
                       << " prefixes";

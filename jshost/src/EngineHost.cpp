@@ -10,6 +10,7 @@
 #include "MacishType/HostSeams.h"
 #include "MacishType/Log.h"
 #include "MacishType/QjsUtil.h"
+#include "MacishType/TableFile.h"
 #include "MacishType/Utf8.h"
 
 namespace MacishType {
@@ -507,34 +508,29 @@ void JsEngineHost::loadModuleTable(JSValue table, const std::string &fileBase,
                              "value (install the prepared data tables)";
         return;
     }
-    std::ifstream stream(path, std::ios::binary);
-    std::string line;
     size_t count = 0;
-    while (std::getline(stream, line)) {
-        if (line.empty() || line[0] == '#') {
-            continue;
-        }
-        auto tab = line.find('\t');
-        if (tab == std::string::npos) {
-            continue;
-        }
-        std::string key = line.substr(0, tab);
-        std::string value = line.substr(tab + 1);
-        if (numericValues) {
-            int64_t number = 0;
-            try {
-                number = std::stoll(value);
-            } catch (...) {
-                continue;
+    bool read = forEachTableLine(
+        path, [&](const std::string &key, const std::string &value) {
+            if (numericValues) {
+                int64_t number = 0;
+                try {
+                    number = std::stoll(value);
+                } catch (...) {
+                    return;
+                }
+                JS_SetPropertyStr(ctx_, table, key.c_str(),
+                                  JS_NewInt64(ctx_, number));
+            } else {
+                JS_SetPropertyStr(ctx_, table, key.c_str(),
+                                  JS_NewStringLen(ctx_, value.c_str(),
+                                                  value.size()));
             }
-            JS_SetPropertyStr(ctx_, table, key.c_str(),
-                              JS_NewInt64(ctx_, number));
-        } else {
-            JS_SetPropertyStr(ctx_, table, key.c_str(),
-                              JS_NewStringLen(ctx_, value.c_str(),
-                                              value.size()));
-        }
-        count++;
+            count++;
+        });
+    if (!read) {
+        MACISHTYPE_FAULT() << fileBase << " table could not be read: "
+                           << path.string();
+        return;
     }
     MACISHTYPE_INFO() << fileBase << "." << manifest_.intendedLanguage << ": "
                       << count << " entries";
