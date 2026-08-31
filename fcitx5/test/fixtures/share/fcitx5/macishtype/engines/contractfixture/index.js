@@ -40,6 +40,17 @@ console.log(`pagesize-boundary ${manifest.candidateWindow.pageSize}`);
 manifest.candidateWindow.pageSize = 20; // out of range (1-11) -> ignored
 console.log(`pagesize-after-bad ${manifest.candidateWindow.pageSize}`);
 
+manifest.candidateWindow.indexLabelDigitsRequireShift = true;
+console.log(
+  `requireshift-write ${String(manifest.candidateWindow.indexLabelDigitsRequireShift)}`,
+);
+manifest.candidateWindow.associatedModeIndexLabels = "shiftNumbers";
+manifest.candidateWindow.associatedModeIndexLabels = "bogus"; // not one of the three -> ignored
+manifest.candidateWindow.associatedModeIndexLabels = "system"; // retired token -> ignored
+console.log(
+  `assocmode-after-bad ${manifest.candidateWindow.associatedModeIndexLabels}`,
+);
+
 console.log(
   `toggle-nonchinese value=${String(manifest.toggle.outputToSimplified)} ` +
     `keys=${JSON.stringify(Object.keys(manifest.toggle))}`,

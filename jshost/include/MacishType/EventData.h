@@ -19,9 +19,17 @@ struct CandidateWindowConfig {
     bool vertical = false;
     bool handleNavigationKeys = true;
     bool handleIndexLabelKeys = true;
+    bool indexLabelDigitsRequireShift = false;
 };
 
 CandidateWindowConfig resolvedCandidateWindowConfig(const JsEngineHost &host);
+
+// The host's associated-mode selection-keys setting.
+enum class AssociatedSelectionKeys { FollowEngine, Numbers, ShiftNumbers };
+
+CandidateWindowConfig
+resolvedAssociatedCandidateWindowConfig(const JsEngineHost &host,
+                                        AssociatedSelectionKeys userPolicy);
 
 // Key fields in the contract's web KeyboardEvent vocabulary.
 struct EventKeyFields {

@@ -76,6 +76,41 @@ CandidateWindowConfig resolvedCandidateWindowConfig(const JsEngineHost &host) {
     if (auto labelsKeys = boolField("handleIndexLabelKeys")) {
         config.handleIndexLabelKeys = *labelsKeys;
     }
+    if (auto requireShift = boolField("indexLabelDigitsRequireShift")) {
+        config.indexLabelDigitsRequireShift = *requireShift;
+    }
+    return config;
+}
+
+CandidateWindowConfig
+resolvedAssociatedCandidateWindowConfig(const JsEngineHost &host,
+                                        AssociatedSelectionKeys userPolicy) {
+    CandidateWindowConfig config = resolvedCandidateWindowConfig(host);
+    auto applyDigitLabels = [&config](bool requireShift) {
+        config.indexLabels = "1234567890";
+        config.pageSize = std::min(config.pageSize, 10);
+        config.indexLabelDigitsRequireShift = requireShift;
+    };
+    switch (userPolicy) {
+    case AssociatedSelectionKeys::Numbers:
+        applyDigitLabels(false);
+        return config;
+    case AssociatedSelectionKeys::ShiftNumbers:
+        applyDigitLabels(true);
+        return config;
+    case AssociatedSelectionKeys::FollowEngine:
+        break;
+    }
+    std::string declaration = "numbers";
+    if (auto value = host.candidateWindowField("associatedModeIndexLabels")) {
+        if (auto *text = std::get_if<std::string>(&*value)) {
+            declaration = *text;
+        }
+    }
+    if (declaration == "inherit") {
+        return config;
+    }
+    applyDigitLabels(declaration == "shiftNumbers");
     return config;
 }
 
@@ -136,6 +171,8 @@ JSValue buildEventData(JSContext *ctx, const EventStaging &staging,
                  window.handleNavigationKeys);
     setBoolField(ctx, candidateWindow, "handleIndexLabelKeys",
                  window.handleIndexLabelKeys);
+    setBoolField(ctx, candidateWindow, "indexLabelDigitsRequireShift",
+                 window.indexLabelDigitsRequireShift);
     setIntField(ctx, candidateWindow, "pageItemCount", staging.pageItemCount);
     JS_SetPropertyStr(ctx, data, "candidateWindow", candidateWindow);
 

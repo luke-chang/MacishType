@@ -64,6 +64,8 @@ const std::map<std::string, FieldType> &candidateWindowFieldTypes() {
         {"expandable", FieldType::Boolean},
         {"handleNavigationKeys", FieldType::Boolean},
         {"handleIndexLabelKeys", FieldType::Boolean},
+        {"indexLabelDigitsRequireShift", FieldType::Boolean},
+        {"associatedModeIndexLabels", FieldType::String},
     };
     return types;
 }
@@ -1320,6 +1322,14 @@ void JsEngineHost::setCandidateWindowField(const std::string &field,
             text != "vertical") {
             MACISHTYPE_NOTICE()
                 << "candidateWindow.layoutDirection: invalid value ignored: "
+                << text;
+            return;
+        }
+        if (field == "associatedModeIndexLabels" && text != "numbers" &&
+            text != "shiftNumbers" && text != "inherit") {
+            MACISHTYPE_NOTICE()
+                << "candidateWindow.associatedModeIndexLabels: invalid value "
+                   "ignored: "
                 << text;
             return;
         }
