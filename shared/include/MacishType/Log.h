@@ -41,7 +41,20 @@ private:
     } else                                                                     \
         ::MacishType::LogLine(level)
 
+// enabled() reports the backend's state, not whether anyone consumes the
+// level, so a debug line is still formatted where the backend answers yes to
+// everything (an ETW provider enabled for its channel does).
+// MACISHTYPE_LOG_NO_DEBUG drops those lines from the build instead. The
+// discarded branch still compiles, so they stay type-checked.
+#ifdef MACISHTYPE_LOG_NO_DEBUG
+#define MACISHTYPE_DEBUG()                                                     \
+    if constexpr (true) {                                                      \
+    } else                                                                     \
+        ::MacishType::LogLine(::MacishType::Logger::Level::Debug)
+#else
 #define MACISHTYPE_DEBUG() MACISHTYPE_LOG_AT(::MacishType::Logger::Level::Debug)
+#endif
+
 #define MACISHTYPE_INFO() MACISHTYPE_LOG_AT(::MacishType::Logger::Level::Info)
 #define MACISHTYPE_NOTICE()                                                    \
     MACISHTYPE_LOG_AT(::MacishType::Logger::Level::Notice)
