@@ -25,6 +25,13 @@ struct FieldAnnotation {
     void dumpDescription(fcitx::RawConfig &config) const;
 };
 
+// Shared with the addon-wide config, which needs the same runtime enum
+// entries configtool reads here.
+using TextOption =
+    fcitx::Option<std::string, fcitx::NoConstrain<std::string>,
+                  fcitx::DefaultMarshaller<std::string>, FieldAnnotation>;
+using PickerOption = TextOption;
+
 // fcitx configuration composed at runtime from a manifest settings
 // schema. Only fields whose behavior can match the macOS host materialize
 // as options ("render means equivalent"); unsupported fields keep their

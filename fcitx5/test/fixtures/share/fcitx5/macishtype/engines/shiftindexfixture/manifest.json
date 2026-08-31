@@ -1,0 +1,12 @@
+{
+  "entry": "index.js",
+  "name": {
+    "en": "Shift Index Fixture"
+  },
+  "intendedLanguage": "zz",
+  "candidateWindow": {
+    "indexLabels": "a1b2",
+    "pageSize": 4,
+    "indexLabelDigitsRequireShift": true
+  }
+}

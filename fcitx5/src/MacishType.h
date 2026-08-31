@@ -32,10 +32,27 @@
 
 namespace MacishType {
 
+// Runtime enum entries for the selection-keys picker; the tokens are the
+// wire values written to the addon config.
+inline FieldAnnotation associatedSelectionKeysAnnotation() {
+    FieldAnnotation annotation;
+    annotation.enumTokens = {"followEngine", "numbers", "shiftNumbers"};
+    annotation.enumLabels = {translated("Follow engine"),
+                             translated("Number keys"),
+                             translated("Shift + number keys")};
+    return annotation;
+}
+
 FCITX_CONFIGURATION(
     MacishTypeConfig,
-    // Declared first: configtool renders options in declaration order and
-    // this one belongs above the notification toggle.
+    // configtool renders options in declaration order: typing behavior first,
+    // then engine maintenance, with the reload toggle above its notification.
+    PickerOption associatedSelectionKeys{
+        this, "AssociatedSelectionKeys",
+        translated("Associated word selection keys"),
+        std::string("followEngine"), fcitx::NoConstrain<std::string>{},
+        fcitx::DefaultMarshaller<std::string>{},
+        associatedSelectionKeysAnnotation()};
     fcitx::Option<bool> autoReloadEngines{
         this, "AutoReloadEngines",
         translated("Auto-reload an engine when its files change"), true};
@@ -86,6 +103,8 @@ public:
                fcitx::InputContextEvent &event) override;
 
 private:
+    // The addon-wide associated-mode policy, as sessions consume it.
+    AssociatedSelectionKeys associatedSelectionKeys() const;
     const EngineInfo *engineForEntry(const fcitx::InputMethodEntry &entry);
     EngineInfo *engineById(const std::string &engineId);
     // Lazily loads the JS host for an engine; a load failure is remembered

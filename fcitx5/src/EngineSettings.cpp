@@ -18,13 +18,9 @@ namespace {
 using ToggleOption =
     fcitx::Option<bool, fcitx::NoConstrain<bool>,
                   fcitx::DefaultMarshaller<bool>, FieldAnnotation>;
-using TextOption =
-    fcitx::Option<std::string, fcitx::NoConstrain<std::string>,
-                  fcitx::DefaultMarshaller<std::string>, FieldAnnotation>;
 using NumberOption =
     fcitx::Option<int, fcitx::IntConstrain, fcitx::DefaultMarshaller<int>,
                   FieldAnnotation>;
-using PickerOption = TextOption;
 
 std::optional<bool> boolFromJson(const std::string &json) {
     if (json == "true") {

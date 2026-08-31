@@ -33,7 +33,8 @@ struct CandidateData {
 // InputController's action executor.
 class EngineSession {
 public:
-    EngineSession(JsEngineHost *host, fcitx::InputContext *inputContext);
+    EngineSession(JsEngineHost *host, fcitx::InputContext *inputContext,
+                  AssociatedSelectionKeys selectionKeys);
     ~EngineSession();
     EngineSession(const EngineSession &) = delete;
     EngineSession &operator=(const EngineSession &) = delete;
@@ -76,6 +77,7 @@ private:
         std::optional<std::string> layoutDirection;
         std::optional<bool> handleNavigationKeys;
         std::optional<bool> handleIndexLabelKeys;
+        std::optional<bool> indexLabelDigitsRequireShift;
     };
     struct UpdateCandidatesAction {
         std::vector<CandidateData> items;
@@ -171,6 +173,9 @@ private:
     std::vector<CandidateData> candidates_;
     bool candidatesVisible_ = false;
     CandidateWindowConfig windowConfig_;
+    // Associated-mode window behavior, resolved once at construction —
+    // the policy is fixed for the session.
+    CandidateWindowConfig associatedWindowConfig_;
 
     // Reverse-lookup read-only display: visible flag (its handleKey branch
     // owns keys while set), the host lookup token, and a transient flag set

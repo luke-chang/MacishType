@@ -31,6 +31,18 @@ msgstr "引擎資料夾變動時通知"
 msgid "Associated words"
 msgstr "關聯字"
 
+msgid "Associated word selection keys"
+msgstr "關聯字選字鍵"
+
+msgid "Follow engine"
+msgstr "依引擎設定"
+
+msgid "Number keys"
+msgstr "數字鍵"
+
+msgid "Shift + number keys"
+msgstr "Shift + 數字鍵"
+
 msgid "Enable associated words"
 msgstr "啟用關聯字"
 

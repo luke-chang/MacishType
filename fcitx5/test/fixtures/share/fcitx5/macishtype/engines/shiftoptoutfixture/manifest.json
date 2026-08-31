@@ -1,0 +1,13 @@
+{
+  "entry": "index.js",
+  "name": {
+    "en": "Shift Opt-out Fixture"
+  },
+  "intendedLanguage": "zz",
+  "candidateWindow": {
+    "indexLabels": "1234",
+    "pageSize": 4,
+    "handleIndexLabelKeys": false,
+    "indexLabelDigitsRequireShift": true
+  }
+}

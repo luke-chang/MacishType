@@ -1,0 +1,24 @@
+{
+  "entry": "index.js",
+  "name": {
+    "en": "Assoc Shift Fixture"
+  },
+  "intendedLanguage": "zz",
+  "candidateWindow": {
+    "associatedModeIndexLabels": "shiftNumbers"
+  },
+  "settings": [
+    {
+      "title": {
+        "en": "Typing"
+      },
+      "fields": [
+        {
+          "key": "enableAssociatedMode",
+          "type": "system",
+          "default": true
+        }
+      ]
+    }
+  ]
+}

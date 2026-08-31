@@ -1,0 +1,11 @@
+{
+  "entry": "index.js",
+  "name": {
+    "en": "Assoc Cap Fixture"
+  },
+  "intendedLanguage": "zz",
+  "candidateWindow": {
+    "pageSize": 11,
+    "associatedModeIndexLabels": "numbers"
+  }
+}

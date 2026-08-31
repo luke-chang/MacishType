@@ -117,6 +117,7 @@ test: build
 	test/FullWidth.sh
 	test/CompositionEnd.sh
 	test/Associated.sh
+	test/AssociatedKeys.sh
 	test/Grapheme.sh
 	test/Contract.sh
 	test/AsyncFetch.sh

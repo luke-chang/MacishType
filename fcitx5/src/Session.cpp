@@ -127,6 +127,12 @@ std::optional<bool> boolProperty(JSContext *ctx, JSValueConst object,
     return JS_ToBool(ctx, value.get()) == 1;
 }
 
+// The label class the digit-Shift requirement governs: a single ASCII
+// digit (macOS isDigitIndexLabel parity).
+bool isDigitLabel(const std::string &text) {
+    return text.size() == 1 && text[0] >= '0' && text[0] <= '9';
+}
+
 std::optional<std::string> stringProperty(JSContext *ctx, JSValueConst object,
                                           const char *name) {
     Qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
@@ -140,7 +146,8 @@ std::optional<std::string> stringProperty(JSContext *ctx, JSValueConst object,
 } // namespace
 
 EngineSession::EngineSession(JsEngineHost *host,
-                             fcitx::InputContext *inputContext)
+                             fcitx::InputContext *inputContext,
+                             AssociatedSelectionKeys selectionKeys)
     : host_(host), inputContext_(inputContext) {
     // Unconditional, paired with the dtor's decrement: an invalid session
     // (createInstance fails below) is still destroyed by the caller, and an
@@ -148,6 +155,8 @@ EngineSession::EngineSession(JsEngineHost *host,
     host_->incrementActive();
     instanceId_ = host_->createInstance();
     windowConfig_ = resolvedCandidateWindowConfig(*host_);
+    associatedWindowConfig_ =
+        resolvedAssociatedCandidateWindowConfig(*host_, selectionKeys);
 }
 
 EngineSession::~EngineSession() {
@@ -251,27 +260,43 @@ bool EngineSession::dispatchCandidateWindowKey(const WebKeyEvent &web) {
     if (web.ctrlKey || web.metaKey) {
         return false;
     }
-    // " " labels are blank slots (position reserved, not selectable), so a
-    // space key never matches them.
-    if (windowConfig_.handleIndexLabelKeys && !web.altKey &&
-        isSingleGrapheme(*host_, web.key) && web.key != " ") {
-        int labelIndex = 0;
-        bool matched = false;
-        auto range = fcitx::utf8::MakeUTF8CharRange(windowConfig_.indexLabels);
-        for (auto iterator = std::begin(range); iterator != std::end(range);
-             ++iterator, ++labelIndex) {
-            if (std::string(iterator.charRange().first,
-                            iterator.charRange().second) == web.key) {
-                matched = true;
-                break;
+    if (windowConfig_.handleIndexLabelKeys && !web.altKey) {
+        // Under the digit-Shift requirement a physical digit key selects
+        // only with Shift held and a produced digit character never selects,
+        // keeping plain digits typeable; an unknown code degrades to
+        // character matching. " " labels are blank slots (position reserved,
+        // not selectable), so a space key never matches them.
+        std::string lookup;
+        auto namedDigit = digitForWebCode(web.code);
+        if (windowConfig_.indexLabelDigitsRequireShift && namedDigit) {
+            if (web.shiftKey) {
+                lookup.assign(1, *namedDigit);
             }
+        } else if (isSingleGrapheme(*host_, web.key) && web.key != " " &&
+                   !(windowConfig_.indexLabelDigitsRequireShift &&
+                     isDigitLabel(web.key))) {
+            lookup = web.key;
         }
-        if (matched && labelIndex < currentPageItemCount()) {
-            auto *list = candidateList();
-            confirmCandidateAt(static_cast<size_t>(
-                list->currentPage() * std::max(1, list->pageSize()) +
-                labelIndex));
-            return true;
+        if (!lookup.empty()) {
+            int labelIndex = 0;
+            bool matched = false;
+            auto range =
+                fcitx::utf8::MakeUTF8CharRange(windowConfig_.indexLabels);
+            for (auto iterator = std::begin(range);
+                 iterator != std::end(range); ++iterator, ++labelIndex) {
+                if (std::string(iterator.charRange().first,
+                                iterator.charRange().second) == lookup) {
+                    matched = true;
+                    break;
+                }
+            }
+            if (matched && labelIndex < currentPageItemCount()) {
+                auto *list = candidateList();
+                confirmCandidateAt(static_cast<size_t>(
+                    list->currentPage() * std::max(1, list->pageSize()) +
+                    labelIndex));
+                return true;
+            }
         }
     }
     if (windowConfig_.handleNavigationKeys) {
@@ -463,6 +488,8 @@ void EngineSession::queueAction(const std::string &name, int argc,
                 boolProperty(ctx, argv[1], "handleNavigationKeys");
             action.options.handleIndexLabelKeys =
                 boolProperty(ctx, argv[1], "handleIndexLabelKeys");
+            action.options.indexLabelDigitsRequireShift =
+                boolProperty(ctx, argv[1], "indexLabelDigitsRequireShift");
         }
         queue.push_back(std::move(action));
         return;
@@ -677,8 +704,12 @@ void EngineSession::applyUpdateCandidates(UpdateCandidatesAction action) {
         return;
     }
 
-    // Per-update overrides start from the session base config.
-    windowConfig_ = resolvedCandidateWindowConfig(*host_);
+    // Per-update overrides start from the session base config. In associated
+    // mode that base is the policy snapshot, so the engine's own updates
+    // during the session keep the resolved selection keys.
+    windowConfig_ = associating_
+                        ? associatedWindowConfig_
+                        : resolvedCandidateWindowConfig(*host_);
     if (action.options.pageSize) {
         windowConfig_.pageSize = std::max(1, *action.options.pageSize);
     }
@@ -695,6 +726,10 @@ void EngineSession::applyUpdateCandidates(UpdateCandidatesAction action) {
     if (action.options.handleIndexLabelKeys) {
         windowConfig_.handleIndexLabelKeys =
             *action.options.handleIndexLabelKeys;
+    }
+    if (action.options.indexLabelDigitsRequireShift) {
+        windowConfig_.indexLabelDigitsRequireShift =
+            *action.options.indexLabelDigitsRequireShift;
     }
 
     int total = static_cast<int>(candidates_.size());
@@ -790,7 +825,18 @@ void EngineSession::renderCandidates(int initialCursor) {
          ++iterator) {
         std::string labelText(iterator.charRange().first,
                               iterator.charRange().second);
-        labels.push_back(labelText == " " ? "" : labelText + " ");
+        if (labelText == " ") {
+            labels.push_back("");
+            continue;
+        }
+        // A gated digit label must not read as a key that selects on its
+        // own, so it shows the modifier it needs.
+        if (windowConfig_.indexLabelDigitsRequireShift &&
+            isDigitLabel(labelText)) {
+            labels.push_back("⇧" + labelText + " ");
+            continue;
+        }
+        labels.push_back(labelText + " ");
     }
     labels.resize(pageSize, "");
     list->setLabels(labels);

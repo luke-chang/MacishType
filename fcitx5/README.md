@@ -188,9 +188,17 @@ Host notes for this platform:
 - Custom manifest `menu` items are not implemented yet: they get no UI, and
   `menuchange` never fires.
 - The candidate window is fcitx5's own themed one: `layoutDirection`,
-  `pageSize`, `indexLabels`, and the navigation/index-label key options are
-  honored; the appearance knobs (`fontSize`, `expandable`, …) and
-  `updateCandidates`' `anchorAt` are accepted but have no effect.
+  `pageSize`, `indexLabels`, `indexLabelDigitsRequireShift`, and the
+  navigation/index-label key options are honored, in the manifest and as
+  per-update options alike;
+  the appearance knobs (`fontSize`, `expandable`, …) and `updateCandidates`'
+  `anchorAt` are accepted but have no effect. A digit label that needs Shift
+  is drawn with a `⇧` prefix.
+- Associated-word selection keys follow **Addons → MacishType → Associated
+  word selection keys**: *Follow engine* (the default) honors the engine's
+  `associatedModeIndexLabels` declaration and falls back to number keys,
+  while *Number keys* / *Shift + number keys* force the choice for every
+  engine. The setting applies to the next activation, not mid-composition.
 - `navigator.languages` and the `fontCoverage` module are load-time
   snapshots: `languagechange` and `fontcoveragechange` never fire on this
   host. Changing the system language or installing fonts takes a re-login

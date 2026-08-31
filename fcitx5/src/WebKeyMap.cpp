@@ -1,6 +1,7 @@
 #include "WebKeyMap.h"
 
 #include <map>
+#include <string_view>
 
 #include <fcitx-utils/keysym.h>
 
@@ -163,6 +164,17 @@ int locationForKey(const fcitx::Key &key) {
 }
 
 } // namespace
+
+std::optional<char> digitForWebCode(const std::string &code) {
+    for (std::string_view prefix : {"Digit", "Numpad"}) {
+        if (code.size() == prefix.size() + 1 &&
+            code.compare(0, prefix.size(), prefix) == 0 &&
+            code.back() >= '0' && code.back() <= '9') {
+            return code.back();
+        }
+    }
+    return std::nullopt;
+}
 
 WebKeyEvent translateKeyEvent(const fcitx::Key &rawKey) {
     WebKeyEvent event;

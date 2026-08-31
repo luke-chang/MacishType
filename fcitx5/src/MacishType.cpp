@@ -67,6 +67,17 @@ bool resolveLayoutVertical(const std::string &token) {
     return value != nullptr && *value == "True";
 }
 
+AssociatedSelectionKeys
+resolveAssociatedSelectionKeys(const std::string &token) {
+    if (token == "numbers") {
+        return AssociatedSelectionKeys::Numbers;
+    }
+    if (token == "shiftNumbers") {
+        return AssociatedSelectionKeys::ShiftNumbers;
+    }
+    return AssociatedSelectionKeys::FollowEngine;
+}
+
 // Compact label shown in panels: the manifest label when declared, else
 // the first character of the display name.
 std::string labelForEngine(const EngineInfo &engine) {
@@ -392,7 +403,8 @@ void MacishTypeEngine::handleSessionlessKey(const EngineInfo &engine,
             host->setLayoutVertical(
                 resolveLayoutVertical(settings->second->layoutDirection()));
         }
-        auto session = std::make_unique<EngineSession>(host, inputContext);
+        auto session = std::make_unique<EngineSession>(
+            host, inputContext, associatedSelectionKeys());
         if (session->valid()) {
             clearFailurePrompt(inputContext);
             session->invokeActivateHook();
@@ -494,7 +506,8 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
         host->setLayoutVertical(
             resolveLayoutVertical(settings->second->layoutDirection()));
     }
-    auto session = std::make_unique<EngineSession>(host, inputContext);
+    auto session = std::make_unique<EngineSession>(
+        host, inputContext, associatedSelectionKeys());
     if (!session->valid()) {
         return;
     }
@@ -745,6 +758,11 @@ void MacishTypeEngine::reconcileEngineFolder(const std::string &name) {
     // refreshed.
     watcher_->watchEngine(engine->id, engine->root);
     reloadEngine(engine->id);
+}
+
+AssociatedSelectionKeys MacishTypeEngine::associatedSelectionKeys() const {
+    return resolveAssociatedSelectionKeys(
+        config_.associatedSelectionKeys.value());
 }
 
 const EngineInfo *
@@ -1056,7 +1074,8 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
         return;
     }
     for (auto *inputContext : affected) {
-        auto session = std::make_unique<EngineSession>(host, inputContext);
+        auto session = std::make_unique<EngineSession>(
+            host, inputContext, associatedSelectionKeys());
         if (!session->valid()) {
             continue;
         }
