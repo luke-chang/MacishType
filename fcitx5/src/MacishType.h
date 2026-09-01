@@ -67,6 +67,37 @@ FCITX_CONFIGURATION(
         this, "FindInputCodeKey", translated("Find Input Code"),
         {fcitx::Key("Control+Alt+L")}, fcitx::KeyListConstrain()};);
 
+class MacishTypeEngine;
+
+// One manifest-declared menu toggle as a status-area action. State travels
+// as a checkbox icon pair rather than a checkable action: the icon is the
+// only channel every panel both renders and keeps current (kimpanel has no
+// checked field, and the AppIndicator client never refreshes one).
+//
+// A parked engine's action can stay attached and clickable until the next
+// activate, so reads go through the addon each time, never a cached
+// JsEngineHost pointer.
+class MenuItemAction final : public fcitx::Action {
+public:
+    MenuItemAction(MacishTypeEngine *engine, std::string engineId,
+                   std::string key, std::string label)
+        : engine_(engine), engineId_(std::move(engineId)),
+          key_(std::move(key)), label_(std::move(label)) {}
+
+    // The label travels verbatim from the manifest, never rewritten.
+    std::string shortText(fcitx::InputContext *) const override {
+        return label_;
+    }
+    std::string icon(fcitx::InputContext *) const override;
+    void activate(fcitx::InputContext *inputContext) override;
+
+private:
+    MacishTypeEngine *engine_;
+    std::string engineId_;
+    std::string key_;
+    std::string label_;
+};
+
 class MacishTypeEngine final : public fcitx::InputMethodEngineV2 {
 public:
     explicit MacishTypeEngine(fcitx::Instance *instance);
@@ -103,6 +134,10 @@ public:
                fcitx::InputContextEvent &event) override;
 
 private:
+    // MenuItemAction's virtuals resolve state through the private menu
+    // read/flip surface below.
+    friend class MenuItemAction;
+
     // The addon-wide associated-mode policy, as sessions consume it.
     AssociatedSelectionKeys associatedSelectionKeys() const;
     const EngineInfo *engineForEntry(const fcitx::InputMethodEntry &entry);
@@ -129,12 +164,23 @@ private:
                               fcitx::KeyEvent &keyEvent);
     void showFailurePrompt(fcitx::InputContext *inputContext);
     void clearFailurePrompt(fcitx::InputContext *inputContext);
-    // Adds the engine's capability-driven status-area actions (the
-    // Traditional→Simplified toggle, the full-width toggle) to a context.
-    // fcitx clears the InputMethod status group before each activate, so
-    // both activate and the lazy session rebuild must (re)attach them.
-    void attachStatusActions(const EngineInfo &engine,
-                             fcitx::InputContext *inputContext);
+    // Composes the engine's InputMethod status group: capability actions
+    // first (the fcitx convention of shared module actions before
+    // engine-own ones), then the manifest menu items. Re-entrant, since a
+    // menu value change recomposes mid-session. MUST NOT call back into JS:
+    // it runs inside the menu store observer, which can fire while engine
+    // JS is on the stack (a manifest.menu self-write).
+    void composeStatusActions(const EngineInfo &engine,
+                              fcitx::InputContext *inputContext);
+    void rebuildEngineMenuActions(const EngineInfo &engine);
+    // Menu-value persistence, in macishtype/menu/<engineId>.conf.
+    JsEngineHost::MenuStore menuStoreForEngine(const EngineInfo &engine);
+    void handleMenuValuesChanged(
+        const std::string &engineId,
+        const std::vector<std::pair<std::string, bool>> &values);
+    bool menuItemValue(const std::string &engineId, const std::string &key);
+    void flipMenuItem(const std::string &engineId, const std::string &key);
+    bool currentUIIsKimpanel() const;
     // Find Input Code (reverse lookup): trigger reads the client's selection
     // and hands it to the focused session's read-only display.
     void triggerFindInputCode(fcitx::InputContext *inputContext);
@@ -201,6 +247,12 @@ private:
     // produces the values pushed to the JS side); hasOptions() decides
     // whether the entry is configurable.
     std::map<std::string, std::unique_ptr<EngineSettings>> engineSettings_;
+    // Manifest menu actions per engine id, in declaration order (dividers
+    // included as separator SimpleActions), indexed by ResolvedMenuItem's
+    // declaration index. Rebuilt with the engine's settings — the same
+    // three call sites.
+    std::map<std::string, std::vector<std::unique_ptr<fcitx::Action>>>
+        engineMenuActions_;
     std::map<std::string, std::unique_ptr<JsEngineHost>> hosts_;
     std::map<std::string, bool> failedHosts_;
     std::map<fcitx::InputContext *, std::unique_ptr<EngineSession>> sessions_;
@@ -241,6 +293,10 @@ private:
     bool enginesHaveUnparsableManifest_ = false;
     std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>>
         checkUpdateWatcher_;
+    // Which menu items get attached depends on the active UI (kimpanel
+    // renders no separators), so a panel handover has to recompose.
+    std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>>
+        uiChangedWatcher_;
     // Contexts currently showing the load-failure prompt, so Escape/
     // Backspace know whether there is anything to clear.
     std::set<fcitx::InputContext *> failurePromptShown_;

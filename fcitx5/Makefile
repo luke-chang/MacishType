@@ -122,6 +122,9 @@ test: build
 	test/Contract.sh
 	test/AsyncFetch.sh
 	test/Toggle.sh
+	test/Menu.sh
+	test/MenuBad.sh
+	test/MenuUi.sh
 	test/Discovery.sh
 	test/TextCodec.sh
 	test/ReverseLookup.sh

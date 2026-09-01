@@ -48,6 +48,67 @@ std::string settingsConfigPath(const std::string &engineId) {
     return "macishtype/" + engineId + ".conf";
 }
 
+// Menu values get their own file: every config-dialog save rewrites the
+// settings ini from the EngineSettings schema, dropping foreign keys. A
+// subdirectory rather than "<id>-menu.conf", which an engine named
+// "<id>-menu" would collide with (ids allow '-').
+std::string menuConfigPath(const std::string &engineId) {
+    return "macishtype/menu/" + engineId + ".conf";
+}
+
+// Menu keys are contract-free-form, but fcitx's ini writer escapes values
+// only — a key holding '=', '#', '[', ']', '%', a control byte, or '/' (the
+// RawConfig path separator) would corrupt the file or nest, and its reader
+// trims each line, which would eat leading or trailing spaces. Percent-
+// encode all of those into the option name.
+std::string encodeMenuKey(const std::string &key) {
+    static constexpr char hexDigits[] = "0123456789ABCDEF";
+    std::string encoded;
+    encoded.reserve(key.size());
+    for (unsigned char byte : key) {
+        if (byte <= 0x20 || byte == '%' || byte == '=' || byte == '#' ||
+            byte == '[' || byte == ']' || byte == '/') {
+            encoded += '%';
+            encoded += hexDigits[byte >> 4];
+            encoded += hexDigits[byte & 0xF];
+        } else {
+            encoded += static_cast<char>(byte);
+        }
+    }
+    return encoded;
+}
+
+// Inverse of encodeMenuKey, so a stored entry can be matched against the
+// declared keys. Needed to spot entries whose item is gone: handing those
+// to the host (which drops unknown keys) is what makes its seeding notice
+// the difference and rewrite the file without them.
+std::string decodeMenuKey(const std::string &name) {
+    auto hexDigit = [](char digit) -> int {
+        if (digit >= '0' && digit <= '9') {
+            return digit - '0';
+        }
+        if (digit >= 'A' && digit <= 'F') {
+            return digit - 'A' + 10;
+        }
+        return -1;
+    };
+    std::string decoded;
+    decoded.reserve(name.size());
+    for (size_t i = 0; i < name.size(); i++) {
+        if (name[i] == '%' && i + 2 < name.size()) {
+            int high = hexDigit(name[i + 1]);
+            int low = hexDigit(name[i + 2]);
+            if (high >= 0 && low >= 0) {
+                decoded += static_cast<char>((high << 4) | low);
+                i += 2;
+                continue;
+            }
+        }
+        decoded += name[i];
+    }
+    return decoded;
+}
+
 // Resolves the per-input-method orientation token to a concrete direction.
 // "system" (and any absent/unknown token) follows the sole fcitx global that
 // carries a candidate direction — classicui's "Vertical Candidate List" —
@@ -103,6 +164,24 @@ std::string safeDisplayName(const EngineInfo &engine) {
 
 } // namespace
 
+std::string MenuItemAction::icon(fcitx::InputContext *) const {
+    // Both states carry an icon: kimpanel's rows are icon+label, so an
+    // iconless one loses its label indent.
+    return engine_->menuItemValue(engineId_, key_)
+               ? "checkbox-checked-symbolic"
+               : "checkbox-symbolic";
+}
+
+void MenuItemAction::activate(fcitx::InputContext *inputContext) {
+    engine_->flipMenuItem(engineId_, key_);
+    // A tray-menu click arrives after the text field lost focus, so there is
+    // no session for the store observer to recompose — announce the flip on
+    // this context ourselves.
+    if (inputContext != nullptr) {
+        update(inputContext);
+    }
+}
+
 MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     : instance_(instance),
       hostEventLoop_(&instance->eventLoop(), &instance->eventDispatcher()),
@@ -119,7 +198,7 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     }
     fcitx::readAsIni(config_, "conf/macishtype.conf");
     // Registered once; attached per input context only for engines that
-    // declare the reverseLookup capability (see attachStatusActions).
+    // declare the reverseLookup capability (see composeStatusActions).
     findInputCodeAction_.setShortText(translated("Find Input Code"));
     findInputCodeAction_.setIcon("edit-find");
     findInputCodeAction_.setHotkey(config_.findInputCodeKey.value());
@@ -133,6 +212,7 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     iconLinks_ = std::make_unique<IconLinks>(&instance_->eventLoop());
     for (auto &engine : engines_) {
         rebuildEngineSettings(engine);
+        rebuildEngineMenuActions(engine);
         refreshEngineIcon(engine);
     }
     // Only meaningful once every engine has claimed its entry, and only at
@@ -218,6 +298,18 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     // surfaces: this accept makes configtool show its native "Found
     // updates" banner, whose Update button refreshes the IM list and
     // re-enters listInputMethods.
+    // A panel handover changes what composeStatusActions attaches (only
+    // kimpanel skips dividers), and the decision was made when the group
+    // was last composed — so redo it for every live session.
+    uiChangedWatcher_ = instance_->watchEvent(
+        fcitx::EventType::UIChanged, fcitx::EventWatcherPhase::Default,
+        [this](fcitx::Event &) {
+            for (const auto &[inputContext, session] : sessions_) {
+                if (const auto *engine = engineById(session->engineId())) {
+                    composeStatusActions(*engine, inputContext);
+                }
+            }
+        });
     checkUpdateWatcher_ = instance_->watchEvent(
         fcitx::EventType::CheckUpdate, fcitx::EventWatcherPhase::Default,
         [this](fcitx::Event &event) {
@@ -403,6 +495,7 @@ void MacishTypeEngine::handleSessionlessKey(const EngineInfo &engine,
             host->setLayoutVertical(
                 resolveLayoutVertical(settings->second->layoutDirection()));
         }
+        reconcileChttransToggles();
         auto session = std::make_unique<EngineSession>(
             host, inputContext, associatedSelectionKeys());
         if (session->valid()) {
@@ -412,7 +505,7 @@ void MacishTypeEngine::handleSessionlessKey(const EngineInfo &engine,
                 (sessions_[inputContext] = std::move(session)).get();
             // fcitx cleared the InputMethod status group when the engine
             // last deactivated; a recovery outside activate must re-attach.
-            attachStatusActions(engine, inputContext);
+            composeStatusActions(engine, inputContext);
             live->handleKey(keyEvent);
             return;
         }
@@ -506,6 +599,10 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
         host->setLayoutVertical(
             resolveLayoutVertical(settings->second->layoutDirection()));
     }
+    // Config edits that bypass the toggle action (fcitx5-configtool writing
+    // chttrans's EnabledIM) raise no Action::Update, so catch up here. Kept
+    // out of composeStatusActions, which must never dispatch into JS.
+    reconcileChttransToggles();
     auto session = std::make_unique<EngineSession>(
         host, inputContext, associatedSelectionKeys());
     if (!session->valid()) {
@@ -513,11 +610,18 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
     }
     session->invokeActivateHook();
     sessions_[inputContext] = std::move(session);
-    attachStatusActions(*engine, inputContext);
+    composeStatusActions(*engine, inputContext);
 }
 
-void MacishTypeEngine::attachStatusActions(const EngineInfo &engine,
-                                           fcitx::InputContext *inputContext) {
+void MacishTypeEngine::composeStatusActions(const EngineInfo &engine,
+                                            fcitx::InputContext *inputContext) {
+    // No JS re-entry allowed anywhere below: this runs inside the menu
+    // store observer, which fires while engine JS is on the stack.
+    auto &statusArea = inputContext->statusArea();
+    // Redundant on the activate path (fcitx clears the group itself), but
+    // it is what makes mid-session recomposition safe.
+    statusArea.clearGroup(fcitx::StatusGroup::InputMethod);
+
     // The shared Traditional→Simplified conversion follows the resolved
     // outputToSimplified capability (chttrans is OnDemand and registers its
     // toggle action on load); the status-area action also arms its hotkey
@@ -525,13 +629,8 @@ void MacishTypeEngine::attachStatusActions(const EngineInfo &engine,
     if (outputToSimplifiedAvailable(engine)) {
         if (auto *action =
                 instance_->userInterfaceManager().lookupAction("chttrans")) {
-            inputContext->statusArea().addAction(
-                fcitx::StatusGroup::InputMethod, action);
+            statusArea.addAction(fcitx::StatusGroup::InputMethod, action);
         }
-        // Config edits that bypass the toggle action (e.g. fcitx5-configtool
-        // writing chttrans's EnabledIM) raise no Action::Update; catch up at
-        // the session boundary.
-        reconcileChttransToggles();
     }
 
     // Engines declaring the `fullwidthInput` capability get fcitx5's
@@ -543,16 +642,160 @@ void MacishTypeEngine::attachStatusActions(const EngineInfo &engine,
         instance_->addonManager().addon("fullwidth", true);
         if (auto *action =
                 instance_->userInterfaceManager().lookupAction("fullwidth")) {
-            inputContext->statusArea().addAction(
-                fcitx::StatusGroup::InputMethod, action);
+            statusArea.addAction(fcitx::StatusGroup::InputMethod, action);
         }
     }
 
     // Engines declaring reverseLookup get the Find Input Code action.
     if (engine.manifest.reverseLookup) {
-        inputContext->statusArea().addAction(fcitx::StatusGroup::InputMethod,
-                                             &findInputCodeAction_);
+        statusArea.addAction(fcitx::StatusGroup::InputMethod,
+                             &findInputCodeAction_);
     }
+
+    // Manifest menu items last. resolvedMenu() has dropped the hiddenWhen
+    // ones; disabled joins them because fcitx has no enabled concept.
+    // Dividers collapse (none leading, trailing, or doubled) and are
+    // skipped under kimpanel, which would draw them as blank clickable
+    // rows.
+    auto host = hosts_.find(engine.id);
+    auto menuActions = engineMenuActions_.find(engine.id);
+    if (host == hosts_.end() || menuActions == engineMenuActions_.end()) {
+        return;
+    }
+    const bool kimpanel = currentUIIsKimpanel();
+    fcitx::Action *pendingDivider = nullptr;
+    bool haveMenuItems = false;
+    for (const auto &item : host->second->resolvedMenu()) {
+        if (item.index >= menuActions->second.size()) {
+            continue;
+        }
+        fcitx::Action *action = menuActions->second[item.index].get();
+        if (item.divider) {
+            if (!kimpanel && haveMenuItems) {
+                pendingDivider = action;
+            }
+            continue;
+        }
+        if (item.disabled) {
+            continue;
+        }
+        if (pendingDivider != nullptr) {
+            statusArea.addAction(fcitx::StatusGroup::InputMethod,
+                                 pendingDivider);
+            pendingDivider = nullptr;
+        }
+        statusArea.addAction(fcitx::StatusGroup::InputMethod, action);
+        haveMenuItems = true;
+    }
+}
+
+void MacishTypeEngine::rebuildEngineMenuActions(const EngineInfo &engine) {
+    // Destroy first, never build the new set alongside the old one:
+    // registerAction refuses a duplicate name, leaving that action
+    // unaddressable from every panel. ~Action detaches itself from any
+    // status area still showing it.
+    engineMenuActions_.erase(engine.id);
+    if (engine.manifest.menuItems.empty()) {
+        return;
+    }
+    auto &actions = engineMenuActions_[engine.id];
+    for (size_t index = 0; index < engine.manifest.menuItems.size(); index++) {
+        const auto &item = engine.manifest.menuItems[index];
+        std::unique_ptr<fcitx::Action> action;
+        if (item.divider) {
+            auto divider = std::make_unique<fcitx::SimpleAction>();
+            divider->setSeparator(true);
+            action = std::move(divider);
+        } else {
+            action = std::make_unique<MenuItemAction>(this, engine.id,
+                                                      item.key, item.label);
+        }
+        // Indexed, not keyed: menu keys are free-form and kimpanel's
+        // property format is colon-separated.
+        std::string name =
+            "macishtype-menu-" + engine.id + "-" + std::to_string(index);
+        if (!action->registerAction(name,
+                                    &instance_->userInterfaceManager())) {
+            MACISHTYPE_NOTICE() << "Menu action registration failed: " << name;
+        }
+        actions.push_back(std::move(action));
+    }
+}
+
+JsEngineHost::MenuStore
+MacishTypeEngine::menuStoreForEngine(const EngineInfo &engine) {
+    JsEngineHost::MenuStore store;
+    fcitx::RawConfig raw;
+    fcitx::readAsIni(raw, fcitx::StandardPathsType::PkgConfig,
+                     menuConfigPath(engine.id));
+    // The whole file, not just the declared keys: the host drops what the
+    // manifest no longer declares, and that difference is what makes its
+    // seeding rewrite the file without the stale entries.
+    for (const auto &name : raw.subItems()) {
+        const auto *value = raw.valueByPath(name);
+        if (value != nullptr && (*value == "True" || *value == "False")) {
+            store.initial[decodeMenuKey(name)] = *value == "True";
+        }
+    }
+    store.onChange = [this, engineId = engine.id](
+                         const std::vector<std::pair<std::string, bool>>
+                             &values) {
+        handleMenuValuesChanged(engineId, values);
+    };
+    return store;
+}
+
+void MacishTypeEngine::handleMenuValuesChanged(
+    const std::string &engineId,
+    const std::vector<std::pair<std::string, bool>> &values) {
+    // Persist from the callback payload: the first notification fires inside
+    // JsEngineHost::load(), before hosts_ holds the entry.
+    fcitx::RawConfig raw;
+    for (const auto &[key, value] : values) {
+        raw.setValueByPath(encodeMenuKey(key), value ? "True" : "False");
+    }
+    fcitx::safeSaveAsIni(raw, fcitx::StandardPathsType::PkgConfig,
+                         menuConfigPath(engineId));
+    // A value change can alter the attach set through hiddenWhen, so
+    // recompose. hosts_.find, never hostForEngine — its miss path loads,
+    // and the first notification arrives from inside load() itself; that
+    // window has no session for this engine either.
+    if (hosts_.find(engineId) == hosts_.end()) {
+        return;
+    }
+    const auto *engine = engineById(engineId);
+    if (engine == nullptr) {
+        return;
+    }
+    for (const auto &[inputContext, session] : sessions_) {
+        if (session->engineId() == engineId) {
+            composeStatusActions(*engine, inputContext);
+        }
+    }
+}
+
+bool MacishTypeEngine::menuItemValue(const std::string &engineId,
+                                     const std::string &key) {
+    auto host = hosts_.find(engineId);
+    if (host == hosts_.end()) {
+        return false;
+    }
+    return host->second->menuValue(key).value_or(false);
+}
+
+void MacishTypeEngine::flipMenuItem(const std::string &engineId,
+                                    const std::string &key) {
+    auto host = hosts_.find(engineId);
+    if (host == hosts_.end()) {
+        // A parked engine's actions can stay attached (and clickable) until
+        // the next activate; the click degrades to a no-op.
+        return;
+    }
+    host->second->flipMenuValue(key);
+}
+
+bool MacishTypeEngine::currentUIIsKimpanel() const {
+    return instance_->userInterfaceManager().currentUI() == "kimpanel";
 }
 
 void MacishTypeEngine::triggerFindInputCode(
@@ -653,6 +896,7 @@ void MacishTypeEngine::rescanEngineFolders() {
         MACISHTYPE_INFO() << "Engine discovered: " << engine.id;
         auto inserted = engines_.insert(position, std::move(engine));
         rebuildEngineSettings(*inserted);
+        rebuildEngineMenuActions(*inserted);
         refreshEngineIcon(*inserted);
         watcher_->watchEngine(inserted->id, inserted->root);
     }
@@ -817,12 +1061,19 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
             });
         watchChttransToggle();
     }
-    auto host = JsEngineHost::load(
-        engine.id, engine.root, engine.storageRoot,
-        settings != engineSettings_.end() ? settings->second->valuesToJson()
-                                          : std::string("{}"),
-        engine.manifest, languages_, std::move(toggleDelegates),
-        &hostEventLoop_);
+    auto host = JsEngineHost::load({
+        .engineId = engine.id,
+        .engineRoot = engine.root,
+        .storageRoot = engine.storageRoot,
+        .settingsValuesJson = settings != engineSettings_.end()
+                                  ? settings->second->valuesToJson()
+                                  : std::string("{}"),
+        .manifest = engine.manifest,
+        .languages = languages_,
+        .toggleDelegates = std::move(toggleDelegates),
+        .menuStore = menuStoreForEngine(engine),
+        .eventLoop = &hostEventLoop_,
+    });
     if (!host) {
         MACISHTYPE_ERROR() << "Engine failed to load, disabled until it "
                               "changes on disk: "
@@ -1065,8 +1316,10 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
     // parse result; the subMode overrides serve the new value live.
     refreshEngineIcon(*engine);
     // The settings schema may have changed shape; recompose it (persisted
-    // values re-layer over the fresh defaults).
+    // values re-layer over the fresh defaults). The menu action set follows
+    // the same lifecycle.
     rebuildEngineSettings(*engine);
+    rebuildEngineMenuActions(*engine);
 
     auto *host = hostForEngine(*engine);
     notifyReload(engineId, safeDisplayName(*engine), host != nullptr);
@@ -1081,6 +1334,10 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
         }
         session->invokeActivateHook();
         sessions_[inputContext] = std::move(session);
+        // A reload rebuilds this session outside any activate, so nothing
+        // else re-attaches the status actions (the old per-engine ones died
+        // with rebuildEngineMenuActions above).
+        composeStatusActions(*engine, inputContext);
     }
 }
 

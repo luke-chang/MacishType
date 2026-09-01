@@ -1,0 +1,103 @@
+{
+  "entry": "index.js",
+  "name": { "en": "Condition Fixture" },
+  "intendedLanguage": "zh-Hant",
+  "menu": [
+    {
+      "key": "base",
+      "type": "toggle",
+      "label": { "en": "Base" },
+      "default": true
+    },
+    {
+      "key": "missingNotEquals",
+      "type": "toggle",
+      "label": { "en": "Missing notEquals" },
+      "default": false,
+      "hiddenWhen": { "key": "nosuch", "notEquals": "x" }
+    },
+    {
+      "key": "missingEqualsNull",
+      "type": "toggle",
+      "label": { "en": "Missing equals null" },
+      "default": false,
+      "hiddenWhen": { "key": "nosuch", "equals": null }
+    },
+    {
+      "key": "inList",
+      "type": "toggle",
+      "label": { "en": "In list" },
+      "default": false,
+      "hiddenWhen": { "key": "base", "in": [true] }
+    },
+    {
+      "key": "notInList",
+      "type": "toggle",
+      "label": { "en": "Not in list" },
+      "default": false,
+      "hiddenWhen": { "key": "base", "notIn": [true] }
+    },
+    {
+      "key": "anyOfHidden",
+      "type": "toggle",
+      "label": { "en": "anyOf hidden" },
+      "default": false,
+      "hiddenWhen": {
+        "anyOf": [
+          { "key": "base", "equals": false },
+          { "key": "inList", "equals": false }
+        ]
+      }
+    },
+    {
+      "key": "allOfShown",
+      "type": "toggle",
+      "label": { "en": "allOf shown" },
+      "default": false,
+      "hiddenWhen": {
+        "allOf": [
+          { "key": "base", "equals": true },
+          { "key": "inList", "equals": true }
+        ]
+      }
+    },
+    {
+      "key": "notShown",
+      "type": "toggle",
+      "label": { "en": "not shown" },
+      "default": false,
+      "hiddenWhen": { "not": { "key": "base", "equals": true } }
+    },
+    {
+      "key": "implicitAllOf",
+      "type": "toggle",
+      "label": { "en": "Implicit allOf" },
+      "default": false,
+      "hiddenWhen": [
+        { "key": "base", "equals": true },
+        { "key": "notInList", "equals": false }
+      ]
+    },
+    {
+      "key": "deepObject",
+      "type": "toggle",
+      "label": { "en": "Deep object" },
+      "default": false,
+      "hiddenWhen": { "key": "settings.shape", "equals": { "b": 2, "a": 1 } }
+    },
+    {
+      "key": "deepArray",
+      "type": "toggle",
+      "label": { "en": "Deep array" },
+      "default": false,
+      "hiddenWhen": { "key": "settings.list", "equals": [1, 2, 3] }
+    },
+    {
+      "key": "disabledByDeep",
+      "type": "toggle",
+      "label": { "en": "Disabled by deep" },
+      "default": false,
+      "disabledWhen": { "key": "settings.shape", "equals": { "a": 1, "b": 2 } }
+    }
+  ]
+}

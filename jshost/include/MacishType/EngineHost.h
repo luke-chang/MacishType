@@ -18,6 +18,7 @@
 #include "MacishType/AssociatedDictionary.h"
 #include "MacishType/HostEventLoop.h"
 #include "MacishType/Intl.h"
+#include "MacishType/JsonValue.h"
 #include "MacishType/Manifest.h"
 
 namespace MacishType {
@@ -36,18 +37,37 @@ public:
         std::function<void(bool)> set;
     };
 
+    // Backs manifest `menu` values with platform persistence. `initial` is
+    // the previous session's stored values, undeclared keys included: they
+    // are dropped, and the resulting difference is what makes `onChange`
+    // fire once right after seeding so the store sheds them. It then fires
+    // on every later write from either side, always with the full value set
+    // in declaration order. Note the first firing happens inside load(),
+    // before the host is returned to the caller.
+    struct MenuStore {
+        std::map<std::string, bool> initial;
+        std::function<void(const std::vector<std::pair<std::string, bool>> &)>
+            onChange;
+    };
+
     // `settingsValuesJson` is the sanitized settings object the engine
     // observes as manifest.settings; it must be final before load because
     // engines read it while their entry module evaluates. The same holds
-    // for `toggleDelegates` (macOS exposes toggle availability from the
-    // first evaluated statement).
-    static std::unique_ptr<JsEngineHost>
-    load(const std::string &engineId, const std::filesystem::path &engineRoot,
-         const std::filesystem::path &storageRoot,
-         const std::string &settingsValuesJson, const ManifestData &manifest,
-         const std::vector<std::string> &languages,
-         std::map<std::string, ToggleDelegate> toggleDelegates,
-         HostEventLoop *eventLoop);
+    // for `toggleDelegates` and `menuStore` (macOS exposes toggle and menu
+    // state from the first evaluated statement).
+    struct LoadParams {
+        std::string engineId;
+        std::filesystem::path engineRoot;
+        std::filesystem::path storageRoot;
+        std::string settingsValuesJson;
+        ManifestData manifest;
+        std::vector<std::string> languages;
+        std::map<std::string, ToggleDelegate> toggleDelegates;
+        MenuStore menuStore;
+        HostEventLoop *eventLoop = nullptr;
+    };
+
+    static std::unique_ptr<JsEngineHost> load(LoadParams params);
 
     ~JsEngineHost();
     JsEngineHost(const JsEngineHost &) = delete;
@@ -160,6 +180,32 @@ public:
     // JS self-writes must not come through here (no self-echo).
     void dispatchToggleChange(const std::string &key);
 
+    // Current value of a declared menu item; nullopt for undeclared keys.
+    std::optional<bool> menuValue(const std::string &key) const;
+
+    // One menu entry as the platform should render it: hiddenWhen items are
+    // already dropped and disabledWhen already evaluated. Dividers survive
+    // — whether to draw them, and how to collapse runs of them, is the
+    // composer's call.
+    struct ResolvedMenuItem {
+        // Position in the manifest's menu array, so it stays put when a
+        // sibling hides; platform action tables key off it.
+        size_t index = 0;
+        bool divider = false;
+        std::string key;
+        std::string label;
+        bool value = false;
+        bool disabled = false;
+    };
+    std::vector<ResolvedMenuItem> resolvedMenu() const;
+
+    // Host-side flip from the platform's menu surface: refuses while
+    // disabledWhen holds (a stale surface can still deliver the click),
+    // then writes, notifies the store, and dispatches `menuchange`. JS
+    // self-writes go through the bridge instead — engines never hear their
+    // own echo. Returns whether the value changed.
+    bool flipMenuValue(const std::string &key);
+
     // Receiver for the event-object mutator dispatcher
     // (__MacishTypeHost_action). Scoped to the active session invocation.
     using ActionHandler = std::function<void(
@@ -195,12 +241,7 @@ public:
     };
 
 private:
-    JsEngineHost(std::string engineId, std::filesystem::path engineRoot,
-                 std::filesystem::path storageRoot,
-                 std::string settingsValuesJson, ManifestData manifest,
-                 std::vector<std::string> languages,
-                 std::map<std::string, ToggleDelegate> toggleDelegates,
-                 HostEventLoop *eventLoop);
+    explicit JsEngineHost(LoadParams params);
 
     // One queued fetch(): path resolved (and reload tracking recorded) at
     // fetch() time, disk read deferred to the worker, promise settled on the
@@ -250,6 +291,13 @@ private:
     bool evaluateEntryModule();
     bool pushSettings(const std::string &valuesJson);
     bool injectModules();
+    // Seeds each declared item with its stored value, else the manifest
+    // default.
+    void seedMenuValues();
+    bool *findMenuValue(const std::string &key);
+    std::map<std::string, JsonValue> menuConditionValues() const;
+    void notifyMenuStore();
+    void dispatchMenuChange();
     void loadModuleTable(JSValue table, const std::string &fileBase,
                          bool numericValues);
     void registerBridgeGlobals();
@@ -457,7 +505,14 @@ private:
 
     std::map<std::string, FieldValue> manifestCandidateWindow_;
     std::map<std::string, FieldValue> engineCandidateWindow_;
-    std::map<std::string, bool> menuValues_;
+    // Ordered because Object.keys(manifest.menu) promises declaration
+    // order; n is tiny, so lookups are linear.
+    std::vector<std::pair<std::string, bool>> menuValues_;
+    MenuStore menuStore_;
+    // Settings as last pushed to the engine: menu conditions resolve
+    // `settings.<key>` against what the engine observes, not the
+    // platform's live config.
+    std::map<std::string, JsonValue> settingsValues_;
     std::map<std::string, ToggleDelegate> toggleDelegates_;
 
     std::map<uint64_t, JSValue> instances_;

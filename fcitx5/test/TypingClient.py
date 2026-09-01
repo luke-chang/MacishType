@@ -45,7 +45,25 @@ def emit(payload):
 def main():
     im_name = sys.argv[1]
     keys = []
+    kimpanel = False
     for spec in sys.argv[2:]:
+        # "--kimpanel" impersonates the kimpanel panel (owns org.kde.impanel)
+        # before anything else runs. Opt-in: owning that name changes which
+        # UI addon fcitx5 selects for every test in the session.
+        if spec == "--kimpanel":
+            kimpanel = True
+            continue
+        # "props" dumps the last RegisterProperties payload received from
+        # fcitx5's kimpanel addon (requires --kimpanel), with a sequence
+        # number so assertions can target a specific dump.
+        if spec == "props":
+            keys.append(("props",))
+            continue
+        # "trigger:NAME" fires kimpanel's TriggerProperty at an action
+        # (requires --kimpanel); a bare action name gets the /Fcitx/ prefix.
+        if spec.startswith("trigger:"):
+            keys.append(("trigger", spec[len("trigger:"):]))
+            continue
         # "sleep:MS" pauses between keys (e.g. for hot-reload tests).
         if spec.startswith("sleep:"):
             keys.append(("sleep", int(spec.split(":")[1])))
@@ -128,6 +146,48 @@ def main():
 
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
+    latest_properties = []
+    if kimpanel:
+        # The panel half: own the well-known name (fcitx5's kimpanel addon
+        # resumes once org.kde.impanel has an owner), cache every
+        # RegisterProperties payload, and announce the panel. fcitx5 signals
+        # from /kimpanel; the panel signals from /org/kde/impanel.
+        acquired = {"done": False}
+        Gio.bus_own_name_on_connection(
+            bus, "org.kde.impanel", Gio.BusNameOwnerFlags.NONE,
+            lambda *_args: acquired.__setitem__("done", True), None)
+
+        def on_kimpanel_signal(_bus, _sender, _path, _iface, signal, params):
+            if signal == "RegisterProperties":
+                latest_properties[:] = list(params.unpack()[0])
+
+        bus.signal_subscribe(None, "org.kde.kimpanel.inputmethod", None, None,
+                             None, Gio.DBusSignalFlags.NONE,
+                             on_kimpanel_signal)
+        context = GLib.MainContext.default()
+        while not acquired["done"]:
+            context.iteration(True)
+        for iface, name in (("org.kde.impanel", "PanelCreated"),
+                            ("org.kde.impanel2", "PanelCreated2")):
+            bus.emit_signal(None, "/org/kde/impanel", iface, name, None)
+        # Ready barrier: fcitx5's kimpanel requests this name in resume().
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            reply = bus.call_sync(
+                "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                "org.freedesktop.DBus", "NameHasOwner",
+                GLib.Variant("(s)", ("org.kde.kimpanel.inputmethod",)),
+                GLib.VariantType("(b)"), Gio.DBusCallFlags.NONE, 1000, None)
+            if reply.unpack()[0]:
+                break
+            while context.iteration(False):
+                pass
+            time.sleep(0.05)
+        else:
+            emit({"event": "kimpanel", "ready": False})
+            sys.exit(1)
+        emit({"event": "kimpanel", "ready": True})
+
     result = bus.call_sync(
         BUS_NAME, IM_PATH, IM_IFACE, "CreateInputContext",
         GLib.Variant("(a(ss))", ([("program", "typing-client")],)),
@@ -190,9 +250,24 @@ def main():
           "ms": round((time.monotonic() - switch_started) * 1000, 1)})
 
     loop = GLib.MainLoop()
+    props_state = {"seq": 0}
 
     def send_keys():
         for entry in keys:
+            if entry[0] == "props":
+                props_state["seq"] += 1
+                emit({"event": "properties", "seq": props_state["seq"],
+                      "items": list(latest_properties)})
+                continue
+            if entry[0] == "trigger":
+                key = entry[1]
+                if not key.startswith("/"):
+                    key = "/Fcitx/" + key
+                bus.emit_signal(None, "/org/kde/impanel", "org.kde.impanel",
+                                "TriggerProperty",
+                                GLib.Variant("(s)", (key,)))
+                emit({"event": "triggered", "key": key})
+                continue
             if entry[0] == "sleep":
                 # Pump the main context while waiting so queued DBus
                 # signals (commit/preedit) reach stdout before the next

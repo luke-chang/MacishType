@@ -530,13 +530,15 @@ The engine's custom items in the IME menu (the input-source menu in the
 menu bar). A flat array of toggles and dividers, rendered in declared
 order; absent and `[]` are equivalent (no custom items).
 
-The host composes the full engine section itself: custom items first,
-then a divider, then the capability-derived entries (the Find Input Code
-command and the Traditional→Simplified toggle, each present only while
-its capability is available). The capability entries cannot be
-repositioned or restyled from the manifest — to remove the conversion
-toggle, declare [`capabilities.outputToSimplified`](#outputtosimplified)
-`false`. App-level items (Settings, About) stay pinned at the bottom.
+The host composes the full engine section itself: the custom items stay
+grouped together in declared order, and the section renders around the
+capability-derived entries (the Find Input Code command and the
+Traditional→Simplified toggle, each present only while its capability is
+available) following the platform's menu conventions. The capability
+entries cannot be repositioned or restyled from the manifest — to remove
+the conversion toggle, declare
+[`capabilities.outputToSimplified`](#outputtosimplified) `false`. The
+host's own entries sit outside the engine section.
 
 ```jsonc
 "menu": [
@@ -572,7 +574,7 @@ schema as the settings [`toggle`](#toggle) minus `description`
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `key` | string | yes | Value key. Unique within `menu`; must not start with `settings.` (reserved for condition references). Custom keys are their own namespace, separate from `settings` keys and from capability-toggle keys — an identical spelling (even `outputToSimplified`) is an unrelated value with separate storage, never an alias of the host entry. |
+| `key` | string | yes | Value key. Non-empty and unique within `menu`; must not start with `settings.` (reserved for condition references). Custom keys are their own namespace, separate from `settings` keys and from capability-toggle keys — an identical spelling (even `outputToSimplified`) is an unrelated value with separate storage, never an alias of the host entry. |
 | `label` | Localizable | yes | Menu item title. |
 | `default` | boolean | yes | Initial value. |
 | `disabledWhen` / `hiddenWhen` | Condition | | See [conditions](#menu-conditions) below. |
@@ -580,7 +582,8 @@ schema as the settings [`toggle`](#toggle) minus `description`
 ##### `divider`
 
 A separator line. No key, no value. Accepts an optional `hiddenWhen` so
-a divider can disappear together with the group it separates.
+a divider can disappear together with the group it separates. Rendering
+is host-dependent; menu surfaces without a separator concept skip it.
 
 #### Menu conditions
 
@@ -593,6 +596,10 @@ grammar as settings fields, evaluated each time the menu opens. Leaf
 
 Settings conditions cannot reference menu items — the dependency only
 goes one way.
+
+How a disabled item renders is host-dependent (grayed out, or hidden on
+surfaces without a disabled state); its value stays readable and
+writable via [`manifest.menu`](#manifestmenu) either way.
 
 ## The JS module
 

@@ -447,6 +447,119 @@ parseSettingsSections(JSContext *ctx, JSValueConst settingsValue,
     return sections;
 }
 
+// Copies a condition out into evaluatable form — the JSValues die with the
+// throwaway parse runtime. Returns nullopt on any grammar violation; the
+// caller drops the declaring item.
+std::optional<Condition> parseCondition(JSContext *ctx, JSValueConst value);
+
+std::optional<std::vector<Condition>> parseConditionArray(JSContext *ctx,
+                                                          JSValueConst array) {
+    std::vector<Condition> children;
+    Qjs::Value length(ctx, JS_GetPropertyStr(ctx, array, "length"));
+    uint32_t count = 0;
+    JS_ToUint32(ctx, &count, length.get());
+    children.reserve(count);
+    for (uint32_t i = 0; i < count; i++) {
+        Qjs::Value child(ctx, JS_GetPropertyUint32(ctx, array, i));
+        auto parsed = parseCondition(ctx, child.get());
+        if (!parsed) {
+            return std::nullopt;
+        }
+        children.push_back(std::move(*parsed));
+    }
+    return children;
+}
+
+std::optional<Condition> parseCondition(JSContext *ctx, JSValueConst value) {
+    // A bare array at the top level is an implicit allOf.
+    if (JS_IsArray(value)) {
+        auto children = parseConditionArray(ctx, value);
+        if (!children) {
+            return std::nullopt;
+        }
+        Condition condition;
+        condition.kind = Condition::Kind::AllOf;
+        condition.children = std::move(*children);
+        return condition;
+    }
+    if (!JS_IsObject(value)) {
+        return std::nullopt;
+    }
+    for (const auto &[name, kind] :
+         {std::pair{"allOf", Condition::Kind::AllOf},
+          std::pair{"anyOf", Condition::Kind::AnyOf}}) {
+        Qjs::Value composite(ctx, JS_GetPropertyStr(ctx, value, name));
+        if (composite.isUndefined()) {
+            continue;
+        }
+        if (!JS_IsArray(composite.get())) {
+            return std::nullopt;
+        }
+        auto children = parseConditionArray(ctx, composite.get());
+        if (!children) {
+            return std::nullopt;
+        }
+        Condition condition;
+        condition.kind = kind;
+        condition.children = std::move(*children);
+        return condition;
+    }
+    Qjs::Value negated(ctx, JS_GetPropertyStr(ctx, value, "not"));
+    if (!negated.isUndefined()) {
+        auto child = parseCondition(ctx, negated.get());
+        if (!child) {
+            return std::nullopt;
+        }
+        Condition condition;
+        condition.kind = Condition::Kind::Not;
+        condition.children.push_back(std::move(*child));
+        return condition;
+    }
+
+    Qjs::Value key(ctx, JS_GetPropertyStr(ctx, value, "key"));
+    if (!JS_IsString(key.get())) {
+        return std::nullopt;
+    }
+    Condition leaf;
+    leaf.kind = Condition::Kind::Leaf;
+    leaf.key = Qjs::toString(ctx, key.get());
+    struct Operator {
+        const char *name;
+        Condition::Op op;
+        bool wantsArray;
+    };
+    for (const auto &candidate :
+         {Operator{"equals", Condition::Op::Equals, false},
+          Operator{"notEquals", Condition::Op::NotEquals, false},
+          Operator{"in", Condition::Op::In, true},
+          Operator{"notIn", Condition::Op::NotIn, true}}) {
+        Qjs::Value operand(ctx, JS_GetPropertyStr(ctx, value, candidate.name));
+        if (operand.isUndefined()) {
+            continue;
+        }
+        leaf.op = candidate.op;
+        if (candidate.wantsArray) {
+            if (!JS_IsArray(operand.get())) {
+                return std::nullopt;
+            }
+            Qjs::Value length(
+                ctx, JS_GetPropertyStr(ctx, operand.get(), "length"));
+            uint32_t count = 0;
+            JS_ToUint32(ctx, &count, length.get());
+            leaf.operands.reserve(count);
+            for (uint32_t i = 0; i < count; i++) {
+                Qjs::Value element(
+                    ctx, JS_GetPropertyUint32(ctx, operand.get(), i));
+                leaf.operands.push_back(Qjs::toJsonValue(ctx, element.get()));
+            }
+        } else {
+            leaf.operands.push_back(Qjs::toJsonValue(ctx, operand.get()));
+        }
+        return leaf;
+    }
+    return std::nullopt;
+}
+
 std::string fcitxLanguageCode(const std::string &intendedLanguage) {
     std::string lower = lowered(intendedLanguage);
     if (lower == "zh-hant") {
@@ -568,7 +681,8 @@ parseManifest(const std::filesystem::path &manifestPath,
                     JS_IsString(direction.get());
             }
 
-            // menu: [{key, ...} | divider], collect declared keys
+            // A flat array of toggle/divider items kept in declaration
+            // order; the contract has each broken one drop on its own.
             Qjs::Value menu(ctx, JS_GetPropertyStr(ctx, root.get(), "menu"));
             if (JS_IsArray(menu.get())) {
                 Qjs::Value menuCount(
@@ -578,13 +692,109 @@ parseManifest(const std::filesystem::path &manifestPath,
                 for (uint32_t i = 0; i < items; i++) {
                     Qjs::Value item(ctx,
                                     JS_GetPropertyUint32(ctx, menu.get(), i));
-                    Qjs::Value key(
-                        ctx, JS_GetPropertyStr(ctx, item.get(), "key"));
-                    if (JS_IsString(key.get())) {
-                        data.menuKeys.push_back(
-                            Qjs::toString(ctx, key.get()));
+                    auto dropped = [&](const std::string &reason) {
+                        MACISHTYPE_NOTICE()
+                            << "manifest menu item " << i << " dropped ("
+                            << reason << "): " << manifestPath;
+                    };
+                    if (!JS_IsObject(item.get())) {
+                        dropped("not an object");
+                        continue;
                     }
+                    Qjs::Value type(
+                        ctx, JS_GetPropertyStr(ctx, item.get(), "type"));
+                    if (!JS_IsString(type.get())) {
+                        dropped("missing type");
+                        continue;
+                    }
+                    std::string typeName = Qjs::toString(ctx, type.get());
+
+                    auto parseItemCondition =
+                        [&](const char *name,
+                            bool &valid) -> std::optional<Condition> {
+                        Qjs::Value condition(
+                            ctx, JS_GetPropertyStr(ctx, item.get(), name));
+                        // JSON null counts as absent (macOS decodeIfPresent
+                        // parity), not as a broken condition.
+                        if (condition.isUndefined() ||
+                            JS_IsNull(condition.get())) {
+                            valid = true;
+                            return std::nullopt;
+                        }
+                        auto parsed = parseCondition(ctx, condition.get());
+                        valid = parsed.has_value();
+                        return parsed;
+                    };
+
+                    MenuItemData menuItem;
+                    bool disabledValid = true;
+                    bool hiddenValid = true;
+                    if (typeName == "divider") {
+                        menuItem.divider = true;
+                        menuItem.hiddenWhen =
+                            parseItemCondition("hiddenWhen", hiddenValid);
+                        if (!hiddenValid) {
+                            dropped("invalid condition");
+                            continue;
+                        }
+                    } else if (typeName == "toggle") {
+                        Qjs::Value key(
+                            ctx, JS_GetPropertyStr(ctx, item.get(), "key"));
+                        Qjs::Value label(
+                            ctx, JS_GetPropertyStr(ctx, item.get(), "label"));
+                        Qjs::Value defaultValue(
+                            ctx,
+                            JS_GetPropertyStr(ctx, item.get(), "default"));
+                        if (!JS_IsString(key.get()) ||
+                            (!JS_IsString(label.get()) &&
+                             !JS_IsObject(label.get())) ||
+                            !JS_IsBool(defaultValue.get())) {
+                            dropped(
+                                "toggle requires key, label, and a boolean "
+                                "default");
+                            continue;
+                        }
+                        menuItem.key = Qjs::toString(ctx, key.get());
+                        if (menuItem.key.empty()) {
+                            dropped("key must not be empty");
+                            continue;
+                        }
+                        if (menuItem.key.rfind("settings.", 0) == 0) {
+                            dropped("key prefix `settings.` is reserved");
+                            continue;
+                        }
+                        if (std::any_of(data.menuItems.begin(),
+                                        data.menuItems.end(),
+                                        [&](const MenuItemData &existing) {
+                                            return !existing.divider &&
+                                                   existing.key ==
+                                                       menuItem.key;
+                                        })) {
+                            dropped("duplicate key: " + menuItem.key);
+                            continue;
+                        }
+                        menuItem.label =
+                            resolveLocalizedName(ctx, label.get(), languages);
+                        menuItem.defaultValue =
+                            JS_ToBool(ctx, defaultValue.get()) == 1;
+                        menuItem.disabledWhen =
+                            parseItemCondition("disabledWhen", disabledValid);
+                        menuItem.hiddenWhen =
+                            parseItemCondition("hiddenWhen", hiddenValid);
+                        if (!disabledValid || !hiddenValid) {
+                            dropped("invalid condition");
+                            continue;
+                        }
+                    } else {
+                        dropped("unknown menu item type: " + typeName);
+                        continue;
+                    }
+                    data.menuItems.push_back(std::move(menuItem));
                 }
+            } else if (!menu.isUndefined()) {
+                MACISHTYPE_NOTICE()
+                    << "manifest menu ignored (not an array): "
+                    << manifestPath;
             }
 
             // capabilities: {fullwidthInput: true, ...} — host-only behavior

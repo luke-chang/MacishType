@@ -185,8 +185,12 @@ Host notes for this platform:
 - Manifest `settings` render "equivalent or hidden": `toggle`, `textField`,
   integer `number`, and `picker` show in configtool; other field kinds stay
   hidden with their manifest defaults still applied.
-- Custom manifest `menu` items are not implemented yet: they get no UI, and
-  `menuchange` never fires.
+- Custom manifest `menu` toggles appear after the capability entries in the
+  input method's status-area menu (macOS puts them before), with checked
+  state shown as a checkbox icon pair like fcitx's own toggles. An item
+  whose `disabledWhen` holds hides instead of graying out, dividers are not
+  drawn under kimpanel, and values persist under
+  `~/.config/fcitx5/macishtype/menu/`.
 - The candidate window is fcitx5's own themed one: `layoutDirection`,
   `pageSize`, `indexLabels`, `indexLabelDigitsRequireShift`, and the
   navigation/index-label key options are honored, in the manifest and as

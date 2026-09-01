@@ -1,0 +1,46 @@
+{
+  "entry": "index.js",
+  "name": { "en": "Menu Fixture" },
+  "intendedLanguage": "zh-Hant",
+  "capabilities": { "reverseLookup": true },
+  "settings": [
+    {
+      "title": { "en": "General" },
+      "fields": [
+        {
+          "key": "hideExtras",
+          "type": "toggle",
+          "label": { "en": "Hide extras" },
+          "default": false
+        }
+      ]
+    }
+  ],
+  "menu": [
+    {
+      "key": "strictMode",
+      "type": "toggle",
+      "label": { "en": "Strict matching", "zh-Hant": "嚴格比對" },
+      "default": false
+    },
+    { "type": "divider" },
+    {
+      "key": "verboseHints",
+      "type": "toggle",
+      "label": { "en": "Verbose hints" },
+      "default": true,
+      "disabledWhen": { "key": "strictMode", "equals": true }
+    },
+    {
+      "type": "divider",
+      "hiddenWhen": { "key": "settings.hideExtras", "equals": true }
+    },
+    {
+      "key": "extraPanel",
+      "type": "toggle",
+      "label": { "en": "Extra panel" },
+      "default": false,
+      "hiddenWhen": { "key": "settings.hideExtras", "equals": true }
+    }
+  ]
+}

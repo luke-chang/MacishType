@@ -19,7 +19,14 @@ log_file="${ISOLATED_LOG:-/tmp/fcitx5-macishtype-isolated.log}"
 # scratch otherwise. One cleanup handler for both — a second `trap ... EXIT`
 # would silently replace the first.
 scratch_dirs=""
-cleanup() { [ -n "$scratch_dirs" ] && rm -rf $scratch_dirs; }
+# Plain `if`, not `[ … ] && rm`: with both homes supplied there is nothing
+# to remove, and a false test as the trap's last command would become the
+# script's exit status.
+cleanup() {
+    if [ -n "$scratch_dirs" ]; then
+        rm -rf $scratch_dirs
+    fi
+}
 trap cleanup EXIT
 
 if [ -n "$ISOLATED_CONFIG_HOME" ]; then

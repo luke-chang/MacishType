@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "MacishType/Condition.h"
+
 namespace MacishType {
 
 // One choice of a picker field. `token` identifies the option in host
@@ -42,6 +44,18 @@ struct SettingsSection {
     std::vector<SettingsField> fields;
 };
 
+// One manifest `menu` item. A divider carries only `hiddenWhen`, so it can
+// disappear with the group it separates.
+struct MenuItemData {
+    bool divider = false;
+    std::string key;
+    // Locale-resolved at parse time, like settings labels.
+    std::string label;
+    bool defaultValue = false;
+    std::optional<Condition> disabledWhen;
+    std::optional<Condition> hiddenWhen;
+};
+
 // The subset of manifest.json the C++ side needs. The JS host re-parses the
 // raw JSON in the engine's own context for everything bridge-visible.
 struct ManifestData {
@@ -74,8 +88,9 @@ struct ManifestData {
     // the addon auto-generates a per-input-method orientation setting (macOS
     // parity), so the user picks the candidate direction.
     bool candidateWindowHasLayoutDirection = false;
-    // Keys of manifest `menu` items (dividers carry no key).
-    std::vector<std::string> menuKeys;
+    // Manifest `menu` items in declaration order, broken ones already
+    // dropped and duplicate keys collapsed to the first declaration.
+    std::vector<MenuItemData> menuItems;
     // Whether manifest `capabilities.fullwidthInput` is declared. Host-only
     // (not exposed on the JS `manifest`); on fcitx5 it puts fcitx's full-width
     // toggle in the engine's status area — the portable stand-in for macOS's

@@ -191,40 +191,26 @@ std::filesystem::path associatedDictionaryPath(const std::string &language) {
 
 // Loading --------------------------------------------------------------
 
-std::unique_ptr<JsEngineHost>
-JsEngineHost::load(const std::string &engineId,
-                   const std::filesystem::path &engineRoot,
-                   const std::filesystem::path &storageRoot,
-                   const std::string &settingsValuesJson,
-                   const ManifestData &manifest,
-                   const std::vector<std::string> &languages,
-                   std::map<std::string, ToggleDelegate> toggleDelegates,
-                   HostEventLoop *eventLoop) {
-    std::unique_ptr<JsEngineHost> host(
-        new JsEngineHost(engineId, engineRoot, storageRoot,
-                         settingsValuesJson, manifest, languages,
-                         std::move(toggleDelegates), eventLoop));
+std::unique_ptr<JsEngineHost> JsEngineHost::load(LoadParams params) {
+    std::unique_ptr<JsEngineHost> host(new JsEngineHost(std::move(params)));
     if (!host->initialize()) {
         return nullptr;
     }
     return host;
 }
 
-JsEngineHost::JsEngineHost(std::string engineId,
-                           std::filesystem::path engineRoot,
-                           std::filesystem::path storageRoot,
-                           std::string settingsValuesJson,
-                           ManifestData manifest,
-                           std::vector<std::string> languages,
-                           std::map<std::string, ToggleDelegate> toggleDelegates,
-                           HostEventLoop *eventLoop)
-    : engineId_(std::move(engineId)), engineRoot_(std::move(engineRoot)),
-      storageRoot_(std::move(storageRoot)),
-      settingsValuesJson_(settingsValuesJson.empty() ? "{}"
-                                                     : std::move(
-                                                           settingsValuesJson)),
-      manifest_(std::move(manifest)), languages_(std::move(languages)),
-      toggleDelegates_(std::move(toggleDelegates)), eventLoop_(eventLoop) {
+JsEngineHost::JsEngineHost(LoadParams params)
+    : engineId_(std::move(params.engineId)),
+      engineRoot_(std::move(params.engineRoot)),
+      storageRoot_(std::move(params.storageRoot)),
+      settingsValuesJson_(params.settingsValuesJson.empty()
+                              ? "{}"
+                              : std::move(params.settingsValuesJson)),
+      manifest_(std::move(params.manifest)),
+      languages_(std::move(params.languages)),
+      menuStore_(std::move(params.menuStore)),
+      toggleDelegates_(std::move(params.toggleDelegates)),
+      eventLoop_(params.eventLoop) {
     associatedTablePath_ = associatedDictionaryPath(manifest_.intendedLanguage);
 }
 
@@ -309,10 +295,6 @@ bool JsEngineHost::initialize() {
             engineCandidateWindow_.clear();
         }
     }
-    for (const auto &key : manifest_.menuKeys) {
-        menuValues_.emplace(key, false);
-    }
-
     registerBridgeGlobals();
 
     ResourceLocator *resources = hostServices().resources;
@@ -331,6 +313,9 @@ bool JsEngineHost::initialize() {
     if (!pushSettings(settingsValuesJson_) || !injectModules()) {
         return false;
     }
+    // Wedged between the two: conditions may reference settings.<key>, and
+    // engines read manifest.menu while their entry module evaluates.
+    seedMenuValues();
     // Warm at load so ICU's character-break data is paid here, not on the
     // first keystroke.
     if (!warmGraphemeSegmenter(intlCache())) {
@@ -388,7 +373,143 @@ bool JsEngineHost::pushSettings(const std::string &valuesJson) {
                            << Qjs::exceptionText(ctx_);
         return false;
     }
+    // Refresh the snapshot menu conditions resolve `settings.<key>` against.
+    settingsValues_.clear();
+    JsonValue snapshot = Qjs::toJsonValue(ctx_, values.get());
+    if (auto *entries =
+            std::get_if<std::vector<std::pair<std::string, JsonValue>>>(
+                &snapshot.data)) {
+        for (auto &[key, value] : *entries) {
+            settingsValues_.emplace(std::move(key), std::move(value));
+        }
+    }
     return true;
+}
+
+void JsEngineHost::seedMenuValues() {
+    for (const auto &item : manifest_.menuItems) {
+        if (item.divider) {
+            continue;
+        }
+        bool value = item.defaultValue;
+        if (auto found = menuStore_.initial.find(item.key);
+            found != menuStore_.initial.end()) {
+            value = found->second;
+        }
+        menuValues_.emplace_back(item.key, value);
+    }
+    // Stale keys pruned or new items defaulted: give the store one shot at
+    // rewriting itself, mirroring the macOS seeding.
+    std::map<std::string, bool> seeded(menuValues_.begin(), menuValues_.end());
+    if (seeded != menuStore_.initial) {
+        notifyMenuStore();
+    }
+}
+
+bool *JsEngineHost::findMenuValue(const std::string &key) {
+    for (auto &[existingKey, value] : menuValues_) {
+        if (existingKey == key) {
+            return &value;
+        }
+    }
+    return nullptr;
+}
+
+std::optional<bool> JsEngineHost::menuValue(const std::string &key) const {
+    for (const auto &[existingKey, value] : menuValues_) {
+        if (existingKey == key) {
+            return value;
+        }
+    }
+    return std::nullopt;
+}
+
+std::map<std::string, JsonValue> JsEngineHost::menuConditionValues() const {
+    std::map<std::string, JsonValue> values;
+    for (const auto &[key, value] : menuValues_) {
+        values.emplace(key, JsonValue{value});
+    }
+    for (const auto &[key, value] : settingsValues_) {
+        values.emplace("settings." + key, value);
+    }
+    return values;
+}
+
+std::vector<JsEngineHost::ResolvedMenuItem> JsEngineHost::resolvedMenu() const {
+    std::vector<ResolvedMenuItem> items;
+    const auto conditionValues = menuConditionValues();
+    for (size_t index = 0; index < manifest_.menuItems.size(); index++) {
+        const auto &item = manifest_.menuItems[index];
+        if (item.hiddenWhen &&
+            evaluateCondition(*item.hiddenWhen, conditionValues)) {
+            continue;
+        }
+        ResolvedMenuItem resolved;
+        resolved.index = index;
+        resolved.divider = item.divider;
+        if (!item.divider) {
+            resolved.key = item.key;
+            resolved.label = item.label;
+            resolved.value = menuValue(item.key).value_or(item.defaultValue);
+            resolved.disabled =
+                item.disabledWhen &&
+                evaluateCondition(*item.disabledWhen, conditionValues);
+        }
+        items.push_back(std::move(resolved));
+    }
+    return items;
+}
+
+bool JsEngineHost::flipMenuValue(const std::string &key) {
+    bool *value = findMenuValue(key);
+    if (value == nullptr) {
+        MACISHTYPE_NOTICE() << "[" << engineId_
+                            << "] menu flip ignored, undeclared key: " << key;
+        return false;
+    }
+    // The disabled gate is contract semantics, not UI polish: a stale
+    // surface can still deliver the click.
+    const auto conditionValues = menuConditionValues();
+    for (const auto &item : manifest_.menuItems) {
+        if (!item.divider && item.key == key && item.disabledWhen &&
+            evaluateCondition(*item.disabledWhen, conditionValues)) {
+            return false;
+        }
+    }
+    *value = !*value;
+    notifyMenuStore();
+    dispatchMenuChange();
+    return true;
+}
+
+void JsEngineHost::notifyMenuStore() {
+    if (menuStore_.onChange) {
+        menuStore_.onChange(menuValues_);
+    }
+}
+
+void JsEngineHost::dispatchMenuChange() {
+    Qjs::Value global(ctx_, JS_GetGlobalObject(ctx_));
+    Qjs::Value dispatch(ctx_,
+                        JS_GetPropertyStr(ctx_, global.get(),
+                                          "__MacishType_dispatchGlobal"));
+    if (!JS_IsFunction(ctx_, dispatch.get())) {
+        return;
+    }
+    // Arm the watchdog and drain microtasks on unwind, like every other
+    // host->JS entry point; a menuchange listener is arbitrary engine code.
+    // The payload carries no key: engines read manifest.menu instead.
+    Entry entry(*this);
+    JSValue event = JS_NewObject(ctx_);
+    JS_SetPropertyStr(ctx_, event, "type", JS_NewString(ctx_, "menuchange"));
+    Qjs::Value result(ctx_, JS_Call(ctx_, dispatch.get(), JS_UNDEFINED, 1,
+                                    &event));
+    JS_FreeValue(ctx_, event);
+    if (result.isException()) {
+        MACISHTYPE_ERROR() << "[" << engineId_
+                           << "] menuchange dispatch failed: "
+                           << Qjs::exceptionText(ctx_);
+    }
 }
 
 void JsEngineHost::updateSettings(const std::string &valuesJson) {
@@ -1597,11 +1718,11 @@ JSValue JsEngineHost::nativeGetMenuValue(JSContext *ctx, JSValueConst thisVal,
         return JS_NULL;
     }
     std::string key = Qjs::toString(ctx, argv[0]);
-    auto found = host->menuValues_.find(key);
-    if (found == host->menuValues_.end()) {
+    auto value = host->menuValue(key);
+    if (!value) {
         return JS_NULL;
     }
-    return JS_NewBool(ctx, found->second);
+    return JS_NewBool(ctx, *value);
 }
 
 JSValue JsEngineHost::nativeSetMenuValue(JSContext *ctx, JSValueConst thisVal,
@@ -1612,8 +1733,8 @@ JSValue JsEngineHost::nativeSetMenuValue(JSContext *ctx, JSValueConst thisVal,
         return JS_UNDEFINED;
     }
     std::string key = Qjs::toString(ctx, argv[0]);
-    auto found = host->menuValues_.find(key);
-    if (found == host->menuValues_.end()) {
+    bool *value = host->findMenuValue(key);
+    if (value == nullptr) {
         MACISHTYPE_NOTICE() << "menu: write to undeclared key ignored: " << key;
         return JS_UNDEFINED;
     }
@@ -1622,7 +1743,13 @@ JSValue JsEngineHost::nativeSetMenuValue(JSContext *ctx, JSValueConst thisVal,
                             << ": expected boolean, write ignored";
         return JS_UNDEFINED;
     }
-    found->second = JS_ToBool(ctx, argv[1]) == 1;
+    bool written = JS_ToBool(ctx, argv[1]) == 1;
+    if (*value != written) {
+        // Persist and refresh the platform surface, but no menuchange —
+        // engines never hear their own echo.
+        *value = written;
+        host->notifyMenuStore();
+    }
     return JS_UNDEFINED;
 }
 

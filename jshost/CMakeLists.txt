@@ -31,6 +31,7 @@ add_subdirectory(external/quickjs-ng EXCLUDE_FROM_ALL)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../shared" shared EXCLUDE_FROM_ALL)
 
 add_library(macishtype-jshost STATIC
+    src/Condition.cpp
     src/EngineHost.cpp
     src/EventData.cpp
     src/FontCoverage.cpp

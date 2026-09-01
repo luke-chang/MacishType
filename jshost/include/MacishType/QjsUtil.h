@@ -1,9 +1,13 @@
 #pragma once
 
+#include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <quickjs.h>
+
+#include "MacishType/JsonValue.h"
 
 namespace MacishType::Qjs {
 
@@ -80,6 +84,59 @@ inline std::string jsonStringify(JSContext *ctx, JSValueConst value) {
         return {};
     }
     return toString(ctx, json.get());
+}
+
+// Converts a JSON-shaped JS value (as produced by JS_ParseJSON) into a
+// structural JsonValue, key-sorting object entries as JsonValue equality
+// requires. Anything non-JSON (undefined, functions) maps to null.
+inline JsonValue toJsonValue(JSContext *ctx, JSValueConst value) {
+    JsonValue result;
+    if (JS_IsBool(value)) {
+        result.data = JS_ToBool(ctx, value) == 1;
+    } else if (JS_IsNumber(value)) {
+        double number = 0;
+        JS_ToFloat64(ctx, &number, value);
+        result.data = number;
+    } else if (JS_IsString(value)) {
+        result.data = toString(ctx, value);
+    } else if (JS_IsArray(value)) {
+        std::vector<JsonValue> elements;
+        Value length(ctx, JS_GetPropertyStr(ctx, value, "length"));
+        uint32_t count = 0;
+        JS_ToUint32(ctx, &count, length.get());
+        elements.reserve(count);
+        for (uint32_t i = 0; i < count; i++) {
+            Value element(ctx, JS_GetPropertyUint32(ctx, value, i));
+            elements.push_back(toJsonValue(ctx, element.get()));
+        }
+        result.data = std::move(elements);
+    } else if (JS_IsObject(value)) {
+        std::vector<std::pair<std::string, JsonValue>> entries;
+        JSPropertyEnum *properties = nullptr;
+        uint32_t count = 0;
+        if (JS_GetOwnPropertyNames(ctx, &properties, &count, value,
+                                   JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) ==
+            0) {
+            entries.reserve(count);
+            for (uint32_t i = 0; i < count; i++) {
+                const char *key = JS_AtomToCString(ctx, properties[i].atom);
+                if (key != nullptr) {
+                    Value propertyValue(
+                        ctx, JS_GetProperty(ctx, value, properties[i].atom));
+                    entries.emplace_back(
+                        key, toJsonValue(ctx, propertyValue.get()));
+                    JS_FreeCString(ctx, key);
+                }
+            }
+            JS_FreePropertyEnum(ctx, properties, count);
+        }
+        std::sort(entries.begin(), entries.end(),
+                  [](const auto &left, const auto &right) {
+                      return left.first < right.first;
+                  });
+        result.data = std::move(entries);
+    }
+    return result;
 }
 
 // Renders an error value as "message\nstack" (stack appended when present).

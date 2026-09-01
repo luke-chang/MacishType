@@ -16,6 +16,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -148,6 +149,7 @@ def main():
         ("Segmenter", "segmenterfixture", (), False),
         ("Modules", "modulesfixture",
          ("--tables", str(FIXTURE_TABLES)), False),
+        ("MenuBad", "menubadfixture", (), False),
         # throwfixture throws at load; the assertions target the failure log.
         ("ErrorStack", "throwfixture", (), True),
     ]
@@ -184,6 +186,142 @@ def main():
                    "its awaited fetch settles during load "
                    "(synchronous fallback)",
                    0 <= tla < tla_loaded, log_text)
+
+    # menu: the CLI half of the manifest-menu contract, hand-written because
+    # its assertions need stdin verbs, counting, and a second run (the
+    # daemon half — fcitx actions, TriggerProperty — lives in
+    # fcitx5/test/Menu.sh and MenuUi.sh).
+    menu_store = Path(tempfile.mkdtemp()) / "menu-store.txt"
+
+    def run_menu_verbs(commands, extra_args=()):
+        result = subprocess.run(
+            [str(cli), *RUNTIME_ARGS, *extra_args,
+             str(FIXTURE_ENGINES / "menufixture")],
+            input="\n".join(commands) + "\n", capture_output=True, text=True,
+            encoding="utf-8", timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"CLI exited {result.returncode} for menufixture:\n"
+                f"{result.stdout}\n{result.stderr}")
+        return result.stdout
+
+    out = run_menu_verbs([
+        '{"do":"activate"}',
+        '{"do":"menu"}',
+        '{"do":"menu-flip","key":"verboseHints"}',
+        '{"do":"key","key":"a","code":"KeyA"}',
+        '{"do":"menu-flip","key":"verboseHints"}',
+        '{"do":"menu-flip","key":"undeclared"}',
+        '{"do":"menu"}',
+        '{"do":"quit"}',
+    ], ("--menu-store", str(menu_store)))
+    failures.check(
+        "Menu", "declared keys read their defaults in declaration order",
+        'menufx eval keys=[\\"strictMode\\",\\"verboseHints\\",\\"extraPanel\\"]'
+        " strict=false verbose=true extra=false undeclared=undefined" in out,
+        out)
+    failures.check(
+        "Menu", "the resolved menu keeps declaration order and dividers",
+        '{"event":"menu","items":['
+        '{"key":"strictMode","label":"Strict matching","value":false,"disabled":false},'
+        '{"divider":true},'
+        '{"key":"verboseHints","label":"Verbose hints","value":true,"disabled":false},'
+        '{"divider":true},'
+        '{"key":"extraPanel","label":"Extra panel","value":false,"disabled":false}]}'
+        in out, out)
+    failures.check(
+        "Menu", "a host flip reports the change",
+        '{"event":"menu-flip","changed":true}' in out, out)
+    failures.check(
+        "Menu", "the host flip dispatches menuchange with no key",
+        "menufx menuchange key=undefined strict=false verbose=false"
+        " extra=false" in out, out)
+    failures.check(
+        "Menu", "exactly one menuchange fires (self-write does not echo)",
+        out.count("menufx menuchange") == 1, out)
+    failures.check(
+        "Menu", "a JS self-write acts immediately",
+        "menufx self-write strict=true" in out, out)
+    failures.check(
+        "Menu", "a flip on a disabled item is refused",
+        out.count('{"event":"menu-flip","changed":false}') == 2, out)
+    failures.check(
+        "Menu", "an undeclared-key flip is ignored with a notice",
+        "menu flip ignored, undeclared key: undeclared" in out, out)
+    failures.check(
+        "Menu", "the final resolved menu reflects values and disabling",
+        '{"key":"verboseHints","label":"Verbose hints","value":false,"disabled":true}'
+        in out, out)
+
+    failures.check(
+        "Menu", "the store holds every declared value after the run",
+        menu_store.read_text(encoding="utf-8")
+        == "strictMode=true\nverboseHints=false\nextraPanel=false\n",
+        menu_store.read_text(encoding="utf-8"))
+    out = run_menu_verbs(['{"do":"quit"}'],
+                         ("--menu-store", str(menu_store), "--activate"))
+    failures.check(
+        "Menu", "persisted values survive into the next session",
+        'menufx eval keys=[\\"strictMode\\",\\"verboseHints\\",\\"extraPanel\\"]'
+        " strict=true verbose=false extra=false undeclared=undefined" in out,
+        out)
+
+    out = run_menu_verbs([
+        '{"do":"activate"}',
+        '{"do":"menu"}',
+        '{"do":"quit"}',
+    ], ("--settings", '{"hideExtras":true}'))
+    failures.check(
+        "Menu", "hiddenWhen via settings drops the item and its divider",
+        '{"event":"menu","items":['
+        '{"key":"strictMode","label":"Strict matching","value":false,"disabled":false},'
+        '{"divider":true},'
+        '{"key":"verboseHints","label":"Verbose hints","value":true,"disabled":false}]}'
+        in out, out)
+    failures.check(
+        "Menu", "hidden items still list among the declared keys",
+        'keys=[\\"strictMode\\",\\"verboseHints\\",\\"extraPanel\\"]' in out,
+        out)
+
+    # Condition grammar: every operator form decides one conditionfixture
+    # item's visibility, so the resolved menu is the whole assertion. Only
+    # exercised here — the daemon suites cover the equals leaf.
+    result = subprocess.run(
+        [str(cli), *RUNTIME_ARGS,
+         "--settings", '{"shape":{"a":1,"b":2},"list":[1,2,3]}',
+         str(FIXTURE_ENGINES / "conditionfixture")],
+        input='{"do":"activate"}\n{"do":"menu"}\n{"do":"quit"}\n',
+        capture_output=True, text=True, encoding="utf-8", timeout=120)
+    out = result.stdout
+    visible = []
+    disabled = []
+    for line in out.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("event") == "menu":
+            visible = [item["key"] for item in event["items"]]
+            disabled = [item["key"] for item in event["items"]
+                        if item["disabled"]]
+    failures.check(
+        "Condition", "every declared item is a key regardless of visibility",
+        'condfx eval keys=[\\"base\\",\\"missingNotEquals\\",'
+        '\\"missingEqualsNull\\",\\"inList\\",\\"notInList\\",'
+        '\\"anyOfHidden\\",\\"allOfShown\\",\\"notShown\\",'
+        '\\"implicitAllOf\\",\\"deepObject\\",\\"deepArray\\",'
+        '\\"disabledByDeep\\"]' in out, out)
+    # notEquals/equals-null against an absent key exercise the missing-key
+    # -> null rule; in/notIn, anyOf/allOf/not and the bare-array implicit
+    # allOf each gate one item; the deep pair compares an object with its
+    # keys in the other order and an array element-wise.
+    failures.check(
+        "Condition", "each operator form resolves to the expected visibility",
+        visible == ["base", "notInList", "allOfShown", "notShown",
+                    "disabledByDeep"], f"{visible}\n{out}")
+    failures.check(
+        "Condition", "disabledWhen marks without hiding",
+        disabled == ["disabledByDeep"], f"{disabled}\n{out}")
 
     # ExampleEngine end-to-end smoke: compose -> candidates -> commit
     # (engines/example has no other automated test).

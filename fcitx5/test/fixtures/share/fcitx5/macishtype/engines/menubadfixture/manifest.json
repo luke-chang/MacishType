@@ -1,0 +1,49 @@
+{
+  "entry": "index.js",
+  "name": { "en": "Menu Bad Fixture" },
+  "intendedLanguage": "zh-Hant",
+  "menu": [
+    {
+      "key": "good",
+      "type": "toggle",
+      "label": { "en": "Good" },
+      "default": false
+    },
+    {
+      "key": "settings.bad",
+      "type": "toggle",
+      "label": { "en": "Reserved" },
+      "default": false
+    },
+    {
+      "key": "good",
+      "type": "toggle",
+      "label": { "en": "Duplicate" },
+      "default": true
+    },
+    { "key": "noLabel", "type": "toggle", "default": false },
+    { "key": "noDefault", "type": "toggle", "label": { "en": "No Default" } },
+    {
+      "key": "mystery",
+      "type": "widget",
+      "label": { "en": "Mystery" },
+      "default": false
+    },
+    { "key": "noType", "label": { "en": "No Type" }, "default": false },
+    {
+      "key": "badCondition",
+      "type": "toggle",
+      "label": { "en": "Bad Condition" },
+      "default": false,
+      "disabledWhen": { "key": "good", "wrongOperator": 1 }
+    },
+    {
+      "key": "nullCondition",
+      "type": "toggle",
+      "label": { "en": "Null Condition" },
+      "default": true,
+      "disabledWhen": null
+    },
+    "not-an-object"
+  ]
+}

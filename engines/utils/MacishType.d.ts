@@ -542,7 +542,7 @@ export interface ToggleChangeEvent {
  *
  * Unlike `manifest.candidateWindow`, writes act immediately — the very
  * next commit reflects them. Undeclared keys read `undefined`; writes
- * to them are logged via OSLog and ignored.
+ * to them are logged and ignored.
  */
 export interface Menu {
   [key: string]: boolean | undefined;
@@ -557,7 +557,7 @@ export interface Menu {
  *
  * Writes act immediately and persist host-side, shared with the IME
  * menu's checkmark. Unavailable keys read `undefined`; writes to them
- * are logged via OSLog and ignored.
+ * are logged and ignored.
  */
 export interface Toggle {
   /** Traditional→Simplified commit transform. */
@@ -570,7 +570,7 @@ export interface Toggle {
  * at the next session activate.
  *
  * Invalid writes — wrong type, out of range, unknown field — are logged
- * via OSLog and silently ignored; engine execution continues.
+ * and silently ignored; engine execution continues.
  *
  * Not the same as `event.candidateWindow` (per-event snapshot of the
  * effective state).
@@ -691,7 +691,8 @@ export interface Manifest {
 }
 
 /**
- * `console` is provided by the host runtime (bridges to OSLog). Levels:
+ * `console` is provided by the host runtime (bridging to the
+ * platform's logging facility). Levels:
  * `log`/`info`/`trace` → info, `debug` → debug, `warn` → notice,
  * `error` → error. `warn`/`error`/`trace` automatically append a caller
  * stack trace.

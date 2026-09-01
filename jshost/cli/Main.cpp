@@ -8,6 +8,8 @@
 //     --tables DIR      per-language data table directory
 //     --languages LIST  comma-separated BCP-47 preferences (default en-US)
 //     --settings JSON   manifest.settings values pushed at load (default {})
+//     --menu-store FILE menu-value persistence, one key=true|false per line
+//                       (test-only format; rewritten on every change)
 //     --activate        createInstance + incrementActive after load
 //     --load-only       exit after load settles (0 = loaded, 1 = failed)
 //
@@ -15,6 +17,7 @@
 //   {"do":"key","key":"h","code":"KeyH","shift":false,"ctrl":false,
 //    "alt":false,"meta":false}
 //   {"do":"activate"} {"do":"deactivate"}
+//   {"do":"menu"} {"do":"menu-flip","key":"..."}
 //   {"do":"wait-quiescent"}
 //   {"do":"quit"}
 // Every output line on stdout is one JSON event:
@@ -22,6 +25,7 @@
 //   {"event":"loaded"} / {"event":"load-failed"}
 //   {"event":"action","name":"commit","args":["哈囉"]}
 //   {"event":"key-result","handled":true}
+//   {"event":"menu","items":[...]} / {"event":"menu-flip","changed":true}
 //   {"event":"quiescent"}
 
 #include <algorithm>
@@ -30,8 +34,10 @@
 #include <condition_variable>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -381,9 +387,35 @@ struct CliOptions {
     std::filesystem::path tablesDir;
     std::vector<std::string> languages{"en-US"};
     std::string settingsJson = "{}";
+    std::filesystem::path menuStorePath;
     bool activate = false;
     bool loadOnly = false;
 };
+
+// Menu-value persistence for contract tests: one `key=true|false` line per
+// declared toggle, whole file rewritten on every change.
+std::map<std::string, bool> readMenuStore(const std::filesystem::path &path) {
+    std::map<std::string, bool> values;
+    std::ifstream stream(path);
+    std::string line;
+    while (std::getline(stream, line)) {
+        auto separator = line.find('=');
+        if (separator == std::string::npos) {
+            continue;
+        }
+        values[line.substr(0, separator)] =
+            line.substr(separator + 1) == "true";
+    }
+    return values;
+}
+
+void writeMenuStore(const std::filesystem::path &path,
+                    const std::vector<std::pair<std::string, bool>> &values) {
+    std::ofstream stream(path, std::ios::trunc);
+    for (const auto &[key, value] : values) {
+        stream << key << "=" << (value ? "true" : "false") << "\n";
+    }
+}
 
 std::optional<CliOptions> parseArguments(int argc, char **argv) {
     CliOptions options;
@@ -427,6 +459,12 @@ std::optional<CliOptions> parseArguments(int argc, char **argv) {
                 return std::nullopt;
             }
             options.settingsJson = json;
+        } else if (argument == "--menu-store") {
+            const char *path = value();
+            if (path == nullptr) {
+                return std::nullopt;
+            }
+            options.menuStorePath = path;
         } else if (argument == "--activate") {
             options.activate = true;
         } else if (argument == "--load-only") {
@@ -444,7 +482,8 @@ std::optional<CliOptions> parseArguments(int argc, char **argv) {
     if (options.engineDir.empty() || options.runtimeDirs.empty()) {
         std::cerr << "usage: macishtype-jshost-cli --runtime DIR [--runtime DIR]"
                      " [--tables DIR]"
-                     " [--languages LIST] [--settings JSON] [--activate]"
+                     " [--languages LIST] [--settings JSON]"
+                     " [--menu-store FILE] [--activate]"
                      " [--load-only] <engine-dir>\n";
         return std::nullopt;
     }
@@ -480,10 +519,26 @@ int main(int argc, char **argv) {
         emitLine("{\"event\":\"load-failed\",\"error\":\"manifest\"}");
         return 1;
     }
-    auto host = JsEngineHost::load(
-        engineId, options->engineDir,
-        options->engineDir / "_storage", options->settingsJson, *manifest,
-        options->languages, {}, &loop);
+    JsEngineHost::MenuStore menuStore;
+    if (!options->menuStorePath.empty()) {
+        menuStore.initial = readMenuStore(options->menuStorePath);
+        menuStore.onChange =
+            [path = options->menuStorePath](
+                const std::vector<std::pair<std::string, bool>> &values) {
+                writeMenuStore(path, values);
+            };
+    }
+    auto host = JsEngineHost::load({
+        .engineId = engineId,
+        .engineRoot = options->engineDir,
+        .storageRoot = options->engineDir / "_storage",
+        .settingsValuesJson = options->settingsJson,
+        .manifest = *manifest,
+        .languages = options->languages,
+        .toggleDelegates = {},
+        .menuStore = std::move(menuStore),
+        .eventLoop = &loop,
+    });
     if (!host) {
         emitLine("{\"event\":\"load-failed\",\"error\":\"load\"}");
         return 1;
@@ -546,6 +601,37 @@ int main(int argc, char **argv) {
                     activate();
                 }
                 dispatchKey(*host, instanceId, staging, command.get());
+            } else if (action == "menu") {
+                std::string json = "{\"event\":\"menu\",\"items\":[";
+                bool first = true;
+                for (const auto &item : host->resolvedMenu()) {
+                    if (!first) {
+                        json += ",";
+                    }
+                    first = false;
+                    if (item.divider) {
+                        json += "{\"divider\":true}";
+                    } else {
+                        json += "{\"key\":\"" + jsonEscape(item.key) +
+                                "\",\"label\":\"" + jsonEscape(item.label) +
+                                "\",\"value\":" +
+                                (item.value ? "true" : "false") +
+                                ",\"disabled\":" +
+                                (item.disabled ? "true" : "false") + "}";
+                    }
+                }
+                json += "]}";
+                emitLine(json);
+                continue;
+            } else if (action == "menu-flip") {
+                Qjs::Value key(ctx,
+                               JS_GetPropertyStr(ctx, command.get(), "key"));
+                std::string keyText = JS_IsString(key.get())
+                                          ? Qjs::toString(ctx, key.get())
+                                          : "";
+                bool changed = host->flipMenuValue(keyText);
+                emitLine(std::string("{\"event\":\"menu-flip\",\"changed\":") +
+                         (changed ? "true" : "false") + "}");
             } else if (action == "wait-quiescent") {
                 loop.drainUntilQuiescent();
                 emitLine("{\"event\":\"quiescent\"}");
