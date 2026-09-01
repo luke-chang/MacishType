@@ -305,6 +305,11 @@ bool EngineSession::dispatchCandidateWindowKey(const WebKeyEvent &web) {
             return true;
         }
         if (web.key == "Enter" && !web.shiftKey && !web.altKey) {
+            // Nothing picked in associated mode means no candidate to commit,
+            // so Enter dismisses through the normal tiers instead.
+            if (associating_ && selectedIndex() < 0) {
+                return false;
+            }
             applyActions({CommitSelectedAction{}});
             return true;
         }

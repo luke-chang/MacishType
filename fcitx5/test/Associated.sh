@@ -10,7 +10,8 @@ make -s -C "$root" dev-install > /dev/null
 
 # assocfixture: KeyA=97:38 commits 中 (dict: 中 -> 文 國 心); digit1=49:10
 # picks the first follow-up; KeyB=98:56 is an unhandled dismiss key;
-# Return=65293:36 with nothing highlighted commits the held char alone.
+# Return=65293:36 with nothing highlighted commits the held char alone and
+# then goes on to the client, like any other key that dismisses.
 enter="$("$root/test/Isolated.sh" assocfixture 97:38 2> /dev/null)"
 picked="$("$root/test/Isolated.sh" assocfixture 97:38 49:10 2> /dev/null)"
 dismissed="$("$root/test/Isolated.sh" assocfixture 97:38 98:56 2> /dev/null)"
@@ -51,6 +52,8 @@ check "an unhandled key dismisses, committing the held char alone" \
 # first follow-up.
 check "Return with nothing highlighted commits the held char alone" \
     "$returned" '{"event": "commit", "text": "中"}'
+check "Return reaches the client once the held char is out" \
+    "$returned" '"keyval": 65293, "handled": false'
 
 # --- Staged prefix retention through the fallback ---
 # stagedassocfixture: KeyA stages 甲 (of 甲乙) and offers the one-char
