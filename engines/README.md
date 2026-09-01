@@ -129,7 +129,7 @@ default below applies.
 | `widerExpandedColumns` | boolean | `true` | Widen columns when the window is expanded. Requires `expandable: true`. |
 | `moveOnExpand` | boolean | `false` | When a navigation key expands the collapsed window, also move the highlight onto the newly revealed row. Applies to `down` and `pageForward`; `pageDown` always just expands without moving. Pair with `widerExpandedColumns: false` so columns don't reflow on expand and the landing highlight is predictable. Requires `expandable: true`. |
 | `verticalMinVisibleRows` | integer ≥ 1 | `pageSize` | Minimum visible rows. Vertical mode only. |
-| `handleNavigationKeys` | boolean | `true` | When true, the host intercepts standard nav keys (arrows / Tab / Page / Home / End) and Enter while the candidate window is visible — `handleKey` / `handleAssociatedKey` never see them. Set false to route those keys to the engine. |
+| `handleNavigationKeys` | boolean | `true` | When true, the host intercepts standard nav keys (arrows / Tab / Page / Home / End) and Enter while the candidate window is visible — `handleKey` / `handleAssociatedKey` never see them. Set false to route those keys to the engine. One case stays with the engine either way: in associated mode with nothing highlighted, Enter has no candidate to commit, so it dismisses like any other unhandled key. |
 | `handleIndexLabelKeys` | boolean | `true` | When true, the host intercepts `indexLabels` keys while the candidate window is visible. Set false to route them to the engine. |
 | `indexLabelDigitsRequireShift` | boolean | `false` | Digit labels select only with Shift + the physical key that names them (main row or keypad); non-digit labels keep plain character matching. How the requirement is presented to the user is host-specific. The same matching the host's [associated-mode windows](#associated-mode-selection-keys) use — set it directly for engine-driven windows that want it. |
 | `associatedModeIndexLabels` | `"numbers"` \| `"shiftNumbers"` \| `"inherit"` | `"numbers"` | The engine's preference for the associated-mode window's selection keys, honored unless the user forces number keys or Shift + number keys in the host's settings. A declaration, not a window field: the host expands it into `indexLabels`, `pageSize`, and `indexLabelDigitsRequireShift` when an associated-mode window opens, and it never appears in the per-event snapshot. See [Associated-mode selection keys](#associated-mode-selection-keys). |
@@ -665,9 +665,10 @@ source of truth. Highlights:
   }
   ```
 - `handleAssociatedKey(event)` — called in associated mode for keys
-  the candidate window didn't handle (keys outside its scope, or
-  in-scope keys when `handleNavigationKeys` / `handleIndexLabelKeys`
-  is off — see `handleKey` above). Return `true` to consume the key.
+  the candidate window didn't handle (keys outside its scope, in-scope
+  keys when `handleNavigationKeys` / `handleIndexLabelKeys` is off —
+  see `handleKey` above — and Enter while nothing is highlighted).
+  Return `true` to consume the key.
   Returning `false` / `undefined` (including omitting the method)
   makes the host dismiss associated mode and process the key fresh
   via `handleKey`.

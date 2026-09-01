@@ -47,7 +47,9 @@ export interface CandidateWindowState {
    * When true, the host handles standard nav keys (arrows / Tab / Page /
    * Home / End) and Enter while the window is visible — `handleKey` /
    * `handleAssociatedKey` never see them. When false, the engine handles
-   * them.
+   * them. One case stays with the engine either way: in associated mode
+   * with nothing highlighted, Enter has no candidate to commit, so it
+   * dismisses like any other unhandled key.
    */
   readonly handleNavigationKeys: boolean;
   /**
@@ -414,8 +416,9 @@ export interface InputEngine {
   handleKey?(event: KeyEvent): boolean | void;
   /**
    * Called in associated mode for keys that the candidate window didn't
-   * handle (keys outside its scope, or in-scope keys when
-   * `handleNavigationKeys` / `handleIndexLabelKeys` is off).
+   * handle (keys outside its scope, in-scope keys when
+   * `handleNavigationKeys` / `handleIndexLabelKeys` is off, and Enter
+   * while nothing is highlighted).
    *
    * Return `true` to mark the key consumed; queued mutators apply.
    * Returning `false` / `undefined` (including omitting the method) makes

@@ -657,9 +657,12 @@ private extension InputController {
                     direction: intent.direction, wrapping: intent.wrapping)
                 return true
             }
-            // Only an unmodified Return commits (Cmd / Ctrl already filtered above).
+            // Only an unmodified Return commits (Cmd / Ctrl already filtered
+            // above). Nothing picked in associated mode means no candidate to
+            // commit, so Return dismisses through the normal tiers instead.
             if keyEvent.isReturnKey,
-               pureMods.intersection([.shift, .option]).isEmpty {
+               pureMods.intersection([.shift, .option]).isEmpty,
+               !engineContext.isAssociating || CandidateWindow.shared.hasSelection {
                 CandidateWindow.shared.commitSelectedCandidate()
                 return true
             }

@@ -292,6 +292,10 @@ class CandidateWindow {
 
     var isVisible: Bool { activeImpl.isVisible }
 
+    /// False under a suspended highlight (`initialHighlight: -1`) until a
+    /// navigation reveals one.
+    var hasSelection: Bool { activeImpl.hasSelection }
+
     /// Standalone path (engine activation, preview app).
     /// Short-circuits when unchanged.
     func configure(_ configuration: CandidateWindowConfiguration) {

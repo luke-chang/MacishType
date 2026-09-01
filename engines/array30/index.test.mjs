@@ -269,7 +269,7 @@ test("confirming a group opens its symbols", () => {
 
 test("empty confirm flushes the held char only in associated mode", () => {
   const engine = freshEngine();
-  // Associated mode, Enter with no highlight: fall through so the host commits
+  // Associated mode, an empty confirm: fall through so the host commits
   // the held char.
   assert.equal(
     engine.candidateConfirmed(makeEvent({ candidate: "", isAssociating: true })),

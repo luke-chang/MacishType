@@ -583,8 +583,9 @@ export default class ArrayEngine {
       }
       return true;
     }
-    // Enter with no highlight: in associated mode the host commits the held
-    // char (fall through); otherwise it's a no-op.
+    // An empty confirm (commitSelectedCandidate with nothing highlighted):
+    // in associated mode the host commits the held char (fall through);
+    // otherwise it's a no-op.
     if (!event.candidate) return !event.isAssociating;
     // Clear staged so the host commits exactly this candidate, but set marked
     // text to the candidate, not empty: an empty value tears down the
