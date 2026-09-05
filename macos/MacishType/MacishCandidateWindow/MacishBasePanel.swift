@@ -214,7 +214,14 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
             }, completionHandler: { [weak self] in
                 self?.isAnimating = false
             })
-        } else if !isAnimating {
+        } else {
+            // A new anchor supersedes any in-flight frame animation. Skipping
+            // the move here would strand the window wherever the last layout
+            // pass happened to leave it.
+            if isAnimating {
+                stopFrameAnimation()
+                isAnimating = false
+            }
             previousPlacement = placement
             previousTopLeft = topLeft
             setFrameTopLeftPoint(topLeft)
@@ -375,6 +382,9 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
 
     func hide() {
         stopFrameAnimation()
+        // The tick that would have cleared this never arrives once the link
+        // is gone, and the flag outlives the panel's visibility.
+        isAnimating = false
         orderOut(nil)
     }
 
