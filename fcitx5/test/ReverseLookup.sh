@@ -161,8 +161,8 @@ check "a keystroke while shown dismisses and composes (not blocked)" \
 # --- Empty selection teaches the operation ----------------------------------
 hint="$("$root/test/Isolated.sh" reverselookupfixture "$hotkey" sleep:400 \
     2>/dev/null)"
-check_re "an empty selection shows the select-text hint" \
-    "$hint" '先選取文字再執行尋找輸入碼|Select text first, then run Find Input Code'
+check_re "an empty selection shows the select-text hint on the aux line" \
+    "$hint" '"auxUp": "(先選取文字再執行尋找輸入碼|Select text first, then run Find Input Code)"'
 
 # An ASCII-only selection (letters, digits, whitespace) has nothing to look
 # up — ASCII is typed directly — so it shows the same hint, not a window of
@@ -170,7 +170,7 @@ check_re "an empty selection shows the select-text hint" \
 blank="$("$root/test/Isolated.sh" reverselookupfixture "setsurrounding:ab 12" \
     "$hotkey" sleep:400 2>/dev/null)"
 check_re "an ASCII-only selection shows the select-text hint" \
-    "$blank" '先選取文字再執行尋找輸入碼|Select text first, then run Find Input Code'
+    "$blank" '"auxUp": "(先選取文字再執行尋找輸入碼|Select text first, then run Find Input Code)"'
 
 # A mixed selection looks up only its non-ASCII characters (the ASCII 'a'/'b'
 # are dropped, so no dash rows for them).

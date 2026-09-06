@@ -207,7 +207,7 @@ void EngineSession::handleKey(fcitx::KeyEvent &keyEvent) {
                            *direction == "right";
             bool backward = *direction == "pageUp" || *direction == "up" ||
                             *direction == "left";
-            auto *list = candidateList();
+            auto *list = panelList();
             if ((forward || backward) && list != nullptr &&
                 list->totalPages() > 1) {
                 reverseLookupPage(forward);
@@ -254,7 +254,7 @@ void EngineSession::handleKey(fcitx::KeyEvent &keyEvent) {
 }
 
 bool EngineSession::dispatchCandidateWindowKey(const WebKeyEvent &web) {
-    if (!candidatesVisible_) {
+    if (!candidatesVisible()) {
         return false;
     }
     if (web.ctrlKey || web.metaKey) {
@@ -751,7 +751,6 @@ void EngineSession::applyUpdateCandidates(UpdateCandidatesAction action) {
     int initialHighlight = action.options.initialHighlight.value_or(0);
     int initialCursor =
         initialHighlight < 0 ? -1 : std::min(initialHighlight, total - 1);
-    candidatesVisible_ = true;
     renderCandidates(initialCursor);
     // The initial selection counts as a selection change (macOS parity:
     // the window notifies when moving from no-selection to the initial
@@ -764,15 +763,12 @@ void EngineSession::applyUpdateCandidates(UpdateCandidatesAction action) {
 void EngineSession::applyUpdateMessage(UpdateMessageAction action) {
     if (action.text.empty()) {
         // Retiring a message that is not up must leave candidates alone.
-        if (!message_.empty()) {
+        if (panel_ == PanelContent::Message) {
             hideCandidates();
         }
         return;
     }
-    message_ = std::move(action.text);
-    // windowConfig_ stays as it is: candidateWindow keeps reporting what
-    // candidates would use, and a message is not a candidate window.
-    renderAuxOnly(message_);
+    renderMessage(std::move(action.text));
 }
 
 // Candidate word pushed into the fcitx input panel; select() (mouse click)
@@ -815,12 +811,17 @@ private:
     std::function<void(const std::string &)> onPage_;
 };
 
-fcitx::CommonCandidateList *EngineSession::candidateList() const {
-    if (!candidatesVisible_) {
+fcitx::CommonCandidateList *EngineSession::panelList() const {
+    if (panel_ != PanelContent::Candidates &&
+        panel_ != PanelContent::ReverseLookupList) {
         return nullptr;
     }
     return dynamic_cast<fcitx::CommonCandidateList *>(
         inputContext_->inputPanel().candidateList().get());
+}
+
+fcitx::CommonCandidateList *EngineSession::candidateList() const {
+    return candidatesVisible() ? panelList() : nullptr;
 }
 
 int EngineSession::selectedIndex() const {
@@ -829,7 +830,8 @@ int EngineSession::selectedIndex() const {
 }
 
 void EngineSession::renderCandidates(int initialCursor) {
-    message_.clear(); // a candidate list takes the panel from a message
+    setPanelContent(PanelContent::Candidates);
+
     // Full-list native pagination: append every candidate and let the list
     // page itself so hasPrev()/hasNext() drive the panel's page indicators and
     // mouse paging. The list owns cursor/page; initialCursor is an absolute
@@ -897,21 +899,36 @@ void EngineSession::renderCandidates(int initialCursor) {
         fcitx::UserInterfaceComponent::InputPanel);
 }
 
-void EngineSession::renderAuxOnly(const std::string &text) {
+// windowConfig_ stays as it is: candidateWindow keeps reporting what
+// candidates would use, and a message is not a candidate window.
+void EngineSession::renderMessage(std::string text) {
+    renderAuxOnly(PanelContent::Message, text);
+    message_ = std::move(text);
+}
+
+void EngineSession::renderAuxOnly(PanelContent content, std::string text) {
     freeCandidates(candidates_);
-    candidatesVisible_ = false; // aux-only: no candidate list behind it
+    setPanelContent(content);
     auto &inputPanel = inputContext_->inputPanel();
     inputPanel.setCandidateList(nullptr);
     // Text("") carries an empty piece where Text() carries none, and some
     // frontends care about the difference.
-    inputPanel.setAuxUp(text.empty() ? fcitx::Text() : fcitx::Text(text));
+    inputPanel.setAuxUp(text.empty() ? fcitx::Text()
+                                     : fcitx::Text(std::move(text)));
     inputContext_->updateUserInterface(
         fcitx::UserInterfaceComponent::InputPanel);
 }
 
 void EngineSession::hideCandidates() {
-    message_.clear();
-    renderAuxOnly({});
+    renderAuxOnly(PanelContent::None, {});
+}
+
+// A message only exists while the panel holds it.
+void EngineSession::setPanelContent(PanelContent content) {
+    panel_ = content;
+    if (content != PanelContent::Message) {
+        message_.clear();
+    }
 }
 
 // Reverse lookup (read-only Find Input Code display) --------------------
@@ -925,10 +942,9 @@ void EngineSession::showReverseLookup(const std::string &query) {
     if (reverseLookupVisible_) {
         hideReverseLookup();
     }
-    // Only from idle: never disturb an in-progress composition, or an
-    // engine message the user is still reading.
-    if (!markedText_.empty() || associating_ || candidatesVisible_ ||
-        !message_.empty()) {
+    // Only from idle: never disturb an in-progress composition, or whatever
+    // the panel is already showing (an engine message included).
+    if (!markedText_.empty() || associating_ || panel_ != PanelContent::None) {
         return;
     }
     reverseLookupVisible_ = true;
@@ -947,20 +963,19 @@ void EngineSession::showReverseLookup(const std::string &query) {
     }
 
     if (characters.empty()) {
-        // Nothing to look up (no selection, or an all-ASCII one): a hint row
+        // Nothing to look up (no selection, or an all-ASCII one): a hint
         // teaches the operation.
-        std::vector<CandidateData> rows(1);
-        rows[0].text = translated("Select text first, then run Find Input Code");
-        renderReverseLookup(std::move(rows));
+        renderAuxOnly(
+            PanelContent::ReverseLookupHint,
+            translated("Select text first, then run Find Input Code"));
         return;
     }
 
-    reverseLookupRendered_ = false;
     reverseLookupToken_ =
         host_->prepareReverseLookup([this, characters](bool ready) {
             if (!ready) {
-                renderAuxOnly(translated("Failed to load this input method"));
-                reverseLookupRendered_ = true;
+                renderAuxOnly(PanelContent::ReverseLookupHint,
+                              translated("Failed to load this input method"));
                 return;
             }
             // One row per unique character (capped); its codes are joined
@@ -984,18 +999,18 @@ void EngineSession::showReverseLookup(const std::string &query) {
                 rows.push_back(std::move(row));
             }
             renderReverseLookup(std::move(rows));
-            reverseLookupRendered_ = true;
         });
 
     // Anti-flash: draw the loading line only if prepare has not already
     // settled synchronously (a fetch-backed prepare settles on a later turn).
-    if (!reverseLookupRendered_) {
-        renderAuxOnly(translated("Loading…"));
+    if (panel_ == PanelContent::None) {
+        renderAuxOnly(PanelContent::ReverseLookupHint,
+                      translated("Loading…"));
     }
 }
 
 void EngineSession::renderReverseLookup(std::vector<CandidateData> rows) {
-    message_.clear();
+    setPanelContent(PanelContent::ReverseLookupList);
     freeCandidates(candidates_);
     candidates_ = std::move(rows);
     // Read-only: paging routes to the read-only pager (keeps suspended), and
@@ -1018,13 +1033,12 @@ void EngineSession::renderReverseLookup(std::vector<CandidateData> rows) {
     auto &inputPanel = inputContext_->inputPanel();
     inputPanel.setCandidateList(std::move(list));
     inputPanel.setAuxUp(fcitx::Text());
-    candidatesVisible_ = true;
     inputContext_->updateUserInterface(
         fcitx::UserInterfaceComponent::InputPanel);
 }
 
 void EngineSession::reverseLookupPage(bool forward) {
-    auto *list = candidateList();
+    auto *list = panelList();
     if (list == nullptr) {
         return;
     }
@@ -1041,7 +1055,6 @@ void EngineSession::reverseLookupPage(bool forward) {
 void EngineSession::hideReverseLookup() {
     host_->cancelReverseLookupWait(reverseLookupToken_);
     reverseLookupVisible_ = false;
-    reverseLookupRendered_ = false;
     hideCandidates();
 }
 
@@ -1260,9 +1273,9 @@ JSValue EngineSession::makeEvent(const WebKeyEvent *web,
                                  const CandidateData *candidate,
                                  int absoluteIndex) {
     JSContext *ctx = host_->context();
-    EventStaging staging{markedText_,        stagedText_,
-                         message_,           associating_,
-                         candidatesVisible_, currentPageItemCount()};
+    EventStaging staging{markedText_, stagedText_,
+                         message_, associating_,
+                         candidatesVisible(), currentPageItemCount()};
     EventKeyFields keys;
     const EventKeyFields *keyFields = nullptr;
     if (web != nullptr) {

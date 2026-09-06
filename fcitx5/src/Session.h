@@ -64,6 +64,16 @@ public:
 
 private:
 
+    // What the input panel is showing. It holds one thing at a time, so this
+    // is the single source of truth for panel occupancy.
+    enum class PanelContent {
+        None,
+        Candidates,        // the engine's candidate list
+        ReverseLookupList, // read-only Find Input Code rows
+        ReverseLookupHint, // its loading / failure line
+        Message,           // an engine message
+    };
+
     struct UpdateMarkedTextAction {
         std::string text;
         std::optional<int> cursor;
@@ -137,10 +147,12 @@ private:
     void endComposition(const std::string &insertion);
 
     void renderCandidates(int initialCursor);
-    // One line of text in the panel with no candidate list behind it: engine
-    // messages and the reverse-lookup loading/failure hints.
-    void renderAuxOnly(const std::string &text);
+    void renderMessage(std::string text);
+    // One line of text with no candidate list behind it: engine messages, the
+    // reverse-lookup loading/failure hints, and the empty teardown state.
+    void renderAuxOnly(PanelContent content, std::string text);
     void hideCandidates();
+    void setPanelContent(PanelContent content);
     void clearCompositionState();
 
     // Reverse-lookup (read-only) display. renderReverseLookup shows the given
@@ -150,9 +162,16 @@ private:
     void reverseLookupPage(bool forward);
     void hideReverseLookup();
 
-    // The live candidate list (our CommonCandidateList subclass) when visible,
-    // else nullptr. Cursor/page state lives here — it is the source of truth.
+    // The list the panel is showing, whoever painted it, else nullptr.
+    // Cursor/page state lives here — it is the source of truth.
+    fcitx::CommonCandidateList *panelList() const;
+    // The engine's candidate window: the panel list, but only while the engine
+    // owns it. Window verbs and the contract's isVisible read this one, so the
+    // read-only reverse-lookup list is not it.
     fcitx::CommonCandidateList *candidateList() const;
+    bool candidatesVisible() const {
+        return panel_ == PanelContent::Candidates;
+    }
     // Absolute index of the selected candidate, or -1 when none (suspended).
     int selectedIndex() const;
     int currentPageItemCount() const;
@@ -170,27 +189,26 @@ private:
 
     std::string markedText_;
     std::string stagedText_;
-    // Engine message shown in place of candidates; empty when none.
+    // Engine message shown in place of candidates; non-empty exactly while
+    // panel_ is Message (setPanelContent keeps the two in step).
     std::string message_;
     bool associating_ = false;
 
     // Candidate payloads (source for confirm/selection events), indexed
     // absolutely. Cursor/page selection state lives in the CommonCandidateList
-    // (see candidateList()), not here.
+    // (see panelList()), not here.
     std::vector<CandidateData> candidates_;
-    bool candidatesVisible_ = false;
+    PanelContent panel_ = PanelContent::None;
     CandidateWindowConfig windowConfig_;
     // Associated-mode window behavior, resolved once at construction —
     // the policy is fixed for the session.
     CandidateWindowConfig associatedWindowConfig_;
 
-    // Reverse-lookup read-only display: visible flag (its handleKey branch
-    // owns keys while set), the host lookup token, and a transient flag set
-    // once the results/aux are drawn (anti-flash: loading is drawn only if
-    // prepare hasn't already settled synchronously).
+    // Reverse-lookup mode ownership: its handleKey branch owns keys while the
+    // flag is set, and the token is the host lookup it must cancel. What the
+    // lookup has drawn so far is panel_'s business, not these two.
     bool reverseLookupVisible_ = false;
     uint64_t reverseLookupToken_ = 0;
-    bool reverseLookupRendered_ = false;
 
     std::vector<std::vector<Action>> queueStack_;
 };
