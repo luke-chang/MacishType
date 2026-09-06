@@ -65,6 +65,9 @@ public:
         std::map<std::string, ToggleDelegate> toggleDelegates;
         MenuStore menuStore;
         HostEventLoop *eventLoop = nullptr;
+        // A reference, not an optional seam like the loop above: every host
+        // segments through ICU, and one cache per process is the point.
+        IntlCache &intl;
     };
 
     static std::unique_ptr<JsEngineHost> load(LoadParams params);
@@ -165,8 +168,6 @@ public:
     // shared locale dictionary; empty when no entry, and when associated mode
     // is off (no reference is held then).
     std::vector<std::string> associatedFollowups(const std::string &heldChar);
-    // Lazily created. The platform host builds its GraphemeIndex on it.
-    IntlCache &intlCache();
 
     using FieldValue = std::variant<bool, double, std::string>;
     // Bridge-visible candidate window field: engine write overlay first,
@@ -470,6 +471,8 @@ private:
 
     static JsEngineHost *hostOf(JSContext *ctx);
 
+    IntlCache &intlCache() { return intlCache_; }
+
     // Members -----------------------------------------------------------
 
     std::string engineId_;
@@ -519,9 +522,10 @@ private:
     std::map<void *, std::string> pendingRejections_;
     ActionHandler actionHandler_;
 
-    // ICU-backed Intl handle cache; created lazily on the first Intl native
-    // call, closed with this host. ICU types stay confined to intl.cpp.
-    std::unique_ptr<IntlCache> intlCache_;
+    // ICU-backed Intl handle cache, owned by the platform host and shared
+    // with whatever else in the process segments text. ICU types stay
+    // confined to Intl.cpp.
+    IntlCache &intlCache_;
 
     // Async-fetch pipeline state (owned by the main loop; the worker only
     // touches the batch moved into it).

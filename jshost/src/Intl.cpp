@@ -11,13 +11,6 @@
 
 namespace MacishType {
 
-IntlCache &JsEngineHost::intlCache() {
-    if (!intlCache_) {
-        intlCache_ = std::make_unique<IntlCache>();
-    }
-    return *intlCache_;
-}
-
 namespace {
 
 // Converts a BCP-47 language tag to an ICU locale ID (e.g. "zh-Hant" →

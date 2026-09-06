@@ -210,7 +210,7 @@ JsEngineHost::JsEngineHost(LoadParams params)
       languages_(std::move(params.languages)),
       menuStore_(std::move(params.menuStore)),
       toggleDelegates_(std::move(params.toggleDelegates)),
-      eventLoop_(params.eventLoop) {
+      intlCache_(params.intl), eventLoop_(params.eventLoop) {
     associatedTablePath_ = associatedDictionaryPath(manifest_.intendedLanguage);
 }
 

@@ -21,6 +21,7 @@
 #include <fcitx/instance.h>
 
 #include <MacishType/EngineHost.h>
+#include <MacishType/Intl.h>
 
 #include "CoreAdapters.h"
 #include "EngineDiscovery.h"
@@ -240,6 +241,9 @@ private:
     // translated(), discovery parses manifests).
     FcitxCoreServices coreServices_;
     FcitxHostEventLoop hostEventLoop_;
+    // One per process, shared by every engine host and by the sessions that
+    // segment marked text; declared before both so it outlives them.
+    IntlCache intlCache_;
     MacishTypeConfig config_;
     std::vector<std::string> languages_;
     std::vector<EngineInfo> engines_;

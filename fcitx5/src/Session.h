@@ -10,6 +10,7 @@
 
 #include <MacishType/EngineHost.h>
 #include <MacishType/EventData.h>
+#include <MacishType/Intl.h>
 #include "WebKeyMap.h"
 
 namespace fcitx {
@@ -34,7 +35,7 @@ struct CandidateData {
 class EngineSession {
 public:
     EngineSession(JsEngineHost *host, fcitx::InputContext *inputContext,
-                  AssociatedSelectionKeys selectionKeys);
+                  IntlCache &intl, AssociatedSelectionKeys selectionKeys);
     ~EngineSession();
     EngineSession(const EngineSession &) = delete;
     EngineSession &operator=(const EngineSession &) = delete;
@@ -185,6 +186,7 @@ private:
 
     JsEngineHost *host_;
     fcitx::InputContext *inputContext_;
+    IntlCache &intl_;
     uint64_t instanceId_ = 0;
 
     std::string markedText_;

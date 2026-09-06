@@ -52,6 +52,7 @@
 #include "MacishType/EventData.h"
 #include "MacishType/HostEventLoop.h"
 #include "MacishType/HostSeams.h"
+#include "MacishType/Intl.h"
 #include "MacishType/JsonUtil.h"
 #include "MacishType/Logger.h"
 #include "MacishType/Manifest.h"
@@ -539,6 +540,7 @@ int main(int argc, char **argv) {
                 writeMenuStore(path, values);
             };
     }
+    IntlCache intlCache;
     auto host = JsEngineHost::load({
         .engineId = engineId,
         .engineRoot = options->engineDir,
@@ -549,6 +551,7 @@ int main(int argc, char **argv) {
         .toggleDelegates = {},
         .menuStore = std::move(menuStore),
         .eventLoop = &loop,
+        .intl = intlCache,
     });
     if (!host) {
         emitLine("{\"event\":\"load-failed\",\"error\":\"load\"}");

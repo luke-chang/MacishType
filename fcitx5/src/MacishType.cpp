@@ -497,7 +497,7 @@ void MacishTypeEngine::handleSessionlessKey(const EngineInfo &engine,
         }
         reconcileChttransToggles();
         auto session = std::make_unique<EngineSession>(
-            host, inputContext, associatedSelectionKeys());
+            host, inputContext, intlCache_, associatedSelectionKeys());
         if (session->valid()) {
             clearFailurePrompt(inputContext);
             session->invokeActivateHook();
@@ -604,7 +604,7 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
     // out of composeStatusActions, which must never dispatch into JS.
     reconcileChttransToggles();
     auto session = std::make_unique<EngineSession>(
-        host, inputContext, associatedSelectionKeys());
+        host, inputContext, intlCache_, associatedSelectionKeys());
     if (!session->valid()) {
         return;
     }
@@ -1073,6 +1073,7 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
         .toggleDelegates = std::move(toggleDelegates),
         .menuStore = menuStoreForEngine(engine),
         .eventLoop = &hostEventLoop_,
+        .intl = intlCache_,
     });
     if (!host) {
         MACISHTYPE_ERROR() << "Engine failed to load, disabled until it "
@@ -1328,7 +1329,7 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
     }
     for (auto *inputContext : affected) {
         auto session = std::make_unique<EngineSession>(
-            host, inputContext, associatedSelectionKeys());
+            host, inputContext, intlCache_, associatedSelectionKeys());
         if (!session->valid()) {
             continue;
         }

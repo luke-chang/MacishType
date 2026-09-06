@@ -105,8 +105,9 @@ std::optional<std::string> stringProperty(JSContext *ctx, JSValueConst object,
 
 EngineSession::EngineSession(JsEngineHost *host,
                              fcitx::InputContext *inputContext,
+                             IntlCache &intl,
                              AssociatedSelectionKeys selectionKeys)
-    : host_(host), inputContext_(inputContext) {
+    : host_(host), inputContext_(inputContext), intl_(intl) {
     // Unconditional, paired with the dtor's decrement: an invalid session
     // (createInstance fails below) is still destroyed by the caller, and an
     // unbalanced count would keep the host's fetch pipeline armed forever.
@@ -230,7 +231,7 @@ bool EngineSession::dispatchCandidateWindowKey(const WebKeyEvent &web) {
             if (web.shiftKey) {
                 lookup.assign(1, *namedDigit);
             }
-        } else if (isSingleGrapheme(host_->intlCache(), web.key) &&
+        } else if (isSingleGrapheme(intl_, web.key) &&
                    web.key != " " &&
                    !(windowConfig_.indexLabelDigitsRequireShift &&
                      isDigitLabel(web.key))) {
@@ -603,7 +604,7 @@ void EngineSession::applyActions(std::vector<Action> actions) {
 void EngineSession::applyUpdateMarkedText(
     const UpdateMarkedTextAction &action) {
     markedText_ = action.text;
-    GraphemeIndex index(host_->intlCache(), markedText_);
+    GraphemeIndex index(intl_, markedText_);
     int total = index.count();
     int stagedCount = 0;
     if (action.staged) {
@@ -911,7 +912,7 @@ void EngineSession::showReverseLookup(const std::string &query) {
     // One entry per grapheme cluster, dropping single-byte (ASCII) ones:
     // those are typed directly, with no input code to look up.
     std::vector<std::string> characters;
-    GraphemeIndex index(host_->intlCache(), query);
+    GraphemeIndex index(intl_, query);
     for (int i = 0; i < index.count(); i++) {
         std::string_view cluster = index.cluster(i);
         if (cluster.size() > 1) {
@@ -1152,7 +1153,7 @@ void EngineSession::confirmCandidate(const CandidateData &candidate,
     // prefix folds into the held text so it is never dropped.
     std::string committed = stagedText_ + candidate.text;
     if (!associating_ &&
-        isSingleGrapheme(host_->intlCache(), candidate.text)) {
+        isSingleGrapheme(intl_, candidate.text)) {
         enterAssociatedMode(committed, std::nullopt);
         return;
     }
