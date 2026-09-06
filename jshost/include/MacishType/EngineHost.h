@@ -165,10 +165,8 @@ public:
     // shared locale dictionary; empty when no entry, and when associated mode
     // is off (no reference is held then).
     std::vector<std::string> associatedFollowups(const std::string &heldChar);
-    // Grapheme cluster boundaries as byte offsets; see graphemeBoundariesUtf8.
-    std::vector<size_t> graphemeBoundaries(const std::string &utf8) {
-        return graphemeBoundariesUtf8(intlCache(), utf8);
-    }
+    // Lazily created. The platform host builds its GraphemeIndex on it.
+    IntlCache &intlCache();
 
     using FieldValue = std::variant<bool, double, std::string>;
     // Bridge-visible candidate window field: engine write overlay first,
@@ -471,9 +469,6 @@ private:
                                    void *opaque);
 
     static JsEngineHost *hostOf(JSContext *ctx);
-
-    // Lazily creates and returns this host's ICU handle cache.
-    IntlCache &intlCache();
 
     // Members -----------------------------------------------------------
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <set>
+#include <string_view>
 #include <vector>
 
 #include <fcitx-utils/utf8.h>
@@ -10,6 +11,7 @@
 #include <fcitx/text.h>
 
 #include "I18n.h"
+#include <MacishType/GraphemeIndex.h>
 #include <MacishType/QjsUtil.h>
 #include "Log.h"
 
@@ -53,50 +55,6 @@ joinReverseCodes(const std::vector<JsEngineHost::ReverseCode> &codes) {
         result += "  \xE2\x80\xA6"; // …
     }
     return result;
-}
-
-// Character indices in the JS contract count extended grapheme clusters.
-// Resolves one string's boundaries once, so every character index -> byte
-// offset lookup below is O(1).
-class GraphemeIndex {
-public:
-    GraphemeIndex(JsEngineHost &host, const std::string &text) {
-        if (fcitx::utf8::validate(text)) {
-            boundaries_ = host.graphemeBoundaries(text);
-        }
-        if (boundaries_.empty()) {
-            // Invalid UTF-8 (or unusable ICU) degrades to byte indices.
-            boundaries_.resize(text.size() + 1);
-            for (size_t i = 0; i < boundaries_.size(); i++) {
-                boundaries_[i] = i;
-            }
-        }
-    }
-    int count() const { return static_cast<int>(boundaries_.size()) - 1; }
-    size_t byteOffset(int characterIndex) const {
-        return boundaries_[static_cast<size_t>(
-            std::clamp(characterIndex, 0, count()))];
-    }
-
-private:
-    std::vector<size_t> boundaries_;
-};
-
-// True when `text` is exactly one extended grapheme cluster. The all-ASCII
-// path keeps the per-keystroke gates (including named keys like "Enter")
-// off the segmenter.
-bool isSingleGrapheme(JsEngineHost &host, const std::string &text) {
-    bool allAscii = std::all_of(text.begin(), text.end(), [](char byte) {
-        return static_cast<unsigned char>(byte) <= 0x7F;
-    });
-    if (allAscii || !fcitx::utf8::validate(text)) {
-        return text.size() == 1;
-    }
-    auto boundaries = host.graphemeBoundaries(text);
-    if (boundaries.empty()) {
-        return text.size() == 1;
-    }
-    return boundaries.size() == 2;
 }
 
 bool isEscapeLikeKey(const WebKeyEvent &web) {
@@ -272,7 +230,8 @@ bool EngineSession::dispatchCandidateWindowKey(const WebKeyEvent &web) {
             if (web.shiftKey) {
                 lookup.assign(1, *namedDigit);
             }
-        } else if (isSingleGrapheme(*host_, web.key) && web.key != " " &&
+        } else if (isSingleGrapheme(host_->intlCache(), web.key) &&
+                   web.key != " " &&
                    !(windowConfig_.indexLabelDigitsRequireShift &&
                      isDigitLabel(web.key))) {
             lookup = web.key;
@@ -644,7 +603,7 @@ void EngineSession::applyActions(std::vector<Action> actions) {
 void EngineSession::applyUpdateMarkedText(
     const UpdateMarkedTextAction &action) {
     markedText_ = action.text;
-    GraphemeIndex index(*host_, markedText_);
+    GraphemeIndex index(host_->intlCache(), markedText_);
     int total = index.count();
     int stagedCount = 0;
     if (action.staged) {
@@ -952,13 +911,11 @@ void EngineSession::showReverseLookup(const std::string &query) {
     // One entry per grapheme cluster, dropping single-byte (ASCII) ones:
     // those are typed directly, with no input code to look up.
     std::vector<std::string> characters;
-    if (fcitx::utf8::validate(query)) {
-        auto boundaries = host_->graphemeBoundaries(query);
-        for (size_t i = 0; i + 1 < boundaries.size(); i++) {
-            if (boundaries[i + 1] - boundaries[i] > 1) {
-                characters.push_back(query.substr(
-                    boundaries[i], boundaries[i + 1] - boundaries[i]));
-            }
+    GraphemeIndex index(host_->intlCache(), query);
+    for (int i = 0; i < index.count(); i++) {
+        std::string_view cluster = index.cluster(i);
+        if (cluster.size() > 1) {
+            characters.emplace_back(cluster);
         }
     }
 
@@ -1194,7 +1151,8 @@ void EngineSession::confirmCandidate(const CandidateData &candidate,
     // reads the candidate alone (not staged + candidate) and the staged
     // prefix folds into the held text so it is never dropped.
     std::string committed = stagedText_ + candidate.text;
-    if (!associating_ && isSingleGrapheme(*host_, candidate.text)) {
+    if (!associating_ &&
+        isSingleGrapheme(host_->intlCache(), candidate.text)) {
         enterAssociatedMode(committed, std::nullopt);
         return;
     }
