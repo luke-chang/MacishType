@@ -3,7 +3,7 @@
 /// than comparing with `==`.
 
 let visibleCandidateWindow = CandidateWindowState(
-    isVisible: true, configuration: CandidateWindowConfiguration())
+    isVisible: true, configuration: CandidateWindowConfiguration(), message: nil)
 
 /// The appended string of a lone `.flushStaged(_)`, else nil.
 func flushedText(_ actions: [EngineAction]) -> String? {

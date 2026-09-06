@@ -73,6 +73,9 @@ extension JavaScriptEngine {
         event.setObject(context.stagedText, forKeyedSubscript: "stagedText" as NSString)
         event.setObject(context.isComposing, forKeyedSubscript: "isComposing" as NSString)
         event.setObject(context.isAssociating, forKeyedSubscript: "isAssociating" as NSString)
+        // null, not undefined: the contract has engines test it directly.
+        event.setObject(candidateWindow.message ?? NSNull(),
+                        forKeyedSubscript: "message" as NSString)
         attachCandidateWindow(to: event, candidateWindow: candidateWindow)
     }
 
@@ -263,6 +266,11 @@ extension JavaScriptEngine {
                 initialHighlight: initialHighlight,
                 configure: Self.parseCandidateWindowOverrides(opts)))
         }
+        // Only anchorAt applies — how the row looks is the host's call.
+        let updateMessage: @convention(block) (String, JSValue?) -> Void = { text, options in
+            let anchorAt = Self.optInt(Self.resolved(options), "anchorAt") ?? 0
+            sink.actions.append(.updateMessage(text, anchorAt: anchorAt))
+        }
         // Accepts either a plain string or `{text, annotation?, payload?}` —
         // engines reusing a Candidate received in candidateConfirmed can pass
         // it back to preserve metadata.
@@ -301,6 +309,7 @@ extension JavaScriptEngine {
         event.setObject(updateMarkedText, forKeyedSubscript: "updateMarkedText" as NSString)
         event.setObject(resetContext, forKeyedSubscript: "resetContext" as NSString)
         event.setObject(updateCandidates, forKeyedSubscript: "updateCandidates" as NSString)
+        event.setObject(updateMessage, forKeyedSubscript: "updateMessage" as NSString)
         event.setObject(commit, forKeyedSubscript: "commit" as NSString)
         event.setObject(commitSelectedCandidate, forKeyedSubscript: "commitSelectedCandidate" as NSString)
         event.setObject(commitCandidateAtIndex, forKeyedSubscript: "commitCandidateAtIndex" as NSString)

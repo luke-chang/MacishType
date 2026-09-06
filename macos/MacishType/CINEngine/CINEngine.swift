@@ -218,11 +218,7 @@ class CINEngine: InputEngine {
         context: InputEngineContext, _ candidate: String, absoluteIndex: Int, raw: Candidate?,
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
-        // The "no match" row is a message, not a candidate; committing it would
-        // insert the hint text. Only a click can reach it — the hint turns the
-        // host's key handling off.
-        if raw?.payload as? String == Self.noMatchPayload { return .handled() }
-        return .notHandled(stagedPreviewClear(candidate, context: context))
+        .notHandled(stagedPreviewClear(candidate, context: context))
     }
 
     override func candidateSelectionChanged(
@@ -378,14 +374,7 @@ class CINEngine: InputEngine {
             ctx.selecting = false
             return [
                 .updateMarkedText(table.rootDisplay(ctx.code)),
-                .updateCandidates(
-                    [Candidate(Self.noMatchHint, payload: Self.noMatchPayload)],
-                    initialHighlight: -1
-                ) { configuration in
-                    configuration.indexLabels = ""
-                    configuration.handleNavigationKeys = false
-                    configuration.handleIndexLabelKeys = false
-                },
+                .updateMessage(Self.noMatchHint),
             ]
         }
         if candidates.count == 1 {
@@ -400,7 +389,6 @@ class CINEngine: InputEngine {
     }
 
     private static var noMatchHint: String { String(localized: "No match") }
-    private static let noMatchPayload = "noMatch"
 
     // MARK: - Helpers
 

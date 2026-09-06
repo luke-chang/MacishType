@@ -228,7 +228,9 @@ class CandidateWindow {
         old.hide()
         _impl = nil
         apply()
-        if !savedCandidates.isEmpty {
+        if let message = messageText {
+            updateMessage(message)
+        } else if !savedCandidates.isEmpty {
             updateCandidates(savedCandidates, initialHighlight: 0)
         }
         if wasVisible {
@@ -248,7 +250,14 @@ class CandidateWindow {
     /// per-update overrides).
     var currentConfiguration: CandidateWindowConfiguration { engineConfiguration }
 
+    /// What the panel is currently rendering with: `engineConfiguration`, or
+    /// the message's derived form while one is up.
+    private var appliedConfiguration = CandidateWindowConfiguration()
+
     // MARK: - State
+
+    /// Text of the message shown in place of candidates.
+    private(set) var messageText: String?
 
     private(set) var lastShowNearRect: NSRect = .zero
 
@@ -290,7 +299,12 @@ class CandidateWindow {
 
     // MARK: - Delegated Interface
 
+    /// The panel is on screen, whatever it is showing.
     var isVisible: Bool { activeImpl.isVisible }
+
+    /// A candidate window the engine can act on. A message rides the same
+    /// panel but is not one.
+    var hasCandidates: Bool { messageText == nil && activeImpl.isVisible }
 
     /// False under a suspended highlight (`initialHighlight: -1`) until a
     /// navigation reveals one.
@@ -300,11 +314,15 @@ class CandidateWindow {
     /// Short-circuits when unchanged.
     func configure(_ configuration: CandidateWindowConfiguration) {
         guard engineConfiguration != configuration else { return }
-        applyEngineConfiguration(configuration)
+        // A message is drawn with a configuration derived from the old one, so
+        // reconfiguring retires it.
+        if messageText != nil { hide() }
+        engineConfiguration = configuration
         apply()
     }
 
     private func apply() {
+        markApplied(engineConfiguration)
         activeImpl.apply(engineConfiguration)
     }
 
@@ -315,21 +333,45 @@ class CandidateWindow {
         // A window can open with Shift already down; seed from the hardware
         // state rather than waiting for a flagsChanged transition.
         shiftHeld = NSEvent.modifierFlags.contains(.shift)
-        let cfgToApply: CandidateWindowConfiguration?
-        if let cfg = configuration, engineConfiguration != cfg {
-            applyEngineConfiguration(cfg)
-            cfgToApply = cfg
-        } else {
-            cfgToApply = nil
-        }
+        messageText = nil
+        activeImpl.rowsSelectable = true
+        if let configuration { engineConfiguration = configuration }
+        // Leaving a message needs a push even when the engine's configuration
+        // is unchanged: the message's derived one outlives `messageText`.
         activeImpl.updateCandidates(candidates, initialHighlight: initialHighlight,
-                                    configuration: cfgToApply)
+                                    configuration: pushable(engineConfiguration))
     }
 
-    /// Single writer for `engineConfiguration` — keeps the index-column
-    /// slot state in lockstep with the active configuration.
-    private func applyEngineConfiguration(_ cfg: CandidateWindowConfiguration) {
-        engineConfiguration = cfg
+    /// Shows `text` in place of candidates; empty text dismisses it. Horizontal
+    /// so the row sizes to its text. `engineConfiguration` is left untouched,
+    /// so `currentConfiguration` keeps reporting what candidates would use.
+    func updateMessage(_ text: String) {
+        guard !text.isEmpty else {
+            // Nothing to dismiss: leave the candidate window alone.
+            if messageText != nil { hide() }
+            return
+        }
+        messageText = text
+        activeImpl.rowsSelectable = false
+        var cfg = engineConfiguration
+        cfg.layoutDirection = .horizontal
+        cfg.expandable = false
+        cfg.indexLabels = ""
+        activeImpl.updateCandidates([Candidate(text)], initialHighlight: -1,
+                                    configuration: pushable(cfg))
+    }
+
+    /// `cfg` when the panel isn't already rendering with it, else nil. Marking
+    /// it applied here keeps the index-column slot state in lockstep.
+    private func pushable(_ cfg: CandidateWindowConfiguration) -> CandidateWindowConfiguration? {
+        guard appliedConfiguration != cfg else { return nil }
+        markApplied(cfg)
+        return cfg
+    }
+
+    /// Single writer for `appliedConfiguration`.
+    private func markApplied(_ cfg: CandidateWindowConfiguration) {
+        appliedConfiguration = cfg
         MacishCandidateItemView.configureIndexColumn(enabled: cfg.reservesIndexSlot)
     }
 
@@ -341,6 +383,7 @@ class CandidateWindow {
     func hide() {
         compositionStartX = 0
         setCompositionEndXProvider(nil)
+        messageText = nil
         activeImpl.hide()
     }
 
@@ -350,17 +393,17 @@ class CandidateWindow {
     // verb; in-panel mouse paths imply a visible panel.
 
     func handleNavigation(direction: NavigationDirection, wrapping: Bool = false) {
-        guard isVisible else { return }
+        guard hasCandidates else { return }
         activeImpl.handleNavigation(direction: direction, wrapping: wrapping)
     }
 
     func commitSelectedCandidate() {
-        guard isVisible else { return }
+        guard hasCandidates else { return }
         activeImpl.commitSelectedCandidate()
     }
 
     func commitCandidate(at index: Int) {
-        guard isVisible else { return }
+        guard hasCandidates else { return }
         activeImpl.commitCandidate(at: index)
     }
 
@@ -394,6 +437,9 @@ class CandidateWindowImpl {
     // -1 sentinel = no selection.
     var selectedIndex: Int = -1
     var hasSelection: Bool { selectedIndex >= 0 }
+    /// False for a message's row. The keyboard paths are gated by
+    /// `CandidateWindow.hasCandidates`; in-panel mouse paths are not.
+    var rowsSelectable = true
 
     func notifySelectionChanged() {
         guard hasSelection, !candidates.isEmpty else { return }

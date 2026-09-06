@@ -807,6 +807,50 @@ as well. A palette-style list keeps a short composition alive to hold the
 session; `enterAssociatedMode` works this way, carrying the held text as staged
 marked text.
 
+#### `updateMessage(text, options?)`
+
+Show a **message** in place of the candidate list: one line of text the user
+reads, rather than something to pick from. A message is not a candidate — it
+takes no key, cannot be clicked or committed, and never reaches
+`candidateConfirmed` / `candidateSelectionChanged`.
+
+- `text` *(string, required)* — the message. An empty string dismisses it.
+- `options.anchorAt` *(integer, default `0`)* — same meaning as in
+  [`updateCandidates`](#updatecandidatesitems-options).
+
+```js
+event.updateMarkedText(code);
+event.updateMessage("No match");
+```
+
+Hosts render it in whatever form fits their platform, and it may look nothing
+like the candidate window.
+
+While a message is up:
+
+- **Every key reaches the engine.** The host intercepts nothing, so
+  `handleKey` sees Enter, arrows and index-label keys as it would with no
+  window open.
+- **`event.candidateWindow.isVisible` is `false`.** A message is not a
+  candidate window, so the window verbs (`commitSelectedCandidate`,
+  `navigateCandidates`, …) are no-ops per their usual rule.
+- **`event.message`** tells the engine which message is showing.
+
+Messages and candidates are mutually exclusive: `updateCandidates` replaces a
+message, and `updateMessage` replaces the candidate list. The host also clears
+the message when the composition ends (commit, `flushStaged`, `resetContext`,
+focus change). Anything else leaves it up: a message outlives
+`updateMarkedText`, so an engine need not re-emit it as the composition
+changes.
+
+The two dismissals differ: `updateCandidates([])` clears the window whichever
+of the two is in it, while `updateMessage("")` retires a message and does
+nothing when candidates are showing.
+
+Emit `updateMarkedText` **before** `updateMessage` when both change: like
+`updateCandidates`, the message resolves `anchorAt` against the marked text as
+the host applies it.
+
 #### `commit(candidate)`
 
 Engine-driven commit; triggers the `candidateConfirmed` callback so the
@@ -916,6 +960,7 @@ engine's own `indexLabels`. See
 | `stagedText` | Prefix already staged for commit. |
 | `isComposing` | Whether marked text is non-empty. |
 | `isAssociating` | Whether the engine is in associated mode. |
+| `message` | Text of the message currently shown (see [`updateMessage`](#updatemessagetext-options)), `null` when none. |
 | `candidateWindow` | Snapshot of the candidate window state at method entry. |
 
 `KeyEvent` field names and semantics track web

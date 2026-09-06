@@ -405,6 +405,8 @@ class InputController: IMKInputController {
                 updateCandidates(candidates, anchorAt: anchorAt,
                                  initialHighlight: initialHighlight,
                                  configuration: cfg, client: client)
+            case .updateMessage(let text, let anchorAt):
+                updateMessage(text, anchorAt: anchorAt, client: client)
             case .commit(let candidate):
                 // Engine-driven commit: no specific candidate-list index.
                 candidateConfirmed(candidate.text, absoluteIndex: -1, raw: candidate)
@@ -581,15 +583,34 @@ class InputController: IMKInputController {
             hideCandidateWindow()
             return
         }
-        // Applying the update fires candidateSelectionChanged synchronously and
-        // that hook may rewrite marked text; anchorAt indexes the current text.
+        anchored(anchorAt: anchorAt, client: client) {
+            CandidateWindow.shared.updateCandidates(candidates,
+                                                    initialHighlight: initialHighlight,
+                                                    configuration: configuration)
+        }
+    }
+
+    private func updateMessage(_ text: String, anchorAt: Int, client: IMKTextInput) {
+        // Dismissal takes no anchor: measuring one would end in a reposition
+        // that orders the just-hidden panel back on screen.
+        guard !text.isEmpty else {
+            CandidateWindow.shared.updateMessage("")
+            return
+        }
+        anchored(anchorAt: anchorAt, client: client) {
+            CandidateWindow.shared.updateMessage(text)
+        }
+    }
+
+    /// Runs a window update between an anchor measurement and the reposition
+    /// it feeds. Applying an update fires candidateSelectionChanged
+    /// synchronously and that hook may rewrite marked text, while `anchorAt`
+    /// indexes the text as it is now; the hook may also have ended the
+    /// composition and hidden the window, and re-showing one with no
+    /// composition behind it would swallow the client's keys.
+    private func anchored(anchorAt: Int, client: IMKTextInput, _ update: () -> Void) {
         let anchor = measureCandidateAnchor(anchorAt: anchorAt, client: client)
-        CandidateWindow.shared.updateCandidates(candidates,
-                                                initialHighlight: initialHighlight,
-                                                configuration: configuration)
-        // The hook may also have ended the composition (flushStaged /
-        // resetContext) and hidden the window. Re-showing it would leave a
-        // window with no composition on screen, swallowing the client's keys.
+        update()
         guard let anchor, !engineContext.markedText.isEmpty else { return }
         applyCandidateAnchor(anchor, client: client)
     }
@@ -625,14 +646,15 @@ extension InputController: CandidateWindowDelegate {
 private extension InputController {
     func currentCandidateWindowState() -> CandidateWindowState {
         CandidateWindowState(
-            isVisible: CandidateWindow.shared.isVisible,
-            configuration: CandidateWindow.shared.currentConfiguration)
+            isVisible: CandidateWindow.shared.hasCandidates,
+            configuration: CandidateWindow.shared.currentConfiguration,
+            message: CandidateWindow.shared.messageText)
     }
 
     /// Policy-gated candidate-window dispatch. Returns true if the key
     /// was consumed. No-op when the window is hidden.
     func dispatchCandidateWindowKey(_ keyEvent: KeyEventInput) -> Bool {
-        guard CandidateWindow.shared.isVisible else { return false }
+        guard CandidateWindow.shared.hasCandidates else { return false }
         let cfg = CandidateWindow.shared.currentConfiguration
         let pureMods = keyEvent.pureModifiers
         if !pureMods.intersection([.command, .control]).isEmpty { return false }

@@ -41,6 +41,9 @@ class InputEngineContext {
 struct CandidateWindowState {
     let isVisible: Bool
     let configuration: CandidateWindowConfiguration
+    /// Message shown in place of candidates. A message is not a candidate
+    /// window: `isVisible` stays false while one is up.
+    let message: String?
 }
 
 // MARK: - Engine Action
@@ -56,6 +59,9 @@ enum EngineAction {
     // default per-update; nil keeps the engine default.
     case updateCandidates([Candidate], anchorAt: Int = 0, initialHighlight: Int = 0,
                           configure: ((inout CandidateWindowConfiguration) -> Void)? = nil)
+    // A message shown in place of candidates: takes no key, cannot be clicked
+    // or committed. Rendering is the host's call, hence no `configure` hook.
+    case updateMessage(String, anchorAt: Int = 0)
     // Engine-confirmed candidate: routes through engine.candidateConfirmed.
     case commit(Candidate)
     case commitSelectedCandidate

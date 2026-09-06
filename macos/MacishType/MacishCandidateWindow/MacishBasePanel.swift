@@ -414,6 +414,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
 
     func itemClicked(at index: Int, doubleClick: Bool) {
         guard !isAnimating else { return }
+        guard impl.rowsSelectable else { return }
         if doubleClick {
             let chosen = candidates[index]
             impl.candidateDelegate?.candidateConfirmed(

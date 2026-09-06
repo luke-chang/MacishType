@@ -188,6 +188,12 @@ export interface NavigationOptions {
   wrapping?: boolean;
 }
 
+/** Options for `updateMessage`. */
+export interface MessageOptions {
+  /** Cursor position in `markedText` the message anchors to. Same as `CandidateUpdateOptions`. */
+  anchorAt?: number;
+}
+
 /**
  * Mutator surface attached to every event object. Calls queue actions
  * that the host applies only after the engine method returns; reading
@@ -199,12 +205,21 @@ export interface EventMutators {
   updateMarkedText(text: string, options?: MarkedTextOptions): void;
   /**
    * Replace the candidate list shown in the candidate window. Pass an
-   * empty array to hide the window. Declare candidates alongside a
-   * non-empty `markedText`: on macOS the window anchors to the
-   * composition, and some clients deliver keys to the input method only
-   * while a composition is active.
+   * empty array to hide the window, clearing a message along with it.
+   * Declare candidates alongside a non-empty `markedText`: on macOS the
+   * window anchors to the composition, and some clients deliver keys to
+   * the input method only while a composition is active.
    */
   updateCandidates(items: readonly CandidateInput[], options?: CandidateUpdateOptions): void;
+  /**
+   * Show a message in place of the candidate list; an empty string
+   * retires a message and does nothing when none is up. A message takes
+   * no key (every key reaches the engine), cannot be clicked or
+   * committed, and leaves `candidateWindow.isVisible` false. Its
+   * appearance is the host's decision, hence no layout options.
+   * `updateCandidates` replaces it, as does the end of the composition.
+   */
+  updateMessage(text: string, options?: MessageOptions): void;
   /** Engine-driven commit. Triggers `candidateConfirmed` if defined. */
   commit(candidate: CandidateInput): void;
   /**
@@ -257,6 +272,8 @@ export interface EventContext {
   readonly stagedText: string;
   readonly isComposing: boolean;
   readonly isAssociating: boolean;
+  /** Text of the message currently shown via `updateMessage`, null when none. */
+  readonly message: string | null;
   /** Snapshot of the candidate window state at method entry. */
   readonly candidateWindow: CandidateWindowState;
 }

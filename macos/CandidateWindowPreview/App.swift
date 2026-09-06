@@ -151,6 +151,7 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     @Published var isEditing = false
     @Published var isEditingIndexLabels = false
     @Published var suspendHighlight = false
+    @Published var messageMode = false
     // Set when our own callback flips suspendHighlight back off after the
     // user's first navigation; tells `.onChange` to skip the applyCandidates
     // round-trip so it doesn't clobber the panel's just-moved selection.
@@ -221,7 +222,13 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
         config.indexLabelDigitsRequireShift = indexLabelDigitsRequireShift
         if slowMotion { config.animationDuration = 1.0 }
         candidateWindow.configure(config)
-        attachCandidatePanel()
+        // Reconfiguring retires a live message; put it back so settings stay
+        // tweakable while one is shown.
+        if messageMode {
+            applyCandidates()
+        } else {
+            attachCandidatePanel()
+        }
     }
 
     /// Replace non-space whitespace (tabs, newlines, etc.) with spaces.
@@ -235,6 +242,16 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     }
 
     func applyCandidates() {
+        if messageMode {
+            // The whole text is one row; no token parsing.
+            guard !candidateText.isEmpty else {
+                candidateWindow.hide()
+                return
+            }
+            candidateWindow.updateMessage(candidateText)
+            showNearHostWindow()
+            return
+        }
         // Token format: `text|annotation` (annotation optional). First `|`
         // splits text from annotation; later `|` chars are kept inside
         // annotation. Empty text (leading `|`) skips the token; empty
@@ -253,6 +270,11 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
             return
         }
         candidateWindow.updateCandidates(candidates, initialHighlight: suspendHighlight ? -1 : 0)
+        showNearHostWindow()
+    }
+
+    /// Places the panel just below the host window and keeps it parented.
+    func showNearHostWindow() {
         if let window {
             let rect = window.frame
             candidateWindow.show(near: NSRect(x: rect.minX, y: rect.minY - 10, width: 0, height: 20))
@@ -376,10 +398,9 @@ class PreviewState: ObservableObject, CandidateWindowDelegate {
     }
 
     private func syncPositionIfNeeded() {
-        guard positionStale, let window, candidateWindow.isVisible else { return }
+        guard positionStale, candidateWindow.isVisible else { return }
         positionStale = false
-        let rect = window.frame
-        candidateWindow.show(near: NSRect(x: rect.minX, y: rect.minY - 10, width: 0, height: 20))
+        showNearHostWindow()
     }
 
     private func installDidMoveObserver() {
@@ -582,11 +603,15 @@ struct PreviewContentView: View {
                     Toggle("Wider expanded columns", isOn: $state.widerColumns)
                     Toggle("Move on expand", isOn: $state.moveOnExpand)
                     Toggle("Vertical layout", isOn: $state.vertical)
+                        .disabled(state.messageMode)
                     Toggle("Expandable", isOn: $state.expandable)
-                        .disabled(state.vertical)
+                        .disabled(state.vertical || state.messageMode)
+                    Divider()
+                    Toggle("Message mode", isOn: $state.messageMode)
                     Divider()
                     Toggle("Slow animations (1s)", isOn: $state.slowMotion)
                     Toggle("Suspend highlight", isOn: $state.suspendHighlight)
+                        .disabled(state.messageMode)
                     Toggle("Shift-gated digit labels", isOn: $state.indexLabelDigitsRequireShift)
                 }
                 .toggleStyle(.checkbox)
@@ -608,6 +633,7 @@ struct PreviewContentView: View {
         .onChange(of: state.indexLabels) { state.applyConfiguration() }
         .onChange(of: state.pageSize) { state.applyConfiguration() }
         .onChange(of: state.indexLabelDigitsRequireShift) { state.applyConfiguration() }
+        .onChange(of: state.messageMode) { state.applyCandidates() }
         .onChange(of: state.suspendHighlight) {
             if state.skipNextSuspendApply {
                 state.skipNextSuspendApply = false
