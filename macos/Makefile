@@ -4,7 +4,15 @@
 
 APP_NAME = MacishType
 BUNDLE_ID = net.lukechang.inputmethod.$(APP_NAME)
+# PackageKit parses each CFBundleVersion component as a 32-bit signed integer and
+# silently clamps an overflowing one to INT32_MAX, which then outranks every later
+# build. Keep the stamp under the ceiling; a finer-grained stamp needs a monotonic
+# counter rather than more digits of the timestamp.
 BUILD_NUMBER := $(shell date +%Y%m%d)
+BUILD_NUMBER_CEILING = 2147483647
+ifneq ($(shell test "$(BUILD_NUMBER)" -le $(BUILD_NUMBER_CEILING) && echo ok),ok)
+$(error BUILD_NUMBER $(BUILD_NUMBER) exceeds $(BUILD_NUMBER_CEILING), the value PackageKit clamps a CFBundleVersion component to)
+endif
 LOG_SHOW_LAST = 1h
 # Component install destination; rebased under the user home by the installer's
 # currentUserHome domain, so this resolves to ~/Library/Input Methods.
@@ -162,6 +170,7 @@ release-universal: prepare
 	@$(XCODE_CHECK)
 	@echo "Building Release universal version..."
 	xcodebuild -target $(APP_NAME) -configuration Release ARCHS="arm64 x86_64" CURRENT_PROJECT_VERSION=$(BUILD_NUMBER)
+	@$(call UNREGISTER_BUILD_APP,Release)
 
 install: release
 	@$(call INSTALL_APP,Release)
@@ -231,6 +240,10 @@ uninstall:
 # onConclusionScript runs Installer JavaScript that forces a re-login only when
 # the declared input mode set changed (first install, or the installed
 # ComponentInputModeDict differs), so the system re-reads the input source list.
+#
+# BundleIsVersionChecked is off: a version PackageKit does not read as an upgrade
+# makes it skip the payload while still running the scripts, writing the receipt
+# and reporting success.
 pkg: release-universal
 	@set -e; \
 	APP_DIR="./build/Release/$(APP_NAME).app"; \
@@ -254,6 +267,7 @@ pkg: release-universal
 	COMPONENT_PLIST="$$WORK_DIR/component.plist"; \
 	pkgbuild --analyze --root "$$STAGE_DIR" "$$COMPONENT_PLIST" >/dev/null; \
 	plutil -replace 0.BundleIsRelocatable -bool NO "$$COMPONENT_PLIST"; \
+	plutil -replace 0.BundleIsVersionChecked -bool NO "$$COMPONENT_PLIST"; \
 	echo "Building component package (universal)..."; \
 	pkgbuild \
 		--root "$$STAGE_DIR" \
