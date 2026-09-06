@@ -1,9 +1,6 @@
-// Self-test for the reference-counted dictionary store. It links against
-// nothing but macishtype-shared (whole archive) and ICU, so building it is
-// also the acceptance check that this library stays consumable by a host that
-// embeds no JS runtime.
+// Self-test for the reference-counted dictionary store and the
+// associated-phrase dictionary layered on it.
 
-#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -11,6 +8,7 @@
 #include <string_view>
 #include <utility>
 
+#include "Checks.h"
 #include "MacishType/AssociatedDictionary.h"
 #include "MacishType/Intl.h"
 #include "MacishType/Logger.h"
@@ -22,17 +20,6 @@ using MacishType::AssociatedDictionary;
 using MacishType::IntlCache;
 using MacishType::Logger;
 using MacishType::RefCountedDictionary;
-
-struct Checks {
-    int failures = 0;
-
-    void expect(bool ok, const char *what) {
-        if (!ok) {
-            std::fprintf(stderr, "FAIL: %s\n", what);
-            ++failures;
-        }
-    }
-};
 
 // Counts what the store actually did: the parser emits one "N prefixes" line
 // per load and one fault per unreadable file, so a sink is enough to observe
@@ -220,12 +207,11 @@ void testAssociatedDictionary(Checks &checks, const std::filesystem::path &dir,
 
 } // namespace
 
-int main() {
-    Checks checks;
+void testDictionaries(Checks &checks) {
     ScratchDir scratch;
     if (scratch.path().empty()) {
-        std::fprintf(stderr, "FAIL: could not create a scratch directory\n");
-        return 1;
+        checks.expect(false, "a scratch directory could be created");
+        return;
     }
 
     CountingLogger logger;
@@ -235,11 +221,4 @@ int main() {
     testAssociatedDictionary(checks, scratch.path(), logger);
 
     MacishType::setLogger(nullptr);
-
-    if (checks.failures != 0) {
-        std::fprintf(stderr, "%d check(s) failed\n", checks.failures);
-        return 1;
-    }
-    std::printf("all checks passed\n");
-    return 0;
 }

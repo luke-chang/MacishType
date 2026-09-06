@@ -35,7 +35,8 @@ public:
     // get-or-open convenience for a UBreakIterator (returned as void*) keyed on
     // (type, locale). `type` is a UBreakIteratorType; `*status` receives a
     // UErrorCode when the open fails (and the return is null). int keeps ICU
-    // headers out of this one.
+    // headers out of this one. Returns null without reaching ICU while
+    // isIcuUsable() is false.
     void *breakIterator(int type, const std::string &locale, int *status);
 
 private:
@@ -49,6 +50,14 @@ private:
     std::map<std::string, void *> collators_;
     std::map<std::string, void *> pluralRules_;
 };
+
+// Windows delay-loads system ICU, and a failed import raises on every call,
+// not just the first: such a host must probe once and record the answer here
+// before its first ICU use. Defaults to usable. While it is false nothing in
+// this library reaches ICU, but jshost opens its date, number, collator and
+// plural-rules handles outside IntlCache and still needs its own check.
+void setIcuUsable(bool usable);
+bool isIcuUsable();
 
 // Byte offsets of every extended grapheme cluster boundary in `utf8`: starts
 // at 0, ends at utf8.size(), so the cluster count is size() - 1. Empty input

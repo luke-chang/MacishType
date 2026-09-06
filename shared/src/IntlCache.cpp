@@ -14,6 +14,12 @@ namespace MacishType {
 // host's lifetime. A normal engine's locale/option set stays far below this.
 constexpr size_t kMaxHandlesPerKind = 512;
 
+namespace {
+
+bool icuUsable = true;
+
+} // namespace
+
 IntlCache::~IntlCache() {
     closeAll(kBreak);
     closeAll(kDateFormat);
@@ -86,8 +92,16 @@ void IntlCache::put(Kind kind, const std::string &key, void *handle) {
     store[key] = handle;
 }
 
+void setIcuUsable(bool usable) { icuUsable = usable; }
+
+bool isIcuUsable() { return icuUsable; }
+
 void *IntlCache::breakIterator(int type, const std::string &locale,
                                int *status) {
+    if (!icuUsable) {
+        *status = U_MISSING_RESOURCE_ERROR;
+        return nullptr;
+    }
     std::string key = std::to_string(type) + "|" + locale;
     if (void *cached = get(kBreak, key)) {
         return cached;
@@ -133,6 +147,7 @@ std::vector<size_t> graphemeBoundariesUtf8(IntlCache &cache,
     }
     // UTF-8 UText boundaries are native indexes, i.e. byte offsets.
     std::vector<size_t> boundaries;
+    boundaries.reserve(utf8.size() + 1);
     boundaries.push_back(static_cast<size_t>(ubrk_first(iterator)));
     for (int32_t next = ubrk_next(iterator); next != UBRK_DONE;
          next = ubrk_next(iterator)) {

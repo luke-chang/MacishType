@@ -2,7 +2,8 @@
 
 What every MacishType host needs regardless of whether it embeds a JS
 engine: the log facade, the ICU handle cache behind grapheme segmentation,
-UTF-8 validation, and the associated-phrase dictionary.
+the cluster index behind contract character indices, UTF-8 validation, and
+the associated-phrase dictionary.
 
 ## What belongs here
 

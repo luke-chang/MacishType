@@ -2,9 +2,10 @@ cmake_minimum_required(VERSION 3.25)
 
 # macishtype-shared: the platform-independent pieces every MacishType host
 # needs whether or not it embeds a JS engine — the log facade, the ICU
-# grapheme/Intl handle cache, UTF-8 validation, and the associated-phrase
-# dictionary. Deliberately free of any JS runtime dependency so a native
-# host can link it without pulling in QuickJS.
+# grapheme/Intl handle cache, the cluster index behind contract character
+# indices, UTF-8 validation, and the associated-phrase dictionary.
+# Deliberately free of any JS runtime dependency so a native host can link it
+# without pulling in QuickJS.
 project(macishtype-shared LANGUAGES CXX)
 
 # Applied here rather than per-project: this is the innermost of the three
@@ -13,6 +14,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SourcePathMap.cmake")
 
 add_library(macishtype-shared STATIC
     src/AssociatedDictionary.cpp
+    src/GraphemeIndex.cpp
     src/IntlCache.cpp
     src/Log.cpp
     src/RefCountedDictionary.cpp
@@ -37,12 +39,16 @@ target_link_libraries(macishtype-shared PUBLIC ICU::i18n ICU::uc)
 # deliberately never rides along with the fcitx5 or jshost builds.
 if(PROJECT_IS_TOP_LEVEL)
     enable_testing()
-    add_executable(macishtype-shared-test tests/DictionaryTests.cpp)
+    add_executable(macishtype-shared-test
+        tests/DictionaryTests.cpp
+        tests/GraphemeTests.cpp
+        tests/Main.cpp
+    )
     # WHOLE_ARCHIVE is what makes this equivalent to the manual "link
     # libmacishtype-shared.a plus ICU and nothing else" check: a plain link
     # would pull in only the members the test happens to reference, letting a
     # new source file take a jshost/seam/QuickJS dependency unnoticed.
     target_link_libraries(macishtype-shared-test
         PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,macishtype-shared>")
-    add_test(NAME dictionaries COMMAND macishtype-shared-test)
+    add_test(NAME selftests COMMAND macishtype-shared-test)
 endif()

@@ -1,6 +1,5 @@
 #include "MacishType/AssociatedDictionary.h"
 
-#include <cstdint>
 #include <sstream>
 
 #include "MacishType/Log.h"
@@ -50,9 +49,7 @@ AssociatedDictionary::acquire(const std::filesystem::path &path) {
 std::vector<std::string>
 AssociatedDictionary::Handle::followups(IntlCache &cache,
                                         const std::string &heldText) const {
-    if (!inner_ || heldText.empty() ||
-        !isStrictUtf8(reinterpret_cast<const uint8_t *>(heldText.data()),
-                      heldText.size())) {
+    if (!inner_ || heldText.empty() || !isStrictUtf8(heldText)) {
         return {};
     }
     // Key on the last cluster: follow-ups attach after the held text, so
