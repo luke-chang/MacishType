@@ -59,6 +59,8 @@ struct EventCandidate {
 struct EventStaging {
     const std::string &markedText;
     const std::string &stagedText;
+    // Empty when no message is showing; the event field reads null.
+    const std::string &message;
     bool isAssociating = false;
     bool candidatesVisible = false;
     int pageItemCount = 0;

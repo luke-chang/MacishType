@@ -125,6 +125,11 @@ JSValue buildEventData(JSContext *ctx, const EventStaging &staging,
     setStringField(ctx, fields, "stagedText", staging.stagedText);
     setBoolField(ctx, fields, "isComposing", !staging.markedText.empty());
     setBoolField(ctx, fields, "isAssociating", staging.isAssociating);
+    if (staging.message.empty()) {
+        JS_SetPropertyStr(ctx, fields, "message", JS_NULL);
+    } else {
+        setStringField(ctx, fields, "message", staging.message);
+    }
     if (web != nullptr) {
         setStringField(ctx, fields, "key", web->key);
         setStringField(ctx, fields, "code", web->code);

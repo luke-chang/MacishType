@@ -291,6 +291,7 @@ private:
 // coherent event shape, mirroring the reference engines' Node test stubs.
 struct CliStaging {
     std::string markedText;
+    std::string message;
     bool candidatesVisible = false;
 };
 
@@ -324,7 +325,8 @@ bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
     keys.capsLock = boolProp("capsLock");
 
     static const std::string c_NoStagedText;
-    EventStaging eventStaging{staging.markedText, c_NoStagedText, false,
+    EventStaging eventStaging{staging.markedText, c_NoStagedText,
+                              staging.message, false,
                               staging.candidatesVisible, 0};
 
     Qjs::Value data(ctx,
@@ -369,8 +371,17 @@ bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
                 JS_ToUint32(ctx, &count, length);
                 JS_FreeValue(ctx, length);
                 staging.candidatesVisible = JS_IsArray(argv[0]) && count > 0;
+                staging.message.clear();
+            } else if (name == "updateMessage" && argc >= 1) {
+                staging.message = JS_IsString(argv[0])
+                                      ? Qjs::toString(ctx, argv[0])
+                                      : std::string();
+                if (!staging.message.empty()) {
+                    staging.candidatesVisible = false;
+                }
             } else if (name == "commit" || name == "resetContext") {
                 staging.markedText.clear();
+                staging.message.clear();
                 staging.candidatesVisible = false;
             }
         });

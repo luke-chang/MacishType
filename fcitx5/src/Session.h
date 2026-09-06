@@ -59,7 +59,7 @@ public:
     void endFromDeactivate(bool preeditAlreadyCommitted);
     // Show a read-only reverse-lookup (Find Input Code) result for `query`
     // in the candidate window. One-shot; dismissed on the next key. No-op
-    // while composing.
+    // while composing or while an engine message is up.
     void showReverseLookup(const std::string &query);
 
 private:
@@ -83,6 +83,9 @@ private:
         std::vector<CandidateData> items;
         CandidateUpdateOptions options;
     };
+    struct UpdateMessageAction {
+        std::string text;
+    };
     struct CommitAction {
         CandidateData candidate;
     };
@@ -104,9 +107,9 @@ private:
     };
     using Action =
         std::variant<UpdateMarkedTextAction, UpdateCandidatesAction,
-                     CommitAction, CommitSelectedAction, CommitAtIndexAction,
-                     NavigateAction, ResetAction, FlushStagedAction,
-                     EnterAssociatedAction>;
+                     UpdateMessageAction, CommitAction, CommitSelectedAction,
+                     CommitAtIndexAction, NavigateAction, ResetAction,
+                     FlushStagedAction, EnterAssociatedAction>;
 
     // Host→JS invocation with an action queue on the stack; queued actions
     // apply after the hook (and its microtasks) return.
@@ -122,6 +125,7 @@ private:
 
     void applyUpdateMarkedText(const UpdateMarkedTextAction &action);
     void applyUpdateCandidates(UpdateCandidatesAction action);
+    void applyUpdateMessage(UpdateMessageAction action);
     void navigate(const std::string &direction, bool wrapping);
     void confirmCandidateAt(size_t absoluteIndex);
     void confirmCandidate(const CandidateData &candidate, int absoluteIndex);
@@ -133,15 +137,16 @@ private:
     void endComposition(const std::string &insertion);
 
     void renderCandidates(int initialCursor);
+    // One line of text in the panel with no candidate list behind it: engine
+    // messages and the reverse-lookup loading/failure hints.
+    void renderAuxOnly(const std::string &text);
     void hideCandidates();
     void clearCompositionState();
 
     // Reverse-lookup (read-only) display. renderReverseLookup shows the given
-    // rows suspended/non-selectable; reverseLookupAux shows a transient
-    // message (loading/failure); reverseLookupPage flips pages keeping the
+    // rows suspended/non-selectable; reverseLookupPage flips pages keeping the
     // suspended cursor; hideReverseLookup tears down and cancels the wait.
     void renderReverseLookup(std::vector<CandidateData> rows);
-    void reverseLookupAux(const std::string &message);
     void reverseLookupPage(bool forward);
     void hideReverseLookup();
 
@@ -165,6 +170,8 @@ private:
 
     std::string markedText_;
     std::string stagedText_;
+    // Engine message shown in place of candidates; empty when none.
+    std::string message_;
     bool associating_ = false;
 
     // Candidate payloads (source for confirm/selection events), indexed

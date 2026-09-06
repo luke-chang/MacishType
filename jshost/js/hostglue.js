@@ -142,6 +142,9 @@
     event.updateCandidates = (items, options) => {
       act("updateCandidates", items, options);
     };
+    event.updateMessage = (text, options) => {
+      act("updateMessage", text, options);
+    };
     event.commit = (candidate) => {
       act("commit", candidate);
     };

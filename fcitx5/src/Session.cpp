@@ -499,6 +499,14 @@ void EngineSession::queueAction(const std::string &name, int argc,
         queue.push_back(std::move(action));
         return;
     }
+    if (name == "updateMessage") {
+        UpdateMessageAction action;
+        if (argc >= 1 && JS_IsString(argv[0])) {
+            action.text = Qjs::toString(ctx, argv[0]);
+        }
+        queue.push_back(std::move(action));
+        return;
+    }
     if (name == "commit") {
         CommitAction action;
         if (argc >= 1) {
@@ -586,6 +594,8 @@ void EngineSession::applyActions(std::vector<Action> actions) {
                 } else if constexpr (std::is_same_v<T,
                                                     UpdateCandidatesAction>) {
                     applyUpdateCandidates(std::move(value));
+                } else if constexpr (std::is_same_v<T, UpdateMessageAction>) {
+                    applyUpdateMessage(std::move(value));
                 } else if constexpr (std::is_same_v<T, CommitAction>) {
                     confirmCandidate(value.candidate, -1);
                     if (value.candidate.hasPayload) {
@@ -751,6 +761,20 @@ void EngineSession::applyUpdateCandidates(UpdateCandidatesAction action) {
     }
 }
 
+void EngineSession::applyUpdateMessage(UpdateMessageAction action) {
+    if (action.text.empty()) {
+        // Retiring a message that is not up must leave candidates alone.
+        if (!message_.empty()) {
+            hideCandidates();
+        }
+        return;
+    }
+    message_ = std::move(action.text);
+    // windowConfig_ stays as it is: candidateWindow keeps reporting what
+    // candidates would use, and a message is not a candidate window.
+    renderAuxOnly(message_);
+}
+
 // Candidate word pushed into the fcitx input panel; select() (mouse click)
 // commits by absolute index.
 class MacishCandidateWord : public fcitx::CandidateWord {
@@ -805,6 +829,7 @@ int EngineSession::selectedIndex() const {
 }
 
 void EngineSession::renderCandidates(int initialCursor) {
+    message_.clear(); // a candidate list takes the panel from a message
     // Full-list native pagination: append every candidate and let the list
     // page itself so hasPrev()/hasNext() drive the panel's page indicators and
     // mouse paging. The list owns cursor/page; initialCursor is an absolute
@@ -872,14 +897,21 @@ void EngineSession::renderCandidates(int initialCursor) {
         fcitx::UserInterfaceComponent::InputPanel);
 }
 
-void EngineSession::hideCandidates() {
-    candidatesVisible_ = false;
+void EngineSession::renderAuxOnly(const std::string &text) {
     freeCandidates(candidates_);
+    candidatesVisible_ = false; // aux-only: no candidate list behind it
     auto &inputPanel = inputContext_->inputPanel();
     inputPanel.setCandidateList(nullptr);
-    inputPanel.setAuxUp(fcitx::Text());
+    // Text("") carries an empty piece where Text() carries none, and some
+    // frontends care about the difference.
+    inputPanel.setAuxUp(text.empty() ? fcitx::Text() : fcitx::Text(text));
     inputContext_->updateUserInterface(
         fcitx::UserInterfaceComponent::InputPanel);
+}
+
+void EngineSession::hideCandidates() {
+    message_.clear();
+    renderAuxOnly({});
 }
 
 // Reverse lookup (read-only Find Input Code display) --------------------
@@ -893,8 +925,10 @@ void EngineSession::showReverseLookup(const std::string &query) {
     if (reverseLookupVisible_) {
         hideReverseLookup();
     }
-    // Only from idle: never disturb an in-progress composition.
-    if (!markedText_.empty() || associating_ || candidatesVisible_) {
+    // Only from idle: never disturb an in-progress composition, or an
+    // engine message the user is still reading.
+    if (!markedText_.empty() || associating_ || candidatesVisible_ ||
+        !message_.empty()) {
         return;
     }
     reverseLookupVisible_ = true;
@@ -925,7 +959,7 @@ void EngineSession::showReverseLookup(const std::string &query) {
     reverseLookupToken_ =
         host_->prepareReverseLookup([this, characters](bool ready) {
             if (!ready) {
-                reverseLookupAux(translated("Failed to load this input method"));
+                renderAuxOnly(translated("Failed to load this input method"));
                 reverseLookupRendered_ = true;
                 return;
             }
@@ -956,11 +990,12 @@ void EngineSession::showReverseLookup(const std::string &query) {
     // Anti-flash: draw the loading line only if prepare has not already
     // settled synchronously (a fetch-backed prepare settles on a later turn).
     if (!reverseLookupRendered_) {
-        reverseLookupAux(translated("Loading…"));
+        renderAuxOnly(translated("Loading…"));
     }
 }
 
 void EngineSession::renderReverseLookup(std::vector<CandidateData> rows) {
+    message_.clear();
     freeCandidates(candidates_);
     candidates_ = std::move(rows);
     // Read-only: paging routes to the read-only pager (keeps suspended), and
@@ -984,16 +1019,6 @@ void EngineSession::renderReverseLookup(std::vector<CandidateData> rows) {
     inputPanel.setCandidateList(std::move(list));
     inputPanel.setAuxUp(fcitx::Text());
     candidatesVisible_ = true;
-    inputContext_->updateUserInterface(
-        fcitx::UserInterfaceComponent::InputPanel);
-}
-
-void EngineSession::reverseLookupAux(const std::string &message) {
-    freeCandidates(candidates_);
-    candidatesVisible_ = false; // aux-only (loading/failure): no candidate list
-    auto &inputPanel = inputContext_->inputPanel();
-    inputPanel.setCandidateList(nullptr);
-    inputPanel.setAuxUp(fcitx::Text(message));
     inputContext_->updateUserInterface(
         fcitx::UserInterfaceComponent::InputPanel);
 }
@@ -1235,7 +1260,8 @@ JSValue EngineSession::makeEvent(const WebKeyEvent *web,
                                  const CandidateData *candidate,
                                  int absoluteIndex) {
     JSContext *ctx = host_->context();
-    EventStaging staging{markedText_, stagedText_, associating_,
+    EventStaging staging{markedText_,        stagedText_,
+                         message_,           associating_,
                          candidatesVisible_, currentPageItemCount()};
     EventKeyFields keys;
     const EventKeyFields *keyFields = nullptr;
