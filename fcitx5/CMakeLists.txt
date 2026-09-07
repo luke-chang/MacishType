@@ -91,6 +91,9 @@ set(CPACK_RPM_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
 # RPM-family distributions ship the capability modules in one package.
 set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5 >= 5.1.13")
 set(CPACK_RPM_PACKAGE_RECOMMENDS "fcitx5-chinese-addons")
+# rpmbuild stamps the build machine's hostname into the header, where the
+# source path mapping cannot reach it.
+set(CPACK_RPM_SPEC_MORE_DEFINE "%define _buildhost reproducible")
 # The install rules carry fcitx5-derived absolute paths, which DESTDIR
 # staging cannot turn into a relocatable package. CPack requests one by
 # default; opting out here matches what the package actually is.
