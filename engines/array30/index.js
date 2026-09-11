@@ -15,10 +15,10 @@ const WILDCARD_LIMIT = 200;
 
 // Composition key -> radical-code label for the marked text.
 const KEYNAME = new Map(Object.entries({
-  a: "1-", b: "5⇣", c: "3⇣", d: "3-", e: "3⇡", f: "4-", g: "5-", h: "6-",
-  i: "8⇡", j: "7-", k: "8-", l: "9-", m: "7⇣", n: "6⇣", o: "9⇡", p: "0⇡",
-  q: "1⇡", r: "4⇡", s: "2-", t: "5⇡", u: "7⇡", v: "4⇣", w: "2⇡", x: "2⇣",
-  y: "6⇡", z: "1⇣", ".": "9⇣", "/": "0⇣", ";": "0-", ",": "8⇣",
+  a: "1-", b: "5v", c: "3v", d: "3-", e: "3^", f: "4-", g: "5-", h: "6-",
+  i: "8^", j: "7-", k: "8-", l: "9-", m: "7v", n: "6v", o: "9^", p: "0^",
+  q: "1^", r: "4^", s: "2-", t: "5^", u: "7^", v: "4v", w: "2^", x: "2v",
+  y: "6^", z: "1v", ".": "9v", "/": "0v", ";": "0-", ",": "8v",
   "?": "？", "*": "＊",
 }));
 // `event.code` (US-QWERTY physical position) → Array key, so composition is

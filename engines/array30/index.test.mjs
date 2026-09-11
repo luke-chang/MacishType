@@ -139,7 +139,7 @@ test("composing a key shows its radical readout and a candidate list", () => {
   const engine = freshEngine();
   const event = compose(engine, ["t"]);
   assert.equal(engine.code, "t");
-  assert.equal(event.last("updateMarkedText").args[0], "5⇡");
+  assert.equal(event.last("updateMarkedText").args[0], "5^");
   assert.ok(Array.isArray(event.last("updateCandidates").args[0]));
 });
 
@@ -360,8 +360,8 @@ test("full scope keeps candidates even when no font renders them", () => {
 test("reverse lookup renders main codes as radical readouts", () => {
   // 火 is code "," in the main table, plus short code ",2".
   assert.deepEqual(ArrayEngine.reverseLookup("火"), [
-    "8⇣",
-    { code: "8⇣+2", annotation: "簡碼" },
+    "8v",
+    { code: "8v+2", annotation: "簡碼" },
   ]);
 });
 
@@ -369,8 +369,8 @@ test("reverse lookup lists short codes last, annotated 簡碼", () => {
   // 的: main codes "lplh" and "t" in file order, then short code "l0" rendered
   // as readout + fixed selection key.
   assert.deepEqual(ArrayEngine.reverseLookup("的"), [
-    "9-0⇡9-6-",
-    "5⇡",
+    "9-0^9-6-",
+    "5^",
     { code: "9-+0", annotation: "簡碼" },
   ]);
 });
@@ -382,7 +382,7 @@ test("reverse lookup of an unknown character returns no codes", () => {
 test("reverse lookup indexes non-BMP values and accepts multi-unit graphemes", () => {
   // 𰟭 (U+307ED, .length === 2) maps from ",,,,i"; a `.length === 1` check
   // would have dropped it from the index.
-  assert.deepEqual(ArrayEngine.reverseLookup("𰟭"), ["8⇣8⇣8⇣8⇣8⇡"]);
+  assert.deepEqual(ArrayEngine.reverseLookup("𰟭"), ["8v8v8v8v8^"]);
 });
 
 test("a multi-character table value is not reverse-indexed", () => {
@@ -408,8 +408,8 @@ test("prepareReverseLookup readies queries and is idempotent", async () => {
   await ArrayEngine.prepareReverseLookup();
   await ArrayEngine.prepareReverseLookup();
   assert.deepEqual(ArrayEngine.reverseLookup("火"), [
-    "8⇣",
-    { code: "8⇣+2", annotation: "簡碼" },
+    "8v",
+    { code: "8v+2", annotation: "簡碼" },
   ]);
 });
 
@@ -420,7 +420,7 @@ test("endReverseLookup drops the indexes until the next prepare", async () => {
   // The next prepare rebuilds the indexes from the loaded tables.
   await ArrayEngine.prepareReverseLookup();
   assert.deepEqual(ArrayEngine.reverseLookup("火"), [
-    "8⇣",
-    { code: "8⇣+2", annotation: "簡碼" },
+    "8v",
+    { code: "8v+2", annotation: "簡碼" },
   ]);
 });
