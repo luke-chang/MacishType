@@ -740,14 +740,14 @@ parseManifest(const std::filesystem::path &manifestPath,
                     } else if (typeName == "toggle") {
                         Qjs::Value key(
                             ctx, JS_GetPropertyStr(ctx, item.get(), "key"));
-                        Qjs::Value label(
+                        Qjs::Value itemLabel(
                             ctx, JS_GetPropertyStr(ctx, item.get(), "label"));
                         Qjs::Value defaultValue(
                             ctx,
                             JS_GetPropertyStr(ctx, item.get(), "default"));
                         if (!JS_IsString(key.get()) ||
-                            (!JS_IsString(label.get()) &&
-                             !JS_IsObject(label.get())) ||
+                            (!JS_IsString(itemLabel.get()) &&
+                             !JS_IsObject(itemLabel.get())) ||
                             !JS_IsBool(defaultValue.get())) {
                             dropped(
                                 "toggle requires key, label, and a boolean "
@@ -773,8 +773,8 @@ parseManifest(const std::filesystem::path &manifestPath,
                             dropped("duplicate key: " + menuItem.key);
                             continue;
                         }
-                        menuItem.label =
-                            resolveLocalizedName(ctx, label.get(), languages);
+                        menuItem.label = resolveLocalizedName(
+                            ctx, itemLabel.get(), languages);
                         menuItem.defaultValue =
                             JS_ToBool(ctx, defaultValue.get()) == 1;
                         menuItem.disabledWhen =
