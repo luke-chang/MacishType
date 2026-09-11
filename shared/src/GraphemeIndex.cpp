@@ -47,6 +47,10 @@ std::string_view GraphemeIndex::cluster(int index) const {
     return std::string_view(text_).substr(start, byteOffset(index + 1) - start);
 }
 
+std::string_view GraphemeIndex::prefix(int index) const {
+    return std::string_view(text_).substr(0, byteOffset(index));
+}
+
 int GraphemeIndex::utf16Offset(int index) const {
     size_t end = byteOffset(index);
     int units = 0;

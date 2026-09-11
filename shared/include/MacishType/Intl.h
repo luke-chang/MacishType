@@ -27,6 +27,13 @@ public:
         kPluralRules,
     };
 
+    // Windows delay-loads system ICU, and a failed import raises on every
+    // call, not just the first: such a host probes once and records the
+    // answer here before its first ICU use. Usable until told otherwise;
+    // while it is not, nothing reaches ICU through this cache.
+    void markIcuUnusable() { icuUsable_ = false; }
+    bool icuUsable() const { return icuUsable_; }
+
     // Returns the cached handle for (kind, key), or nullptr if none is stored.
     void *get(Kind kind, const std::string &key);
     // Stores `handle` under (kind, key); the cache takes ownership.
@@ -36,7 +43,7 @@ public:
     // (type, locale). `type` is a UBreakIteratorType; `*status` receives a
     // UErrorCode when the open fails (and the return is null). int keeps ICU
     // headers out of this one. Returns null without reaching ICU while
-    // isIcuUsable() is false.
+    // icuUsable() is false.
     void *breakIterator(int type, const std::string &locale, int *status);
 
 private:
@@ -49,15 +56,8 @@ private:
     std::map<std::string, void *> numberFormatters_;
     std::map<std::string, void *> collators_;
     std::map<std::string, void *> pluralRules_;
+    bool icuUsable_ = true;
 };
-
-// Windows delay-loads system ICU, and a failed import raises on every call,
-// not just the first: such a host must probe once and record the answer here
-// before its first ICU use. Defaults to usable. While it is false nothing in
-// this library reaches ICU, but jshost opens its date, number, collator and
-// plural-rules handles outside IntlCache and still needs its own check.
-void setIcuUsable(bool usable);
-bool isIcuUsable();
 
 // Byte offsets of every extended grapheme cluster boundary in `utf8`: starts
 // at 0, ends at utf8.size(), so the cluster count is size() - 1. Empty input

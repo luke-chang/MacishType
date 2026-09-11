@@ -594,7 +594,7 @@ void EngineSession::applyUpdateMarkedText(UpdateMarkedTextAction action) {
                           ? total
                           : std::min(std::max(*action.staged, 0), total);
     }
-    stagedText_ = markedText_.substr(0, index.byteOffset(stagedCount));
+    stagedText_ = index.prefix(stagedCount);
 
     fcitx::Text preedit;
     if (!markedText_.empty()) {

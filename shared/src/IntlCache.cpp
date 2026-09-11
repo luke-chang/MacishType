@@ -14,12 +14,6 @@ namespace MacishType {
 // host's lifetime. A normal engine's locale/option set stays far below this.
 constexpr size_t kMaxHandlesPerKind = 512;
 
-namespace {
-
-bool icuUsable = true;
-
-} // namespace
-
 IntlCache::~IntlCache() {
     closeAll(kBreak);
     closeAll(kDateFormat);
@@ -92,13 +86,9 @@ void IntlCache::put(Kind kind, const std::string &key, void *handle) {
     store[key] = handle;
 }
 
-void setIcuUsable(bool usable) { icuUsable = usable; }
-
-bool isIcuUsable() { return icuUsable; }
-
 void *IntlCache::breakIterator(int type, const std::string &locale,
                                int *status) {
-    if (!icuUsable) {
+    if (!icuUsable_) {
         *status = U_MISSING_RESOURCE_ERROR;
         return nullptr;
     }

@@ -24,15 +24,6 @@ const std::string kWomanLaptop = "\xF0\x9F\x91\xA9\xE2\x80\x8D"
                                 "\xF0\x9F\x92\xBB"; // U+1F469 U+200D U+1F4BB
 const std::string kHan = "\xE4\xB8\x80";             // U+4E00
 
-// The flag is process-wide, so every block that turns it off must put it back.
-class IcuOff {
-public:
-    IcuOff() { MacishType::setIcuUsable(false); }
-    ~IcuOff() { MacishType::setIcuUsable(true); }
-    IcuOff(const IcuOff &) = delete;
-    IcuOff &operator=(const IcuOff &) = delete;
-};
-
 std::vector<size_t> byteBoundaries(const GraphemeIndex &index) {
     std::vector<size_t> offsets;
     for (int i = 0; i <= index.count(); i++) {
@@ -76,8 +67,11 @@ void testGraphemeIndex(Checks &checks) {
     }
 
     {
-        IcuOff off;
-        GraphemeIndex index(cache, text);
+        // A cache of its own: the gate lives on the cache, so switching ICU
+        // off here cannot reach any other block.
+        IntlCache noIcu;
+        noIcu.markIcuUnusable();
+        GraphemeIndex index(noIcu, text);
         checks.expect(index.count() == 8,
                       "without ICU valid UTF-8 degrades to code points");
         checks.expect(index.byteOffset(1) == 3,
@@ -85,9 +79,9 @@ void testGraphemeIndex(Checks &checks) {
         checks.expect(index.byteOffset(index.count()) == text.size(),
                       "the last boundary still ends the string");
 
-        checks.expect(GraphemeIndex(cache, kHan).count() == 1,
+        checks.expect(GraphemeIndex(noIcu, kHan).count() == 1,
                       "a multi-byte code point is one character, not three");
-        checks.expect(!isSingleGrapheme(cache, kEacute),
+        checks.expect(!isSingleGrapheme(noIcu, kEacute),
                       "while a combining mark separates from its base");
     }
 

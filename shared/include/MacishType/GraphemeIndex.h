@@ -29,6 +29,9 @@ public:
     int utf16Offset(int index) const;
     // Borrowed from the indexed string; empty at index == count().
     std::string_view cluster(int index) const;
+    // Borrowed from the indexed string: everything before `index`, so the
+    // whole string at index == count().
+    std::string_view prefix(int index) const;
 
 private:
     const std::string &text_;
