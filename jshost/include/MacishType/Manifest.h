@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "MacishType/Condition.h"
@@ -105,6 +106,11 @@ struct ManifestData {
     // against what chttrans can actually deliver.
     std::optional<bool> outputToSimplified;
 };
+
+// The character set every host accepts for an engine folder name. Also the
+// set any name derived from an id must accept, so derived-name parsers
+// cannot drift from discovery.
+bool isValidEngineId(std::string_view name);
 
 // Parses and validates manifest.json using a throwaway QuickJS context.
 // `languages` are BCP 47 preferences used to resolve localized names.

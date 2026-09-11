@@ -1,6 +1,8 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -72,6 +74,40 @@ inline std::string toString(JSContext *ctx, JSValueConst value) {
     std::string result(cstr, len);
     JS_FreeCString(ctx, cstr);
     return result;
+}
+
+// Typed property reads: nullopt when the property is absent or of another
+// type; a failed number conversion also reads as absent.
+inline std::optional<int> intProperty(JSContext *ctx, JSValueConst object,
+                                      const char *name) {
+    Value value(ctx, JS_GetPropertyStr(ctx, object, name));
+    if (!JS_IsNumber(value.get())) {
+        return std::nullopt;
+    }
+    int32_t number = 0;
+    if (JS_ToInt32(ctx, &number, value.get()) != 0) {
+        return std::nullopt;
+    }
+    return number;
+}
+
+inline std::optional<bool> boolProperty(JSContext *ctx, JSValueConst object,
+                                        const char *name) {
+    Value value(ctx, JS_GetPropertyStr(ctx, object, name));
+    if (!JS_IsBool(value.get())) {
+        return std::nullopt;
+    }
+    return JS_ToBool(ctx, value.get()) == 1;
+}
+
+inline std::optional<std::string> stringProperty(JSContext *ctx,
+                                                 JSValueConst object,
+                                                 const char *name) {
+    Value value(ctx, JS_GetPropertyStr(ctx, object, name));
+    if (!JS_IsString(value.get())) {
+        return std::nullopt;
+    }
+    return toString(ctx, value.get());
 }
 
 // JSON text of a JS value; empty for undefined or stringify failure.

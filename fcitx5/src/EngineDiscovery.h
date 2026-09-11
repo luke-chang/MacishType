@@ -49,11 +49,6 @@ struct EngineInfo {
     }
 };
 
-// Whether a folder name qualifies as an engine id. Also the character set any
-// name derived from an id must accept, so derived-name parsers cannot drift
-// from discovery.
-bool isValidEngineId(const std::string &name);
-
 // Candidate absolute paths an icon base name (empty = the default base
 // "icon") may resolve to, in priority order — also the files whose changes
 // should refresh the icon. Empty when the engine root cannot be resolved.

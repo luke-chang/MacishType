@@ -190,9 +190,10 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     MACISHTYPE_INFO() << "Discovered " << engines_.size()
                       << " engine folder(s)";
     // The path this addon was loaded from; the destructor probes it to tell
-    // an uninstall apart from a plain restart.
+    // an uninstall apart from a plain restart. The anchor has to be a
+    // function this addon defines, not one it links in.
     Dl_info dlInfo;
-    if (dladdr(reinterpret_cast<void *>(&isValidEngineId), &dlInfo) != 0 &&
+    if (dladdr(reinterpret_cast<void *>(&discoverEngines), &dlInfo) != 0 &&
         dlInfo.dli_fname != nullptr) {
         libraryPath_ = dlInfo.dli_fname;
     }

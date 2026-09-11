@@ -61,44 +61,10 @@ bool isEscapeLikeKey(const WebKeyEvent &web) {
     return web.code == "Escape" || web.key == "Clear";
 }
 
-std::optional<int> intProperty(JSContext *ctx, JSValueConst object,
-                               const char *name) {
-    Qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
-    if (value.isUndefined() || value.isException() ||
-        JS_IsNull(value.get()) || !JS_IsNumber(value.get())) {
-        return std::nullopt;
-    }
-    int32_t number = 0;
-    if (JS_ToInt32(ctx, &number, value.get()) != 0) {
-        return std::nullopt;
-    }
-    return number;
-}
-
-std::optional<bool> boolProperty(JSContext *ctx, JSValueConst object,
-                                 const char *name) {
-    Qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
-    if (value.isUndefined() || value.isException() ||
-        !JS_IsBool(value.get())) {
-        return std::nullopt;
-    }
-    return JS_ToBool(ctx, value.get()) == 1;
-}
-
 // The label class the digit-Shift requirement governs: a single ASCII
 // digit (macOS isDigitIndexLabel parity).
 bool isDigitLabel(const std::string &text) {
     return text.size() == 1 && text[0] >= '0' && text[0] <= '9';
-}
-
-std::optional<std::string> stringProperty(JSContext *ctx, JSValueConst object,
-                                          const char *name) {
-    Qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
-    if (value.isUndefined() || value.isException() ||
-        !JS_IsString(value.get())) {
-        return std::nullopt;
-    }
-    return Qjs::toString(ctx, value.get());
 }
 
 } // namespace
@@ -386,10 +352,11 @@ void EngineSession::queueAction(const std::string &name, int argc,
             return candidate;
         }
         if (JS_IsObject(value)) {
-            if (auto text = stringProperty(ctx, value, "candidate")) {
+            if (auto text = Qjs::stringProperty(ctx, value, "candidate")) {
                 candidate.text = *text;
             }
-            if (auto annotation = stringProperty(ctx, value, "annotation")) {
+            if (auto annotation =
+                    Qjs::stringProperty(ctx, value, "annotation")) {
                 candidate.annotation = *annotation;
             }
             Qjs::Value payload(ctx,
@@ -408,13 +375,13 @@ void EngineSession::queueAction(const std::string &name, int argc,
             action.text = Qjs::toString(ctx, argv[0]);
         }
         if (argc >= 2 && JS_IsObject(argv[1])) {
-            action.cursor = intProperty(ctx, argv[1], "cursor");
-            action.staged = intProperty(ctx, argv[1], "staged");
+            action.cursor = Qjs::intProperty(ctx, argv[1], "cursor");
+            action.staged = Qjs::intProperty(ctx, argv[1], "staged");
             Qjs::Value emphasis(ctx,
                                 JS_GetPropertyStr(ctx, argv[1], "emphasis"));
             if (JS_IsObject(emphasis.get())) {
-                auto start = intProperty(ctx, emphasis.get(), "start");
-                auto end = intProperty(ctx, emphasis.get(), "end");
+                auto start = Qjs::intProperty(ctx, emphasis.get(), "start");
+                auto end = Qjs::intProperty(ctx, emphasis.get(), "end");
                 if (start && end && *end > *start) {
                     action.emphasis = std::make_pair(*start, *end);
                 }
@@ -443,18 +410,19 @@ void EngineSession::queueAction(const std::string &name, int argc,
         }
         if (argc >= 2 && JS_IsObject(argv[1])) {
             action.options.initialHighlight =
-                intProperty(ctx, argv[1], "initialHighlight");
-            action.options.pageSize = intProperty(ctx, argv[1], "pageSize");
+                Qjs::intProperty(ctx, argv[1], "initialHighlight");
+            action.options.pageSize =
+                Qjs::intProperty(ctx, argv[1], "pageSize");
             action.options.indexLabels =
-                stringProperty(ctx, argv[1], "indexLabels");
+                Qjs::stringProperty(ctx, argv[1], "indexLabels");
             action.options.layoutDirection =
-                stringProperty(ctx, argv[1], "layoutDirection");
+                Qjs::stringProperty(ctx, argv[1], "layoutDirection");
             action.options.handleNavigationKeys =
-                boolProperty(ctx, argv[1], "handleNavigationKeys");
+                Qjs::boolProperty(ctx, argv[1], "handleNavigationKeys");
             action.options.handleIndexLabelKeys =
-                boolProperty(ctx, argv[1], "handleIndexLabelKeys");
+                Qjs::boolProperty(ctx, argv[1], "handleIndexLabelKeys");
             action.options.indexLabelDigitsRequireShift =
-                boolProperty(ctx, argv[1], "indexLabelDigitsRequireShift");
+                Qjs::boolProperty(ctx, argv[1], "indexLabelDigitsRequireShift");
         }
         queue.push_back(std::move(action));
         return;
@@ -495,7 +463,7 @@ void EngineSession::queueAction(const std::string &name, int argc,
         }
         if (argc >= 2 && JS_IsObject(argv[1])) {
             action.wrapping =
-                boolProperty(ctx, argv[1], "wrapping").value_or(false);
+                Qjs::boolProperty(ctx, argv[1], "wrapping").value_or(false);
         }
         queue.push_back(std::move(action));
         return;

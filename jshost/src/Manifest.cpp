@@ -575,6 +575,16 @@ std::string fcitxLanguageCode(const std::string &intendedLanguage) {
 
 } // namespace
 
+bool isValidEngineId(std::string_view name) {
+    if (name.empty()) {
+        return false;
+    }
+    return std::all_of(name.begin(), name.end(), [](char ch) {
+        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+               (ch >= '0' && ch <= '9') || ch == '_' || ch == '-';
+    });
+}
+
 std::vector<std::string> preferredLanguages() {
     PlatformInfo *platform = hostServices().platform;
     return platform != nullptr ? platform->preferredLanguages()

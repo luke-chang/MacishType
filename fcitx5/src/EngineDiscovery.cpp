@@ -53,16 +53,6 @@ constexpr IconSuffix kIconSuffixes[] = {
 
 } // namespace
 
-bool isValidEngineId(const std::string &name) {
-    if (name.empty()) {
-        return false;
-    }
-    return std::all_of(name.begin(), name.end(), [](char ch) {
-        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-               (ch >= '0' && ch <= '9') || ch == '_' || ch == '-';
-    });
-}
-
 std::vector<std::string>
 iconCandidatePaths(const std::filesystem::path &root,
                    const std::string &icon) {
