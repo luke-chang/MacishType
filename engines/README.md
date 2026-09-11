@@ -118,17 +118,26 @@ manifest becomes the source of truth.
 The other fields have no Settings UI; omitting them means the host
 default below applies.
 
+The top-level fields apply to whichever candidate window the host shows.
+Options that exist in only one candidate window implementation live in a
+nested object keyed by that implementation's name — today only
+[`macish`](#macish-candidate-window-fields). A host applies a section
+only while that implementation is its active candidate window, and
+ignores sections for implementations it does not provide.
+
+```jsonc
+"candidateWindow": {
+  "pageSize": 10,
+  "macish": { "expandable": false, "horizontalMaxVisibleRows": 4 }
+}
+```
+
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | ★ `layoutDirection` | `"horizontal"` \| `"vertical"` | `"horizontal"` | Candidate row vs. column. |
 | ★ `fontSize` | integer ≥ 8 | `16` | Point size for candidate text. |
 | `indexLabels` | string | `"1234567890"` | Per-candidate label characters; ASCII-printable only (0x20-0x7E), which includes space (see below). |
 | `pageSize` | integer 1–11 | `9` | Candidates per page. |
-| `expandable` | boolean | `true` | Pick the horizontal-mode panel style: `true` shows a single row that expands to reveal more, `false` uses paging instead. Horizontal mode only. |
-| `horizontalMaxVisibleRows` | integer ≥ 2 | `5` | Cap on visible rows. Requires `expandable: true`. |
-| `widerExpandedColumns` | boolean | `true` | Widen columns when the window is expanded. Requires `expandable: true`. |
-| `moveOnExpand` | boolean | `false` | When a navigation key expands the collapsed window, also move the highlight onto the newly revealed row. Applies to `down` and `pageForward`; `pageDown` always just expands without moving. Pair with `widerExpandedColumns: false` so columns don't reflow on expand and the landing highlight is predictable. Requires `expandable: true`. |
-| `verticalMinVisibleRows` | integer ≥ 1 | `pageSize` | Minimum visible rows. Vertical mode only. |
 | `handleNavigationKeys` | boolean | `true` | When true, the host intercepts standard nav keys (arrows / Tab / Page / Home / End) and Enter while the candidate window is visible — `handleKey` / `handleAssociatedKey` never see them. Set false to route those keys to the engine. One case stays with the engine either way: in associated mode with nothing highlighted, Enter has no candidate to commit, so it dismisses like any other unhandled key. |
 | `handleIndexLabelKeys` | boolean | `true` | When true, the host intercepts `indexLabels` keys while the candidate window is visible. Set false to route them to the engine. |
 | `indexLabelDigitsRequireShift` | boolean | `false` | Digit labels select only with Shift + the physical key that names them (main row or keypad); non-digit labels keep plain character matching. How the requirement is presented to the user is host-specific. The same matching the host's [associated-mode windows](#associated-mode-selection-keys) use — set it directly for engine-driven windows that want it. |
@@ -149,6 +158,36 @@ makes position 0 blank while positions 1-3 render `"1"` / `"2"` / `"3"`.
 Whitespace characters anywhere in `indexLabels` never match an
 index-label key input — `event.candidateWindow.candidateIndex(" ")`
 returns `null`, so the space key remains available for engine logic.
+
+#### Macish candidate window fields
+
+The Macish candidate window is the panel the macOS host draws — its only
+candidate window, in both the Sequoia and Tahoe looks. These fields shape
+its horizontal expandable layout and its vertical layout, and they belong
+under `candidateWindow.macish`:
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `expandable` | boolean | `true` | Pick the horizontal-mode panel style: `true` shows a single row that expands to reveal more, `false` uses paging instead. Horizontal mode only. |
+| `horizontalMaxVisibleRows` | integer ≥ 2 | `5` | Cap on visible rows. Requires `expandable: true`. |
+| `widerExpandedColumns` | boolean | `true` | Widen columns when the window is expanded. Requires `expandable: true`. |
+| `moveOnExpand` | boolean | `false` | When a navigation key expands the collapsed window, also move the highlight onto the newly revealed row. Applies to `down` and `pageForward`; `pageDown` always just expands without moving. Pair with `widerExpandedColumns: false` so columns don't reflow on expand and the landing highlight is predictable. Requires `expandable: true`. |
+| `verticalMinVisibleRows` | integer ≥ 1 | `pageSize` | Minimum visible rows. Vertical mode only. |
+
+The same five names are also accepted at the top level of
+`candidateWindow`, where honoring one is the active implementation's
+call — the Macish window reads them, another window may leave them
+alone. Declare them under `macish` to say you mean that window. When a
+field appears both at the top level and under `macish`, the `macish`
+value wins. Values inside `macish` are validated exactly like their
+top-level counterparts: an invalid one is logged and ignored while its
+siblings still apply.
+
+Per-implementation fields are manifest-only: the host applies them when
+it loads the engine, [`updateCandidates`](#updatecandidatesitems-options)
+options never carry them, and
+[`manifest.candidateWindow`](#manifestcandidatewindow) treats them as
+unknown fields. Changing them means editing `manifest.json`.
 
 #### Associated-mode selection keys
 
@@ -1103,6 +1142,14 @@ Engine-wide info injected by the host.
 Live candidate-window configuration. Reads return what engine code wrote
 (if any), else the manifest declaration, else `undefined`. Writes
 override individual fields by direct assignment.
+
+The view holds the top-level `candidateWindow` fields only.
+Per-implementation fields — declared at the top level or under
+[`macish`](#macish-candidate-window-fields) — are applied by the host
+when the engine loads and never appear here: reading one returns
+`undefined`, `Object.keys` does not list it, and assigning one (or
+`manifest.candidateWindow.macish` itself) is an unknown-field write,
+logged and ignored.
 
 **Writes are not immediate — they take effect at the next session
 activate.** The host reads the latest values when it configures the

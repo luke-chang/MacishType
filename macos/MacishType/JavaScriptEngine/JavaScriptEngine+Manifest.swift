@@ -188,6 +188,9 @@ extension JavaScriptEngine {
             var handleIndexLabelKeys: Bool?
             var indexLabelDigitsRequireShift: Bool?
             var associatedModeIndexLabels: InputEngine.AssociatedModeIndexLabels?
+            /// The `macish` section as declared; `flattened(for:)` folds it
+            /// into the fields above before the cache is seeded.
+            var macish: MacishSection?
 
             private enum CodingKeys: String, CodingKey {
                 case layoutDirection, fontSize, indexLabels, pageSize
@@ -196,6 +199,7 @@ extension JavaScriptEngine {
                 case handleNavigationKeys, handleIndexLabelKeys
                 case indexLabelDigitsRequireShift
                 case associatedModeIndexLabels
+                case macish
             }
 
             init(
@@ -211,7 +215,8 @@ extension JavaScriptEngine {
                 handleNavigationKeys: Bool? = nil,
                 handleIndexLabelKeys: Bool? = nil,
                 indexLabelDigitsRequireShift: Bool? = nil,
-                associatedModeIndexLabels: InputEngine.AssociatedModeIndexLabels? = nil
+                associatedModeIndexLabels: InputEngine.AssociatedModeIndexLabels? = nil,
+                macish: MacishSection? = nil
             ) {
                 self.layoutDirection = layoutDirection
                 self.fontSize = fontSize
@@ -226,44 +231,75 @@ extension JavaScriptEngine {
                 self.handleIndexLabelKeys = handleIndexLabelKeys
                 self.indexLabelDigitsRequireShift = indexLabelDigitsRequireShift
                 self.associatedModeIndexLabels = associatedModeIndexLabels
+                self.macish = macish
             }
 
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
-                layoutDirection = Self.tolerant(c, .layoutDirection, as: CandidateWindow.LayoutDirection.self)
-                fontSize = Self.tolerant(c, .fontSize, as: Int.self)
-                widerExpandedColumns = Self.tolerant(c, .widerExpandedColumns, as: Bool.self)
-                moveOnExpand = Self.tolerant(c, .moveOnExpand, as: Bool.self)
-                horizontalMaxVisibleRows = Self.tolerant(c, .horizontalMaxVisibleRows, as: Int.self)
-                verticalMinVisibleRows = Self.tolerant(c, .verticalMinVisibleRows, as: Int.self)
-                expandable = Self.tolerant(c, .expandable, as: Bool.self)
-                handleNavigationKeys = Self.tolerant(c, .handleNavigationKeys, as: Bool.self)
-                handleIndexLabelKeys = Self.tolerant(c, .handleIndexLabelKeys, as: Bool.self)
-                indexLabelDigitsRequireShift = Self.tolerant(
+                layoutDirection = Manifest.tolerant(c, .layoutDirection, as: CandidateWindow.LayoutDirection.self)
+                fontSize = Manifest.tolerant(c, .fontSize, as: Int.self)
+                widerExpandedColumns = Manifest.tolerant(c, .widerExpandedColumns, as: Bool.self)
+                moveOnExpand = Manifest.tolerant(c, .moveOnExpand, as: Bool.self)
+                horizontalMaxVisibleRows = Manifest.tolerant(c, .horizontalMaxVisibleRows, as: Int.self)
+                verticalMinVisibleRows = Manifest.tolerant(c, .verticalMinVisibleRows, as: Int.self)
+                expandable = Manifest.tolerant(c, .expandable, as: Bool.self)
+                handleNavigationKeys = Manifest.tolerant(c, .handleNavigationKeys, as: Bool.self)
+                handleIndexLabelKeys = Manifest.tolerant(c, .handleIndexLabelKeys, as: Bool.self)
+                indexLabelDigitsRequireShift = Manifest.tolerant(
                     c, .indexLabelDigitsRequireShift, as: Bool.self)
-                associatedModeIndexLabels = Self.tolerant(
+                associatedModeIndexLabels = Manifest.tolerant(
                     c, .associatedModeIndexLabels, as: InputEngine.AssociatedModeIndexLabels.self)
+                macish = Manifest.tolerant(c, .macish, as: MacishSection.self)
 
                 // CandidateWindowConfiguration has didSet preconditions on
                 // these two (always-on, not stripped in release). Validate
                 // here so out-of-range manifest values don't crash later.
                 indexLabels = Self.validateIndexLabels(
-                    Self.tolerant(c, .indexLabels, as: String.self))
+                    Manifest.tolerant(c, .indexLabels, as: String.self))
                 pageSize = Self.validatePageSize(
-                    Self.tolerant(c, .pageSize, as: Int.self))
+                    Manifest.tolerant(c, .pageSize, as: Int.self))
             }
 
-            private static func tolerant<T: Decodable>(
-                _ container: KeyedDecodingContainer<CodingKeys>,
-                _ key: CodingKeys, as type: T.Type
-            ) -> T? {
-                do {
-                    return try container.decodeIfPresent(T.self, forKey: key)
-                } catch {
-                    Logger.javaScriptEngine.error(
-                        "manifest candidateWindow.\(key.stringValue, privacy: .public) ignored: \(String(describing: error), privacy: .public)"
-                    )
-                    return nil
+            /// What the host seeds its cache with: the section the given
+            /// implementation reads overrides the flat fields, and no section
+            /// survives — the runtime `manifest.candidateWindow` view has no
+            /// per-implementation vocabulary.
+            func flattened(for implementation: CandidateWindow.Implementation) -> CandidateWindowOverrides {
+                var flat = self
+                flat.macish = nil
+                switch implementation {
+                case .macish:
+                    if let section = macish {
+                        if let v = section.expandable { flat.expandable = v }
+                        if let v = section.horizontalMaxVisibleRows { flat.horizontalMaxVisibleRows = v }
+                        if let v = section.widerExpandedColumns { flat.widerExpandedColumns = v }
+                        if let v = section.moveOnExpand { flat.moveOnExpand = v }
+                        if let v = section.verticalMinVisibleRows { flat.verticalMinVisibleRows = v }
+                    }
+                }
+                return flat
+            }
+
+            /// Fields only the Macish candidate window reads.
+            struct MacishSection: Decodable {
+                var expandable: Bool?
+                var horizontalMaxVisibleRows: Int?
+                var widerExpandedColumns: Bool?
+                var moveOnExpand: Bool?
+                var verticalMinVisibleRows: Int?
+
+                private enum CodingKeys: String, CodingKey {
+                    case expandable, horizontalMaxVisibleRows, widerExpandedColumns
+                    case moveOnExpand, verticalMinVisibleRows
+                }
+
+                init(from decoder: Decoder) throws {
+                    let c = try decoder.container(keyedBy: CodingKeys.self)
+                    expandable = Manifest.tolerant(c, .expandable, as: Bool.self)
+                    horizontalMaxVisibleRows = Manifest.tolerant(c, .horizontalMaxVisibleRows, as: Int.self)
+                    widerExpandedColumns = Manifest.tolerant(c, .widerExpandedColumns, as: Bool.self)
+                    moveOnExpand = Manifest.tolerant(c, .moveOnExpand, as: Bool.self)
+                    verticalMinVisibleRows = Manifest.tolerant(c, .verticalMinVisibleRows, as: Int.self)
                 }
             }
 
@@ -281,6 +317,22 @@ extension JavaScriptEngine {
                 if CandidateWindowConfiguration.isValidPageSize(v) { return v }
                 Logger.javaScriptEngine.error(
                     "manifest pageSize out of range \(CandidateWindowConfiguration.validPageSizeRange, privacy: .public): \(v, privacy: .public)"
+                )
+                return nil
+            }
+        }
+
+        /// Per-field tolerant decode: a mismatched value is logged under its
+        /// coding path and dropped, so the siblings still apply.
+        private static func tolerant<K: CodingKey, T: Decodable>(
+            _ container: KeyedDecodingContainer<K>, _ key: K, as type: T.Type
+        ) -> T? {
+            do {
+                return try container.decodeIfPresent(T.self, forKey: key)
+            } catch {
+                let path = container.codingPath.map(\.stringValue).joined(separator: ".")
+                Logger.javaScriptEngine.error(
+                    "manifest \(path, privacy: .public).\(key.stringValue, privacy: .public) ignored: \(String(describing: error), privacy: .public)"
                 )
                 return nil
             }
@@ -309,22 +361,9 @@ extension JavaScriptEngine {
 
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
-                fontCoverage = Self.tolerant(c, .fontCoverage)
-                symbolNames = Self.tolerant(c, .symbolNames)
-                wordFrequency = Self.tolerant(c, .wordFrequency)
-            }
-
-            private static func tolerant(
-                _ container: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys
-            ) -> Bool? {
-                do {
-                    return try container.decodeIfPresent(Bool.self, forKey: key)
-                } catch {
-                    Logger.javaScriptEngine.error(
-                        "manifest modules.\(key.stringValue, privacy: .public) ignored: \(String(describing: error), privacy: .public)"
-                    )
-                    return nil
-                }
+                fontCoverage = Manifest.tolerant(c, .fontCoverage, as: Bool.self)
+                symbolNames = Manifest.tolerant(c, .symbolNames, as: Bool.self)
+                wordFrequency = Manifest.tolerant(c, .wordFrequency, as: Bool.self)
             }
 
             /// Names of the modules requested (`true`). The host dispatches
@@ -359,22 +398,9 @@ extension JavaScriptEngine {
 
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
-                reverseLookup = Self.tolerant(c, .reverseLookup)
-                fullwidthInput = Self.tolerant(c, .fullwidthInput)
-                outputToSimplified = Self.tolerant(c, .outputToSimplified)
-            }
-
-            private static func tolerant(
-                _ container: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys
-            ) -> Bool? {
-                do {
-                    return try container.decodeIfPresent(Bool.self, forKey: key)
-                } catch {
-                    Logger.javaScriptEngine.error(
-                        "manifest capabilities.\(key.stringValue, privacy: .public) ignored: \(String(describing: error), privacy: .public)"
-                    )
-                    return nil
-                }
+                reverseLookup = Manifest.tolerant(c, .reverseLookup, as: Bool.self)
+                fullwidthInput = Manifest.tolerant(c, .fullwidthInput, as: Bool.self)
+                outputToSimplified = Manifest.tolerant(c, .outputToSimplified, as: Bool.self)
             }
         }
 

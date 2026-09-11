@@ -55,6 +55,71 @@ struct ManifestTests {
         #expect(overrides.expandable == false)  // valid neighbor survives
     }
 
+    // MARK: candidateWindow.macish
+
+    @Test func macishSectionDecodesItsFiveFields() throws {
+        let manifest = try decode("""
+            {"entry": "e", "candidateWindow": {"pageSize": 10, "macish": {
+                "expandable": false, "horizontalMaxVisibleRows": 4,
+                "widerExpandedColumns": false, "moveOnExpand": true,
+                "verticalMinVisibleRows": 3}}}
+            """)
+        let overrides = try #require(manifest.candidateWindow)
+        let section = try #require(overrides.macish)
+        #expect(section.expandable == false)
+        #expect(section.horizontalMaxVisibleRows == 4)
+        #expect(section.widerExpandedColumns == false)
+        #expect(section.moveOnExpand == true)
+        #expect(section.verticalMinVisibleRows == 3)
+        #expect(overrides.pageSize == 10)
+        #expect(overrides.expandable == nil)  // decoding alone does not flatten
+    }
+
+    @Test func macishSectionValidatesPerFieldAndKeepsTheRest() throws {
+        let manifest = try decode("""
+            {"entry": "e", "candidateWindow": {"pageSize": 10, "macish": {
+                "expandable": "no", "horizontalMaxVisibleRows": 4}}}
+            """)
+        let overrides = try #require(manifest.candidateWindow)
+        #expect(overrides.macish?.expandable == nil)             // type mismatch
+        #expect(overrides.macish?.horizontalMaxVisibleRows == 4) // valid neighbor survives
+        #expect(overrides.pageSize == 10)                        // flat sibling untouched
+    }
+
+    @Test func wrongShapedMacishSectionDropsOnlyItself() throws {
+        let manifest = try decode("""
+            {"entry": "e", "candidateWindow": {
+                "pageSize": 10, "expandable": false, "macish": "yes"}}
+            """)
+        let overrides = try #require(manifest.candidateWindow)
+        #expect(overrides.macish == nil)
+        #expect(overrides.pageSize == 10)
+        #expect(overrides.expandable == false)
+    }
+
+    @Test func flatteningForMacishLetsTheSectionWin() throws {
+        let manifest = try decode("""
+            {"entry": "e", "candidateWindow": {
+                "expandable": true, "horizontalMaxVisibleRows": 3,
+                "macish": {"expandable": false, "verticalMinVisibleRows": 2}}}
+            """)
+        let flat = try #require(manifest.candidateWindow).flattened(for: .macish)
+        #expect(flat.expandable == false)            // the section wins
+        #expect(flat.horizontalMaxVisibleRows == 3)  // flat kept where the section is silent
+        #expect(flat.verticalMinVisibleRows == 2)
+        #expect(flat.macish == nil)                  // no section reaches the cache
+    }
+
+    @Test func flatteningWithoutASectionLeavesFlatFieldsUntouched() throws {
+        let manifest = try decode("""
+            {"entry": "e", "candidateWindow": {"expandable": false, "pageSize": 10}}
+            """)
+        let flat = try #require(manifest.candidateWindow).flattened(for: .macish)
+        #expect(flat.expandable == false)
+        #expect(flat.pageSize == 10)
+        #expect(flat.macish == nil)
+    }
+
     @Test func modulesListOnlyExplicitlyEnabledNames() throws {
         let manifest = try decode("""
             {"entry": "e", "modules": {

@@ -4,9 +4,11 @@
   "label": "行",
   "intendedLanguage": "zh-Hant",
   "candidateWindow": {
-    "expandable": false,
     "pageSize": 10,
-    "indexLabels": "1234567890"
+    "indexLabels": "1234567890",
+    "macish": {
+      "expandable": false
+    }
   },
   "modules": {
     "fontCoverage": true,

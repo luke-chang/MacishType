@@ -589,6 +589,10 @@ export interface Toggle {
  * Invalid writes — wrong type, out of range, unknown field — are logged
  * and silently ignored; engine execution continues.
  *
+ * Holds the top-level `candidateWindow` fields only. Per-implementation
+ * fields are applied by the host at load and are not exposed here:
+ * reading one yields `undefined`, writing one is logged and ignored.
+ *
  * Not the same as `event.candidateWindow` (per-event snapshot of the
  * effective state).
  */
@@ -597,11 +601,6 @@ export interface CandidateWindow {
   fontSize?: number;
   indexLabels?: string;
   pageSize?: number;
-  widerExpandedColumns?: boolean;
-  moveOnExpand?: boolean;
-  horizontalMaxVisibleRows?: number;
-  verticalMinVisibleRows?: number;
-  expandable?: boolean;
   /**
    * Host policy: when true (default), standard nav keys (arrows / Tab /
    * Page / Home / End) and Enter are intercepted by the host while the

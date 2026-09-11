@@ -122,10 +122,13 @@ class JavaScriptEngine: InputEngine {
     /// straight off the UserDefaults blob.
     private(set) var settings: [String: JSONValue] = [:]
 
-    /// Mutable mirror of `manifest?.candidateWindow`, re-seeded on every
-    /// `reloadManifest()`. Engine JS code writes here via the
+    /// Mutable mirror of `manifest?.candidateWindow` with the active
+    /// window's section folded in, re-seeded on every `reloadManifest()`.
+    /// Engine JS code writes the top-level fields here via the
     /// `manifest.candidateWindow.x = y` Proxy (see globals.js); reads
     /// return cache values (manifest declarations OR engine writes).
+    /// Per-implementation fields stay out of the JS vocabulary — the
+    /// host applies them from the cache but never serves them to JS.
     /// Settings UI continues to read `engine.manifest` (immutable static
     /// declarations) for its hide-logic — engine writes are invisible
     /// to the UI by design.
@@ -314,7 +317,8 @@ class JavaScriptEngine: InputEngine {
         // Engine writes via `manifest.candidateWindow.x = y` from JS only
         // mutate this cache, not the parsed manifest — so reloading is the
         // single point where cache returns to declared-values state.
-        candidateWindowCache = manifest?.candidateWindow ?? .init()
+        candidateWindowCache = (manifest?.candidateWindow ?? .init())
+            .flattened(for: CandidateWindow.activeImplementation)
         // Apply defaults before sanitize so the standalone keys are populated
         // for the first read.
         if let m = manifest { applySystemFieldDefaults(m) }
@@ -609,31 +613,6 @@ class JavaScriptEngine: InputEngine {
                 return
             }
             candidateWindowCache.pageSize = n
-        case "widerExpandedColumns":
-            guard jsValue.isBoolean else {
-                warnInvalidWrite(field, "must be boolean", jsValue); return
-            }
-            candidateWindowCache.widerExpandedColumns = jsValue.toBool()
-        case "moveOnExpand":
-            guard jsValue.isBoolean else {
-                warnInvalidWrite(field, "must be boolean", jsValue); return
-            }
-            candidateWindowCache.moveOnExpand = jsValue.toBool()
-        case "horizontalMaxVisibleRows":
-            guard jsValue.isNumber, let n = Int(exactly: jsValue.toDouble()), n >= 2 else {
-                warnInvalidWrite(field, "must be an integer >= 2", jsValue); return
-            }
-            candidateWindowCache.horizontalMaxVisibleRows = n
-        case "verticalMinVisibleRows":
-            guard jsValue.isNumber, let n = Int(exactly: jsValue.toDouble()), n >= 1 else {
-                warnInvalidWrite(field, "must be an integer >= 1", jsValue); return
-            }
-            candidateWindowCache.verticalMinVisibleRows = n
-        case "expandable":
-            guard jsValue.isBoolean else {
-                warnInvalidWrite(field, "must be boolean", jsValue); return
-            }
-            candidateWindowCache.expandable = jsValue.toBool()
         case "handleNavigationKeys":
             guard jsValue.isBoolean else {
                 warnInvalidWrite(field, "must be boolean", jsValue); return
@@ -684,11 +663,6 @@ class JavaScriptEngine: InputEngine {
         case "fontSize":                  return Self.toAny(c.fontSize)
         case "indexLabels":               return Self.toAny(c.indexLabels)
         case "pageSize":                  return Self.toAny(c.pageSize)
-        case "widerExpandedColumns":      return Self.toAny(c.widerExpandedColumns)
-        case "moveOnExpand":              return Self.toAny(c.moveOnExpand)
-        case "horizontalMaxVisibleRows":  return Self.toAny(c.horizontalMaxVisibleRows)
-        case "verticalMinVisibleRows":    return Self.toAny(c.verticalMinVisibleRows)
-        case "expandable":                return Self.toAny(c.expandable)
         case "handleNavigationKeys":      return Self.toAny(c.handleNavigationKeys)
         case "handleIndexLabelKeys":      return Self.toAny(c.handleIndexLabelKeys)
         case "indexLabelDigitsRequireShift":
@@ -702,10 +676,8 @@ class JavaScriptEngine: InputEngine {
     /// keep in sync with readCandidateWindowField's cases.
     private static let candidateWindowFieldNames = [
         "layoutDirection", "fontSize", "indexLabels", "pageSize",
-        "widerExpandedColumns", "moveOnExpand", "horizontalMaxVisibleRows",
-        "verticalMinVisibleRows", "expandable", "handleNavigationKeys",
-        "handleIndexLabelKeys", "indexLabelDigitsRequireShift",
-        "associatedModeIndexLabels",
+        "handleNavigationKeys", "handleIndexLabelKeys",
+        "indexLabelDigitsRequireShift", "associatedModeIndexLabels",
     ]
 
     private func listCandidateWindowFields() -> [String] {

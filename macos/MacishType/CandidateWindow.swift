@@ -196,23 +196,37 @@ class CandidateWindow {
         case tahoe
     }
 
+    /// Candidate window implementations, named after the manifest
+    /// `candidateWindow` section each one reads.
+    enum Implementation {
+        case macish
+    }
+
     private static var autoResolvedStyle: Style {
         if #available(macOS 26, *) { return .tahoe }
         return .sequoia
     }
 
-    // MARK: - Impl Instances
+    private static var styleOverride: Style?
 
-    private var styleOverride: Style?
+    private static var resolvedStyle: Style { styleOverride ?? autoResolvedStyle }
+
+    /// Implementation the current style builds, resolved without touching
+    /// the singleton — manifest loading must not bring up the panel.
+    static var activeImplementation: Implementation {
+        switch resolvedStyle {
+        case .sequoia, .tahoe: .macish
+        }
+    }
+
+    // MARK: - Impl Instances
 
     private var _impl: CandidateWindowImpl?
 
     private var activeImpl: CandidateWindowImpl {
         if let existing = _impl { return existing }
-        let style = styleOverride ?? Self.autoResolvedStyle
-        let instance: CandidateWindowImpl = switch style {
-        case .sequoia, .tahoe:
-            MacishCandidateWindow(style: style)
+        let instance: CandidateWindowImpl = switch Self.activeImplementation {
+        case .macish: MacishCandidateWindow(style: Self.resolvedStyle)
         }
         instance.owner = self
         _impl = instance
@@ -220,8 +234,8 @@ class CandidateWindow {
     }
 
     func setStyle(_ override: Style?) {
-        guard override != styleOverride else { return }
-        styleOverride = override
+        guard override != Self.styleOverride else { return }
+        Self.styleOverride = override
         guard let old = _impl else { return }
         let wasVisible = old.isVisible
         let savedCandidates = old.candidates
