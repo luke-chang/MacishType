@@ -19,6 +19,13 @@ TABLES = [
 
 
 def main():
+    # Keep the ✓/→ output printable on consoles that default to a non-UTF-8
+    # encoding (Windows), where an unencodable glyph would otherwise abort
+    # the copy midway.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
+
     driver = os.path.join(REPO_ROOT, "scripts", "ExternalResources.py")
     if subprocess.run([sys.executable, driver, "--check"]).returncode:
         print("→ Tables are missing or stale; running the resource"
