@@ -227,10 +227,16 @@ public:
     };
 
     // RAII guard for host→JS entries: arms the execution watchdog on the
-    // outermost entry and drains microtasks when it unwinds.
+    // outermost entry and drains microtasks when it unwinds. Interactive
+    // entries (hooks, listeners) get a budget sized to catch runaway loops;
+    // load entries (the entry module, fetch settlement) get a longer one,
+    // because an engine parsing its own data tables legitimately runs for
+    // seconds on a JIT-less interpreter.
     class Entry {
     public:
-        explicit Entry(JsEngineHost &host);
+        enum class Budget { Interactive, Load };
+        explicit Entry(JsEngineHost &host,
+                       Budget budget = Budget::Interactive);
         ~Entry();
         Entry(const Entry &) = delete;
         Entry &operator=(const Entry &) = delete;
@@ -519,6 +525,7 @@ private:
     int callDepth_ = 0;
     int staticImportDepth_ = 0;
     std::chrono::steady_clock::time_point deadline_{};
+    std::chrono::seconds watchdogBudget_{};
     std::map<void *, std::string> pendingRejections_;
     ActionHandler actionHandler_;
 

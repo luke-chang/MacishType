@@ -19,6 +19,7 @@ namespace {
 
 constexpr std::string_view kEngineUrlPrefix = "engine:///";
 constexpr auto kWatchdogTimeout = std::chrono::seconds(3);
+constexpr auto kLoadWatchdogTimeout = std::chrono::seconds(15);
 constexpr size_t kStorageMaxEncodedKeyBytes = 200;
 constexpr size_t kStorageMaxValueBytes = 10 * 1024 * 1024;
 // Per-engine JS heap ceiling. Without it a malicious or buggy engine that
@@ -694,7 +695,7 @@ bool JsEngineHost::evaluateEntryModule() {
     }
     loadedFilePaths_.insert(entryPath.fileSystemPath.string());
 
-    Entry entry(*this);
+    Entry entry(*this, Entry::Budget::Load);
     // COMPILE_ONLY still resolves the module's imports, so the whole static
     // import graph loads within this scope.
     JSValue compiledModule;
@@ -992,9 +993,12 @@ bool JsEngineHost::instanceHasHook(uint64_t instanceId, const char *method) {
 
 // Watchdog, jobs, rejections --------------------------------------------
 
-JsEngineHost::Entry::Entry(JsEngineHost &host) : host_(host) {
+JsEngineHost::Entry::Entry(JsEngineHost &host, Budget budget) : host_(host) {
     if (host_.callDepth_++ == 0) {
-        host_.deadline_ = std::chrono::steady_clock::now() + kWatchdogTimeout;
+        host_.watchdogBudget_ = budget == Budget::Load ? kLoadWatchdogTimeout
+                                                       : kWatchdogTimeout;
+        host_.deadline_ =
+            std::chrono::steady_clock::now() + host_.watchdogBudget_;
     }
 }
 
@@ -1012,8 +1016,8 @@ int JsEngineHost::interruptHandler(JSRuntime *runtime, void *opaque) {
     if (host->callDepth_ > 0 &&
         std::chrono::steady_clock::now() > host->deadline_) {
         MACISHTYPE_ERROR() << "Watchdog: terminating " << host->engineId_
-                           << " after "
-                           << kWatchdogTimeout.count() << "s";
+                           << " after " << host->watchdogBudget_.count()
+                           << "s";
         return 1;
     }
     return 0;
@@ -1200,7 +1204,7 @@ void JsEngineHost::settleFetches(std::vector<PendingFetch> batch) {
         // One Entry per fetch: each settle (and the .then/parse chain that
         // drains when it unwinds) gets its own watchdog window, matching the
         // per-invokeHook granularity runtime fetches had when synchronous.
-        Entry entry(*this);
+        Entry entry(*this, Entry::Budget::Load);
         bool resolved = false;
         if (fetch.bytes && !JS_IsUndefined(makeResponse_)) {
             JSValue url = JS_NewString(ctx_, fetch.url.c_str());
