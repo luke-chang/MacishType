@@ -185,10 +185,10 @@ function __MacishType_dispatchGlobal(event) {
   };
 
   // manifest.candidateWindow — Proxy-backed cache the engine can read/write.
-  // Source of truth lives in Swift; this object forwards all access through
-  // bridge calls. Writes that fail (read-only field, unknown name, invalid
-  // value) are warned via OSLog on the Swift side and silently ignored —
-  // the set trap always returns true so engine code never sees an exception.
+  // The host holds the source of truth; this object forwards all access
+  // through bridge calls. Writes that fail (read-only field, unknown name,
+  // invalid value) are logged host-side and silently ignored — the set trap
+  // always returns true so engine code never sees an exception.
   const candidateWindowProxy = new Proxy({}, {
     get(_, prop) {
       if (typeof prop !== "string") return undefined;
@@ -299,8 +299,8 @@ function __MacishType_dispatchGlobal(event) {
     return Object.freeze(v);
   }
 
-  // Private updater — Swift bridge entrypoint. The Swift side gates pushes
-  // on actual change, so this unconditionally replaces and dispatches.
+  // Private updater — host bridge entrypoint. The host gates pushes on
+  // actual change, so this unconditionally replaces and dispatches.
   globalThis.__MacishType_setSettings = function (next) {
     for (const k of Object.keys(settings)) delete settings[k];
     Object.assign(settings, next);
@@ -311,7 +311,7 @@ function __MacishType_dispatchGlobal(event) {
     __MacishType_dispatchGlobal({ type: "settingschange" });
   };
 
-  // Private updater — Swift bridge entrypoint. `data` is a plain object the
+  // Private updater — host bridge entrypoint. `data` is a plain object the
   // host built from a whole table; `miss` is the value query() returns for an
   // absent key (host-chosen per table, e.g. undefined for names, 0 for
   // counts). The frozen facade is what makes it read-only — a raw Map can't be
@@ -371,7 +371,7 @@ function __MacishType_dispatchGlobal(event) {
   // identity stays stable across updates (engines may destructure it once).
   const coverageHolders = new Map();   // name -> { planes }
 
-  // Swift bridge entrypoint — build the holder-backed query view at load.
+  // Host bridge entrypoint — build the holder-backed query view at load.
   globalThis.__MacishType_setCoverageModule = function (name, base64) {
     const holder = { planes: parseCoverageBitmap(base64) };
     coverageHolders.set(name, holder);
@@ -389,7 +389,7 @@ function __MacishType_dispatchGlobal(event) {
     });
   };
 
-  // Swift bridge — swap the holder's bitmap, then notify. The host only calls
+  // Host bridge — swap the holder's bitmap, then notify. The host only calls
   // this on a real change, so no JS-side compare. No-op if never injected.
   globalThis.__MacishType_updateCoverageModule = function (name, base64) {
     const holder = coverageHolders.get(name);
@@ -402,7 +402,7 @@ function __MacishType_dispatchGlobal(event) {
 // localStorage + storage events — shared closure so dispatch can
 // reach invalidateNow without exposing it. Reads are cached for the
 // current sync task (microtask-bounded) so iteration / repeated
-// reads only hit Swift once; mutations invalidate immediately.
+// reads only hit the host once; mutations invalidate immediately.
 (function () {
   let cachedKeys = null;
   const cachedValues = new Map();
