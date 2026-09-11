@@ -202,37 +202,7 @@ extension JavaScriptEngine {
                 case macish
             }
 
-            init(
-                layoutDirection: CandidateWindow.LayoutDirection? = nil,
-                fontSize: Int? = nil,
-                indexLabels: String? = nil,
-                pageSize: Int? = nil,
-                widerExpandedColumns: Bool? = nil,
-                moveOnExpand: Bool? = nil,
-                horizontalMaxVisibleRows: Int? = nil,
-                verticalMinVisibleRows: Int? = nil,
-                expandable: Bool? = nil,
-                handleNavigationKeys: Bool? = nil,
-                handleIndexLabelKeys: Bool? = nil,
-                indexLabelDigitsRequireShift: Bool? = nil,
-                associatedModeIndexLabels: InputEngine.AssociatedModeIndexLabels? = nil,
-                macish: MacishSection? = nil
-            ) {
-                self.layoutDirection = layoutDirection
-                self.fontSize = fontSize
-                self.indexLabels = indexLabels
-                self.pageSize = pageSize
-                self.widerExpandedColumns = widerExpandedColumns
-                self.moveOnExpand = moveOnExpand
-                self.horizontalMaxVisibleRows = horizontalMaxVisibleRows
-                self.verticalMinVisibleRows = verticalMinVisibleRows
-                self.expandable = expandable
-                self.handleNavigationKeys = handleNavigationKeys
-                self.handleIndexLabelKeys = handleIndexLabelKeys
-                self.indexLabelDigitsRequireShift = indexLabelDigitsRequireShift
-                self.associatedModeIndexLabels = associatedModeIndexLabels
-                self.macish = macish
-            }
+            init() {}
 
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)

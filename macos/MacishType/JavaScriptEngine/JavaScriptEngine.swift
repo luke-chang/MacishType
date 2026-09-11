@@ -140,14 +140,6 @@ class JavaScriptEngine: InputEngine {
     /// the same call.
     private var menuToggleCache: [String: Bool] = [:]
 
-    /// Fields that engine JS code cannot override at runtime. Read remains
-    /// available (returns manifest-declared value or nil). Writes to these
-    /// log a warning and are ignored — host-only fields like
-    /// `animationDuration` belong to the host.
-    private static let readOnlyCandidateWindowFields: Set<String> = [
-        "animationDuration",
-    ]
-
     // MARK: - System fields
 
     /// A manifest-declared `intendedLanguage` overrides the fixed plist value
@@ -573,36 +565,47 @@ class JavaScriptEngine: InputEngine {
         return nil
     }
 
+    /// The candidateWindow proxy's vocabulary; case order is the JS-side
+    /// key order. Per-implementation fields are deliberately absent.
+    private enum CandidateWindowField: String, CaseIterable {
+        case layoutDirection, fontSize, indexLabels, pageSize
+        case handleNavigationKeys, handleIndexLabelKeys
+        case indexLabelDigitsRequireShift, associatedModeIndexLabels
+    }
+
     private func applyCandidateWindowField(_ field: String, _ jsValue: JSValue) {
-        if Self.readOnlyCandidateWindowFields.contains(field) {
+        // Unknown field — typo or forward-compat (engine wrote a name the
+        // host doesn't recognize, possibly because the field hasn't landed
+        // yet or was removed). Same warn-and-ignore policy.
+        guard let known = CandidateWindowField(rawValue: field) else {
             Logger.javaScriptEngine.notice(
-                "manifest.candidateWindow.\(field, privacy: .public) is read-only — write ignored"
+                "manifest.candidateWindow.\(field, privacy: .public) is not a recognized field — write ignored"
             )
             return
         }
-        switch field {
-        case "layoutDirection":
+        switch known {
+        case .layoutDirection:
             guard let s = jsValue.toString(),
                   let dir = CandidateWindow.LayoutDirection(rawValue: s) else {
                 warnInvalidWrite(field, "must be \"horizontal\" or \"vertical\"", jsValue)
                 return
             }
             candidateWindowCache.layoutDirection = dir
-        case "fontSize":
+        case .fontSize:
             guard jsValue.isNumber,
                   let n = Int(exactly: jsValue.toDouble()), n >= 8 else {
                 warnInvalidWrite(field, "must be an integer >= 8", jsValue)
                 return
             }
             candidateWindowCache.fontSize = n
-        case "indexLabels":
+        case .indexLabels:
             guard let s = jsValue.toString(),
                   CandidateWindowConfiguration.isValidIndexLabels(s) else {
                 warnInvalidWrite(field, "must be ASCII printable (0x20-0x7E)", jsValue)
                 return
             }
             candidateWindowCache.indexLabels = s
-        case "pageSize":
+        case .pageSize:
             guard jsValue.isNumber,
                   let n = Int(exactly: jsValue.toDouble()),
                   CandidateWindowConfiguration.isValidPageSize(n) else {
@@ -613,22 +616,22 @@ class JavaScriptEngine: InputEngine {
                 return
             }
             candidateWindowCache.pageSize = n
-        case "handleNavigationKeys":
+        case .handleNavigationKeys:
             guard jsValue.isBoolean else {
                 warnInvalidWrite(field, "must be boolean", jsValue); return
             }
             candidateWindowCache.handleNavigationKeys = jsValue.toBool()
-        case "handleIndexLabelKeys":
+        case .handleIndexLabelKeys:
             guard jsValue.isBoolean else {
                 warnInvalidWrite(field, "must be boolean", jsValue); return
             }
             candidateWindowCache.handleIndexLabelKeys = jsValue.toBool()
-        case "indexLabelDigitsRequireShift":
+        case .indexLabelDigitsRequireShift:
             guard jsValue.isBoolean else {
                 warnInvalidWrite(field, "must be boolean", jsValue); return
             }
             candidateWindowCache.indexLabelDigitsRequireShift = jsValue.toBool()
-        case "associatedModeIndexLabels":
+        case .associatedModeIndexLabels:
             guard let s = jsValue.toString(),
                   let mode = AssociatedModeIndexLabels(rawValue: s) else {
                 warnInvalidWrite(
@@ -638,13 +641,6 @@ class JavaScriptEngine: InputEngine {
                 return
             }
             candidateWindowCache.associatedModeIndexLabels = mode
-        default:
-            // Unknown field — typo or forward-compat (engine wrote a name
-            // the host doesn't recognize, possibly because the field hasn't
-            // landed yet or was removed). Same warn-and-ignore policy.
-            Logger.javaScriptEngine.notice(
-                "manifest.candidateWindow.\(field, privacy: .public) is not a recognized field — write ignored"
-            )
         }
     }
 
@@ -657,28 +653,22 @@ class JavaScriptEngine: InputEngine {
     }
 
     private func readCandidateWindowField(_ field: String) -> Any? {
+        guard let known = CandidateWindowField(rawValue: field) else { return nil }
         let c = candidateWindowCache
-        switch field {
-        case "layoutDirection":           return Self.toAny(c.layoutDirection?.rawValue)
-        case "fontSize":                  return Self.toAny(c.fontSize)
-        case "indexLabels":               return Self.toAny(c.indexLabels)
-        case "pageSize":                  return Self.toAny(c.pageSize)
-        case "handleNavigationKeys":      return Self.toAny(c.handleNavigationKeys)
-        case "handleIndexLabelKeys":      return Self.toAny(c.handleIndexLabelKeys)
-        case "indexLabelDigitsRequireShift":
+        switch known {
+        case .layoutDirection:           return Self.toAny(c.layoutDirection?.rawValue)
+        case .fontSize:                  return Self.toAny(c.fontSize)
+        case .indexLabels:               return Self.toAny(c.indexLabels)
+        case .pageSize:                  return Self.toAny(c.pageSize)
+        case .handleNavigationKeys:      return Self.toAny(c.handleNavigationKeys)
+        case .handleIndexLabelKeys:      return Self.toAny(c.handleIndexLabelKeys)
+        case .indexLabelDigitsRequireShift:
             return Self.toAny(c.indexLabelDigitsRequireShift)
-        case "associatedModeIndexLabels": return Self.toAny(c.associatedModeIndexLabels?.rawValue)
-        default: return nil
+        case .associatedModeIndexLabels: return Self.toAny(c.associatedModeIndexLabels?.rawValue)
         }
     }
 
-    /// Order defines the JS-side key order of the candidateWindow proxy —
-    /// keep in sync with readCandidateWindowField's cases.
-    private static let candidateWindowFieldNames = [
-        "layoutDirection", "fontSize", "indexLabels", "pageSize",
-        "handleNavigationKeys", "handleIndexLabelKeys",
-        "indexLabelDigitsRequireShift", "associatedModeIndexLabels",
-    ]
+    static let candidateWindowFieldNames = CandidateWindowField.allCases.map(\.rawValue)
 
     private func listCandidateWindowFields() -> [String] {
         Self.candidateWindowFieldNames.filter { readCandidateWindowField($0) != nil }

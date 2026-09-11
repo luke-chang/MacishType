@@ -120,6 +120,17 @@ struct ManifestTests {
         #expect(flat.macish == nil)
     }
 
+    /// The other half of the per-implementation rule: only these reach the
+    /// `manifest.candidateWindow` proxy. Key order is host-specific and
+    /// deliberately unasserted.
+    @Test func theProxyVocabularyIsTheSharedFieldsOnly() {
+        #expect(Set(JavaScriptEngine.candidateWindowFieldNames) == [
+            "layoutDirection", "fontSize", "indexLabels", "pageSize",
+            "handleNavigationKeys", "handleIndexLabelKeys",
+            "indexLabelDigitsRequireShift", "associatedModeIndexLabels",
+        ])
+    }
+
     @Test func modulesListOnlyExplicitlyEnabledNames() throws {
         let manifest = try decode("""
             {"entry": "e", "modules": {
