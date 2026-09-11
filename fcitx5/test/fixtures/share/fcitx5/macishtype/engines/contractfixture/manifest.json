@@ -5,5 +5,10 @@
     "aa": "AA",
     "zz": "ZZ"
   },
-  "capabilities": { "outputToSimplified": true }
+  "capabilities": { "outputToSimplified": true },
+  "candidateWindow": {
+    "fontSize": 20,
+    "moveOnExpand": true,
+    "macish": { "expandable": false }
+  }
 }

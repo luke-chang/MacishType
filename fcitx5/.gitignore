@@ -1,3 +1,5 @@
 build/
 .cache/
 compile_commands.json
+# The headless contract runner's localStorage lands beside each fixture.
+test/fixtures/**/_storage/

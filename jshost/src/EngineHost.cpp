@@ -52,17 +52,13 @@ uint64_t reverseLookupIdleReleaseMicros() {
 
 enum class FieldType { Boolean, Number, String };
 
+// Top-level contract fields only; per-implementation sections are never stored.
 const std::map<std::string, FieldType> &candidateWindowFieldTypes() {
     static const std::map<std::string, FieldType> types = {
         {"layoutDirection", FieldType::String},
         {"fontSize", FieldType::Number},
         {"indexLabels", FieldType::String},
         {"pageSize", FieldType::Number},
-        {"widerExpandedColumns", FieldType::Boolean},
-        {"moveOnExpand", FieldType::Boolean},
-        {"horizontalMaxVisibleRows", FieldType::Number},
-        {"verticalMinVisibleRows", FieldType::Number},
-        {"expandable", FieldType::Boolean},
         {"handleNavigationKeys", FieldType::Boolean},
         {"handleIndexLabelKeys", FieldType::Boolean},
         {"indexLabelDigitsRequireShift", FieldType::Boolean},

@@ -6,6 +6,9 @@
 //                       lowest-sorted key, not the first-declared one
 //   root-import       - a "/util.js" import resolves from the engine root
 //   key-order         - localStorage.key(index) reports keys alphabetically
+//   cw-impl           - per-implementation candidateWindow fields, and the
+//                       macish section itself, are unreadable, unwritable,
+//                       unlisted; top-level fields still seed the proxy
 //   indexlabels-*     - a non-ASCII indexLabels write is rejected
 //   pagesize-*        - a pageSize outside 1-11 is rejected, 11 is accepted
 //   toggle-nonchinese - capability outputToSimplified true cannot make the
@@ -19,6 +22,18 @@ import { MARKER } from "/util.js";
 console.log(`nav-languages ${JSON.stringify(navigator.languages)}`);
 console.log(`manifest-name ${manifest.name}`);
 console.log(`root-import ${MARKER}`);
+
+// Ahead of the writes further down, so the key list is still exactly what
+// the manifest seeded.
+manifest.candidateWindow.expandable = false;
+manifest.candidateWindow.macish = { expandable: true };
+console.log(
+  `cw-impl expandable=${String(manifest.candidateWindow.expandable)} ` +
+    `moveOnExpand=${String(manifest.candidateWindow.moveOnExpand)} ` +
+    `macish=${String(manifest.candidateWindow.macish)} ` +
+    `fontSize=${String(manifest.candidateWindow.fontSize)} ` +
+    `keys=${JSON.stringify(Object.keys(manifest.candidateWindow))}`,
+);
 
 // localStorage.key(index) is sorted alphabetically regardless of write order.
 localStorage.clear();

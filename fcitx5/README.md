@@ -194,10 +194,13 @@ Host notes for this platform:
 - The candidate window is fcitx5's own themed one: `layoutDirection`,
   `pageSize`, `indexLabels`, `indexLabelDigitsRequireShift`, and the
   navigation/index-label key options are honored, in the manifest and as
-  per-update options alike;
-  the appearance knobs (`fontSize`, `expandable`, …) and `updateCandidates`'
-  `anchorAt` are accepted but have no effect. A digit label that needs Shift
-  is drawn with a `⇧` prefix.
+  per-update options alike. `fontSize` and `updateCandidates`' `anchorAt`
+  are accepted but have no effect: text size belongs to the fcitx5 theme,
+  and window placement is frontend-driven. This host draws none of the
+  contract's named windows, so the `candidateWindow.macish` section is
+  dropped at load, as are those field names declared at the top level — to
+  `manifest.candidateWindow` they are unknown fields, as on every host. A
+  digit label that needs Shift is drawn with a `⇧` prefix.
 - Associated-word selection keys follow **Addons → MacishType → Associated
   word selection keys**: *Follow engine* (the default) honors the engine's
   `associatedModeIndexLabels` declaration and falls back to number keys,
