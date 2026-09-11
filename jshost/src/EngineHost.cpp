@@ -2131,9 +2131,10 @@ JSValue JsEngineHost::nativeDecodeUtf8(JSContext *ctx, JSValueConst thisVal,
     return JS_NewStringLen(ctx, reinterpret_cast<const char *>(data), size);
 }
 
-// TextEncoder fast path. quickjs keeps unpaired surrogates as WTF-8
-// (0xED 0xA0-0xBF ..) where WHATWG wants U+FFFD (0xEF 0xBF 0xBD, same
-// length); patch a copy — the returned pointer may alias the live string.
+// TextEncoder fast path. WHATWG wants U+FFFD where quickjs kept an
+// unpaired surrogate, which is what Qjs::replaceLoneSurrogates does; the
+// no-surrogate case skips the intermediate copy, since the pointer
+// JS_ToCStringLen returns may alias the live string.
 JSValue JsEngineHost::nativeEncodeUtf8(JSContext *ctx, JSValueConst thisVal,
                                        int argc, JSValueConst *argv) {
     (void)thisVal;
@@ -2149,16 +2150,7 @@ JSValue JsEngineHost::nativeEncodeUtf8(JSContext *ctx, JSValueConst thisVal,
         result = JS_NewUint8ArrayCopy(ctx, bytes, size);
     } else {
         std::string patched(chars, size);
-        for (size_t i = 0; i + 2 < patched.size(); ++i) {
-            if (static_cast<uint8_t>(patched[i]) == 0xED &&
-                static_cast<uint8_t>(patched[i + 1]) >= 0xA0 &&
-                static_cast<uint8_t>(patched[i + 1]) <= 0xBF) {
-                patched[i] = '\xEF';
-                patched[i + 1] = '\xBF';
-                patched[i + 2] = '\xBD';
-                i += 2;
-            }
-        }
+        Qjs::replaceLoneSurrogates(patched);
         result = JS_NewUint8ArrayCopy(
             ctx, reinterpret_cast<const uint8_t *>(patched.data()),
             patched.size());

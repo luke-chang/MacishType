@@ -6,6 +6,8 @@
 //                       lowest-sorted key, not the first-declared one
 //   root-import       - a "/util.js" import resolves from the engine root
 //   key-order         - localStorage.key(index) reports keys alphabetically
+//   lone-surrogate    - an unpaired surrogate reaches the host as U+FFFD,
+//                       not as the WTF-8 bytes quickjs holds it in
 //   cw-impl           - per-implementation candidateWindow fields, and the
 //                       macish section itself, are unreadable, unwritable,
 //                       unlisted; top-level fields still seed the proxy
@@ -22,6 +24,10 @@ import { MARKER } from "/util.js";
 console.log(`nav-languages ${JSON.stringify(navigator.languages)}`);
 console.log(`manifest-name ${manifest.name}`);
 console.log(`root-import ${MARKER}`);
+
+// Every engine string reaches the host through one funnel, which repairs
+// the WTF-8 quickjs keeps an unpaired surrogate in.
+console.log(`lone-surrogate a\uD800b`);
 
 // Ahead of the writes further down, so the key list is still exactly what
 // the manifest seeded.

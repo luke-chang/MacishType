@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <optional>
 #include <string>
 #include <utility>
@@ -64,7 +65,28 @@ private:
     JSValue value_ = JS_UNDEFINED;
 };
 
-// JS_ToCString round trip; returns empty string on failure.
+// quickjs hands unpaired surrogates back as WTF-8 (0xED 0xA0-0xBF ..),
+// which UTF-8 has no encoding for. Rewrite each to U+FFFD, three bytes
+// either way, so byte offsets into the string still line up.
+inline void replaceLoneSurrogates(std::string &text) {
+    if (std::memchr(text.data(), 0xED, text.size()) == nullptr) {
+        return;
+    }
+    for (size_t i = 0; i + 2 < text.size(); i++) {
+        if (static_cast<uint8_t>(text[i]) == 0xED &&
+            static_cast<uint8_t>(text[i + 1]) >= 0xA0 &&
+            static_cast<uint8_t>(text[i + 1]) <= 0xBF) {
+            text[i] = '\xEF';
+            text[i + 1] = '\xBF';
+            text[i + 2] = '\xBD';
+            i += 2;
+        }
+    }
+}
+
+// JS_ToCString round trip; returns empty string on failure. The single
+// funnel every engine string passes through to reach std::string, so the
+// WTF-8 repair belongs here.
 inline std::string toString(JSContext *ctx, JSValueConst value) {
     size_t len = 0;
     const char *cstr = JS_ToCStringLen(ctx, &len, value);
@@ -73,6 +95,7 @@ inline std::string toString(JSContext *ctx, JSValueConst value) {
     }
     std::string result(cstr, len);
     JS_FreeCString(ctx, cstr);
+    replaceLoneSurrogates(result);
     return result;
 }
 

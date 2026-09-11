@@ -31,6 +31,8 @@ check "an engine-root-absolute import resolves from the engine folder" "$out" \
     'root-import root-import-ok'
 check "localStorage.key(index) reports keys alphabetically" "$out" \
     'key-order apple,mango,zebra'
+check "an unpaired surrogate reaches the host as U+FFFD" "$out" \
+    'lone-surrogate a�b'
 check "per-implementation candidateWindow fields never reach the proxy" "$out" \
     'cw-impl expandable=undefined moveOnExpand=undefined macish=undefined fontSize=20 keys=["fontSize"]'
 check "a non-ASCII indexLabels write is rejected, keeping the prior value" "$out" \
