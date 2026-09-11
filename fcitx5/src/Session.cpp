@@ -518,7 +518,7 @@ void EngineSession::applyActions(std::vector<Action> actions) {
             [this](auto &&value) {
                 using T = std::decay_t<decltype(value)>;
                 if constexpr (std::is_same_v<T, UpdateMarkedTextAction>) {
-                    applyUpdateMarkedText(value);
+                    applyUpdateMarkedText(std::move(value));
                 } else if constexpr (std::is_same_v<T,
                                                     UpdateCandidatesAction>) {
                     applyUpdateCandidates(std::move(value));
@@ -569,9 +569,23 @@ void EngineSession::applyActions(std::vector<Action> actions) {
     }
 }
 
-void EngineSession::applyUpdateMarkedText(
-    const UpdateMarkedTextAction &action) {
-    markedText_ = action.text;
+void EngineSession::applyUpdateMarkedText(UpdateMarkedTextAction action) {
+    markedText_ = std::move(action.text);
+    if (!action.staged && !action.cursor && !action.emphasis) {
+        // Plain typing asks for no boundary inside the string, so every
+        // offset the preedit needs sits at one end of it and a cluster
+        // index would only recompute what size() already answers.
+        stagedText_.clear();
+        fcitx::Text plain;
+        if (!markedText_.empty()) {
+            fcitx::TextFormatFlags flags{fcitx::TextFormatFlag::Underline};
+            flags |= fcitx::TextFormatFlag::DontCommit;
+            plain.append(markedText_, flags);
+            plain.setCursor(static_cast<int>(markedText_.size()));
+        }
+        publishPreedit(plain);
+        return;
+    }
     GraphemeIndex index(intl_, markedText_);
     int total = index.count();
     int stagedCount = 0;
@@ -626,6 +640,10 @@ void EngineSession::applyUpdateMarkedText(
                           : total;
         preedit.setCursor(static_cast<int>(index.byteOffset(cursorCharacters)));
     }
+    publishPreedit(preedit);
+}
+
+void EngineSession::publishPreedit(const fcitx::Text &preedit) {
     auto &inputPanel = inputContext_->inputPanel();
     if (inputContext_->capabilityFlags().test(
             fcitx::CapabilityFlag::Preedit)) {
@@ -1164,7 +1182,7 @@ void EngineSession::enterAssociatedMode(
     UpdateMarkedTextAction marked;
     marked.text = heldChar;
     marked.staged = -1;
-    applyUpdateMarkedText(marked);
+    applyUpdateMarkedText(std::move(marked));
 
     UpdateCandidatesAction update;
     for (auto &text : resolved) {

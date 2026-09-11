@@ -15,6 +15,7 @@
 
 namespace fcitx {
 class CommonCandidateList;
+class Text;
 }
 
 namespace MacishType {
@@ -134,7 +135,8 @@ private:
     static std::optional<std::string>
     navigationDirectionFor(const WebKeyEvent &web);
 
-    void applyUpdateMarkedText(const UpdateMarkedTextAction &action);
+    void applyUpdateMarkedText(UpdateMarkedTextAction action);
+    void publishPreedit(const fcitx::Text &preedit);
     void applyUpdateCandidates(UpdateCandidatesAction action);
     void applyUpdateMessage(UpdateMessageAction action);
     void navigate(const std::string &direction, bool wrapping);
