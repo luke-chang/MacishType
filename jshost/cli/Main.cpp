@@ -185,13 +185,14 @@ public:
     }
 
     // Runs due tasks until none arrive for `grace` (undue timers — the
-    // reverse-lookup idle release — do not count as pending work). The
-    // grace window covers the fetch worker's read-then-post gap, which the
-    // loop cannot observe directly.
+    // reverse-lookup idle release — do not count as pending work).
+    //
+    // `busy` reports work the loop cannot see; see JsEngineHost::hasPendingWork.
     void drainUntilQuiescent(
+        const std::function<bool()> &busy,
         std::chrono::milliseconds grace = std::chrono::milliseconds(60)) {
         int quietRounds = 0;
-        while (quietRounds < 3) {
+        while (quietRounds < 3 || busy()) {
             if (runDueTasks()) {
                 quietRounds = 0;
                 continue;
@@ -560,6 +561,10 @@ int main(int argc, char **argv) {
     emitLine("{\"event\":\"loaded\",\"engine\":\"" + jsonEscape(engineId) +
              "\"}");
 
+    auto drainLoop = [&]() {
+        loop.drainUntilQuiescent([&]() { return host->hasPendingWork(); });
+    };
+
     uint64_t instanceId = 0;
     CliStaging staging;
     auto activate = [&]() {
@@ -583,7 +588,7 @@ int main(int argc, char **argv) {
     if (options->activate) {
         activate();
     }
-    loop.drainUntilQuiescent();
+    drainLoop();
     emitLine("{\"event\":\"quiescent\"}");
 
     if (!options->loadOnly) {
@@ -647,7 +652,7 @@ int main(int argc, char **argv) {
                 emitLine(std::string("{\"event\":\"menu-flip\",\"changed\":") +
                          (changed ? "true" : "false") + "}");
             } else if (action == "wait-quiescent") {
-                loop.drainUntilQuiescent();
+                drainLoop();
                 emitLine("{\"event\":\"quiescent\"}");
                 continue;
             } else {
@@ -655,7 +660,7 @@ int main(int argc, char **argv) {
                          jsonEscape(action) + "\"}");
                 continue;
             }
-            loop.drainUntilQuiescent();
+            drainLoop();
         }
     }
 

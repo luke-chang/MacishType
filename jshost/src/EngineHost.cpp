@@ -1085,18 +1085,23 @@ void JsEngineHost::decrementActive() {
     }
 }
 
+bool JsEngineHost::hasPendingWork() const {
+    return workerBusy_ || deferredSettle_ ||
+           (pumpEnabled() && !pendingFetches_.empty());
+}
+
 void JsEngineHost::dispatchToWorker() {
-    if (workerBusy_ || eventLoop_ == nullptr || activeCount_ <= 0) {
+    if (workerBusy_ || !pumpEnabled()) {
         return;
     }
     std::vector<PendingFetch> batch;
     auto it = pendingFetches_.begin();
     while (it != pendingFetches_.end()) {
-        if (!it->bytes) {
+        if (it->staged()) {
+            ++it;
+        } else {
             batch.push_back(std::move(*it));
             it = pendingFetches_.erase(it);
-        } else {
-            ++it;
         }
     }
     if (batch.empty()) {

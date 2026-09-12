@@ -205,6 +205,11 @@ public:
     // own echo. Returns whether the value changed.
     bool flipMenuValue(const std::string &key);
 
+    // True while work this host started has yet to finish — currently the
+    // fetch pipeline, whose off-thread read posts nothing until it lands, so
+    // an idle task queue does not mean the engine has its resources.
+    bool hasPendingWork() const;
+
     // Receiver for the event-object mutator dispatcher
     // (__MacishTypeHost_action). Scoped to the active session invocation.
     using ActionHandler = std::function<void(
