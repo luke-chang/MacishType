@@ -148,9 +148,10 @@ void testRefCounting(Checks &checks, const std::filesystem::path &dir) {
 void testAssociatedDictionary(Checks &checks, const std::filesystem::path &dir,
                               CountingLogger &logger) {
     const auto table = dir / "AssociatedDictionary.test.txt";
-    // The blank and TAB-less lines exercise what forEachTableLine drops.
+    // The blank and TAB-less lines exercise what forEachTableLine drops; the
+    // CRLF line, that a table written on Windows reads the same.
     writeFile(table, std::string("# comment\n\nno tab here\n") + kCluster +
-                         "\tone two\n");
+                         "\tone two\nB\tthree four\r\n");
 
     IntlCache cache;
     const std::string held = std::string("A") + kCluster;
@@ -176,6 +177,11 @@ void testAssociatedDictionary(Checks &checks, const std::filesystem::path &dir,
                       "a cluster with no entry has no follow-ups");
         checks.expect(held2.followups(cache, "no tab here").empty(),
                       "a line with no TAB never becomes an entry");
+
+        auto crlf = held1.followups(cache, "B");
+        checks.expect(crlf.size() == 2 && crlf[0] == "three" &&
+                          crlf[1] == "four",
+                      "a CRLF line drops its carriage return");
     }
     checks.expect(logger.unloads == 1,
                   "releasing the last handle unloads the table");

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <charconv>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -65,16 +66,6 @@ const std::map<std::string, FieldType> &candidateWindowFieldTypes() {
         {"associatedModeIndexLabels", FieldType::String},
     };
     return types;
-}
-
-std::optional<std::string> readFile(const std::filesystem::path &path) {
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream) {
-        return std::nullopt;
-    }
-    std::ostringstream buffer;
-    buffer << stream.rdbuf();
-    return buffer.str();
 }
 
 // Filenames must match the macOS host byte for byte, so a user-layer
@@ -329,7 +320,7 @@ bool JsEngineHost::initialize() {
 
 bool JsEngineHost::evaluateScript(const std::filesystem::path &path,
                                   const char *scriptName) {
-    auto content = readFile(path);
+    auto content = readFileBytes(path);
     if (!content) {
         MACISHTYPE_ERROR() << "Cannot read " << path;
         return false;
@@ -630,21 +621,20 @@ void JsEngineHost::loadModuleTable(JSValue table, const std::string &fileBase,
     }
     size_t count = 0;
     bool read = forEachTableLine(
-        path, [&](const std::string &key, const std::string &value) {
+        path, [&](std::string_view key, std::string_view value) {
+            JSValue entry;
             if (numericValues) {
                 int64_t number = 0;
-                try {
-                    number = std::stoll(value);
-                } catch (...) {
+                auto parsed = std::from_chars(
+                    value.data(), value.data() + value.size(), number);
+                if (parsed.ec != std::errc()) {
                     return;
                 }
-                JS_SetPropertyStr(ctx_, table, key.c_str(),
-                                  JS_NewInt64(ctx_, number));
+                entry = JS_NewInt64(ctx_, number);
             } else {
-                JS_SetPropertyStr(ctx_, table, key.c_str(),
-                                  JS_NewStringLen(ctx_, value.c_str(),
-                                                  value.size()));
+                entry = JS_NewStringLen(ctx_, value.data(), value.size());
             }
+            JS_SetPropertyStr(ctx_, table, std::string(key).c_str(), entry);
             count++;
         });
     if (!read) {
@@ -683,7 +673,7 @@ bool JsEngineHost::evaluateEntryModule() {
         return false;
     }
     auto &entryPath = std::get<ResolvedPath>(resolved);
-    auto content = readFile(entryPath.fileSystemPath);
+    auto content = readFileBytes(entryPath.fileSystemPath);
     if (!content) {
         MACISHTYPE_ERROR() << "Cannot read entry module "
                            << entryPath.fileSystemPath;
@@ -1125,7 +1115,7 @@ void JsEngineHost::dispatchToWorker() {
                                 batch = std::move(batch)]() mutable {
         for (auto &fetch : batch) {
             try {
-                fetch.bytes = readFile(fetch.fileSystemPath);
+                fetch.bytes = readFileBytes(fetch.fileSystemPath);
             } catch (...) {
                 fetch.bytes = std::nullopt;
             }
@@ -1246,7 +1236,7 @@ void JsEngineHost::flushPendingFetchesSync() {
     batch.swap(pendingFetches_);
     for (auto &fetch : batch) {
         if (!fetch.bytes) {
-            fetch.bytes = readFile(fetch.fileSystemPath);
+            fetch.bytes = readFileBytes(fetch.fileSystemPath);
         }
     }
     settleFetches(std::move(batch));
@@ -1358,7 +1348,7 @@ JSModuleDef *JsEngineHost::moduleLoad(JSContext *ctx, const char *moduleName,
         return nullptr;
     }
     auto &modulePath = std::get<ResolvedPath>(resolved);
-    auto content = readFile(modulePath.fileSystemPath);
+    auto content = readFileBytes(modulePath.fileSystemPath);
     if (!content) {
         JS_ThrowReferenceError(ctx, "could not read module '%s'", moduleName);
         return nullptr;
@@ -1837,7 +1827,7 @@ JSValue JsEngineHost::nativeStorageGetItem(JSContext *ctx,
     if (!path) {
         return JS_NULL;
     }
-    auto content = readFile(*path);
+    auto content = readFileBytes(*path);
     if (!content) {
         return JS_NULL;
     }

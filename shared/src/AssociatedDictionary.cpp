@@ -1,6 +1,6 @@
 #include "MacishType/AssociatedDictionary.h"
 
-#include <sstream>
+#include <string_view>
 
 #include "MacishType/Log.h"
 #include "MacishType/TableFile.h"
@@ -9,18 +9,29 @@
 namespace MacishType {
 namespace {
 
+// Everything up to and including the space is a separator, so no lead byte
+// of a UTF-8 phrase can be mistaken for one.
+bool isSeparator(char ch) { return static_cast<unsigned char>(ch) <= ' '; }
+
 AssociatedDictionary::Entries parseTable(const std::filesystem::path &path) {
     AssociatedDictionary::Entries entries;
     bool read = forEachTableLine(
-        path, [&entries](const std::string &key, const std::string &value) {
+        path, [&entries](std::string_view key, std::string_view value) {
             std::vector<std::string> followups;
-            std::istringstream values(value);
-            std::string phrase;
-            while (values >> phrase) {
-                followups.push_back(phrase);
+            for (size_t pos = 0; pos < value.size();) {
+                size_t start = pos;
+                while (pos < value.size() && !isSeparator(value[pos])) {
+                    ++pos;
+                }
+                if (pos > start) {
+                    followups.emplace_back(value.substr(start, pos - start));
+                } else {
+                    ++pos;
+                }
             }
             if (!key.empty() && !followups.empty()) {
-                entries[key] = std::move(followups);
+                entries.insert_or_assign(std::string(key),
+                                         std::move(followups));
             }
         });
     if (!read) {
