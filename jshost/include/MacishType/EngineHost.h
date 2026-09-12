@@ -261,10 +261,17 @@ private:
         JSValue resolve = JS_UNDEFINED;
         JSValue reject = JS_UNDEFINED;
         std::optional<std::string> bytes;
+
+        // Read finished, parse pending.
+        bool staged() const { return bytes.has_value(); }
     };
 
     // Async-fetch pipeline (all on the main loop except the worker body).
+    // Queued items only move while a session is active.
+    bool pumpEnabled() const { return activeCount_ > 0 && eventLoop_ != nullptr; }
     void dispatchToWorker();
+    using PendingFetches = std::vector<PendingFetch>;
+    PendingFetches::iterator firstStagedFetch();
     void completeWorkerBatch(std::vector<PendingFetch> batch);
     void settleFetches(std::vector<PendingFetch> batch);
     void scheduleDeferredSettle();

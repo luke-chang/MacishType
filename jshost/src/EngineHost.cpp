@@ -1134,54 +1134,53 @@ void JsEngineHost::dispatchToWorker() {
 
 void JsEngineHost::completeWorkerBatch(std::vector<PendingFetch> batch) {
     workerBusy_ = false;
-    if (activeCount_ > 0) {
-        settleFetches(std::move(batch));
-    } else {
-        // Inactive: stage successful reads for the next activation (the read
-        // is not repeated), but reject failures right away — a nullopt is
-        // only distinguishable as "failed" inside a completed batch.
-        std::vector<PendingFetch> failures;
-        for (auto &fetch : batch) {
-            if (fetch.bytes) {
-                pendingFetches_.push_back(std::move(fetch));
-            } else {
-                failures.push_back(std::move(fetch));
-            }
-        }
-        if (!failures.empty()) {
-            settleFetches(std::move(failures));
+    // Successful reads go back to the queue as staged items for the deferred
+    // settle to take one at a time. Failures settle right here: a rejection
+    // runs no parse, and a nullopt is only distinguishable as "failed"
+    // inside a completed batch.
+    std::vector<PendingFetch> failures;
+    for (auto &fetch : batch) {
+        if (fetch.staged()) {
+            pendingFetches_.push_back(std::move(fetch));
+        } else {
+            failures.push_back(std::move(fetch));
         }
     }
+    if (!failures.empty()) {
+        settleFetches(std::move(failures));
+    }
+    scheduleDeferredSettle();
     // Anything enqueued while the worker ran.
     dispatchToWorker();
 }
 
+JsEngineHost::PendingFetches::iterator JsEngineHost::firstStagedFetch() {
+    return std::find_if(pendingFetches_.begin(), pendingFetches_.end(),
+                        [](const PendingFetch &fetch) { return fetch.staged(); });
+}
+
 void JsEngineHost::scheduleDeferredSettle() {
-    if (deferredSettle_ || eventLoop_ == nullptr) {
-        return;
-    }
-    bool hasStaged = std::any_of(
-        pendingFetches_.begin(), pendingFetches_.end(),
-        [](const PendingFetch &fetch) { return fetch.bytes.has_value(); });
-    if (!hasStaged) {
+    if (deferredSettle_ || !pumpEnabled() ||
+        firstStagedFetch() == pendingFetches_.end()) {
         return;
     }
     // Never settle synchronously here: incrementActive runs inside
     // activate(), and settling would put the parse back on the activate
     // turn — the stall this pipeline exists to remove.
+    //
+    // One fetch per turn: a .then chain runs to completion once it starts,
+    // so a batch would hold the loop for the sum of its parses.
     deferredSettle_ = eventLoop_->postDeferred([this]() {
         deferredSettle_.reset();
-        std::vector<PendingFetch> staged;
-        auto it = pendingFetches_.begin();
-        while (it != pendingFetches_.end()) {
-            if (it->bytes.has_value()) {
-                staged.push_back(std::move(*it));
-                it = pendingFetches_.erase(it);
-            } else {
-                ++it;
-            }
+        auto it = firstStagedFetch();
+        if (it == pendingFetches_.end()) {
+            return;
         }
-        settleFetches(std::move(staged));
+        std::vector<PendingFetch> one;
+        one.push_back(std::move(*it));
+        pendingFetches_.erase(it);
+        settleFetches(std::move(one));
+        scheduleDeferredSettle();
     });
 }
 
