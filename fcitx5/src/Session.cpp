@@ -837,7 +837,6 @@ void EngineSession::renderCandidates(int initialCursor) {
     }
     auto &inputPanel = inputContext_->inputPanel();
     inputPanel.setCandidateList(std::move(list));
-    // A header labels the candidates as associated words; cleared otherwise.
     inputPanel.setAuxUp(associating_
                             ? fcitx::Text(translated("Associated words"))
                             : fcitx::Text());
@@ -1016,7 +1015,7 @@ void EngineSession::navigate(const std::string &direction, bool wrapping) {
         // First navigation from a suspended highlight: arrow / item keys only
         // reveal the current page's first candidate without moving it, but
         // page keys and Home/End navigate right away, treating the suspended
-        // state as index 0 of the page (MacishType parity).
+        // state as index 0 of the page (macOS parity).
         cursor = pageStart;
         bool revealOnly = direction == "up" || direction == "down" ||
                           direction == "left" || direction == "right" ||
@@ -1029,7 +1028,6 @@ void EngineSession::navigate(const std::string &direction, bool wrapping) {
             fireSelectionChanged();
             return;
         }
-        // Page keys / Home / End fall through and navigate from index 0.
     }
 
     std::string resolved = direction;
@@ -1171,8 +1169,6 @@ void EngineSession::enterAssociatedMode(
             ? host_->associatedFollowups(heldChar)
             : std::vector<std::string>{};
     if (resolved.empty()) {
-        // No follow-ups: don't enter associated mode, just commit the held
-        // text.
         endComposition(heldChar);
         return;
     }
@@ -1196,7 +1192,6 @@ void EngineSession::enterAssociatedMode(
 
 void EngineSession::endComposition(const std::string &insertion) {
     if (!insertion.empty()) {
-        // TODO: transformCommittedText (outputToSimplified) belongs here.
         inputContext_->commitString(insertion);
     }
     UpdateMarkedTextAction clearMarked;

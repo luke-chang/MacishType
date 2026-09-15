@@ -74,8 +74,8 @@ bool isOurEntryName(const std::string &fileName) {
     if (endsWith(rest, ".svg")) {
         rest = rest.substr(0, rest.size() - 4);
     } else if (endsWith(rest, ".png")) {
-        // .png is never installed today, but a link from an older version
-        // still deserves cleaning up.
+        // Only .svg is ever installed, but a .png under this naming is still
+        // ours to clean up.
         rest = rest.substr(0, rest.size() - 4);
     } else {
         return false;
@@ -220,8 +220,8 @@ size_t IconLinks::removeMatching(const std::set<std::string> &keep) {
     }
     std::error_code errorCode;
     auto hicolor = iconsRoot_ / "hicolor";
-    // Every size directory, not just scalable/: a link written by an older
-    // version (or by hand) should still be cleaned up.
+    // Every size directory, not just scalable/: a link under this naming is
+    // ours to clean up wherever it sits.
     std::filesystem::directory_iterator sizes(hicolor, errorCode);
     if (errorCode) {
         return 0;

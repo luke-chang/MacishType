@@ -295,10 +295,6 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
     }
     enginesTimestamp_ = paths.timestamp(fcitx::StandardPathsType::PkgData,
                                         "macishtype/engines");
-    // Runtime additions are pull-based, matching how any fcitx IM package
-    // surfaces: this accept makes configtool show its native "Found
-    // updates" banner, whose Update button refreshes the IM list and
-    // re-enters listInputMethods.
     // A panel handover changes what composeStatusActions attaches (only
     // kimpanel skips dividers), and the decision was made when the group
     // was last composed — so redo it for every live session.
@@ -311,6 +307,10 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
                 }
             }
         });
+    // Runtime additions are pull-based, matching how any fcitx IM package
+    // surfaces: this accept makes configtool show its native "Found
+    // updates" banner, whose Update button refreshes the IM list and
+    // re-enters listInputMethods.
     checkUpdateWatcher_ = instance_->watchEvent(
         fcitx::EventType::CheckUpdate, fcitx::EventWatcherPhase::Default,
         [this](fcitx::Event &event) {
@@ -455,7 +455,7 @@ void MacishTypeEngine::keyEvent(const fcitx::InputMethodEntry &entry,
     // Find Input Code hotkey (before session dispatch): only for a capability
     // engine with a live session; consumes the key and shows the reverse
     // lookup. Without a session (load failed / not yet built) the key falls
-    // through so a modifier combo still reaches the client, as before.
+    // through so a modifier combo still reaches the client.
     if (!keyEvent.isRelease() &&
         !config_.findInputCodeKey.value().empty() &&
         keyEvent.key().checkKeyList(config_.findInputCodeKey.value())) {
@@ -647,7 +647,6 @@ void MacishTypeEngine::composeStatusActions(const EngineInfo &engine,
         }
     }
 
-    // Engines declaring reverseLookup get the Find Input Code action.
     if (engine.manifest.reverseLookup) {
         statusArea.addAction(fcitx::StatusGroup::InputMethod,
                              &findInputCodeAction_);

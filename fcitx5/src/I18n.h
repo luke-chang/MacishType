@@ -1,7 +1,6 @@
 #pragma once
 
-// translated() lives in the core seams (installed by FcitxCoreServices);
-// included here so the addon's call sites keep their original shape.
+// translated() lives in the core seams, installed by FcitxCoreServices.
 #include <MacishType/HostSeams.h>
 
 namespace MacishType {

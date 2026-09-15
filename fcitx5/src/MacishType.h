@@ -253,8 +253,7 @@ private:
     std::map<std::string, std::unique_ptr<EngineSettings>> engineSettings_;
     // Manifest menu actions per engine id, in declaration order (dividers
     // included as separator SimpleActions), indexed by ResolvedMenuItem's
-    // declaration index. Rebuilt with the engine's settings — the same
-    // three call sites.
+    // declaration index. Always rebuilt alongside the engine's settings.
     std::map<std::string, std::vector<std::unique_ptr<fcitx::Action>>>
         engineMenuActions_;
     std::map<std::string, std::unique_ptr<JsEngineHost>> hosts_;

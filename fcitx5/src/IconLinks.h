@@ -18,9 +18,8 @@ namespace MacishType {
 // render a path as a missing-icon glyph; panels that accept a path accept a
 // name too, so the name is the portable choice.
 //
-// Every failure path falls back to the icon's absolute path, which is what
-// panels were served before this existed — the worst case is the old behavior,
-// never something worse.
+// Every failure path falls back to the icon's absolute path, so a panel that
+// takes one still renders the icon; only name-only panels lose it.
 class IconLinks {
 public:
     explicit IconLinks(fcitx::EventLoop *eventLoop);
