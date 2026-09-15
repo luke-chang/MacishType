@@ -29,12 +29,12 @@ last_cand() {
 # last candidate frame of a run is the last panel state the engine asked for.
 log=/tmp/fcitx5-macishtype-message.log
 shown="$(ISOLATED_LOG="$log" "$root/test/Isolated.sh" \
-    messagefixture 100:40 97:38 100:40 2> /dev/null)"
+    messagefixture 100:40 97:38 100:40)"
 seen="$(cat "$log")"
-retired="$("$root/test/Isolated.sh" messagefixture 97:38 99:54 2> /dev/null)"
-kept="$("$root/test/Isolated.sh" messagefixture 97:38 98:56 99:54 2> /dev/null)"
-reset="$("$root/test/Isolated.sh" messagefixture 97:38 65307:9 2> /dev/null)"
-focusout="$("$root/test/Isolated.sh" messagefixture 97:38 focusout 2> /dev/null)"
+retired="$("$root/test/Isolated.sh" messagefixture 97:38 99:54)"
+kept="$("$root/test/Isolated.sh" messagefixture 97:38 98:56 99:54)"
+reset="$("$root/test/Isolated.sh" messagefixture 97:38 65307:9)"
+focusout="$("$root/test/Isolated.sh" messagefixture 97:38 focusout)"
 
 check "a message shows on the aux line" \
     "$(last_cand "$shown")" '"auxUp": "No match"'

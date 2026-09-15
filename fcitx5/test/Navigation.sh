@@ -9,8 +9,8 @@ make -s -C "$root" dev-install > /dev/null
 
 # navfixture: KeyA=97:38 shows c0..c8 suspended, pageSize 3 (3 pages).
 # PageDown=65366:117, ArrowDown=65364:116.
-paged="$("$root/test/Isolated.sh" navfixture 97:38 65366:117 2> /dev/null)"
-revealed="$("$root/test/Isolated.sh" navfixture 97:38 65364:116 2> /dev/null)"
+paged="$("$root/test/Isolated.sh" navfixture 97:38 65366:117)"
+revealed="$("$root/test/Isolated.sh" navfixture 97:38 65364:116)"
 
 check() {
     if printf '%s\n' "$2" | grep -qF "$3"; then
@@ -48,12 +48,12 @@ check "an arrow key reveals the first candidate (cursor 0) from suspended" \
 # --- Native pagination: page indicators, cross-page nav, absolute mapping ---
 # KeyB=98:56 opens with initialHighlight 5 (c5, page 2). PageUp=65365:112,
 # Home=65360:110, End=65367:115, digit2=50:11.
-page1="$("$root/test/Isolated.sh" navfixture 97:38 2> /dev/null)"
-onpage2="$("$root/test/Isolated.sh" navfixture 98:56 2> /dev/null)"
-pageupped="$("$root/test/Isolated.sh" navfixture 97:38 65366:117 65365:112 2> /dev/null)"
-ended="$("$root/test/Isolated.sh" navfixture 97:38 65367:115 2> /dev/null)"
-homed="$("$root/test/Isolated.sh" navfixture 98:56 65360:110 2> /dev/null)"
-committed="$("$root/test/Isolated.sh" navfixture 97:38 65366:117 50:11 2> /dev/null)"
+page1="$("$root/test/Isolated.sh" navfixture 97:38)"
+onpage2="$("$root/test/Isolated.sh" navfixture 98:56)"
+pageupped="$("$root/test/Isolated.sh" navfixture 97:38 65366:117 65365:112)"
+ended="$("$root/test/Isolated.sh" navfixture 97:38 65367:115)"
+homed="$("$root/test/Isolated.sh" navfixture 98:56 65360:110)"
+committed="$("$root/test/Isolated.sh" navfixture 97:38 65366:117 50:11)"
 
 # Page 1 advertises a next page and no previous page (drives the native
 # down arrow — the whole point of the migration).
@@ -85,8 +85,8 @@ check "an index label on page 2 commits the absolute candidate c4" \
 # candidate; with no engine candidateConfirmed the fallback just ends the
 # composition. Return=65293:36; KeyC=99:54 fires commitSelectedCandidate
 # with no window up, which must be a silent no-op.
-entered="$("$root/test/Isolated.sh" navfixture 97:38 65293:36 2> /dev/null)"
-nowindow="$("$root/test/Isolated.sh" navfixture 99:54 2> /dev/null)"
+entered="$("$root/test/Isolated.sh" navfixture 97:38 65293:36)"
+nowindow="$("$root/test/Isolated.sh" navfixture 99:54)"
 
 check_absent "Enter on a suspended highlight commits nothing" \
     "$entered" '"event": "commit"'
@@ -102,13 +102,13 @@ check_absent "commitSelectedCandidate with no window commits nothing" \
 # replays navigationIntent()/candidateIndex() itself. Tab=65289:23,
 # Shift+Tab=65056:23:1, Alt+Down=65364:116:8, Shift+Down=65364:116:1,
 # ArrowRight=65363:114, space=32:65.
-moved="$("$root/test/Isolated.sh" intentfixture 97:38 65363:114 2> /dev/null)"
-altdown="$("$root/test/Isolated.sh" intentfixture 97:38 65364:116:8 2> /dev/null)"
-shiftdown="$("$root/test/Isolated.sh" intentfixture 97:38 65364:116:1 2> /dev/null)"
-wrapfwd="$("$root/test/Isolated.sh" intentfixture 97:38 65366:117 65366:117 65289:23 2> /dev/null)"
-wrapback="$("$root/test/Isolated.sh" intentfixture 97:38 65056:23:1 2> /dev/null)"
-lastpage="$("$root/test/Isolated.sh" intentfixture 97:38 65366:117 65366:117 50:11 2> /dev/null)"
-spaced="$("$root/test/Isolated.sh" intentfixture 97:38 32:65 2> /dev/null)"
+moved="$("$root/test/Isolated.sh" intentfixture 97:38 65363:114)"
+altdown="$("$root/test/Isolated.sh" intentfixture 97:38 65364:116:8)"
+shiftdown="$("$root/test/Isolated.sh" intentfixture 97:38 65364:116:1)"
+wrapfwd="$("$root/test/Isolated.sh" intentfixture 97:38 65366:117 65366:117 65289:23)"
+wrapback="$("$root/test/Isolated.sh" intentfixture 97:38 65056:23:1)"
+lastpage="$("$root/test/Isolated.sh" intentfixture 97:38 65366:117 65366:117 50:11)"
+spaced="$("$root/test/Isolated.sh" intentfixture 97:38 32:65)"
 
 check "navigationIntent drives an arrow through navigateCandidates" \
     "$(last_cand "$moved")" '"text": "c2"}], "cursor": 1'

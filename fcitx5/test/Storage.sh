@@ -21,7 +21,7 @@ storage_dir="$state_dir/fcitx5/macishtype/fixture"
 # no keys. Key files carry the cross-platform localStorage_ prefix.
 ISOLATED_LOG="$log_file" ISOLATED_STATE_HOME="$state_dir" \
     "$root/test/Isolated.sh" fixture sleep:2500 53:14 sleep:1500 \
-    > /dev/null 2>&1 &
+    > /dev/null &
 client=$!
 sleep 4
 printf 'external' > "$storage_dir/localStorage_ext"

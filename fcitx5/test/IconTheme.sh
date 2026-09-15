@@ -70,7 +70,7 @@ EOF
 
 # --- The fixture engine ships icon-symbolic.svg: name served, link installed --
 out="$(ISOLATED_DATA_HOME="$data_home" ISOLATED_LOG="$log" \
-    "$root/test/Isolated.sh" fixture iminfo 2> /dev/null)"
+    "$root/test/Isolated.sh" fixture iminfo)"
 
 check "a symbolic SVG is served as a theme name, not a path" \
     "$out" '"icon": "macishtype-fixture-symbolic"'
@@ -86,8 +86,8 @@ check_shell "no index.theme is written into the user theme" \
 
 # --- A plain (non-symbolic) SVG drops the suffix, in file and in name --------
 write_engine plainicon icon.svg
-out="$(ISOLATED_DATA_HOME="$data_home" "$root/test/Isolated.sh" plainicon iminfo \
-    2> /dev/null)"
+out="$(ISOLATED_DATA_HOME="$data_home" \
+    "$root/test/Isolated.sh" plainicon iminfo)"
 check "a plain SVG is served without the -symbolic suffix" \
     "$out" '"icon": "macishtype-plainicon"'
 check_shell "its entry is macishtype-<id>.svg" \
@@ -95,8 +95,8 @@ check_shell "its entry is macishtype-<id>.svg" \
 
 # --- PNG has no legal home in the theme: keep serving the path --------------
 write_engine pngicon icon.png
-out="$(ISOLATED_DATA_HOME="$data_home" "$root/test/Isolated.sh" pngicon iminfo \
-    2> /dev/null)"
+out="$(ISOLATED_DATA_HOME="$data_home" \
+    "$root/test/Isolated.sh" pngicon iminfo)"
 check "a PNG-only engine is still served by absolute path" \
     "$out" '"icon": "'"$engines"'/pngicon/icon.png"'
 check_shell "no theme entry is installed for a PNG icon" \
@@ -106,7 +106,7 @@ check_shell "no theme entry is installed for a PNG icon" \
 # --- An id ending in -symbolic would claim the recolorable name --------------
 write_engine weird-symbolic icon.svg
 out="$(ISOLATED_DATA_HOME="$data_home" "$root/test/Isolated.sh" weird-symbolic \
-    iminfo 2> /dev/null)"
+    iminfo)"
 check "an id ending in -symbolic falls back to the path" \
     "$out" '"icon": "'"$engines"'/weird-symbolic/icon.svg"'
 check_shell "and installs nothing" \
@@ -114,8 +114,7 @@ check_shell "and installs nothing" \
 
 # --- An engine with no icon at all serves nothing ---------------------------
 write_engine noicon ""
-out="$(ISOLATED_DATA_HOME="$data_home" "$root/test/Isolated.sh" noicon iminfo \
-    2> /dev/null)"
+out="$(ISOLATED_DATA_HOME="$data_home" "$root/test/Isolated.sh" noicon iminfo)"
 check "an engine without an icon serves an empty icon" \
     "$out" '"icon": ""'
 
@@ -124,8 +123,8 @@ check "an engine without an icon serves an empty icon" \
 # symbolic candidate win, so the old file name must go.
 printf '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"/>\n' \
     > "$engines/plainicon/icon-symbolic.svg"
-out="$(ISOLATED_DATA_HOME="$data_home" "$root/test/Isolated.sh" plainicon iminfo \
-    2> /dev/null)"
+out="$(ISOLATED_DATA_HOME="$data_home" \
+    "$root/test/Isolated.sh" plainicon iminfo)"
 check "a variant switch serves the new name" \
     "$out" '"icon": "macishtype-plainicon-symbolic"'
 check_shell "the new entry exists" \
@@ -151,7 +150,7 @@ ln -sfn /nonexistent "$data_home/icons/hicolor/48x48/apps/macishtype-ghost.png"
 ln -sfn /nonexistent "$apps/unrelated-symbolic.svg"
 printf 'a user file that happens to use our name\n' > "$apps/macishtype-mine.svg"
 ISOLATED_DATA_HOME="$data_home" "$root/test/Isolated.sh" fixture iminfo \
-    > /dev/null 2>&1
+    > /dev/null
 
 check_shell "the sweep removes a stale entry of ours" \
     "[ ! -e '$apps/macishtype-ghost-symbolic.svg' ]"
@@ -201,7 +200,7 @@ check_shell "a parked engine keeps its theme entry" \
     "[ -L '$apps/macishtype-parkme-symbolic.svg' ]"
 # ...and the next startup is what cleans it up, now that the folder is gone.
 ISOLATED_DATA_HOME="$data_home" "$root/test/Isolated.sh" fixture iminfo \
-    > /dev/null 2>&1
+    > /dev/null
 check_shell "the next start sweeps the vanished engine's entry" \
     "[ ! -e '$apps/macishtype-parkme-symbolic.svg' ]"
 
@@ -217,13 +216,13 @@ scratch_addon_dirs="$addon_scratch:$("$root/test/SystemAddonDir.sh")"
 
 ISOLATED_DATA_HOME="$keep_home" ISOLATED_ADDON_DIRS="$scratch_addon_dirs" \
     ISOLATED_LOG="$log" "$root/test/Isolated.sh" fixture sleep:200 \
-    > /dev/null 2>&1
+    > /dev/null
 check_shell "links survive a shutdown while the library remains on disk" \
     "ls '$keep_home/icons/hicolor/scalable/apps/' | grep -q '^macishtype-'"
 
 ISOLATED_DATA_HOME="$gone_home" ISOLATED_ADDON_DIRS="$scratch_addon_dirs" \
     ISOLATED_LOG="$log" "$root/test/Isolated.sh" fixture sleep:3000 \
-    > /dev/null 2>&1 &
+    > /dev/null &
 client=$!
 sleep 3
 rm "$addon_scratch/libmacishtype.so"

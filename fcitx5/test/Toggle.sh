@@ -30,7 +30,7 @@ check() {
 ISOLATED_LOG="$onlog" "$root/test/Isolated.sh" togglefixture \
     a "70:41:5" b \
     "setaddonconfig:chttrans:EnabledIM=macishtype-togglefixture" \
-    refocus > /dev/null 2>&1
+    refocus > /dev/null
 out="$(cat "$onlog")"
 
 # Positive control: the negative "does not pull in chttrans" greps below
@@ -67,7 +67,7 @@ else
     exit 1
 fi
 
-ISOLATED_LOG="$offlog" "$root/test/Isolated.sh" toggleofffixture a > /dev/null 2>&1
+ISOLATED_LOG="$offlog" "$root/test/Isolated.sh" toggleofffixture a > /dev/null
 out="$(cat "$offlog")"
 
 check "capability false removes the manifest.toggle key" "$out" \

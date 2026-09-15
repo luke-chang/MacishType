@@ -251,6 +251,19 @@ def main():
 
     loop = GLib.MainLoop()
     props_state = {"seq": 0}
+    failure = []
+
+    # GLib prints an exception escaping a callback and then swallows it, so an
+    # unguarded failure below (a DBus call to an addon that is not installed,
+    # say) would leave loop.run() waiting forever. Stop the loop instead and
+    # re-raise once it returns, which is what makes the harness exit nonzero.
+    def send_keys_guarded():
+        try:
+            send_keys()
+        except Exception as error:
+            failure.append(error)
+            loop.quit()
+        return False
 
     def send_keys():
         for entry in keys:
@@ -416,10 +429,11 @@ def main():
                               (time.monotonic() - call_started) * 1000, 1)})
         # Give queued signals a beat to arrive before quitting.
         GLib.timeout_add(300, loop.quit)
-        return False
 
-    GLib.timeout_add(300, send_keys)
+    GLib.timeout_add(300, send_keys_guarded)
     loop.run()
+    if failure:
+        raise failure[0]
 
     ic_call("FocusOut")
     ic_call("DestroyIC")

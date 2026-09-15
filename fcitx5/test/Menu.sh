@@ -25,7 +25,7 @@ check() {
 
 # a = JS self-write (strictMode -> true), b = undeclared + non-boolean
 # writes (both ignored), c = read back
-ISOLATED_LOG="$log" "$root/test/Isolated.sh" menufixture a b c > /dev/null 2>&1
+ISOLATED_LOG="$log" "$root/test/Isolated.sh" menufixture a b c > /dev/null
 out="$(cat "$log")"
 
 check "declared keys read their defaults in declaration order" "$out" \

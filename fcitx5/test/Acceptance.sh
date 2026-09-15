@@ -20,7 +20,7 @@ cp -R "$root/../engines/example" "$engines/example"
 # right=65363:114 enter=65293:36 digit5=53:14
 run() {
     ISOLATED_DATA_HOME="$data_home" \
-        "$root/test/Isolated.sh" example "$@" 2> /dev/null
+        "$root/test/Isolated.sh" example "$@"
 }
 
 check() {
@@ -68,7 +68,7 @@ check "idle digit passes through unhandled" '"keyval": 53, "handled": false'
 # optional manifest label; its icon comes from the default base name probing,
 # which must prefer the -symbolic.svg over the .png it also ships — visible
 # here in the served icon-theme name (test/IconTheme.sh covers the install).
-output="$("$root/test/Isolated.sh" fixture iminfo 2> /dev/null)"
+output="$("$root/test/Isolated.sh" fixture iminfo)"
 check "manifest label reaches the entry" '"label": "Fx"'
 check "default icon base serves an icon-theme name" \
     '"icon": "macishtype-fixture-symbolic"'

@@ -39,7 +39,7 @@ woman_laptop="$(printf '\360\237\221\251\342\200\215\360\237\222\273')" # U+1F46
 # graphemefixture KeyA=97:38 emits "⚙︎é👩‍💻x" (cluster byte boundaries
 # 0/6/9/20/21) with staged 1, cursor 2, emphasis {1,3} — cuts at clusters
 # 0/1/3/4 give segments ⚙︎ | é👩‍💻 | x and a caret at byte 9.
-out="$("$root/test/Isolated.sh" graphemefixture 97:38 2> /dev/null)"
+out="$("$root/test/Isolated.sh" graphemefixture 97:38)"
 preedit="$(printf '%s\n' "$out" | grep '"event": "preedit"' | tail -1)"
 
 check "the full marked text renders" \

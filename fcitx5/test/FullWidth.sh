@@ -10,8 +10,8 @@ make -s -C "$root" dev-install > /dev/null
 
 poslog=/tmp/fcitx5-macishtype-fullwidth-pos.log
 neglog=/tmp/fcitx5-macishtype-fullwidth-neg.log
-ISOLATED_LOG="$poslog" "$root/test/Isolated.sh" fullwidthfixture > /dev/null 2>&1
-ISOLATED_LOG="$neglog" "$root/test/Isolated.sh" segmenterfixture > /dev/null 2>&1
+ISOLATED_LOG="$poslog" "$root/test/Isolated.sh" fullwidthfixture > /dev/null
+ISOLATED_LOG="$neglog" "$root/test/Isolated.sh" segmenterfixture > /dev/null
 
 if grep -qa "Loaded addon fullwidth" "$poslog"; then
     echo "PASS: declaring fullwidthInput pulls in fcitx's fullwidth module"

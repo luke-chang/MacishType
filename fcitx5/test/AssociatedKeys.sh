@@ -13,31 +13,31 @@ make -s -C "$root" dev-install > /dev/null
 # digit1=49:10, Shift+digit1=33:10:1 (!), Shift+digit4=36:13:1 ($),
 # KeyQ=113:24. Keypad 1 is keycode 87: with NumLock off Shift selects level
 # 2 and yields KP_1=65457, with NumLock on it yields KP_End=65436.
-plain="$("$root/test/Isolated.sh" assocfixture 97:38 2> /dev/null)"
-shift_enter="$("$root/test/Isolated.sh" assocshiftfixture 97:38 2> /dev/null)"
-shift_pick="$("$root/test/Isolated.sh" assocshiftfixture 97:38 33:10:1 2> /dev/null)"
-shift_plain="$("$root/test/Isolated.sh" assocshiftfixture 97:38 49:10 2> /dev/null)"
-shift_over="$("$root/test/Isolated.sh" assocshiftfixture 97:38 36:13:1 2> /dev/null)"
-numpad_off="$("$root/test/Isolated.sh" assocshiftfixture 97:38 65457:87:1 2> /dev/null)"
-numpad_on="$("$root/test/Isolated.sh" assocshiftfixture 97:38 65436:87:17 2> /dev/null)"
-inherit="$("$root/test/Isolated.sh" associnheritfixture 97:38 2> /dev/null)"
-inherit_pick="$("$root/test/Isolated.sh" associnheritfixture 97:38 97:38 2> /dev/null)"
-capped="$("$root/test/Isolated.sh" assoccapfixture 97:38 2> /dev/null)"
-optout="$("$root/test/Isolated.sh" shiftoptoutfixture 97:38 33:10:1 2> /dev/null)"
-mixed_pick="$("$root/test/Isolated.sh" shiftindexfixture 97:38 97:38 2> /dev/null)"
+plain="$("$root/test/Isolated.sh" assocfixture 97:38)"
+shift_enter="$("$root/test/Isolated.sh" assocshiftfixture 97:38)"
+shift_pick="$("$root/test/Isolated.sh" assocshiftfixture 97:38 33:10:1)"
+shift_plain="$("$root/test/Isolated.sh" assocshiftfixture 97:38 49:10)"
+shift_over="$("$root/test/Isolated.sh" assocshiftfixture 97:38 36:13:1)"
+numpad_off="$("$root/test/Isolated.sh" assocshiftfixture 97:38 65457:87:1)"
+numpad_on="$("$root/test/Isolated.sh" assocshiftfixture 97:38 65436:87:17)"
+inherit="$("$root/test/Isolated.sh" associnheritfixture 97:38)"
+inherit_pick="$("$root/test/Isolated.sh" associnheritfixture 97:38 97:38)"
+capped="$("$root/test/Isolated.sh" assoccapfixture 97:38)"
+optout="$("$root/test/Isolated.sh" shiftoptoutfixture 97:38 33:10:1)"
+mixed_pick="$("$root/test/Isolated.sh" shiftindexfixture 97:38 97:38)"
 # An explicit setting overrides the engine either way; refocus rebuilds the
 # session so the new value applies (settings land at session boundaries).
 forced_shift="$("$root/test/Isolated.sh" assocfixture \
     setaddonopt:macishtype:AssociatedSelectionKeys=shiftNumbers refocus \
-    97:38 33:10:1 2> /dev/null)"
+    97:38 33:10:1)"
 forced_numbers="$("$root/test/Isolated.sh" assocshiftfixture \
     setaddonopt:macishtype:AssociatedSelectionKeys=numbers refocus \
-    97:38 49:10 2> /dev/null)"
+    97:38 49:10)"
 # candidateIndex's own rules: the fixture replays them against synthetic
 # events and reports through the engine log rather than the panel.
 ci_log=/tmp/fcitx5-macishtype-assoc-candidateindex.log
 ISOLATED_LOG="$ci_log" "$root/test/Isolated.sh" shiftindexfixture 113:24 \
-    > /dev/null 2>&1
+    > /dev/null
 candidate_index="$(cat "$ci_log")"
 
 check() {

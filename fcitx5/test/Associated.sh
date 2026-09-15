@@ -8,14 +8,18 @@ set -e
 root="$(cd "$(dirname "$0")/.." && pwd)"
 make -s -C "$root" dev-install > /dev/null
 
+# The associated-words header is asserted translated; pin the daemon's locale
+# so that holds outside a zh_TW session (see Orientation.sh for why LC_ALL).
+export LANGUAGE="zh_TW:en" LC_ALL=zh_TW.UTF-8
+
 # assocfixture: KeyA=97:38 commits 中 (dict: 中 -> 文 國 心); digit1=49:10
 # picks the first follow-up; KeyB=98:56 is an unhandled dismiss key;
 # Return=65293:36 with nothing highlighted commits the held char alone and
 # then goes on to the client, like any other key that dismisses.
-enter="$("$root/test/Isolated.sh" assocfixture 97:38 2> /dev/null)"
-picked="$("$root/test/Isolated.sh" assocfixture 97:38 49:10 2> /dev/null)"
-dismissed="$("$root/test/Isolated.sh" assocfixture 97:38 98:56 2> /dev/null)"
-returned="$("$root/test/Isolated.sh" assocfixture 97:38 65293:36 2> /dev/null)"
+enter="$("$root/test/Isolated.sh" assocfixture 97:38)"
+picked="$("$root/test/Isolated.sh" assocfixture 97:38 49:10)"
+dismissed="$("$root/test/Isolated.sh" assocfixture 97:38 98:56)"
+returned="$("$root/test/Isolated.sh" assocfixture 97:38 65293:36)"
 
 check() {
     if printf '%s\n' "$2" | grep -qF "$3"; then
@@ -39,9 +43,9 @@ check_absent() {
 
 # The associated candidate list carries the header and the dictionary's
 # follow-ups; it is the event whose auxUp is 關聯字.
-assoc_line="$(printf '%s\n' "$enter" | grep -F '"auxUp": "關聯字"')"
+assoc_line="$(printf '%s\n' "$enter" | grep -F '"auxUp": "關聯字"' || true)"
 check "committing a single char enters associated mode with a header" \
-    "$assoc_line" '"auxUp": "關聯字"'
+    "$enter" '"auxUp": "關聯字"'
 check "associated candidates come from the host dictionary" \
     "$assoc_line" '"text": "文"'
 check "picking a follow-up commits held + follow-up" \
@@ -61,8 +65,8 @@ check "Return reaches the client once the held char is out" \
 # text (甲中) and enter associated mode off 中's follow-ups — not commit,
 # and not drop 甲. A second Return (nothing highlighted) flushes the
 # accumulated held text.
-staged="$("$root/test/Isolated.sh" stagedassocfixture 97:38 65293:36 2> /dev/null)"
-stagedout="$("$root/test/Isolated.sh" stagedassocfixture 97:38 65293:36 65293:36 2> /dev/null)"
+staged="$("$root/test/Isolated.sh" stagedassocfixture 97:38 65293:36)"
+stagedout="$("$root/test/Isolated.sh" stagedassocfixture 97:38 65293:36 65293:36)"
 
 check "confirming with a staged prefix enters associated mode" \
     "$staged" '"auxUp": "關聯字"'
@@ -79,8 +83,8 @@ check "Return then flushes the accumulated held text" \
 # hostchainfixture omits the candidates argument, so the host keys each
 # round off the held text's LAST character (存 → 錢 → 包, no 包 entry);
 # chainfixture supplies its own lists, ending with an explicit empty array.
-hostchain="$("$root/test/Isolated.sh" hostchainfixture 97:38 49:10 49:10 2> /dev/null)"
-enginechain="$("$root/test/Isolated.sh" chainfixture 97:38 49:10 49:10 2> /dev/null)"
+hostchain="$("$root/test/Isolated.sh" hostchainfixture 97:38 49:10 49:10)"
+enginechain="$("$root/test/Isolated.sh" chainfixture 97:38 49:10 49:10)"
 
 check "the dictionary chains off the held text's last character" \
     "$hostchain" '"text": "包"'
@@ -95,8 +99,8 @@ check "an engine-supplied empty candidates array ends the chain" \
 # cluster. digit1=49:10 picks the follow-up. The gear is built from explicit
 # bytes: editors silently normalize variation sequences.
 gear="$(printf '\342\232\231\357\270\216')"
-cluster_held="$("$root/test/Isolated.sh" graphemefixture 98:56 2> /dev/null)"
-cluster_out="$("$root/test/Isolated.sh" graphemefixture 98:56 49:10 2> /dev/null)"
+cluster_held="$("$root/test/Isolated.sh" graphemefixture 98:56)"
+cluster_out="$("$root/test/Isolated.sh" graphemefixture 98:56 49:10)"
 
 check "a multi-code-point trailing cluster keys the dictionary" \
     "$cluster_held" '"auxUp": "關聯字"'

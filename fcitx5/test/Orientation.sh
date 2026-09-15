@@ -11,7 +11,9 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 make -s -C "$root" dev-install > /dev/null
 
 # Labels resolve against the daemon's locale; pin it so assertions hold.
-export LANGUAGE="zh_TW:en"
+# LC_ALL as well: gettext ignores LANGUAGE under the C locale, which is what
+# an ssh session without LANG gets.
+export LANGUAGE="zh_TW:en" LC_ALL=zh_TW.UTF-8
 
 check() {
     if printf '%s\n' "$2" | grep -qF "$3"; then
@@ -34,15 +36,15 @@ check_absent() {
 
 # layoutfixture declares no layoutDirection, so the picker is generated; KeyA
 # (97:38) shows candidates whose layout hint reflects the choice.
-present="$("$root/test/Isolated.sh" layoutfixture getconfig 2> /dev/null)"
-default_layout="$("$root/test/Isolated.sh" layoutfixture 97:38 2> /dev/null)"
+present="$("$root/test/Isolated.sh" layoutfixture getconfig)"
+default_layout="$("$root/test/Isolated.sh" layoutfixture 97:38)"
 cfg="$(mktemp -d)"
 vertical_layout="$(ISOLATED_CONFIG_HOME="$cfg" "$root/test/Isolated.sh" \
-    layoutfixture setconfig:orientation=vertical refocus 97:38 2> /dev/null)"
+    layoutfixture setconfig:orientation=vertical refocus 97:38)"
 rm -rf "$cfg"
 # fixture fixes layoutDirection, so the picker is suppressed even though the
 # engine stays configurable through its other settings.
-absent="$("$root/test/Isolated.sh" fixture getconfig 2> /dev/null)"
+absent="$("$root/test/Isolated.sh" fixture getconfig)"
 
 check "a manifest without layoutDirection generates the orientation picker" \
     "$present" '"Enum": {"0": "system", "1": "horizontal", "2": "vertical"'

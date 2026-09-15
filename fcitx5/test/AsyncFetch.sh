@@ -17,7 +17,7 @@ line_of() {
 # --- Deferred pipeline: usable engine first, table parsed in the background.
 log=/tmp/fcitx5-macishtype-asyncfetch.log
 output="$(ISOLATED_LOG="$log" "$root/test/Isolated.sh" asyncfetchfixture \
-    97:38 sleep:1200 2> /dev/null)"
+    97:38 sleep:1200)"
 
 loaded_line="$(line_of "$log" 'Engine loaded: asyncfetchfixture')"
 parsed_line="$(line_of "$log" 'asyncfetch parsed entries=3')"
@@ -57,7 +57,7 @@ fi
 # --- Top-level await: the synchronous fallback keeps such engines loading.
 tla_log=/tmp/fcitx5-macishtype-asyncfetch-tla.log
 ISOLATED_LOG="$tla_log" "$root/test/Isolated.sh" tlafixture sleep:500 \
-    > /dev/null 2>&1
+    > /dev/null
 
 tla_line="$(line_of "$tla_log" 'tla loaded entries=3')"
 tla_loaded_line="$(line_of "$tla_log" 'Engine loaded: tlafixture')"

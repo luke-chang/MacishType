@@ -26,7 +26,7 @@ check() {
 # What those last two carry is layout-dependent — AltGr and level-5 shift in
 # the common maps; fcitx names Mod3 Hyper.
 ISOLATED_LOG="$log" "$root/test/Isolated.sh" modifierfixture \
-    "97:38" "97:38:16" "65:38:17" "98:56:128" "99:54:32" > /dev/null 2>&1
+    "97:38" "97:38:16" "65:38:17" "98:56:128" "99:54:32" > /dev/null
 out="$(cat "$log")"
 
 check "a key with no modifiers reports every state off" "$out" \

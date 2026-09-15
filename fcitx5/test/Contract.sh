@@ -10,7 +10,7 @@ make -s -C "$root" dev-install > /dev/null
 
 log=/tmp/fcitx5-macishtype-contract.log
 LANGUAGE="zh_TW:en_US" LANG=C LC_ALL=C LC_MESSAGES=C ISOLATED_LOG="$log" \
-    "$root/test/Isolated.sh" contractfixture > /dev/null 2>&1
+    "$root/test/Isolated.sh" contractfixture > /dev/null
 out="$(cat "$log")"
 
 check() {

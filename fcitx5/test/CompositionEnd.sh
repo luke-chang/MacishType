@@ -18,18 +18,14 @@ commit_count() {
 }
 
 # KeyA=97:38 stages 甲; KeyB=98:56 leaves 乙 composing.
-staged_focusout="$("$root/test/Isolated.sh" stagefixture 97:38 focusout \
-    2> /dev/null)"
-composing_focusout="$("$root/test/Isolated.sh" stagefixture 98:56 focusout \
-    2> /dev/null)"
-staged_reset="$("$root/test/Isolated.sh" stagefixture 97:38 reset \
-    2> /dev/null)"
-composing_reset="$("$root/test/Isolated.sh" stagefixture 98:56 reset \
-    2> /dev/null)"
+staged_focusout="$("$root/test/Isolated.sh" stagefixture 97:38 focusout)"
+composing_focusout="$("$root/test/Isolated.sh" stagefixture 98:56 focusout)"
+staged_reset="$("$root/test/Isolated.sh" stagefixture 97:38 reset)"
+composing_reset="$("$root/test/Isolated.sh" stagefixture 98:56 reset)"
 staged_switch="$("$root/test/Isolated.sh" stagefixture 97:38 \
-    switchim:keyboard-us 2> /dev/null)"
+    switchim:keyboard-us)"
 composing_switch="$("$root/test/Isolated.sh" stagefixture 98:56 \
-    switchim:keyboard-us 2> /dev/null)"
+    switchim:keyboard-us)"
 
 check() {
     if eval "$2"; then

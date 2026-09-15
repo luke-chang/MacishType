@@ -83,12 +83,11 @@ out="$(ISOLATED_LOG="$log" ISOLATED_CONFIG_HOME="$confhome" \
     "$root/test/Isolated.sh" menufixture --kimpanel \
     sleep:300 props \
     trigger:macishtype-menu-menufixture-2 sleep:300 \
-    trigger:macishtype-menu-menufixture-0 sleep:300 props \
-    2>/dev/null)"
+    trigger:macishtype-menu-menufixture-0 sleep:300 props)"
 logtext="$(cat "$log")"
 
-props1="$(printf '%s\n' "$out" | grep -F '"seq": 1')"
-props2="$(printf '%s\n' "$out" | grep -F '"seq": 2')"
+props1="$(printf '%s\n' "$out" | grep -F '"seq": 1' || true)"
+props2="$(printf '%s\n' "$out" | grep -F '"seq": 2' || true)"
 
 check "the panel impersonation came up" "$out" '"event": "kimpanel", "ready": true'
 check "the first toggle is composed" "$props1" \
@@ -125,13 +124,12 @@ check_absent "a disabledWhen-true toggle is not composed" "$props2" \
 # plus the refocus session boundary hides the conditioned toggle.
 out2="$(ISOLATED_LOG="$log" ISOLATED_CONFIG_HOME="$confhome" \
     "$root/test/Isolated.sh" menufixture --kimpanel \
-    "setconfig:hideExtras=True" refocus sleep:300 props \
-    2>/dev/null)"
+    "setconfig:hideExtras=True" refocus sleep:300 props)"
 logtext2="$(cat "$log")"
 
 check "flipped values persist across daemons" "$logtext2" \
     'menufx eval keys=["strictMode","verboseHints","extraPanel"] strict=true verbose=false extra=false undeclared=undefined'
-props21="$(printf '%s\n' "$out2" | grep -F '"seq": 1')"
+props21="$(printf '%s\n' "$out2" | grep -F '"seq": 1' || true)"
 check "the composed list survives the settings write" "$props21" \
     'macishtype-menu-menufixture-0:'
 check_absent "hiddenWhen via settings drops the toggle from the surface" \
@@ -154,7 +152,7 @@ out3="$(
         ISOLATED_DATA_HOME="$reload_data" \
         "$root/test/Isolated.sh" menufixture --kimpanel \
         sleep:300 trigger:macishtype-menu-menufixture-0 sleep:500 \
-        sleep:4000 props 2>/dev/null &
+        sleep:4000 props &
     client=$!
     sleep 5
     printf '\n' >> "$reload_fixture/manifest.json"
@@ -166,7 +164,7 @@ check "the manifest edit reloads the engine" "$logtext3" \
     'Engine changed on disk, reloading: menufixture'
 check "the flipped value survives the reload" "$logtext3" \
     'menufx eval keys=["strictMode","verboseHints","extraPanel"] strict=true verbose=true extra=false undeclared=undefined'
-props31="$(printf '%s\n' "$out3" | grep -F '"seq": 1')"
+props31="$(printf '%s\n' "$out3" | grep -F '"seq": 1' || true)"
 check "the rebuilt actions are still addressable" "$props31" \
     'macishtype-menu-menufixture-0:'
 check_re "the rebuilt action still reflects the flipped state" "$props31" \

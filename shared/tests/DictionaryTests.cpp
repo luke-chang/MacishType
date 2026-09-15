@@ -57,10 +57,11 @@ std::string countingParse(const std::filesystem::path &path) {
                        std::istreambuf_iterator<char>());
 }
 
-// Taking the handle by reference hides the self-move from the compiler's
-// self-move diagnostic while still exercising the guard.
+// Moving through a second reference keeps the self-move opaque to
+// -Wself-move while still exercising the guard.
 void selfMove(RefCountedDictionary<std::string>::Handle &handle) {
-    handle = std::move(handle);
+    auto &alias = handle;
+    handle = std::move(alias);
 }
 
 // Scratch directory, unique per concurrently running test binary:

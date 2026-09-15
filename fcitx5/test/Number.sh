@@ -10,7 +10,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 make -s -C "$root" dev-install > /dev/null
 
 log=/tmp/fcitx5-macishtype-number.log
-ISOLATED_LOG="$log" "$root/test/Isolated.sh" numberfixture > /dev/null 2>&1
+ISOLATED_LOG="$log" "$root/test/Isolated.sh" numberfixture > /dev/null
 out="$(cat "$log")"
 
 check() {
