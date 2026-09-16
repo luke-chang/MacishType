@@ -70,12 +70,8 @@ sudo dnf install gcc-c++ cmake ninja-build pkgconf git gettext \
 
 All `make` commands run from this directory (`fcitx5/`). The embedded
 quickjs-ng runtime is a git submodule at `jshost/external/quickjs-ng`
-(repo root), so make sure it is checked out:
-
-```sh
-git clone --recurse-submodules …            # fresh clone, or
-git submodule update --init --recursive     # existing checkout
-```
+(repo root): clone with `--recurse-submodules`, or run
+`git submodule update --init --recursive` in an existing checkout.
 
 ### First install
 
@@ -88,6 +84,8 @@ git submodule update --init --recursive     # existing checkout
    - By hand: put the folder in
      `~/.local/share/fcitx5/macishtype/engines/<name>/`. That name is the
      engine's identity and must be `[A-Za-z0-9_-]`, or discovery skips it.
+     If the engine ships a `setup.py`, run it in the source folder first —
+     it puts the generated data tables in place.
 3. Open `fcitx5-configtool` → **Input Method** → **Add**, and pick the
    engines from the list — each appears as its own input method.
 
@@ -95,11 +93,23 @@ git submodule update --init --recursive     # existing checkout
 
 1. `git pull` and `git submodule update --init --recursive`.
 2. `make install` — replaces the installed addon and restarts fcitx5.
+3. `make install-engines` when the pinned data tables changed — `make
+   install` refreshes `tables/` in the repo, but an installed engine keeps
+   the tables it came with.
 
 ### Uninstall
 
 `make uninstall` — removes the production install (per cmake's manifest) and
 restarts fcitx5.
+
+User data stays behind, and is yours to remove:
+
+- `~/.local/share/fcitx5/macishtype/engines/` — engine folders, each with
+  its own `_storage/`
+- `~/.config/fcitx5/conf/macishtype.conf` — addon settings
+- `~/.config/fcitx5/macishtype/` — per-engine settings and menu values
+
+Removing a single engine is the same thing: delete its folder.
 
 ## Development
 
@@ -148,9 +158,16 @@ keystroke.
 
 ### Other targets
 
-- `make build` — cmake configure + build without installing.
+- `make build` — cmake configure + build without installing
+  (`BUILD_TYPE=Debug` for an unoptimized build).
 - `make prepare` — sync the pinned data tables (incremental; auto-run by
   debug/install).
+- `make update-resources` — bump the pinned upstream SHAs to their current
+  default-branch HEAD and re-prepare.
+- `make dev-install` — install into `~/.local` without restarting fcitx5,
+  the install half of `make debug`.
+- `make dev-uninstall` — remove that install; engines and settings stay
+  (see [First-time setup](#first-time-setup)).
 - `make install-engines` — interactive engine installer, copy or symlink
   (see [First install](#first-install)). An engine that ships a `setup.py`
   has it run first, so generated data tables are in place. The engine's
@@ -162,10 +179,14 @@ keystroke.
   stamp (`0.2.0+20260805.93426bb`, `.dirty.<HHMM>` appended for an unclean
   tree so successive local builds stay distinguishable) so an installed
   package points back at the commit it came from; the addon logs the same
-  version when it loads. Override `VERSION_STAMP` to change or omit it.
+  version when it loads. Override `VERSION_STAMP` to change or omit it. A
+  package carries the addon alone — engines are user data, put in place by
+  hand (see [First install](#first-install)).
 - `make restart` — restart fcitx5; `LOG_DEBUG=1` enables per-key Debug
   logging (including engine `console.debug`).
 - `make clean` — remove the build directory.
+- `make clean-resources` — remove the downloaded data tables and the
+  cache/stamp.
 
 ## Writing an engine
 
