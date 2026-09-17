@@ -44,6 +44,77 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../tables")
         DESTINATION "${FCITX_INSTALL_PKGDATADIR}/macishtype/tables")
 endif()
 
+# Engines installed alongside the addon (the Makefile's PRELOAD_ENGINES).
+# They land in the system XDG layer, where a user-layer folder of the same
+# name still shadows them.
+set(MACISHTYPE_PRELOAD_ENGINES "" CACHE STRING
+    "Engine ids under ../engines to install with the addon, or `all`")
+string(TOLOWER "${MACISHTYPE_PRELOAD_ENGINES}" macishtype_preload_keyword)
+if(macishtype_preload_keyword STREQUAL "all")
+    # Every folder carrying a manifest, the rule scripts/InstallEngines.py
+    # discovers by. Re-evaluated on each configure, which install and pkg
+    # always run.
+    file(GLOB macishtype_manifests
+         "${CMAKE_CURRENT_SOURCE_DIR}/../engines/*/manifest.json")
+    set(macishtype_preload "")
+    foreach(manifest IN LISTS macishtype_manifests)
+        get_filename_component(macishtype_found "${manifest}" DIRECTORY)
+        get_filename_component(macishtype_found "${macishtype_found}" NAME)
+        # A swept-up folder discovery would skip is simply not ours to
+        # install; a named one is a typo worth failing on (below).
+        if(macishtype_found MATCHES "^[A-Za-z0-9_-]+$")
+            list(APPEND macishtype_preload "${macishtype_found}")
+        endif()
+    endforeach()
+    # What `all` came to depends on the directory, so say it rather than
+    # leaving it to be read off the payload.
+    list(JOIN macishtype_preload ", " macishtype_all_text)
+    message(STATUS "PRELOAD_ENGINES=all: ${macishtype_all_text}")
+else()
+    string(REPLACE "," " " macishtype_preload "${MACISHTYPE_PRELOAD_ENGINES}")
+    separate_arguments(macishtype_preload UNIX_COMMAND "${macishtype_preload}")
+endif()
+if(macishtype_preload)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+endif()
+foreach(engine IN LISTS macishtype_preload)
+    # Engine discovery accepts only these characters, so anything else would
+    # ship a folder the addon cannot load.
+    if(NOT engine MATCHES "^[A-Za-z0-9_-]+$")
+        message(FATAL_ERROR "PRELOAD_ENGINES: \"${engine}\" is not a valid"
+                            " engine id (want [A-Za-z0-9_-])")
+    endif()
+    set(engine_dir "${CMAKE_CURRENT_SOURCE_DIR}/../engines/${engine}")
+    if(NOT EXISTS "${engine_dir}/manifest.json")
+        message(FATAL_ERROR
+                "PRELOAD_ENGINES: engines/${engine}/manifest.json not found")
+    endif()
+    # An engine's generated data tables are gitignored; its setup.py copies
+    # them out of ../tables, running the resource pipeline itself when they
+    # are missing. Running it here is what leaves the folder complete for the
+    # install rule below.
+    if(EXISTS "${engine_dir}/setup.py")
+        execute_process(COMMAND "${Python3_EXECUTABLE}" setup.py
+                        WORKING_DIRECTORY "${engine_dir}"
+                        RESULT_VARIABLE macishtype_setup_result)
+        if(NOT macishtype_setup_result EQUAL 0)
+            message(FATAL_ERROR
+                    "PRELOAD_ENGINES: engines/${engine}/setup.py failed")
+        endif()
+    endif()
+    # Only what the engine needs at runtime. setup.py in particular cannot
+    # run from an installed copy — it reads the repo's scripts/.
+    install(DIRECTORY "${engine_dir}/"
+            DESTINATION
+                "${FCITX_INSTALL_PKGDATADIR}/macishtype/engines/${engine}"
+            PATTERN "setup.py" EXCLUDE
+            PATTERN "*.test.mjs" EXCLUDE
+            PATTERN "README.md" EXCLUDE
+            PATTERN "_storage" EXCLUDE
+            PATTERN "__pycache__" EXCLUDE
+            PATTERN ".git*" EXCLUDE)
+endforeach()
+
 # Debian policy: every package documents its licensing under
 # /usr/share/doc/<package>/copyright (DEP-5 format).
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/copyright"
@@ -69,6 +140,11 @@ set(CPACK_PACKAGE_DESCRIPTION
     "Runs input method engines written in JavaScript against the MacishType \
 contract on an embedded quickjs-ng runtime. Every engine folder becomes its \
 own fcitx5 input method, with hot reload and native settings.")
+if(macishtype_preload)
+    list(JOIN macishtype_preload ", " macishtype_preload_text)
+    string(APPEND CPACK_PACKAGE_DESCRIPTION
+           " Preloaded engines: ${macishtype_preload_text}.")
+endif()
 set(CPACK_PACKAGE_VENDOR "Luke Chang")
 set(CPACK_PACKAGE_CONTACT "Luke Chang <luke1209@gmail.com>")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/luke-chang/MacishType")

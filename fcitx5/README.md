@@ -78,7 +78,15 @@ quickjs-ng runtime is a git submodule at `jshost/external/quickjs-ng`
 1. `make install`
    - Syncs the pinned data tables (`make prepare`), builds, installs into
      `/usr` (asks for sudo), and restarts fcitx5.
+   - `PRELOAD_ENGINES="array30 example"` (space- or comma-separated, or
+     `all` for every folder with a manifest) also installs those folders
+     from [`engines/`](../engines/) into the system layer, which covers
+     step 2 for them. That layer ends up holding exactly
+     what the variable asked for, so engines an earlier install put there
+     are removed when they are not listed again. Same variable as
+     [`make pkg`](#other-targets).
 2. `make install-engines`
+   - Not needed for the engines step 1 preloaded.
    - Installs engine folders from [`engines/`](../engines/) as copies, or as
      symlinks — the dev workflow, where source edits reach fcitx5 live.
    - By hand: put the folder in
@@ -87,7 +95,9 @@ quickjs-ng runtime is a git submodule at `jshost/external/quickjs-ng`
      If the engine ships a `setup.py`, run it in the source folder first —
      it puts the generated data tables in place.
 3. Open `fcitx5-configtool` → **Input Method** → **Add**, and pick the
-   engines from the list — each appears as its own input method.
+   engines from the list — each appears as its own input method. If a newly
+   installed folder is not listed, press **Update** in configtool's "Found
+   updates" banner: it re-reads the engine folders, no restart needed.
 
 ### Upgrade
 
@@ -99,8 +109,8 @@ quickjs-ng runtime is a git submodule at `jshost/external/quickjs-ng`
 
 ### Uninstall
 
-`make uninstall` — removes the production install (per cmake's manifest) and
-restarts fcitx5.
+`make uninstall` — removes the production install (per cmake's manifest, plus
+any preloaded engines) and restarts fcitx5.
 
 User data stays behind, and is yours to remove:
 
@@ -179,9 +189,16 @@ keystroke.
   stamp (`0.2.0+20260805.93426bb`, `.dirty.<HHMM>` appended for an unclean
   tree so successive local builds stay distinguishable) so an installed
   package points back at the commit it came from; the addon logs the same
-  version when it loads. Override `VERSION_STAMP` to change or omit it. A
-  package carries the addon alone — engines are user data, put in place by
-  hand (see [First install](#first-install)).
+  version when it loads. Override `VERSION_STAMP` to change or omit it.
+  `PRELOAD_ENGINES` (including `all`) works here too — see
+  [First install](#first-install) — and marks the file name with
+  `.with-engines`. The package name and version stay
+  the same either way, so two packages built from one commit are
+  indistinguishable to the package manager — `apt install ./file.deb` sees
+  the same version and does nothing, and graphical installers show it as
+  already installed; switching between them means removing the installed one
+  first. Without the variable the package carries the addon alone and engines
+  are installed separately.
 - `make restart` — restart fcitx5; `LOG_DEBUG=1` enables per-key Debug
   logging (including engine `console.debug`).
 - `make clean` — remove the build directory.

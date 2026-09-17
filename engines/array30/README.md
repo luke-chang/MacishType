@@ -23,9 +23,14 @@ JS engine API end to end.
 
    - **macOS** — open MacishType's **Settings → JS → Engine folder → Choose
      Folder…** and pick this folder.
-   - **Linux (fcitx5)** — place this folder in the addon's engine directory,
-     copied or symlinked, then add **Array (行列)** in `fcitx5-configtool` →
-     **Input Method** → **Add**:
+   - **Linux (fcitx5)** — the addon can ship this engine already: `make
+     install PRELOAD_ENGINES=array30` (or `make pkg` with the same variable)
+     puts it in the system layer with the data tables in place, so neither
+     step here is needed — see
+     [`fcitx5/README.md`](../../fcitx5/README.md#first-install). To place it
+     by hand instead, put this folder in the addon's engine directory, copied
+     or symlinked, then add **Array (行列)** in `fcitx5-configtool` → **Input
+     Method** → **Add**:
 
      ```sh
      mkdir -p ~/.local/share/fcitx5/macishtype/engines

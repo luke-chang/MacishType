@@ -9,6 +9,12 @@ JOBS ?=
 # cache, so a build dir configured once as Debug would keep that type for
 # every later build. BUILD_TYPE=Debug gives an unoptimized build on purpose.
 BUILD_TYPE ?= RelWithDebInfo
+# Engine folders from ../engines to install alongside the addon, space- or
+# comma-separated, or `all` for every folder with a manifest
+# (`make install PRELOAD_ENGINES="array30 example"`, and the same for
+# `make pkg`). Empty ships the addon alone. Passed on every configure for the reason above: a build dir
+# that once carried engines would keep installing them.
+PRELOAD_ENGINES ?=
 USER_LIB := $(HOME)/.local/lib/fcitx5
 USER_SHARE := $(HOME)/.local/share/fcitx5
 # Where the addon links engine icons at runtime (XDG data home, not fcitx's
@@ -75,7 +81,7 @@ help:
 	@echo "  make install-engines   - Install engines from ../engines/ as copies or symlinks"
 	@echo "  make install           - Production install into /usr (sudo) + restart"
 	@echo "  make uninstall         - Remove the production install + restart"
-	@echo "  make pkg               - Build a native package (deb/rpm) via CPack"
+	@echo "  make pkg               - Build a native package (deb/rpm); PRELOAD_ENGINES=\"array30\" or =all to preload engines"
 	@echo "  make clean             - Clean build artifacts"
 	@echo "  make clean-resources   - Remove downloaded external resources and cache/stamp"
 	@echo "  make log               - Follow the addon's log (user journal)"
@@ -96,7 +102,8 @@ update-resources:
 	@../scripts/ExternalResources.py --update
 
 build: prepare
-	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+	    -DMACISHTYPE_PRELOAD_ENGINES="$(PRELOAD_ENGINES)"
 	cmake --build $(BUILD_DIR) -j $(JOBS)
 
 # Acceptance suite against an isolated fcitx5; safe to run any time.
@@ -194,6 +201,10 @@ install-engines:
 # Production install (addon .so, confs, shared runtime, and the prepared
 # module data). The distro fcitx5 only loads addons from /usr, so the
 # install prefix must be /usr — /usr/local would be ignored.
+#
+# The system engines directory is cleared first, so it ends up holding
+# exactly what PRELOAD_ENGINES asked for: cmake's install only ever adds,
+# while dpkg already drops files a new version no longer carries.
 install:
 	@if [ -f $(USER_LIB)/libmacishtype.so ] || \
 	    [ -f $(USER_SHARE)/addon/macishtype.conf ]; then \
@@ -204,8 +215,10 @@ install:
 	fi
 	$(MAKE) prepare
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-	    -DCMAKE_INSTALL_PREFIX=/usr
+	    -DCMAKE_INSTALL_PREFIX=/usr \
+	    -DMACISHTYPE_PRELOAD_ENGINES="$(PRELOAD_ENGINES)"
 	cmake --build $(BUILD_DIR) -j $(JOBS)
+	sudo rm -rf /usr/share/fcitx5/macishtype/engines
 	sudo cmake --install $(BUILD_DIR)
 	$(MAKE) restart
 
@@ -215,10 +228,16 @@ install:
 # the correct cleanup for a real removal. Switching to a dev install
 # instead? Run `make debug` first so the addon never disappears and the
 # profile keeps its entries.
+#
+# Preloaded engines are removed outright rather than through the manifest,
+# which records only the last install: a package that once carried engines
+# would otherwise leave them behind. The user-layer engines directory in
+# ~/.local/share is never touched.
 uninstall:
 	@test -f $(BUILD_DIR)/install_manifest.txt || \
 	    { echo "No install manifest; nothing recorded to uninstall." >&2; exit 1; }
 	sudo xargs rm -f < $(BUILD_DIR)/install_manifest.txt
+	sudo rm -rf /usr/share/fcitx5/macishtype/engines
 	@sudo rmdir /usr/share/fcitx5/macishtype/tables \
 	    /usr/share/fcitx5/macishtype 2> /dev/null || true
 	$(MAKE) restart
@@ -240,7 +259,8 @@ remove-icon-links:
 pkg:
 	$(MAKE) prepare
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-	    -DCMAKE_INSTALL_PREFIX=/usr
+	    -DCMAKE_INSTALL_PREFIX=/usr \
+	    -DMACISHTYPE_PRELOAD_ENGINES="$(PRELOAD_ENGINES)"
 	VERSION_STAMP="$(VERSION_STAMP)" cmake --build $(BUILD_DIR) -j $(JOBS)
 	@gen=$$(. /etc/os-release 2> /dev/null; \
 	    case "$$ID $$ID_LIKE" in \
@@ -249,7 +269,25 @@ pkg:
 	        *) echo TGZ ;; \
 	    esac); \
 	set -x; \
-	cpack -G $$gen --config $(BUILD_DIR)/CPackConfig.cmake -B $(BUILD_DIR)
+	cpack -G $$gen --config $(BUILD_DIR)/CPackConfig.cmake -B $(BUILD_DIR) \
+	    || exit 1; \
+	{ set +x; } 2> /dev/null; \
+	case "$$gen" in \
+	    DEB) glob='*.deb' ;; \
+	    RPM) glob='*.rpm' ;; \
+	    *) glob='*.tar.gz' ;; \
+	esac; \
+	pkg=$$(ls -t $(BUILD_DIR)/$$glob 2> /dev/null | head -1); \
+	if [ -n "$(PRELOAD_ENGINES)" ] && [ -n "$$pkg" ]; then \
+	    case "$$pkg" in \
+	        *.tar.gz) marked="$${pkg%.tar.gz}.with-engines.tar.gz" ;; \
+	        *) marked="$${pkg%.*}.with-engines.$${pkg##*.}" ;; \
+	    esac; \
+	    mv "$$pkg" "$$marked" && pkg="$$marked"; \
+	fi; \
+	echo; \
+	echo "Package: $$pkg"; \
+	echo "Engines: $(if $(PRELOAD_ENGINES),$(PRELOAD_ENGINES),none)"
 
 clean:
 	rm -rf $(BUILD_DIR)
