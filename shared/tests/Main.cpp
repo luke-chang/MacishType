@@ -12,6 +12,7 @@ int main() {
 
     testDictionaries(checks);
     testGraphemeIndex(checks);
+    testUtf8Validation(checks);
 
     if (checks.failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", checks.failures);

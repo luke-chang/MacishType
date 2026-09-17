@@ -43,6 +43,7 @@ if(PROJECT_IS_TOP_LEVEL)
         tests/DictionaryTests.cpp
         tests/GraphemeTests.cpp
         tests/Main.cpp
+        tests/Utf8Tests.cpp
     )
     # WHOLE_ARCHIVE is what makes this equivalent to the manual "link
     # libmacishtype-shared.a plus ICU and nothing else" check: a plain link
