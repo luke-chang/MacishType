@@ -5,6 +5,13 @@ project(fcitx5-macishtype VERSION 0.3.0)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../shared/cmake/SourcePathMap.cmake")
 
+# Directories CMake creates on the way to a destination otherwise follow the
+# build umask, which lands group-writable 775 under /usr/share.
+set(CMAKE_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE)
+
 # The embedded interpreter runs on every keystroke; never build it
 # unoptimized by accident.
 if(NOT CMAKE_BUILD_TYPE)
