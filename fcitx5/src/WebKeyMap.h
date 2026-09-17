@@ -19,6 +19,7 @@ struct WebKeyEvent {
     bool metaKey = false;
     bool capsLock = false;
     bool numLock = false;
+    bool altGraph = false;
     bool repeat = false;
     // 0 standard, 1 left modifier, 2 right modifier, 3 numpad.
     int location = 0;

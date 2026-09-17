@@ -188,6 +188,8 @@ WebKeyEvent translateKeyEvent(const fcitx::Key &rawKey) {
     // KeyState::NumLock is Mod2, where the common XKB maps bind the lock. A
     // frontend may still not forward it.
     event.numLock = states.test(fcitx::KeyState::NumLock);
+    // Mod5 is where the common XKB maps bind AltGr (ISO_Level3_Shift).
+    event.altGraph = states.test(fcitx::KeyState::Mod5);
     event.repeat = states.test(fcitx::KeyState::Repeat);
     event.location = locationForKey(rawKey);
 

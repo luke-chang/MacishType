@@ -353,9 +353,10 @@ export interface KeyEvent extends EventContext, EventMutators {
    * Query an individual modifier or lock state.
    *
    * Live states: `"Shift"` / `"Control"` / `"Alt"` / `"Meta"` (same as the
-   * boolean `*Key` properties above), `"CapsLock"`, and `"NumLock"` — that
-   * last one host-dependent, as in browsers: `false` on macOS, live on
-   * fcitx5 only where the frontend forwards Mod2.
+   * boolean `*Key` properties above), `"CapsLock"`, plus `"NumLock"` and
+   * `"AltGraph"` — those last two host-dependent, as in browsers: `false`
+   * on macOS, live on fcitx5 (NumLock only where the frontend forwards
+   * Mod2).
    *
    * Every other web-spec string returns `false` on both hosts. A key can
    * still arrive while its state reads `false`, so detect those with `code`.

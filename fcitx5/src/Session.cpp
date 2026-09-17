@@ -1230,6 +1230,7 @@ JSValue EngineSession::makeEvent(const WebKeyEvent *web,
         keys.metaKey = web->metaKey;
         keys.capsLock = web->capsLock;
         keys.numLock = web->numLock;
+        keys.altGraph = web->altGraph;
         keys.repeat = web->repeat;
         keys.location = web->location;
         keyFields = &keys;

@@ -42,6 +42,7 @@ struct EventKeyFields {
     bool metaKey = false;
     bool capsLock = false;
     bool numLock = false;
+    bool altGraph = false;
     bool repeat = false;
     int location = 0;
 };

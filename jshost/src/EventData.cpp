@@ -163,6 +163,7 @@ JSValue buildEventData(JSContext *ctx, const EventStaging &staging,
         setBoolField(ctx, states, "Meta", web->metaKey);
         setBoolField(ctx, states, "CapsLock", web->capsLock);
         setBoolField(ctx, states, "NumLock", web->numLock);
+        setBoolField(ctx, states, "AltGraph", web->altGraph);
         JS_SetPropertyStr(ctx, data, "modifierStates", states);
     }
 
