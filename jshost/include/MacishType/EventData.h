@@ -4,6 +4,8 @@
 
 #include <quickjs.h>
 
+#include "MacishType/WebKeyEvent.h"
+
 namespace MacishType {
 
 class JsEngineHost;
@@ -31,22 +33,6 @@ CandidateWindowConfig
 resolvedAssociatedCandidateWindowConfig(const JsEngineHost &host,
                                         AssociatedSelectionKeys userPolicy);
 
-// Key fields in the contract's web KeyboardEvent vocabulary.
-struct EventKeyFields {
-    std::string key;
-    std::string code;
-    std::string keyIgnoringModifiers;
-    bool shiftKey = false;
-    bool ctrlKey = false;
-    bool altKey = false;
-    bool metaKey = false;
-    bool capsLock = false;
-    bool numLock = false;
-    bool altGraph = false;
-    bool repeat = false;
-    int location = 0;
-};
-
 // A candidate being confirmed; payload is borrowed from the caller.
 struct EventCandidate {
     std::string text;
@@ -70,7 +56,7 @@ struct EventStaging {
 // The __MacishTypeHost_makeEvent input: fields, modifierStates (key events
 // only), and candidateWindow. web/candidate may be null.
 JSValue buildEventData(JSContext *ctx, const EventStaging &staging,
-                       const EventKeyFields *web,
+                       const WebKeyEvent *web,
                        const EventCandidate *candidate, int absoluteIndex,
                        const CandidateWindowConfig &window);
 

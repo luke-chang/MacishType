@@ -3,7 +3,8 @@ cmake_minimum_required(VERSION 3.25)
 # macishtype-shared: the platform-independent pieces every MacishType host
 # needs whether or not it embeds a JS engine — the log facade, the ICU
 # grapheme/Intl handle cache, the cluster index behind contract character
-# indices, UTF-8 validation, and the associated-phrase dictionary.
+# indices, UTF-8 validation, the associated-phrase dictionary, and the
+# contract's key event vocabulary.
 # Deliberately free of any JS runtime dependency so a native host can link it
 # without pulling in QuickJS.
 project(macishtype-shared LANGUAGES CXX)

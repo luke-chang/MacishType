@@ -316,7 +316,7 @@ bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
         Qjs::Value value(ctx, JS_GetPropertyStr(ctx, keyFields, name));
         return JS_ToBool(ctx, value.get()) == 1;
     };
-    EventKeyFields keys;
+    WebKeyEvent keys;
     keys.key = stringProp("key");
     keys.code = stringProp("code");
     keys.keyIgnoringModifiers = stringProp("keyIgnoringModifiers", keys.key);

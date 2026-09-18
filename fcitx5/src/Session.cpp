@@ -1216,25 +1216,6 @@ JSValue EngineSession::makeEvent(const WebKeyEvent *web,
     EventStaging staging{markedText_, stagedText_,
                          message_, associating_,
                          candidatesVisible(), currentPageItemCount()};
-    EventKeyFields keys;
-    const EventKeyFields *keyFields = nullptr;
-    if (web != nullptr) {
-        // Named assignments: field growth in the contract vocabulary must
-        // not silently re-bind a positional copy.
-        keys.key = web->key;
-        keys.code = web->code;
-        keys.keyIgnoringModifiers = web->keyIgnoringModifiers;
-        keys.shiftKey = web->shiftKey;
-        keys.ctrlKey = web->ctrlKey;
-        keys.altKey = web->altKey;
-        keys.metaKey = web->metaKey;
-        keys.capsLock = web->capsLock;
-        keys.numLock = web->numLock;
-        keys.altGraph = web->altGraph;
-        keys.repeat = web->repeat;
-        keys.location = web->location;
-        keyFields = &keys;
-    }
     EventCandidate confirming;
     const EventCandidate *confirmingPtr = nullptr;
     if (candidate != nullptr) {
@@ -1242,7 +1223,7 @@ JSValue EngineSession::makeEvent(const WebKeyEvent *web,
                       candidate->payload, candidate->hasPayload};
         confirmingPtr = &confirming;
     }
-    Qjs::Value data(ctx, buildEventData(ctx, staging, keyFields,
+    Qjs::Value data(ctx, buildEventData(ctx, staging, web,
                                         confirmingPtr, absoluteIndex,
                                         windowConfig_));
     Qjs::Value global(ctx, JS_GetGlobalObject(ctx));

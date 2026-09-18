@@ -115,7 +115,7 @@ resolvedAssociatedCandidateWindowConfig(const JsEngineHost &host,
 }
 
 JSValue buildEventData(JSContext *ctx, const EventStaging &staging,
-                       const EventKeyFields *web,
+                       const WebKeyEvent *web,
                        const EventCandidate *candidate, int absoluteIndex,
                        const CandidateWindowConfig &window) {
     JSValue data = JS_NewObject(ctx);
