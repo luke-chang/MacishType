@@ -9,14 +9,14 @@
 
 #include "FontCoverage.h"
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 // HostEventLoop over the fcitx event loop; the EventDispatcher backs the
 // one thread-safe entry (post), used by the core fetch worker.
-class FcitxHostEventLoop : public HostEventLoop {
+class HostEventLoop : public ::MacishType::HostEventLoop {
 public:
-    FcitxHostEventLoop(fcitx::EventLoop *eventLoop,
-                       fcitx::EventDispatcher *dispatcher)
+    HostEventLoop(fcitx::EventLoop *eventLoop,
+                  fcitx::EventDispatcher *dispatcher)
         : eventLoop_(eventLoop), dispatcher_(dispatcher) {}
 
     Handle postDelayed(std::chrono::microseconds delay,
@@ -32,20 +32,20 @@ private:
 // The ambient core seams implemented against fcitx5. Constructing an
 // instance installs them process-wide (setHostServices); keep it alive for
 // the whole addon lifetime — the installed pointers reference its members.
-class FcitxCoreServices {
+class CoreServices {
 public:
-    FcitxCoreServices();
-    FcitxCoreServices(const FcitxCoreServices &) = delete;
-    FcitxCoreServices &operator=(const FcitxCoreServices &) = delete;
+    CoreServices();
+    CoreServices(const CoreServices &) = delete;
+    CoreServices &operator=(const CoreServices &) = delete;
 
 private:
-    class FcitxLogger : public Logger {
+    class Logger : public ::MacishType::Logger {
     public:
         bool enabled(Level level) const override;
         void write(Level level, std::string_view message,
                    const std::source_location &where) override;
     };
-    class FcitxResourceLocator : public ResourceLocator {
+    class ResourceLocator : public ::MacishType::ResourceLocator {
     public:
         std::filesystem::path
         locateRuntimeScript(std::string_view fileName) override;
@@ -53,21 +53,21 @@ private:
         locateDataTable(std::string_view fileBase,
                         std::string_view language) override;
     };
-    class FcitxPlatformInfo : public PlatformInfo {
+    class PlatformInfo : public ::MacishType::PlatformInfo {
     public:
         std::string userAgentPrefix() override;
         std::vector<std::string> preferredLanguages() override;
     };
-    class FcitxTranslator : public Translator {
+    class Translator : public ::MacishType::Translator {
     public:
         std::string translate(const char *text) override;
     };
 
-    FcitxLogger logger_;
-    FcitxResourceLocator resources_;
-    FcitxPlatformInfo platform_;
-    FcitxTranslator translator_;
+    Logger logger_;
+    ResourceLocator resources_;
+    PlatformInfo platform_;
+    Translator translator_;
     FontconfigCoverageProvider fontCoverage_;
 };
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5

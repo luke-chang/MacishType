@@ -10,7 +10,7 @@
 
 #include <MacishType/Manifest.h>
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 // Extra description keys configtool reads beyond type/default: a hover
 // tooltip, and for pickers the runtime enum entries — the documented
@@ -89,4 +89,4 @@ private:
     std::vector<std::unique_ptr<fcitx::OptionBase>> options_;
 };
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5

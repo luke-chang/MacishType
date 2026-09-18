@@ -10,7 +10,7 @@
 
 #include "Log.h"
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 namespace {
 
@@ -89,4 +89,4 @@ const std::string &FontconfigCoverageProvider::coverageBitmapBase64() {
     return cached;
 }
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5

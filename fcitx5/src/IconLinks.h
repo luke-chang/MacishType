@@ -10,7 +10,7 @@
 
 #include "EngineDiscovery.h"
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 // Installs engine icons into the user's hicolor theme so panels can be handed
 // a theme *name* instead of a file path. SNI/dbusmenu panels (what GNOME's
@@ -69,4 +69,4 @@ private:
     fcitx::EventLoop *eventLoop_;
 };
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5

@@ -15,7 +15,7 @@
 #include <MacishType/QjsUtil.h>
 #include "Log.h"
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 namespace {
 
@@ -719,10 +719,10 @@ void EngineSession::applyUpdateMessage(UpdateMessageAction action) {
 
 // Candidate word pushed into the fcitx input panel; select() (mouse click)
 // commits by absolute index.
-class MacishCandidateWord : public fcitx::CandidateWord {
+class CandidateWord : public fcitx::CandidateWord {
 public:
-    MacishCandidateWord(int index, const CandidateData &candidate,
-                        std::function<void(int)> onSelect)
+    CandidateWord(int index, const CandidateData &candidate,
+                  std::function<void(int)> onSelect)
         : fcitx::CandidateWord(fcitx::Text(candidate.text)), index_(index),
           onSelect_(std::move(onSelect)) {
         if (!candidate.annotation.empty()) {
@@ -744,9 +744,9 @@ private:
 // prev/next arrows, or a client PrevPage/NextPage) back through navigate(), so
 // mouse and keyboard paging share one path: both move the highlight onto the
 // new page and fire candidateSelectionChanged.
-class MacishCandidateList : public fcitx::CommonCandidateList {
+class CandidateList : public fcitx::CommonCandidateList {
 public:
-    explicit MacishCandidateList(
+    explicit CandidateList(
         std::function<void(const std::string &)> onPage)
         : onPage_(std::move(onPage)) {}
 
@@ -782,7 +782,7 @@ void EngineSession::renderCandidates(int initialCursor) {
     // page itself so hasPrev()/hasNext() drive the panel's page indicators and
     // mouse paging. The list owns cursor/page; initialCursor is an absolute
     // index, or -1 for a suspended (no-selection) highlight.
-    auto list = std::make_unique<MacishCandidateList>(
+    auto list = std::make_unique<CandidateList>(
         [this](const std::string &direction) { navigate(direction, false); });
     int total = static_cast<int>(candidates_.size());
     int pageSize = std::max(1, windowConfig_.pageSize);
@@ -824,7 +824,7 @@ void EngineSession::renderCandidates(int initialCursor) {
     };
     for (int i = 0; i < total; i++) {
         list->append(
-            std::make_unique<MacishCandidateWord>(i, candidates_[i], onSelect));
+            std::make_unique<CandidateWord>(i, candidates_[i], onSelect));
     }
     // Cursor first, then page: with currentPage_ freshly 0 from setPageSize,
     // cursorIndex() reads -1 for an off-page cursor so setPage's
@@ -958,7 +958,7 @@ void EngineSession::renderReverseLookup(std::vector<CandidateData> rows) {
     candidates_ = std::move(rows);
     // Read-only: paging routes to the read-only pager (keeps suspended), and
     // clicking a row only dismisses. Fixed vertical, no index labels.
-    auto list = std::make_unique<MacishCandidateList>(
+    auto list = std::make_unique<CandidateList>(
         [this](const std::string &direction) {
             reverseLookupPage(direction == "pageForward");
         });
@@ -970,7 +970,7 @@ void EngineSession::renderReverseLookup(std::vector<CandidateData> rows) {
     auto onSelect = [this](int) { hideReverseLookup(); };
     for (int i = 0; i < total; i++) {
         list->append(
-            std::make_unique<MacishCandidateWord>(i, candidates_[i], onSelect));
+            std::make_unique<CandidateWord>(i, candidates_[i], onSelect));
     }
     list->setGlobalCursorIndex(-1); // suspended: never highlight a code
     auto &inputPanel = inputContext_->inputPanel();
@@ -1286,4 +1286,4 @@ void EngineSession::freeCandidates(std::vector<CandidateData> &candidates) {
     candidates.clear();
 }
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5

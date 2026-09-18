@@ -5,7 +5,7 @@
 
 #include <fcitx-utils/key.h>
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 // A fcitx key event translated into the web KeyboardEvent shape the
 // MacishType JS contract uses.
@@ -36,4 +36,4 @@ WebKeyEvent translateKeyEvent(const fcitx::Key &rawKey);
 // digit row is shifted.
 std::optional<char> digitForWebCode(const std::string &code);
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5

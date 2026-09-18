@@ -2,20 +2,20 @@
 
 #include <fcitx-utils/log.h>
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 FCITX_DECLARE_LOG_CATEGORY(macishtype_logcategory);
 
 // fcitx5 has no notice level, so NOTICE lands on its Warn — the same
-// mapping FcitxLogger applies to Logger::Level::Notice. No FAULT for
+// mapping Logger applies to Logger::Level::Notice. No FAULT for
 // the same reason: fcitx5 stops at Error.
 #define MACISHTYPE_DEBUG()                                                     \
-    FCITX_LOGC(::MacishType::macishtype_logcategory, Debug)
+    FCITX_LOGC(::MacishType::Fcitx5::macishtype_logcategory, Debug)
 #define MACISHTYPE_INFO()                                                      \
-    FCITX_LOGC(::MacishType::macishtype_logcategory, Info)
+    FCITX_LOGC(::MacishType::Fcitx5::macishtype_logcategory, Info)
 #define MACISHTYPE_NOTICE()                                                    \
-    FCITX_LOGC(::MacishType::macishtype_logcategory, Warn)
+    FCITX_LOGC(::MacishType::Fcitx5::macishtype_logcategory, Warn)
 #define MACISHTYPE_ERROR()                                                     \
-    FCITX_LOGC(::MacishType::macishtype_logcategory, Error)
+    FCITX_LOGC(::MacishType::Fcitx5::macishtype_logcategory, Error)
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5

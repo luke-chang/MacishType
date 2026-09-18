@@ -5,7 +5,7 @@
 
 #include <fcitx-utils/i18n.h>
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 void registerTextDomain() {
     const char *home = std::getenv("HOME");
@@ -29,4 +29,4 @@ void registerTextDomain() {
     fcitx::registerDomain(kTextDomain, FCITX_INSTALL_LOCALEDIR);
 }
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5

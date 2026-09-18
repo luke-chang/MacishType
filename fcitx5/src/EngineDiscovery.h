@@ -7,7 +7,7 @@
 
 #include <MacishType/Manifest.h>
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 // Which icon candidate a manifest icon base name resolved to. The kind is
 // reported rather than re-derived from the resolved path: a plain `icon.svg`
@@ -79,4 +79,4 @@ std::optional<EngineInfo>
 discoverEngine(const std::string &id,
                const std::vector<std::string> &languages);
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5

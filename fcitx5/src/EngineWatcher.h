@@ -9,7 +9,7 @@
 
 #include <fcitx-utils/event.h>
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 // inotify watcher over engine folders. File changes fire the callback once
 // per engine after a short debounce, carrying the affected canonical paths
@@ -81,4 +81,4 @@ private:
     std::map<std::string, std::set<std::string>> pendingPaths_;
 };
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5

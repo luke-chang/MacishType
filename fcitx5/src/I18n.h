@@ -1,9 +1,9 @@
 #pragma once
 
-// translated() lives in the core seams, installed by FcitxCoreServices.
+// translated() lives in the core seams, installed by CoreServices.
 #include <MacishType/HostSeams.h>
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 // gettext domain of this addon; bound by registerTextDomain, consumed by
 // the Translator seam adapter.
@@ -15,4 +15,4 @@ inline constexpr char kTextDomain[] = "fcitx5-macishtype";
 // directory per domain, so pick whichever applies.
 void registerTextDomain();
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5

@@ -17,15 +17,15 @@
 #include "I18n.h"
 #include "Log.h"
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
-// FcitxHostEventLoop ------------------------------------------------------
+// HostEventLoop -----------------------------------------------------------
 
 namespace {
 
 // Wraps a fcitx event source so destroying the seam handle cancels it.
 template <typename Source>
-class SourceHandle : public HostEventLoop::Cancelable {
+class SourceHandle : public ::MacishType::HostEventLoop::Cancelable {
 public:
     explicit SourceHandle(std::unique_ptr<Source> source)
         : source_(std::move(source)) {}
@@ -36,9 +36,9 @@ private:
 
 } // namespace
 
-HostEventLoop::Handle
-FcitxHostEventLoop::postDelayed(std::chrono::microseconds delay,
-                                std::function<void()> callback) {
+::MacishType::HostEventLoop::Handle
+HostEventLoop::postDelayed(std::chrono::microseconds delay,
+                           std::function<void()> callback) {
     auto source = eventLoop_->addTimeEvent(
         CLOCK_MONOTONIC, fcitx::now(CLOCK_MONOTONIC) + delay.count(), 0,
         [callback = std::move(callback)](fcitx::EventSourceTime *,
@@ -54,8 +54,8 @@ FcitxHostEventLoop::postDelayed(std::chrono::microseconds delay,
         std::move(source));
 }
 
-HostEventLoop::Handle
-FcitxHostEventLoop::postDeferred(std::function<void()> callback) {
+::MacishType::HostEventLoop::Handle
+HostEventLoop::postDeferred(std::function<void()> callback) {
     auto source = eventLoop_->addDeferEvent(
         [callback = std::move(callback)](fcitx::EventSource *) mutable {
             auto localCallback = std::move(callback);
@@ -66,27 +66,27 @@ FcitxHostEventLoop::postDeferred(std::function<void()> callback) {
         std::move(source));
 }
 
-void FcitxHostEventLoop::post(std::function<void()> callback) {
+void HostEventLoop::post(std::function<void()> callback) {
     dispatcher_->schedule(std::move(callback));
 }
 
-// FcitxCoreServices -------------------------------------------------------
+// CoreServices ------------------------------------------------------------
 
 namespace {
 
 // The shared vocabulary has no warn level and nothing above error; fcitx5
 // has no notice and stops at error. Both directions of that squeeze live
 // here so enabled() and write() cannot disagree.
-fcitx::LogLevel toFcitxLevel(Logger::Level level) {
+fcitx::LogLevel toFcitxLevel(::MacishType::Logger::Level level) {
     switch (level) {
-    case Logger::Level::Debug:
+    case ::MacishType::Logger::Level::Debug:
         return fcitx::LogLevel::Debug;
-    case Logger::Level::Info:
+    case ::MacishType::Logger::Level::Info:
         return fcitx::LogLevel::Info;
-    case Logger::Level::Notice:
+    case ::MacishType::Logger::Level::Notice:
         return fcitx::LogLevel::Warn;
-    case Logger::Level::Error:
-    case Logger::Level::Fault:
+    case ::MacishType::Logger::Level::Error:
+    case ::MacishType::Logger::Level::Fault:
         return fcitx::LogLevel::Error;
     }
     return fcitx::LogLevel::Info;
@@ -94,7 +94,7 @@ fcitx::LogLevel toFcitxLevel(Logger::Level level) {
 
 } // namespace
 
-FcitxCoreServices::FcitxCoreServices() {
+CoreServices::CoreServices() {
     HostServices services;
     services.resources = &resources_;
     services.platform = &platform_;
@@ -104,13 +104,13 @@ FcitxCoreServices::FcitxCoreServices() {
     setHostServices(services);
 }
 
-bool FcitxCoreServices::FcitxLogger::enabled(Level level) const {
+bool CoreServices::Logger::enabled(Level level) const {
     return macishtype_logcategory().checkLogLevel(toFcitxLevel(level));
 }
 
-void FcitxCoreServices::FcitxLogger::write(Level level,
-                                           std::string_view message,
-                                           const std::source_location &where) {
+void CoreServices::Logger::write(Level level,
+                                 std::string_view message,
+                                 const std::source_location &where) {
     // Built by hand rather than through FCITX_LOGC: that macro bakes its own
     // __FILE__/__LINE__ in as template arguments, which would name this
     // adapter instead of the call site. fcitx5 prints base names only, so
@@ -124,14 +124,14 @@ void FcitxCoreServices::FcitxLogger::write(Level level,
         << message;
 }
 
-std::filesystem::path FcitxCoreServices::FcitxResourceLocator::
+std::filesystem::path CoreServices::ResourceLocator::
     locateRuntimeScript(std::string_view fileName) {
     return fcitx::StandardPaths::global().locate(
         fcitx::StandardPathsType::PkgData,
         "macishtype/" + std::string(fileName));
 }
 
-std::filesystem::path FcitxCoreServices::FcitxResourceLocator::locateDataTable(
+std::filesystem::path CoreServices::ResourceLocator::locateDataTable(
     std::string_view fileBase, std::string_view language) {
     return fcitx::StandardPaths::global().locate(
         fcitx::StandardPathsType::PkgData,
@@ -211,7 +211,7 @@ std::string bcp47FromLocale(const std::string &locale) {
 
 } // namespace
 
-std::string FcitxCoreServices::FcitxPlatformInfo::userAgentPrefix() {
+std::string CoreServices::PlatformInfo::userAgentPrefix() {
     // Product token stays "MacishType/" across host ports; platform tokens
     // and the fcitx5 segment identify this Linux host.
     std::vector<std::string> platformTokens;
@@ -239,7 +239,7 @@ std::string FcitxCoreServices::FcitxPlatformInfo::userAgentPrefix() {
 }
 
 std::vector<std::string>
-FcitxCoreServices::FcitxPlatformInfo::preferredLanguages() {
+CoreServices::PlatformInfo::preferredLanguages() {
     std::vector<std::string> languages;
     auto push = [&](const std::string &tag) {
         if (!tag.empty() &&
@@ -263,8 +263,8 @@ FcitxCoreServices::FcitxPlatformInfo::preferredLanguages() {
     return languages;
 }
 
-std::string FcitxCoreServices::FcitxTranslator::translate(const char *text) {
+std::string CoreServices::Translator::translate(const char *text) {
     return fcitx::translateDomain(kTextDomain, text);
 }
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5

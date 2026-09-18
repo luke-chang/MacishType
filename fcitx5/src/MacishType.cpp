@@ -28,7 +28,7 @@
 #include "Log.h"
 #include "VersionStamp.h"
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 FCITX_DEFINE_LOG_CATEGORY(macishtype_logcategory, "macishtype");
 
@@ -182,7 +182,7 @@ void MenuItemAction::activate(fcitx::InputContext *inputContext) {
     }
 }
 
-MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
+InputMethodEngine::InputMethodEngine(fcitx::Instance *instance)
     : instance_(instance),
       hostEventLoop_(&instance->eventLoop(), &instance->eventDispatcher()),
       languages_(preferredLanguages()), engines_(discoverEngines(languages_)) {
@@ -323,7 +323,7 @@ MacishTypeEngine::MacishTypeEngine(fcitx::Instance *instance)
         });
 }
 
-MacishTypeEngine::~MacishTypeEngine() {
+InputMethodEngine::~InputMethodEngine() {
     // Package removal (apt, make uninstall) cannot reach per-user files, so
     // the icon links this addon made would outlive it. Detect removal here:
     // the library this process was loaded from is gone from disk. A normal
@@ -335,7 +335,7 @@ MacishTypeEngine::~MacishTypeEngine() {
     }
 }
 
-std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {
+std::vector<fcitx::InputMethodEntry> InputMethodEngine::listInputMethods() {
     // fcitx re-invokes this on Instance::refresh (the configtool Update
     // button); rescanning here is what lets folders dropped in at runtime
     // join the list without a restart.
@@ -358,7 +358,7 @@ std::vector<fcitx::InputMethodEntry> MacishTypeEngine::listInputMethods() {
     return entries;
 }
 
-void MacishTypeEngine::setConfig(const fcitx::RawConfig &raw) {
+void InputMethodEngine::setConfig(const fcitx::RawConfig &raw) {
     config_.load(raw, true);
     fcitx::safeSaveAsIni(config_, "conf/macishtype.conf");
     // Refresh the action's displayed hotkey (matching is read live in
@@ -366,12 +366,12 @@ void MacishTypeEngine::setConfig(const fcitx::RawConfig &raw) {
     findInputCodeAction_.setHotkey(config_.findInputCodeKey.value());
 }
 
-void MacishTypeEngine::refreshEngineIcon(EngineInfo &engine) {
+void InputMethodEngine::refreshEngineIcon(EngineInfo &engine) {
     engine.icon = resolveIcon(engine.root, engine.manifest.icon);
     engine.iconName = iconLinks_->install(engine.id, engine.icon);
 }
 
-void MacishTypeEngine::rebuildEngineSettings(const EngineInfo &engine) {
+void InputMethodEngine::rebuildEngineSettings(const EngineInfo &engine) {
     auto settings = std::make_unique<EngineSettings>(
         engine.manifest.settingsSections,
         associatedDictionaryAvailable(engine.manifest.intendedLanguage),
@@ -392,13 +392,13 @@ void MacishTypeEngine::rebuildEngineSettings(const EngineInfo &engine) {
     engineSettings_[engine.id] = std::move(settings);
 }
 
-const fcitx::Configuration *MacishTypeEngine::getConfigForInputMethod(
+const fcitx::Configuration *InputMethodEngine::getConfigForInputMethod(
     const fcitx::InputMethodEntry &entry) const {
     auto found = engineSettings_.find(engineIdFromEntry(entry));
     return found != engineSettings_.end() ? found->second.get() : nullptr;
 }
 
-void MacishTypeEngine::setConfigForInputMethod(
+void InputMethodEngine::setConfigForInputMethod(
     const fcitx::InputMethodEntry &entry, const fcitx::RawConfig &raw) {
     std::string engineId = engineIdFromEntry(entry);
     auto found = engineSettings_.find(engineId);
@@ -416,16 +416,16 @@ void MacishTypeEngine::setConfigForInputMethod(
 }
 
 std::string
-MacishTypeEngine::subModeIconImpl(const fcitx::InputMethodEntry &entry,
-                                  fcitx::InputContext &inputContext) {
+InputMethodEngine::subModeIconImpl(const fcitx::InputMethodEntry &entry,
+                                   fcitx::InputContext &inputContext) {
     FCITX_UNUSED(inputContext);
     const auto *engine = engineForEntry(entry);
     return engine != nullptr ? engine->iconName : std::string();
 }
 
 std::string
-MacishTypeEngine::subModeLabelImpl(const fcitx::InputMethodEntry &entry,
-                                   fcitx::InputContext &inputContext) {
+InputMethodEngine::subModeLabelImpl(const fcitx::InputMethodEntry &entry,
+                                    fcitx::InputContext &inputContext) {
     FCITX_UNUSED(inputContext);
     const auto *engine = engineForEntry(entry);
     return engine != nullptr ? labelForEngine(*engine) : std::string();
@@ -450,8 +450,8 @@ void applyPromptPreedit(fcitx::InputContext *inputContext,
 
 } // namespace
 
-void MacishTypeEngine::keyEvent(const fcitx::InputMethodEntry &entry,
-                                fcitx::KeyEvent &keyEvent) {
+void InputMethodEngine::keyEvent(const fcitx::InputMethodEntry &entry,
+                                 fcitx::KeyEvent &keyEvent) {
     // Find Input Code hotkey (before session dispatch): only for a capability
     // engine with a live session; consumes the key and shows the reverse
     // lookup. Without a session (load failed / not yet built) the key falls
@@ -479,8 +479,8 @@ void MacishTypeEngine::keyEvent(const fcitx::InputMethodEntry &entry,
     found->second->handleKey(keyEvent);
 }
 
-void MacishTypeEngine::handleSessionlessKey(const EngineInfo &engine,
-                                            fcitx::KeyEvent &keyEvent) {
+void InputMethodEngine::handleSessionlessKey(const EngineInfo &engine,
+                                             fcitx::KeyEvent &keyEvent) {
     auto *inputContext = keyEvent.inputContext();
     // Self-heal first: a restored folder reloads its host without any
     // re-activate on a context the user stayed on (fcitx only activates
@@ -557,7 +557,7 @@ void MacishTypeEngine::handleSessionlessKey(const EngineInfo &engine,
     }
 }
 
-void MacishTypeEngine::showFailurePrompt(fcitx::InputContext *inputContext) {
+void InputMethodEngine::showFailurePrompt(fcitx::InputContext *inputContext) {
     failurePromptShown_.insert(inputContext);
     fcitx::Text preedit;
     // DontCommit is load-bearing: fcitx commits the client preedit on
@@ -569,15 +569,15 @@ void MacishTypeEngine::showFailurePrompt(fcitx::InputContext *inputContext) {
     applyPromptPreedit(inputContext, std::move(preedit));
 }
 
-void MacishTypeEngine::clearFailurePrompt(fcitx::InputContext *inputContext) {
+void InputMethodEngine::clearFailurePrompt(fcitx::InputContext *inputContext) {
     if (failurePromptShown_.erase(inputContext) == 0) {
         return;
     }
     applyPromptPreedit(inputContext, fcitx::Text());
 }
 
-void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
-                                fcitx::InputContextEvent &event) {
+void InputMethodEngine::activate(const fcitx::InputMethodEntry &entry,
+                                 fcitx::InputContextEvent &event) {
     const auto *engine = engineForEntry(entry);
     if (engine == nullptr) {
         return;
@@ -614,8 +614,8 @@ void MacishTypeEngine::activate(const fcitx::InputMethodEntry &entry,
     composeStatusActions(*engine, inputContext);
 }
 
-void MacishTypeEngine::composeStatusActions(const EngineInfo &engine,
-                                            fcitx::InputContext *inputContext) {
+void InputMethodEngine::composeStatusActions(
+    const EngineInfo &engine, fcitx::InputContext *inputContext) {
     // No JS re-entry allowed anywhere below: this runs inside the menu
     // store observer, which fires while engine JS is on the stack.
     auto &statusArea = inputContext->statusArea();
@@ -689,7 +689,7 @@ void MacishTypeEngine::composeStatusActions(const EngineInfo &engine,
     }
 }
 
-void MacishTypeEngine::rebuildEngineMenuActions(const EngineInfo &engine) {
+void InputMethodEngine::rebuildEngineMenuActions(const EngineInfo &engine) {
     // Destroy first, never build the new set alongside the old one:
     // registerAction refuses a duplicate name, leaving that action
     // unaddressable from every panel. ~Action detaches itself from any
@@ -723,7 +723,7 @@ void MacishTypeEngine::rebuildEngineMenuActions(const EngineInfo &engine) {
 }
 
 JsEngineHost::MenuStore
-MacishTypeEngine::menuStoreForEngine(const EngineInfo &engine) {
+InputMethodEngine::menuStoreForEngine(const EngineInfo &engine) {
     JsEngineHost::MenuStore store;
     fcitx::RawConfig raw;
     fcitx::readAsIni(raw, fcitx::StandardPathsType::PkgConfig,
@@ -745,7 +745,7 @@ MacishTypeEngine::menuStoreForEngine(const EngineInfo &engine) {
     return store;
 }
 
-void MacishTypeEngine::handleMenuValuesChanged(
+void InputMethodEngine::handleMenuValuesChanged(
     const std::string &engineId,
     const std::vector<std::pair<std::string, bool>> &values) {
     // Persist from the callback payload: the first notification fires inside
@@ -774,8 +774,8 @@ void MacishTypeEngine::handleMenuValuesChanged(
     }
 }
 
-bool MacishTypeEngine::menuItemValue(const std::string &engineId,
-                                     const std::string &key) {
+bool InputMethodEngine::menuItemValue(const std::string &engineId,
+                                      const std::string &key) {
     auto host = hosts_.find(engineId);
     if (host == hosts_.end()) {
         return false;
@@ -783,8 +783,8 @@ bool MacishTypeEngine::menuItemValue(const std::string &engineId,
     return host->second->menuValue(key).value_or(false);
 }
 
-void MacishTypeEngine::flipMenuItem(const std::string &engineId,
-                                    const std::string &key) {
+void InputMethodEngine::flipMenuItem(const std::string &engineId,
+                                     const std::string &key) {
     auto host = hosts_.find(engineId);
     if (host == hosts_.end()) {
         // A parked engine's actions can stay attached (and clickable) until
@@ -794,11 +794,11 @@ void MacishTypeEngine::flipMenuItem(const std::string &engineId,
     host->second->flipMenuValue(key);
 }
 
-bool MacishTypeEngine::currentUIIsKimpanel() const {
+bool InputMethodEngine::currentUIIsKimpanel() const {
     return instance_->userInterfaceManager().currentUI() == "kimpanel";
 }
 
-void MacishTypeEngine::triggerFindInputCode(
+void InputMethodEngine::triggerFindInputCode(
     fcitx::InputContext *inputContext) {
     auto found = sessions_.find(inputContext);
     if (found == sessions_.end() || !found->second->valid()) {
@@ -808,7 +808,7 @@ void MacishTypeEngine::triggerFindInputCode(
 }
 
 std::string
-MacishTypeEngine::resolveLookupQuery(fcitx::InputContext *inputContext) {
+InputMethodEngine::resolveLookupQuery(fcitx::InputContext *inputContext) {
     std::string query;
     // The client's current selection, and only that: reading it does not steal
     // focus, so no pre-read dance is needed. Deliberately no PRIMARY-selection
@@ -838,8 +838,8 @@ MacishTypeEngine::resolveLookupQuery(fcitx::InputContext *inputContext) {
     return query;
 }
 
-void MacishTypeEngine::deactivate(const fcitx::InputMethodEntry &entry,
-                                  fcitx::InputContextEvent &event) {
+void InputMethodEngine::deactivate(const fcitx::InputMethodEntry &entry,
+                                   fcitx::InputContextEvent &event) {
     FCITX_UNUSED(entry);
     auto found = sessions_.find(event.inputContext());
     if (found != sessions_.end()) {
@@ -854,8 +854,8 @@ void MacishTypeEngine::deactivate(const fcitx::InputMethodEntry &entry,
     clearFailurePrompt(event.inputContext());
 }
 
-void MacishTypeEngine::reset(const fcitx::InputMethodEntry &entry,
-                             fcitx::InputContextEvent &event) {
+void InputMethodEngine::reset(const fcitx::InputMethodEntry &entry,
+                              fcitx::InputContextEvent &event) {
     FCITX_UNUSED(entry);
     auto found = sessions_.find(event.inputContext());
     if (found != sessions_.end()) {
@@ -864,7 +864,7 @@ void MacishTypeEngine::reset(const fcitx::InputMethodEntry &entry,
     clearFailurePrompt(event.inputContext());
 }
 
-EngineInfo *MacishTypeEngine::engineById(const std::string &engineId) {
+EngineInfo *InputMethodEngine::engineById(const std::string &engineId) {
     for (auto &engine : engines_) {
         if (engine.id == engineId) {
             return &engine;
@@ -873,7 +873,7 @@ EngineInfo *MacishTypeEngine::engineById(const std::string &engineId) {
     return nullptr;
 }
 
-void MacishTypeEngine::rescanEngineFolders() {
+void InputMethodEngine::rescanEngineFolders() {
     // Snapshot before scanning: mtimes have whole-second granularity, so
     // reading the timestamp afterwards could hide a folder that appeared
     // within the recording second forever; an occasional redundant
@@ -917,7 +917,7 @@ void MacishTypeEngine::rescanEngineFolders() {
     enginesTimestamp_ = snapshot;
 }
 
-void MacishTypeEngine::reconcileEngineFolder(const std::string &name) {
+void InputMethodEngine::reconcileEngineFolder(const std::string &name) {
     EngineInfo *engine = engineById(name);
     if (engine == nullptr) {
         // Not discovered yet: onboarding stays pull-based (the configtool
@@ -1004,13 +1004,13 @@ void MacishTypeEngine::reconcileEngineFolder(const std::string &name) {
     reloadEngine(engine->id);
 }
 
-AssociatedSelectionKeys MacishTypeEngine::associatedSelectionKeys() const {
+AssociatedSelectionKeys InputMethodEngine::associatedSelectionKeys() const {
     return resolveAssociatedSelectionKeys(
         config_.associatedSelectionKeys.value());
 }
 
 const EngineInfo *
-MacishTypeEngine::engineForEntry(const fcitx::InputMethodEntry &entry) {
+InputMethodEngine::engineForEntry(const fcitx::InputMethodEntry &entry) {
     std::string_view uniqueName = entry.uniqueName();
     if (uniqueName.size() <= kUniqueNamePrefix.size() ||
         uniqueName.substr(0, kUniqueNamePrefix.size()) != kUniqueNamePrefix) {
@@ -1025,7 +1025,7 @@ MacishTypeEngine::engineForEntry(const fcitx::InputMethodEntry &entry) {
     return nullptr;
 }
 
-JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
+JsEngineHost *InputMethodEngine::hostForEngine(const EngineInfo &engine) {
     if (auto found = hosts_.find(engine.id); found != hosts_.end()) {
         return found->second.get();
     }
@@ -1112,7 +1112,7 @@ JsEngineHost *MacishTypeEngine::hostForEngine(const EngineInfo &engine) {
     return loadedHost;
 }
 
-bool MacishTypeEngine::outputToSimplifiedAvailable(const EngineInfo &engine) {
+bool InputMethodEngine::outputToSimplifiedAvailable(const EngineInfo &engine) {
     if (engine.manifest.outputToSimplified.has_value() &&
         !*engine.manifest.outputToSimplified) {
         return false;
@@ -1128,7 +1128,7 @@ bool MacishTypeEngine::outputToSimplifiedAvailable(const EngineInfo &engine) {
     return instance_->addonManager().addon("chttrans", true) != nullptr;
 }
 
-void MacishTypeEngine::watchChttransToggle() {
+void InputMethodEngine::watchChttransToggle() {
     if (chttransUpdateConnection_.connected()) {
         return;
     }
@@ -1142,7 +1142,7 @@ void MacishTypeEngine::watchChttransToggle() {
         [this](fcitx::InputContext *) { scheduleChttransReconcile(); });
 }
 
-void MacishTypeEngine::scheduleChttransReconcile() {
+void InputMethodEngine::scheduleChttransReconcile() {
     if (chttransReconcileDefer_) {
         return;
     }
@@ -1155,7 +1155,7 @@ void MacishTypeEngine::scheduleChttransReconcile() {
         });
 }
 
-void MacishTypeEngine::reconcileChttransToggles() {
+void InputMethodEngine::reconcileChttransToggles() {
     for (auto &[engineId, state] : chttransToggleStates_) {
         bool enabled = chttransEnabled(state.inputMethodName);
         if (enabled == state.enabled) {
@@ -1168,7 +1168,7 @@ void MacishTypeEngine::reconcileChttransToggles() {
     }
 }
 
-bool MacishTypeEngine::chttransEnabled(const std::string &inputMethodName) {
+bool InputMethodEngine::chttransEnabled(const std::string &inputMethodName) {
     auto *chttrans = instance_->addonManager().addon("chttrans", true);
     if (chttrans == nullptr) {
         return false;
@@ -1192,8 +1192,8 @@ bool MacishTypeEngine::chttransEnabled(const std::string &inputMethodName) {
     return false;
 }
 
-void MacishTypeEngine::setChttransEnabled(const std::string &inputMethodName,
-                                          bool enabled) {
+void InputMethodEngine::setChttransEnabled(const std::string &inputMethodName,
+                                           bool enabled) {
     auto *chttrans = instance_->addonManager().addon("chttrans", true);
     if (chttrans == nullptr) {
         MACISHTYPE_NOTICE() << "outputToSimplified: chttrans is unavailable";
@@ -1237,11 +1237,11 @@ void MacishTypeEngine::setChttransEnabled(const std::string &inputMethodName,
     }
 }
 
-void MacishTypeEngine::endSession(fcitx::InputContext *inputContext) {
+void InputMethodEngine::endSession(fcitx::InputContext *inputContext) {
     sessions_.erase(inputContext);
 }
 
-bool MacishTypeEngine::shouldReload(
+bool InputMethodEngine::shouldReload(
     const std::string &engineId, const std::set<std::string> &changedPaths) {
     auto found = hosts_.find(engineId);
     if (found == hosts_.end()) {
@@ -1270,7 +1270,7 @@ bool MacishTypeEngine::shouldReload(
     return false;
 }
 
-void MacishTypeEngine::reloadEngine(const std::string &engineId) {
+void InputMethodEngine::reloadEngine(const std::string &engineId) {
     MACISHTYPE_INFO() << "Engine changed on disk, reloading: " << engineId;
     failedHosts_.erase(engineId);
     // A reload applies all on-disk state, so any deferred entry is served;
@@ -1342,9 +1342,9 @@ void MacishTypeEngine::reloadEngine(const std::string &engineId) {
     }
 }
 
-void MacishTypeEngine::notifyEngine(const std::string &engineId,
-                                    const std::string &summary,
-                                    const std::string &body) {
+void InputMethodEngine::notifyEngine(const std::string &engineId,
+                                     const std::string &summary,
+                                     const std::string &body) {
     auto *notifications = instance_->addonManager().addon("notifications",
                                                           true);
     if (notifications == nullptr) {
@@ -1361,9 +1361,9 @@ void MacishTypeEngine::notifyEngine(const std::string &engineId,
         summary, body, 3000);
 }
 
-void MacishTypeEngine::notifyReload(const std::string &engineId,
-                                    const std::string &displayName,
-                                    bool succeeded) {
+void InputMethodEngine::notifyReload(const std::string &engineId,
+                                     const std::string &displayName,
+                                     bool succeeded) {
     notifyEngine(engineId,
                  succeeded ? translated("Engine reloaded")
                            : translated("Engine load failed"),
@@ -1373,13 +1373,13 @@ void MacishTypeEngine::notifyReload(const std::string &engineId,
 }
 
 fcitx::AddonInstance *
-MacishTypeAddonFactory::create(fcitx::AddonManager *manager) {
+AddonFactory::create(fcitx::AddonManager *manager) {
     // Before construction: option descriptions translate during member
     // initialization.
     registerTextDomain();
-    return new MacishTypeEngine(manager->instance());
+    return new InputMethodEngine(manager->instance());
 }
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5
 
-FCITX_ADDON_FACTORY_V2(macishtype, MacishType::MacishTypeAddonFactory)
+FCITX_ADDON_FACTORY_V2(macishtype, MacishType::Fcitx5::AddonFactory)

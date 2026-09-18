@@ -31,7 +31,7 @@
 #include "IconLinks.h"
 #include "Session.h"
 
-namespace MacishType {
+namespace MacishType::Fcitx5 {
 
 // Runtime enum entries for the selection-keys picker; the tokens are the
 // wire values written to the addon config.
@@ -68,7 +68,7 @@ FCITX_CONFIGURATION(
         this, "FindInputCodeKey", translated("Find Input Code"),
         {fcitx::Key("Control+Alt+L")}, fcitx::KeyListConstrain()};);
 
-class MacishTypeEngine;
+class InputMethodEngine;
 
 // One manifest-declared menu toggle as a status-area action. State travels
 // as a checkbox icon pair rather than a checkable action: the icon is the
@@ -80,7 +80,7 @@ class MacishTypeEngine;
 // JsEngineHost pointer.
 class MenuItemAction final : public fcitx::Action {
 public:
-    MenuItemAction(MacishTypeEngine *engine, std::string engineId,
+    MenuItemAction(InputMethodEngine *engine, std::string engineId,
                    std::string key, std::string label)
         : engine_(engine), engineId_(std::move(engineId)),
           key_(std::move(key)), label_(std::move(label)) {}
@@ -93,16 +93,16 @@ public:
     void activate(fcitx::InputContext *inputContext) override;
 
 private:
-    MacishTypeEngine *engine_;
+    InputMethodEngine *engine_;
     std::string engineId_;
     std::string key_;
     std::string label_;
 };
 
-class MacishTypeEngine final : public fcitx::InputMethodEngineV2 {
+class InputMethodEngine final : public fcitx::InputMethodEngineV2 {
 public:
-    explicit MacishTypeEngine(fcitx::Instance *instance);
-    ~MacishTypeEngine() override;
+    explicit InputMethodEngine(fcitx::Instance *instance);
+    ~InputMethodEngine() override;
 
     std::vector<fcitx::InputMethodEntry> listInputMethods() override;
     // Panels consult these live, unlike the registration-time entry
@@ -239,8 +239,8 @@ private:
     // Installs the core seams process-wide on construction; declared before
     // everything that already needs them (config_ option labels call
     // translated(), discovery parses manifests).
-    FcitxCoreServices coreServices_;
-    FcitxHostEventLoop hostEventLoop_;
+    CoreServices coreServices_;
+    HostEventLoop hostEventLoop_;
     // One per process, shared by every engine host and by the sessions that
     // segment marked text; declared before both so it outlives them.
     IntlCache intlCache_;
@@ -305,9 +305,9 @@ private:
     std::set<fcitx::InputContext *> failurePromptShown_;
 };
 
-class MacishTypeAddonFactory : public fcitx::AddonFactory {
+class AddonFactory : public fcitx::AddonFactory {
 public:
     fcitx::AddonInstance *create(fcitx::AddonManager *manager) override;
 };
 
-} // namespace MacishType
+} // namespace MacishType::Fcitx5
