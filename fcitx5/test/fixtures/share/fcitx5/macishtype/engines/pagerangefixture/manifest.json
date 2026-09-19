@@ -1,0 +1,10 @@
+{
+  "entry": "index.js",
+  "name": {
+    "en": "Page Range Fixture"
+  },
+  "intendedLanguage": "zz",
+  "candidateWindow": {
+    "pageSize": 3
+  }
+}

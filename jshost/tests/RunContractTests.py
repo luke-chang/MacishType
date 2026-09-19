@@ -326,6 +326,23 @@ def main():
         "Condition", "disabledWhen marks without hiding",
         disabled == ["disabledByDeep"], f"{disabled}\n{out}")
 
+    # The page range the index labels address. The CLI has no pager, so only
+    # the first page is observable here; fcitx5/test/Navigation.sh covers
+    # paging onto a short last page.
+    commands = "\n".join([
+        '{"do":"activate"}',
+        '{"do":"key","key":"a","code":"KeyA"}',
+        '{"do":"key","key":"z","code":"KeyZ"}',
+        '{"do":"quit"}',
+    ]) + "\n"
+    result = subprocess.run(
+        [str(cli), *RUNTIME_ARGS, str(FIXTURE_ENGINES / "pagerangefixture")],
+        input=commands, capture_output=True, text=True, encoding="utf-8",
+        timeout=120)
+    out = result.stdout
+    failures.check("PageRange", "the snapshot reports the first page's range",
+                   "cw-range start=0 end=3 visible=true" in out, out)
+
     # ExampleEngine end-to-end smoke: compose -> candidates -> commit
     # (engines/example has no other automated test).
     commands = "\n".join([

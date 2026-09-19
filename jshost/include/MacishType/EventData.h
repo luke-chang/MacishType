@@ -4,6 +4,7 @@
 
 #include <quickjs.h>
 
+#include "MacishType/PageRange.h"
 #include "MacishType/WebKeyEvent.h"
 
 namespace MacishType {
@@ -50,7 +51,7 @@ struct EventStaging {
     const std::string &message;
     bool isAssociating = false;
     bool candidatesVisible = false;
-    int pageItemCount = 0;
+    PageRange page;
 };
 
 // The __MacishTypeHost_makeEvent input: fields, modifierStates (key events

@@ -179,7 +179,8 @@ JSValue buildEventData(JSContext *ctx, const EventStaging &staging,
                  window.handleIndexLabelKeys);
     setBoolField(ctx, candidateWindow, "indexLabelDigitsRequireShift",
                  window.indexLabelDigitsRequireShift);
-    setIntField(ctx, candidateWindow, "pageItemCount", staging.pageItemCount);
+    setIntField(ctx, candidateWindow, "pageStart", staging.page.start);
+    setIntField(ctx, candidateWindow, "pageEnd", staging.page.end);
     JS_SetPropertyStr(ctx, data, "candidateWindow", candidateWindow);
 
     return data;

@@ -177,7 +177,11 @@ private:
     }
     // Absolute index of the selected candidate, or -1 when none (suspended).
     int selectedIndex() const;
-    int currentPageItemCount() const;
+    // Absolute range of the candidates the current index labels address.
+    PageRange currentPageRange() const;
+    // Commits the candidate under a page-relative index; false when that
+    // slot holds no candidate.
+    bool confirmCandidateOnPage(int pageIndex);
 
     JSValue makeEvent(const WebKeyEvent *web, const CandidateData *candidate,
                       int absoluteIndex);

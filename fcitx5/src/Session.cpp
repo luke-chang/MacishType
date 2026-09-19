@@ -96,14 +96,23 @@ EngineSession::~EngineSession() {
     }
 }
 
-int EngineSession::currentPageItemCount() const {
+PageRange EngineSession::currentPageRange() const {
     auto *list = candidateList();
     if (!list) {
-        return 0;
+        return {};
     }
-    int pageSize = std::max(1, list->pageSize());
-    int start = list->currentPage() * pageSize;
-    return std::min(pageSize, static_cast<int>(candidates_.size()) - start);
+    // size() is the current page's count, already clamped on a short page.
+    int start = list->currentPage() * std::max(1, list->pageSize());
+    return {start, start + list->size()};
+}
+
+bool EngineSession::confirmCandidateOnPage(int pageIndex) {
+    PageRange page = currentPageRange();
+    if (pageIndex < 0 || page.start + pageIndex >= page.end) {
+        return false;
+    }
+    confirmCandidateAt(static_cast<size_t>(page.start + pageIndex));
+    return true;
 }
 
 // Key pipeline ------------------------------------------------------------
@@ -216,11 +225,7 @@ bool EngineSession::dispatchCandidateWindowKey(const WebKeyEvent &web) {
                     break;
                 }
             }
-            if (matched && labelIndex < currentPageItemCount()) {
-                auto *list = candidateList();
-                confirmCandidateAt(static_cast<size_t>(
-                    list->currentPage() * std::max(1, list->pageSize()) +
-                    labelIndex));
+            if (matched && confirmCandidateOnPage(labelIndex)) {
                 return true;
             }
         }
@@ -545,14 +550,7 @@ void EngineSession::applyActions(std::vector<Action> actions) {
                         }
                     }
                 } else if constexpr (std::is_same_v<T, CommitAtIndexAction>) {
-                    auto *list = candidateList();
-                    if (list && value.index >= 0 &&
-                        value.index < currentPageItemCount()) {
-                        confirmCandidateAt(static_cast<size_t>(
-                            list->currentPage() *
-                                std::max(1, list->pageSize()) +
-                            value.index));
-                    }
+                    confirmCandidateOnPage(value.index);
                 } else if constexpr (std::is_same_v<T, NavigateAction>) {
                     navigate(value.direction, value.wrapping);
                 } else if constexpr (std::is_same_v<T, ResetAction>) {
@@ -1215,7 +1213,7 @@ JSValue EngineSession::makeEvent(const WebKeyEvent *web,
     JSContext *ctx = host_->context();
     EventStaging staging{markedText_, stagedText_,
                          message_, associating_,
-                         candidatesVisible(), currentPageItemCount()};
+                         candidatesVisible(), currentPageRange()};
     EventCandidate confirming;
     const EventCandidate *confirmingPtr = nullptr;
     if (candidate != nullptr) {

@@ -89,6 +89,8 @@
       handleNavigationKeys: cw.handleNavigationKeys,
       handleIndexLabelKeys: cw.handleIndexLabelKeys,
       indexLabelDigitsRequireShift: digitsRequireShift,
+      pageStart: cw.pageStart,
+      pageEnd: cw.pageEnd,
       candidateIndex(value) {
         if (typeof value === "string") return matchCharacter(value);
         if (!value || typeof value !== "object") return null;

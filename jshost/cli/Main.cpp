@@ -294,7 +294,8 @@ private:
 struct CliStaging {
     std::string markedText;
     std::string message;
-    bool candidatesVisible = false;
+    // Candidates are visible exactly when this is non-zero.
+    int candidateCount = 0;
 };
 
 std::string serializeJsValue(JSContext *ctx, JSValueConst value) {
@@ -327,13 +328,15 @@ bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
     keys.capsLock = boolProp("capsLock");
 
     static const std::string c_NoStagedText;
+    CandidateWindowConfig window = resolvedCandidateWindowConfig(host);
+    // No pager here, so every visible candidate sits on the first page.
+    PageRange page{0, std::min(window.pageSize, staging.candidateCount)};
     EventStaging eventStaging{staging.markedText, c_NoStagedText,
                               staging.message, false,
-                              staging.candidatesVisible, 0};
+                              staging.candidateCount > 0, page};
 
-    Qjs::Value data(ctx,
-                    buildEventData(ctx, eventStaging, &keys, nullptr, -1,
-                                   resolvedCandidateWindowConfig(host)));
+    Qjs::Value data(ctx, buildEventData(ctx, eventStaging, &keys, nullptr,
+                                        -1, window));
     Qjs::Value global(ctx, JS_GetGlobalObject(ctx));
     Qjs::Value maker(ctx,
                      JS_GetPropertyStr(ctx, global.get(), c_MakeEventHook));
@@ -372,19 +375,20 @@ bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
                 uint32_t count = 0;
                 JS_ToUint32(ctx, &count, length);
                 JS_FreeValue(ctx, length);
-                staging.candidatesVisible = JS_IsArray(argv[0]) && count > 0;
+                staging.candidateCount =
+                    JS_IsArray(argv[0]) ? static_cast<int>(count) : 0;
                 staging.message.clear();
             } else if (name == "updateMessage" && argc >= 1) {
                 staging.message = JS_IsString(argv[0])
                                       ? Qjs::toString(ctx, argv[0])
                                       : std::string();
                 if (!staging.message.empty()) {
-                    staging.candidatesVisible = false;
+                    staging.candidateCount = 0;
                 }
             } else if (name == "commit" || name == "resetContext") {
                 staging.markedText.clear();
                 staging.message.clear();
-                staging.candidatesVisible = false;
+                staging.candidateCount = 0;
             }
         });
 
