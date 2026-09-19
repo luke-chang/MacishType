@@ -13,7 +13,9 @@ make -s -C "$root" dev-install > /dev/null
 # digit1=49:10, Shift+digit1=33:10:1 (!), Shift+digit4=36:13:1 ($),
 # KeyQ=113:24. Keypad 1 is keycode 87: with NumLock off Shift selects level
 # 2 and yields KP_1=65457, with NumLock on it yields KP_End=65436.
-plain="$("$root/test/Isolated.sh" assocfixture 97:38)"
+# 97:38 commits 中 and opens its three follow-ups; digit5=53:14 then lands on
+# a label slot with nothing behind it, which the host must leave alone.
+plain="$("$root/test/Isolated.sh" assocfixture 97:38 53:14)"
 shift_enter="$("$root/test/Isolated.sh" assocshiftfixture 97:38)"
 shift_pick="$("$root/test/Isolated.sh" assocshiftfixture 97:38 33:10:1)"
 shift_plain="$("$root/test/Isolated.sh" assocshiftfixture 97:38 49:10)"
@@ -114,6 +116,10 @@ check "the setting forces Shift on an undeclaring engine" \
     "$forced_shift" '{"event": "commit", "text": "中文"}'
 check "the setting overrides a shiftNumbers declaration" \
     "$forced_numbers" '{"event": "commit", "text": "中文"}'
+
+# --- A label with no follow-up behind it is not the host's to eat ---
+check "an associated-mode label with nothing behind it reaches the engine" \
+    "$plain" '"keyval": 53, "handled": false'
 
 # --- candidateIndex matching rules, as engines see them ---
 check "the snapshot carries the Shift requirement" \

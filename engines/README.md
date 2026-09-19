@@ -139,7 +139,7 @@ ignores sections for implementations it does not provide.
 | `indexLabels` | string | `"1234567890"` | Per-candidate label characters; ASCII-printable only (0x20-0x7E), which includes space (see below). |
 | `pageSize` | integer 1–11 | `9` | Candidates per page. |
 | `handleNavigationKeys` | boolean | `true` | When true, the host intercepts standard nav keys (arrows / Tab / Page / Home / End) and Enter while the candidate window is visible — `handleKey` / `handleAssociatedKey` never see them. Set false to route those keys to the engine. One case stays with the engine either way: in associated mode with nothing highlighted, Enter has no candidate to commit, so it dismisses like any other unhandled key. |
-| `handleIndexLabelKeys` | boolean | `true` | When true, the host intercepts `indexLabels` keys while the candidate window is visible. Set false to route them to the engine. |
+| `handleIndexLabelKeys` | boolean | `true` | When true, the host intercepts the `indexLabels` keys that address a candidate while the candidate window is visible (see below). Set false to route every label key to the engine. |
 | `indexLabelDigitsRequireShift` | boolean | `false` | Digit labels select only with Shift + the physical key that names them (main row or keypad); non-digit labels keep plain character matching. How the requirement is presented to the user is host-specific. The same matching the host's [associated-mode windows](#associated-mode-selection-keys) use — set it directly for engine-driven windows that want it. |
 | `associatedModeIndexLabels` | `"numbers"` \| `"shiftNumbers"` \| `"inherit"` | `"numbers"` | The engine's preference for the associated-mode window's selection keys, honored unless the user forces number keys or Shift + number keys in the host's settings. A declaration, not a window field: the host expands it into `indexLabels`, `pageSize`, and `indexLabelDigitsRequireShift` when an associated-mode window opens, and it never appears in the per-event snapshot. See [Associated-mode selection keys](#associated-mode-selection-keys). |
 
@@ -158,6 +158,14 @@ makes position 0 blank while positions 1-3 render `"1"` / `"2"` / `"3"`.
 Whitespace characters anywhere in `indexLabels` never match an
 index-label key input, so the space key remains available for engine
 logic.
+
+A label key only selects while its slot holds a candidate. A page
+shorter than `pageSize` — the last page of an odd-sized list, or a list
+that never filled one page — leaves its trailing labels addressing
+nothing, and the host does not intercept those: they reach `handleKey` /
+`handleAssociatedKey` like any other key, for the engine to give them
+whatever meaning it wants. Labels past `pageSize` are never displayed
+and behave the same way.
 
 #### Macish candidate window fields
 
@@ -693,9 +701,10 @@ source of truth. Highlights:
   While the candidate window is visible, the host intercepts standard
   nav keys (arrows / Tab / Page / Home / End), Enter, and `indexLabels`
   keys **before** `handleKey` runs — by default the engine
-  never sees them. Turn off `handleNavigationKeys` /
-  `handleIndexLabelKeys` (manifest or per-update options) to route
-  those keys to the engine instead.
+  never sees them. A label with no candidate behind it is the exception:
+  nothing there to select, so the key arrives like any other. Turn off
+  `handleNavigationKeys` / `handleIndexLabelKeys` (manifest or per-update
+  options) to route those keys to the engine instead.
 
   Opting out does not mean rebuilding the host's keystroke tables:
   [`navigationIntent`](#candidate-window-snapshot) and
@@ -704,7 +713,8 @@ source of truth. Highlights:
 - `handleAssociatedKey(event)` — called in associated mode for keys
   the candidate window didn't handle (keys outside its scope, in-scope
   keys when `handleNavigationKeys` / `handleIndexLabelKeys` is off —
-  see `handleKey` above — and Enter while nothing is highlighted).
+  see `handleKey` above — index labels with no candidate behind them,
+  and Enter while nothing is highlighted).
   Return `true` to consume the key.
   Returning `false` / `undefined` (including omitting the method)
   makes the host dismiss associated mode and process the key fresh
@@ -906,7 +916,8 @@ Commit the candidate at a page-relative position.
 
 - `index` *(integer, required)* — 0-based position within the current
   `pageSize`. Pair with [`candidateIndex`](#candidate-window-snapshot)
-  to commit by index label.
+  to commit by index label. An index past the page's last candidate is a
+  no-op.
 
 #### `navigateCandidates(direction, options?)`
 
@@ -1064,12 +1075,16 @@ opts out of `handleNavigationKeys` / `handleIndexLabelKeys` can act on
 those keys without rebuilding the tables:
 
 - `candidateIndex(event | character)` — the keystroke's page-relative
-  0-based label position, or `null` when it matches no label. Passing the
-  key event applies the full rule: Option-modified keys never select, and
-  digit labels require Shift + a physical digit key while
-  `indexLabelDigitsRequireShift` is on. A bare character string matches by
-  produced character; a character carries no keystroke identity, so digit
-  labels never match through the string form while the requirement is on.
+  0-based label position, or `null` when it matches no label. It answers
+  where the label sits, not whether that slot holds a candidate: compare
+  against `pageEnd - pageStart` to tell "not a selection key" from "a
+  selection key with nothing behind it". Passing the key event applies
+  the full rule: Option-modified keys never select, and digit labels
+  require Shift + a physical digit key while
+  `indexLabelDigitsRequireShift` is on. A bare character string matches
+  by produced character; a character carries no keystroke identity, so
+  digit labels never match through the string form while the requirement
+  is on.
 
   ```js
   const idx = event.candidateWindow.candidateIndex(event);

@@ -53,9 +53,11 @@ export interface CandidateWindowState {
    */
   readonly handleNavigationKeys: boolean;
   /**
-   * When true, the host handles `indexLabels` keys while the window is
-   * visible — `handleKey` / `handleAssociatedKey` never see them.
-   * When false, the engine handles them.
+   * When true, the host handles the `indexLabels` keys that address a
+   * candidate while the window is visible — `handleKey` /
+   * `handleAssociatedKey` never see those. A label with no candidate
+   * behind it, on a page shorter than `pageSize`, is left to the engine.
+   * When false, the engine handles every label key.
    */
   readonly handleIndexLabelKeys: boolean;
   /**
@@ -76,8 +78,10 @@ export interface CandidateWindowState {
   readonly pageStart: number;
   readonly pageEnd: number;
   /**
-   * Maps a keystroke to its page-relative 0-based candidate position,
-   * or null when it selects nothing. Pair with `commitCandidateAtIndex`
+   * Maps a keystroke to its page-relative 0-based label position, or null
+   * when it matches no label. It answers where the label sits, not
+   * whether that slot holds a candidate — compare against
+   * `pageEnd - pageStart` for that. Pair with `commitCandidateAtIndex`
    * to commit by index label. Passing the key event applies the host's
    * full rule — Option-modified keys never select, and digit labels
    * require Shift + a physical digit key under
@@ -444,8 +448,9 @@ export interface InputEngine {
   /**
    * Called in associated mode for keys that the candidate window didn't
    * handle (keys outside its scope, in-scope keys when
-   * `handleNavigationKeys` / `handleIndexLabelKeys` is off, and Enter
-   * while nothing is highlighted).
+   * `handleNavigationKeys` / `handleIndexLabelKeys` is off, index labels
+   * with no candidate behind them, and Enter while nothing is
+   * highlighted).
    *
    * Return `true` to mark the key consumed; queued mutators apply.
    * Returning `false` / `undefined` (including omitting the method) makes
@@ -620,10 +625,12 @@ export interface CandidateWindow {
    */
   handleNavigationKeys?: boolean;
   /**
-   * Host policy: when true (default), `indexLabels` keys are
-   * intercepted by the host while the candidate window is visible.
-   * Set to false to route them to the engine (`handleKey` in normal
-   * mode, `handleAssociatedKey` in associated mode).
+   * Host policy: when true (default), the `indexLabels` keys that address
+   * a candidate are intercepted by the host while the candidate window is
+   * visible; a label with nothing behind it goes to the engine either
+   * way. Set to false to route every label key to the engine
+   * (`handleKey` in normal mode, `handleAssociatedKey` in associated
+   * mode).
    */
   handleIndexLabelKeys?: boolean;
   /**

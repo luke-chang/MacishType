@@ -125,25 +125,27 @@ check "candidateIndex answers within pageSize on a short last page" \
 check "whitespace input never matches an index label" \
     "$spaced" '"keyval": 32, "handled": false'
 
-# --- Page range in the event snapshot ---
-# pagerangefixture: KeyA shows c0..c6 with pageSize 3, so the last page holds
-# one candidate and two empty slots. KeyZ=122:52 logs the range the labels
-# address; the engine reports it through the log, not the panel.
+# --- Index labels and the page range on a short last page ---
+# pagerangefixture: KeyA=97:38 shows c0..c6 with pageSize 3, so the last page
+# holds one candidate and two empty label slots. KeyZ=122:52 logs the range
+# the labels address. One run covers every case, in order: the range with no
+# window, the range on a full first page, the range on the short last page
+# (after PageDown twice), Digit2=50:11 landing on an empty slot, and
+# Digit1=49:10 addressing the one candidate there is.
 range_log=/tmp/fcitx5-macishtype-nav-pagerange.log
-ISOLATED_LOG="$range_log" "$root/test/Isolated.sh" pagerangefixture \
-    97:38 122:52 > /dev/null
-range_first="$(cat "$range_log")"
-ISOLATED_LOG="$range_log" "$root/test/Isolated.sh" pagerangefixture \
-    97:38 65366:117 65366:117 122:52 > /dev/null
-range_last="$(cat "$range_log")"
-ISOLATED_LOG="$range_log" "$root/test/Isolated.sh" pagerangefixture \
-    122:52 > /dev/null
-range_hidden="$(cat "$range_log")"
+pagerange="$(ISOLATED_LOG="$range_log" "$root/test/Isolated.sh" \
+    pagerangefixture 122:52 97:38 122:52 65366:117 65366:117 122:52 \
+    50:11 49:10)"
+ranges="$(cat "$range_log")"
 
-check "the page range covers a full first page" \
-    "$range_first" 'cw-range start=0 end=3 visible=true'
-check "the page range stops at the last candidate on a short page" \
-    "$range_last" 'cw-range start=6 end=7 visible=true'
 check "the page range is empty with no candidate window" \
-    "$range_hidden" 'cw-range start=0 end=0 visible=false'
+    "$ranges" 'cw-range start=0 end=0 visible=false'
+check "the page range covers a full first page" \
+    "$ranges" 'cw-range start=0 end=3 visible=true'
+check "the page range stops at the last candidate on a short page" \
+    "$ranges" 'cw-range start=6 end=7 visible=true'
+check "an index label with nothing behind it reaches the engine" \
+    "$pagerange" '"keyval": 50, "handled": false'
+check "an index label addressing a candidate commits it" \
+    "$pagerange" '{"event": "commit", "text": "c6"}'
 echo "Navigation checks passed."
