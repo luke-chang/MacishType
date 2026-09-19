@@ -67,6 +67,15 @@ export interface CandidateWindowState {
    */
   readonly indexLabelDigitsRequireShift: boolean;
   /**
+   * Half-open range `[pageStart, pageEnd)` of the full candidate list that
+   * the current index labels address, both `0` while no window is visible.
+   * `pageStart` plus a page-relative index is the `absoluteIndex` that
+   * selecting it reports, and `pageEnd - pageStart` is how many of the
+   * page's slots actually hold a candidate.
+   */
+  readonly pageStart: number;
+  readonly pageEnd: number;
+  /**
    * Maps a keystroke to its page-relative 0-based candidate position,
    * or null when it selects nothing. Pair with `commitCandidateAtIndex`
    * to commit by index label. Passing the key event applies the host's

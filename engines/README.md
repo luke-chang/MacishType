@@ -156,8 +156,8 @@ ignores sections for implementations it does not provide.
 Whitespace can also appear mid-string — e.g. `" 123"` is valid and
 makes position 0 blank while positions 1-3 render `"1"` / `"2"` / `"3"`.
 Whitespace characters anywhere in `indexLabels` never match an
-index-label key input — `event.candidateWindow.candidateIndex(" ")`
-returns `null`, so the space key remains available for engine logic.
+index-label key input, so the space key remains available for engine
+logic.
 
 #### Macish candidate window fields
 
@@ -212,10 +212,9 @@ selected with Shift + the physical key that names it — main row
 (`Digit1`…`Digit0`) or keypad (`Numpad1`…`Numpad0`) — independent of
 keyboard layout. Non-digit labels are unaffected by the requirement and
 keep plain character matching. Each host signals the requirement in its
-own presentation. The per-event snapshot exposes this as
-`event.candidateWindow.indexLabelDigitsRequireShift`; pass the whole
-event to `candidateIndex` to match the same rule (see
-[`commitCandidateAtIndex`](#commitcandidateatindexindex)).
+own presentation. Engines read the requirement from the per-event
+snapshot, whose [`candidateIndex`](#candidate-window-snapshot) applies
+the same rule.
 
 The Shift requirement itself is the ordinary
 `indexLabelDigitsRequireShift` configuration field: an engine running a
@@ -698,18 +697,10 @@ source of truth. Highlights:
   `handleIndexLabelKeys` (manifest or per-update options) to route
   those keys to the engine instead.
 
-  For nav-key opt-out, `event.candidateWindow.navigationIntent(event)`
-  returns the same `{ direction, options }` pair the host would use,
-  or `null` for non-nav keys — pass it straight to `navigateCandidates`
-  instead of rebuilding the keyCode → direction table:
-
-  ```js
-  const intent = event.candidateWindow.navigationIntent(event);
-  if (intent) {
-    event.navigateCandidates(intent.direction, intent.options);
-    return true;
-  }
-  ```
+  Opting out does not mean rebuilding the host's keystroke tables:
+  [`navigationIntent`](#candidate-window-snapshot) and
+  [`candidateIndex`](#candidate-window-snapshot) hand back the same
+  answers the host would have used.
 - `handleAssociatedKey(event)` — called in associated mode for keys
   the candidate window didn't handle (keys outside its scope, in-scope
   keys when `handleNavigationKeys` / `handleIndexLabelKeys` is off —
@@ -914,22 +905,8 @@ check `event.candidateWindow.isVisible` first when in doubt.
 Commit the candidate at a page-relative position.
 
 - `index` *(integer, required)* — 0-based position within the current
-  `pageSize`. Pair with `event.candidateWindow.candidateIndex(event)` to
-  commit by index label:
-
-  ```js
-  const idx = event.candidateWindow.candidateIndex(event);
-  if (idx !== null) event.commitCandidateAtIndex(idx);
-  ```
-
-  Passing the key event applies the host's full keystroke rule:
-  Option-modified keys never select, and digit labels require Shift + a
-  physical digit key when
-  `event.candidateWindow.indexLabelDigitsRequireShift` is on (see
-  [Associated-mode selection keys](#associated-mode-selection-keys)).
-  Passing a bare character string matches by produced character; a
-  character carries no keystroke identity, so digit labels never match
-  through the string form while the requirement is on.
+  `pageSize`. Pair with [`candidateIndex`](#candidate-window-snapshot)
+  to commit by index label.
 
 #### `navigateCandidates(direction, options?)`
 
@@ -1000,7 +977,7 @@ engine's own `indexLabels`. See
 | `isComposing` | Whether marked text is non-empty. |
 | `isAssociating` | Whether the engine is in associated mode. |
 | `message` | Text of the message currently shown (see [`updateMessage`](#updatemessagetext-options)), `null` when none. |
-| `candidateWindow` | Snapshot of the candidate window state at method entry. |
+| `candidateWindow` | Snapshot of the candidate window state at method entry — see [Candidate window snapshot](#candidate-window-snapshot). |
 
 `KeyEvent` field names and semantics track web
 [`KeyboardEvent`](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent):
@@ -1055,6 +1032,61 @@ event.commitCandidateAtIndex(1);     // page-relative (0..pageSize-1)
 // later, inside candidateConfirmed
 event.absoluteIndex === 6;           // into the full list
 ```
+
+#### Candidate window snapshot
+
+`event.candidateWindow` is the window as it stood when the method was
+entered. Its configuration fields — `indexLabels`, `pageSize`,
+`layoutDirection`, `handleNavigationKeys`, `handleIndexLabelKeys`,
+`indexLabelDigitsRequireShift` — hold the effective values for the window
+that is up, per-update overrides included (see
+[`candidateWindow`](#candidatewindow-optional)). The rest is live state:
+
+| Field | Description |
+|---|---|
+| `isVisible` | Whether a candidate window is on screen. A [message](#updatemessagetext-options) is not one, so this reads `false` while a message shows. |
+| `pageStart` / `pageEnd` | Half-open range `[pageStart, pageEnd)` into the full candidate list: the candidates the current index labels address. Both `0` when no window is visible. |
+
+`pageStart` plus a page-relative index is the `absoluteIndex` that
+selecting it reports, and `pageEnd - pageStart` is how many of the page's
+slots actually hold a candidate — a short last page fills fewer than
+`pageSize`. "Page" means the set the index labels address, which is not
+always everything on screen: in the Macish horizontal expandable window
+it is the current row.
+
+```js
+const { pageStart, pageEnd } = event.candidateWindow;
+const onScreen = myCandidates.slice(pageStart, pageEnd);
+```
+
+Two helpers replay the host's own keystroke rules, so an engine that
+opts out of `handleNavigationKeys` / `handleIndexLabelKeys` can act on
+those keys without rebuilding the tables:
+
+- `candidateIndex(event | character)` — the keystroke's page-relative
+  0-based label position, or `null` when it matches no label. Passing the
+  key event applies the full rule: Option-modified keys never select, and
+  digit labels require Shift + a physical digit key while
+  `indexLabelDigitsRequireShift` is on. A bare character string matches by
+  produced character; a character carries no keystroke identity, so digit
+  labels never match through the string form while the requirement is on.
+
+  ```js
+  const idx = event.candidateWindow.candidateIndex(event);
+  if (idx !== null) event.commitCandidateAtIndex(idx);
+  ```
+
+- `navigationIntent(event)` — the same `{ direction, options }` pair the
+  host would use, or `null` for non-nav keys. Pass it straight to
+  `navigateCandidates`:
+
+  ```js
+  const intent = event.candidateWindow.navigationIntent(event);
+  if (intent) {
+    event.navigateCandidates(intent.direction, intent.options);
+    return true;
+  }
+  ```
 
 ### Character indices
 
