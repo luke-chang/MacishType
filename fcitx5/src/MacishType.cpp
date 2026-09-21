@@ -185,6 +185,7 @@ void MenuItemAction::activate(fcitx::InputContext *inputContext) {
 InputMethodEngine::InputMethodEngine(fcitx::Instance *instance)
     : instance_(instance),
       hostEventLoop_(&instance->eventLoop(), &instance->eventDispatcher()),
+      alertSound_(&instance->eventDispatcher()),
       languages_(preferredLanguages()), engines_(discoverEngines(languages_)) {
     MACISHTYPE_INFO() << "MacishType " << versionStampFull() << " loaded";
     MACISHTYPE_INFO() << "Discovered " << engines_.size()
@@ -198,6 +199,7 @@ InputMethodEngine::InputMethodEngine(fcitx::Instance *instance)
         libraryPath_ = dlInfo.dli_fname;
     }
     fcitx::readAsIni(config_, "conf/macishtype.conf");
+    alertSound_.setEventId(config_.alertSound.value());
     // Registered once; attached per input context only for engines that
     // declare the reverseLookup capability (see composeStatusActions).
     findInputCodeAction_.setShortText(translated("Find Input Code"));
@@ -364,6 +366,7 @@ void InputMethodEngine::setConfig(const fcitx::RawConfig &raw) {
     // Refresh the action's displayed hotkey (matching is read live in
     // keyEvent, so functional matching already tracks the new value).
     findInputCodeAction_.setHotkey(config_.findInputCodeKey.value());
+    alertSound_.setEventId(config_.alertSound.value());
 }
 
 void InputMethodEngine::refreshEngineIcon(EngineInfo &engine) {
@@ -498,7 +501,8 @@ void InputMethodEngine::handleSessionlessKey(const EngineInfo &engine,
         }
         reconcileChttransToggles();
         auto session = std::make_unique<EngineSession>(
-            host, inputContext, intlCache_, associatedSelectionKeys());
+            host, inputContext, intlCache_, alertSound_,
+            associatedSelectionKeys());
         if (session->valid()) {
             clearFailurePrompt(inputContext);
             session->invokeActivateHook();
@@ -605,7 +609,8 @@ void InputMethodEngine::activate(const fcitx::InputMethodEntry &entry,
     // out of composeStatusActions, which must never dispatch into JS.
     reconcileChttransToggles();
     auto session = std::make_unique<EngineSession>(
-        host, inputContext, intlCache_, associatedSelectionKeys());
+        host, inputContext, intlCache_, alertSound_,
+        associatedSelectionKeys());
     if (!session->valid()) {
         return;
     }
@@ -1329,7 +1334,8 @@ void InputMethodEngine::reloadEngine(const std::string &engineId) {
     }
     for (auto *inputContext : affected) {
         auto session = std::make_unique<EngineSession>(
-            host, inputContext, intlCache_, associatedSelectionKeys());
+            host, inputContext, intlCache_, alertSound_,
+            associatedSelectionKeys());
         if (!session->valid()) {
             continue;
         }

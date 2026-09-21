@@ -165,7 +165,7 @@ set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5 (>= 5.1.13), fcitx5-modules")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
-    "fcitx5-module-chttrans, fcitx5-module-fullwidth")
+    "fcitx5-module-chttrans, fcitx5-module-fullwidth, libcanberra0")
 set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
 set(CPACK_RPM_PACKAGE_LICENSE "MIT")
 # CPackRPM reads its own description variable and otherwise falls back to
@@ -173,7 +173,7 @@ set(CPACK_RPM_PACKAGE_LICENSE "MIT")
 set(CPACK_RPM_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
 # RPM-family distributions ship the capability modules in one package.
 set(CPACK_RPM_PACKAGE_REQUIRES "fcitx5 >= 5.1.13")
-set(CPACK_RPM_PACKAGE_RECOMMENDS "fcitx5-chinese-addons")
+set(CPACK_RPM_PACKAGE_RECOMMENDS "fcitx5-chinese-addons libcanberra")
 # rpmbuild stamps the build machine's hostname into the header, where the
 # source path mapping cannot reach it.
 set(CPACK_RPM_SPEC_MORE_DEFINE "%define _buildhost reproducible")

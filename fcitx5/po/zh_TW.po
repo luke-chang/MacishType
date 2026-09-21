@@ -43,6 +43,32 @@ msgstr "數字鍵"
 msgid "Shift + number keys"
 msgstr "Shift + 數字鍵"
 
+msgid "Engine alert sound"
+msgstr "引擎提示音"
+
+msgid ""
+"Engines decide when to play it. Whether it is heard depends on the "
+"desktop's sound setup."
+msgstr "由引擎決定何時發聲。是否真的聽得到取決於桌面的音效設定。"
+
+msgid "None"
+msgstr "無"
+
+msgid "Error"
+msgstr "錯誤"
+
+msgid "Warning"
+msgstr "警告"
+
+msgid "Information"
+msgstr "資訊"
+
+msgid "Message"
+msgstr "訊息"
+
+msgid "Bell"
+msgstr "鈴聲"
+
 msgid "Enable associated words"
 msgstr "啟用關聯字"
 

@@ -168,6 +168,13 @@
     event.enterAssociatedMode = (heldChar, candidates) => {
       act("enterAssociatedMode", heldChar, candidates);
     };
+    // One sound per event: repeat calls collapse.
+    let beeped = false;
+    event.beep = () => {
+      if (beeped) return;
+      beeped = true;
+      act("beep");
+    };
     return event;
   };
 

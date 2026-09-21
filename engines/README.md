@@ -979,6 +979,14 @@ the host's selection-keys setting and the engine's
 engine's own `indexLabels`. See
 [Associated-mode selection keys](#associated-mode-selection-keys).
 
+#### `beep()`
+
+Play the desktop's alert sound — a short cue for input the engine
+rejected. At most one sound per event, and requests arriving faster than
+the host can play them may collapse further. The user can turn alert
+sounds off and the desktop may be silent anyway, so never depend on it
+being heard.
+
 ### Event context (read-only)
 
 | Field | Description |

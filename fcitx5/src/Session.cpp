@@ -10,6 +10,7 @@
 #include <fcitx/inputpanel.h>
 #include <fcitx/text.h>
 
+#include "AlertSound.h"
 #include "I18n.h"
 #include <MacishType/GraphemeIndex.h>
 #include <MacishType/QjsUtil.h>
@@ -71,9 +72,10 @@ bool isDigitLabel(const std::string &text) {
 
 EngineSession::EngineSession(JsEngineHost *host,
                              fcitx::InputContext *inputContext,
-                             IntlCache &intl,
+                             IntlCache &intl, AlertSound &alertSound,
                              AssociatedSelectionKeys selectionKeys)
-    : host_(host), inputContext_(inputContext), intl_(intl) {
+    : host_(host), inputContext_(inputContext), intl_(intl),
+      alertSound_(alertSound) {
     // Unconditional, paired with the dtor's decrement: an invalid session
     // (createInstance fails below) is still destroyed by the caller, and an
     // unbalanced count would keep the host's fetch pipeline armed forever.
@@ -511,6 +513,10 @@ void EngineSession::queueAction(const std::string &name, int argc,
         queue.push_back(std::move(action));
         return;
     }
+    if (name == "beep") {
+        queue.push_back(BeepAction{});
+        return;
+    }
     MACISHTYPE_NOTICE() << host_->engineId() << ": unknown mutator ignored: "
                         << name;
 }
@@ -561,6 +567,9 @@ void EngineSession::applyActions(std::vector<Action> actions) {
                                                     EnterAssociatedAction>) {
                     enterAssociatedMode(value.heldChar,
                                         std::move(value.candidates));
+                } else if constexpr (std::is_same_v<T, BeepAction>) {
+                    MACISHTYPE_DEBUG() << host_->engineId() << ": beep";
+                    alertSound_.play();
                 }
             },
             std::move(action));

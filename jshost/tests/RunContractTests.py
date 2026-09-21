@@ -74,6 +74,19 @@ def parse_checks(sh_name):
     return checks
 
 
+def run_verbs(cli, engine, commands, extra_args=()):
+    """Drives the CLI through stdin verbs and returns its raw stdout."""
+    result = subprocess.run(
+        [str(cli), *RUNTIME_ARGS, *extra_args, str(engine)],
+        input="".join(f"{line}\n" for line in commands),
+        capture_output=True, text=True, encoding="utf-8", timeout=120)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"CLI exited {result.returncode} for {engine.name}:\n"
+            f"{result.stdout}\n{result.stderr}")
+    return result.stdout
+
+
 def run_cli(cli, fixture, extra_args=(), allow_failure=False):
     """Runs the CLI and returns the joined text of every log event, one per
     line, mirroring the daemon log the .sh suite greps."""
@@ -197,16 +210,8 @@ def main():
     menu_store = Path(tempfile.mkdtemp()) / "menu-store.txt"
 
     def run_menu_verbs(commands, extra_args=()):
-        result = subprocess.run(
-            [str(cli), *RUNTIME_ARGS, *extra_args,
-             str(FIXTURE_ENGINES / "menufixture")],
-            input="\n".join(commands) + "\n", capture_output=True, text=True,
-            encoding="utf-8", timeout=120)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"CLI exited {result.returncode} for menufixture:\n"
-                f"{result.stdout}\n{result.stderr}")
-        return result.stdout
+        return run_verbs(cli, FIXTURE_ENGINES / "menufixture", commands,
+                         extra_args)
 
     out = run_menu_verbs([
         '{"do":"activate"}',
@@ -289,13 +294,10 @@ def main():
     # Condition grammar: every operator form decides one conditionfixture
     # item's visibility, so the resolved menu is the whole assertion. Only
     # exercised here — the daemon suites cover the equals leaf.
-    result = subprocess.run(
-        [str(cli), *RUNTIME_ARGS,
-         "--settings", '{"shape":{"a":1,"b":2},"list":[1,2,3]}',
-         str(FIXTURE_ENGINES / "conditionfixture")],
-        input='{"do":"activate"}\n{"do":"menu"}\n{"do":"quit"}\n',
-        capture_output=True, text=True, encoding="utf-8", timeout=120)
-    out = result.stdout
+    out = run_verbs(
+        cli, FIXTURE_ENGINES / "conditionfixture",
+        ['{"do":"activate"}', '{"do":"menu"}', '{"do":"quit"}'],
+        ("--settings", '{"shape":{"a":1,"b":2},"list":[1,2,3]}'))
     visible = []
     disabled = []
     for line in out.splitlines():
@@ -329,36 +331,39 @@ def main():
     # The page range the index labels address. The CLI has no pager, so only
     # the first page is observable here; fcitx5/test/Navigation.sh covers
     # paging onto a short last page.
-    commands = "\n".join([
+    out = run_verbs(cli, FIXTURE_ENGINES / "pagerangefixture", [
         '{"do":"activate"}',
         '{"do":"key","key":"a","code":"KeyA"}',
         '{"do":"key","key":"z","code":"KeyZ"}',
         '{"do":"quit"}',
-    ]) + "\n"
-    result = subprocess.run(
-        [str(cli), *RUNTIME_ARGS, str(FIXTURE_ENGINES / "pagerangefixture")],
-        input=commands, capture_output=True, text=True, encoding="utf-8",
-        timeout=120)
-    out = result.stdout
+    ])
     failures.check("PageRange", "the snapshot reports the first page's range",
                    "cw-range start=0 end=3 visible=true" in out, out)
 
+    # event.beep() reaches the host as a no-arg action, and repeat calls
+    # within one event collapse: KeyA beeps once, KeyZ three times, so two
+    # actions arrive in total.
+    out = run_verbs(cli, FIXTURE_ENGINES / "beepfixture", [
+        '{"do":"activate"}',
+        '{"do":"key","key":"a","code":"KeyA"}',
+        '{"do":"key","key":"z","code":"KeyZ"}',
+        '{"do":"quit"}',
+    ])
+    failures.check("Beep", "beep arrives as an action with no arguments",
+                   '{"event":"action","name":"beep","args":[]}' in out, out)
+    failures.check("Beep", "repeat calls in one event collapse into one action",
+                   out.count('"name":"beep"') == 2, out)
+
     # ExampleEngine end-to-end smoke: compose -> candidates -> commit
     # (engines/example has no other automated test).
-    commands = "\n".join([
+    out = run_verbs(cli, REPO_ROOT / "engines" / "example", [
         '{"do":"activate"}',
         '{"do":"wait-quiescent"}',
         '{"do":"key","key":"h","code":"KeyH"}',
         '{"do":"key","key":"i","code":"KeyI"}',
         '{"do":"key","key":" ","code":"Space"}',
         '{"do":"quit"}',
-    ]) + "\n"
-    result = subprocess.run(
-        [str(cli), *RUNTIME_ARGS,
-         str(REPO_ROOT / "engines" / "example")],
-        input=commands, capture_output=True, text=True, encoding="utf-8",
-        timeout=120)
-    out = result.stdout
+    ])
     failures.check("example", "the demo table loads through fetch",
                    "demo.txt loaded, entries: 4" in out, out)
     failures.check("example", "typing composes marked text",

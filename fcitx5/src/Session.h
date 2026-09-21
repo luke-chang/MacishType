@@ -20,6 +20,8 @@ class Text;
 
 namespace MacishType::Fcitx5 {
 
+class AlertSound;
+
 // Candidate emitted by the engine; `payload` is an opaque JS value that
 // round-trips back through confirm/selection events.
 struct CandidateData {
@@ -36,7 +38,8 @@ struct CandidateData {
 class EngineSession {
 public:
     EngineSession(JsEngineHost *host, fcitx::InputContext *inputContext,
-                  IntlCache &intl, AssociatedSelectionKeys selectionKeys);
+                  IntlCache &intl, AlertSound &alertSound,
+                  AssociatedSelectionKeys selectionKeys);
     ~EngineSession();
     EngineSession(const EngineSession &) = delete;
     EngineSession &operator=(const EngineSession &) = delete;
@@ -117,11 +120,12 @@ private:
         std::string heldChar;
         std::optional<std::vector<std::string>> candidates;
     };
+    struct BeepAction {};
     using Action =
         std::variant<UpdateMarkedTextAction, UpdateCandidatesAction,
                      UpdateMessageAction, CommitAction, CommitSelectedAction,
                      CommitAtIndexAction, NavigateAction, ResetAction,
-                     FlushStagedAction, EnterAssociatedAction>;
+                     FlushStagedAction, EnterAssociatedAction, BeepAction>;
 
     // Host→JS invocation with an action queue on the stack; queued actions
     // apply after the hook (and its microtasks) return.
@@ -193,6 +197,7 @@ private:
     JsEngineHost *host_;
     fcitx::InputContext *inputContext_;
     IntlCache &intl_;
+    AlertSound &alertSound_;
     uint64_t instanceId_ = 0;
 
     std::string markedText_;

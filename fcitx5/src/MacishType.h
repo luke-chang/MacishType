@@ -23,6 +23,7 @@
 #include <MacishType/EngineHost.h>
 #include <MacishType/Intl.h>
 
+#include "AlertSound.h"
 #include "CoreAdapters.h"
 #include "EngineDiscovery.h"
 #include "EngineSettings.h"
@@ -44,6 +45,28 @@ inline FieldAnnotation associatedSelectionKeysAnnotation() {
     return annotation;
 }
 
+// Runtime enum entries for the alert-sound picker; the tokens are
+// freedesktop sound naming spec event ids, with "none" for silence.
+inline FieldAnnotation alertSoundAnnotation() {
+    FieldAnnotation annotation;
+    annotation.tooltip =
+        translated("Engines decide when to play it. Whether it is heard "
+                   "depends on the desktop's sound setup.");
+    annotation.enumTokens = {"none",
+                             "dialog-error",
+                             "dialog-warning",
+                             "dialog-information",
+                             "message",
+                             "bell"};
+    annotation.enumLabels = {translated("None"),
+                             translated("Error"),
+                             translated("Warning"),
+                             translated("Information"),
+                             translated("Message"),
+                             translated("Bell")};
+    return annotation;
+}
+
 FCITX_CONFIGURATION(
     MacishTypeConfig,
     // configtool renders options in declaration order: typing behavior first,
@@ -54,6 +77,10 @@ FCITX_CONFIGURATION(
         std::string("followEngine"), fcitx::NoConstrain<std::string>{},
         fcitx::DefaultMarshaller<std::string>{},
         associatedSelectionKeysAnnotation()};
+    PickerOption alertSound{
+        this, "AlertSound", translated("Engine alert sound"),
+        std::string("dialog-error"), fcitx::NoConstrain<std::string>{},
+        fcitx::DefaultMarshaller<std::string>{}, alertSoundAnnotation()};
     fcitx::Option<bool> autoReloadEngines{
         this, "AutoReloadEngines",
         translated("Auto-reload an engine when its files change"), true};
@@ -241,6 +268,7 @@ private:
     // translated(), discovery parses manifests).
     CoreServices coreServices_;
     HostEventLoop hostEventLoop_;
+    AlertSound alertSound_;
     // One per process, shared by every engine host and by the sessions that
     // segment marked text; declared before both so it outlives them.
     IntlCache intlCache_;

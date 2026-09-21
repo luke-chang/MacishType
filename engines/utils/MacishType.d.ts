@@ -277,6 +277,13 @@ export interface EventMutators {
    * ends the composition. Chained engines lean on this to finish a chain.
    */
   enterAssociatedMode(heldChar: string, candidates?: readonly string[]): void;
+  /**
+   * Play the desktop's alert sound — a short cue for rejected input. At
+   * most one sound per event, and requests arriving faster than the host
+   * can play them may collapse further. The user can turn alert sounds
+   * off, so never depend on it being heard.
+   */
+  beep(): void;
 }
 
 /** Context fields shared by every event payload. */

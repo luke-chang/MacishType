@@ -1,4 +1,5 @@
 add_library(macishtype SHARED
+    AlertSound.cpp
     CoreAdapters.cpp
     EngineDiscovery.cpp
     EngineSettings.cpp
