@@ -5,6 +5,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <fcitx-config/configuration.h>
@@ -257,10 +258,32 @@ private:
     // Hot reload: tears down the engine's JS host and rebuilds the active
     // sessions so on-disk edits apply immediately.
     void reloadEngine(const std::string &engineId);
-    void notifyEngine(const std::string &engineId, const std::string &summary,
-                      const std::string &body);
-    void notifyReload(const std::string &engineId,
-                      const std::string &displayName, bool succeeded);
+    enum class EngineChange { Reloaded, LoadFailed, Removed };
+    void noteEngineChange(const std::string &engineId, EngineChange change);
+    void publishReloadNotice();
+    bool restartWouldHelp() const;
+
+    // The entry fields fcitx freezes when it first accepts an input method:
+    // its list only ever grows at runtime, so nothing can update a
+    // registered entry. Label and icon escape this through the subMode
+    // overrides, which panels consult live.
+    struct EntryFields {
+        std::string displayName;
+        std::string languageCode;
+        bool configurable = false;
+
+        bool operator!=(const EntryFields &other) const {
+            return displayName != other.displayName ||
+                   languageCode != other.languageCode ||
+                   configurable != other.configurable;
+        }
+    };
+    // The single producer of those fields, so the entry handed to fcitx and
+    // the drift comparison cannot disagree.
+    EntryFields entryFields(const EngineInfo &engine) const;
+    // False while fcitx has not registered the engine yet.
+    bool entryDrifted(const EngineInfo &engine) const;
+    bool entryFieldsStale() const;
 
     fcitx::Instance *instance_;
     // Installs the core seams process-wide on construction; declared before
@@ -285,7 +308,11 @@ private:
     std::map<std::string, std::vector<std::unique_ptr<fcitx::Action>>>
         engineMenuActions_;
     std::map<std::string, std::unique_ptr<JsEngineHost>> hosts_;
-    std::map<std::string, bool> failedHosts_;
+    // Engines without a live host, and why: one whose folder vanished keeps
+    // its entry in fcitx's list until a restart, which keeps the restart
+    // action on offer.
+    enum class HostFailure { Load, FolderGone };
+    std::map<std::string, HostFailure> failedHosts_;
     std::map<fcitx::InputContext *, std::unique_ptr<EngineSession>> sessions_;
     std::unique_ptr<EngineWatcher> watcher_;
     // Installs engine icons into the user's hicolor theme so panels can be
@@ -311,6 +338,20 @@ private:
     // Engines whose on-disk edits await the user's pull (AutoReloadEngines
     // off); applied and cleared by rescanEngineFolders.
     std::set<std::string> pendingReloads_;
+    // The single reload notice: every engine change since the user last
+    // dismissed it, in update order, each engine once with its latest
+    // change. Replaced in place on every publish.
+    struct ReloadNotice {
+        uint32_t id = 0;
+        std::vector<std::pair<std::string, EngineChange>> changes;
+    };
+    ReloadNotice reloadNotice_;
+    // Publishing is coalesced through this one-shot timer. fcitx's
+    // notifications addon learns a notification's global id only when the
+    // DBus reply lands; a replace issued before that cannot target the
+    // previous notification and strands it on screen instead. Non-null
+    // while a publish is pending.
+    std::unique_ptr<fcitx::EventSourceTime> reloadNoticeTimer_;
     // CheckUpdate baseline: max mtime across the engines layers at the
     // last scan. Recorded only after the user layer is created and the
     // root watches are armed (a directory created afterwards would read

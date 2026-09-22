@@ -14,10 +14,12 @@
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/standardpaths.h>
+#include <fcitx-utils/stringutils.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/action.h>
 #include <fcitx/addonmanager.h>
 #include <fcitx/event.h>
+#include <fcitx/inputmethodmanager.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/statusarea.h>
 #include <fcitx/surroundingtext.h>
@@ -160,6 +162,33 @@ std::string labelForEngine(const EngineInfo &engine) {
 std::string safeDisplayName(const EngineInfo &engine) {
     std::string name = engine.displayName();
     return fcitx::utf8::validate(name) ? name : engine.id;
+}
+
+// Successive engine changes (one rsync touching several folders) fold into
+// one notification; see reloadNoticeTimer_.
+constexpr uint64_t kNoticeCoalesceMicroseconds = 300 * 1000;
+
+// Notification bodies may be rendered as markup (GNOME advertises
+// body-markup), so text embedding engine names has to be escaped.
+std::string escapeMarkup(const std::string &text) {
+    std::string escaped;
+    escaped.reserve(text.size());
+    for (char character : text) {
+        switch (character) {
+        case '&':
+            escaped += "&amp;";
+            break;
+        case '<':
+            escaped += "&lt;";
+            break;
+        case '>':
+            escaped += "&gt;";
+            break;
+        default:
+            escaped += character;
+        }
+    }
+    return escaped;
 }
 
 } // namespace
@@ -313,13 +342,16 @@ InputMethodEngine::InputMethodEngine(fcitx::Instance *instance)
     // surfaces: this accept makes configtool show its native "Found
     // updates" banner, whose Update button refreshes the IM list and
     // re-enters listInputMethods.
+    // Drifted entry fields join the same affordance even though only a
+    // restart can apply them; the reload notification names that remedy.
     checkUpdateWatcher_ = instance_->watchEvent(
         fcitx::EventType::CheckUpdate, fcitx::EventWatcherPhase::Default,
         [this](fcitx::Event &event) {
             if (!pendingReloads_.empty() || enginesHaveUnparsableManifest_ ||
                 fcitx::StandardPaths::global().timestamp(
                     fcitx::StandardPathsType::PkgData,
-                    "macishtype/engines") > enginesTimestamp_) {
+                    "macishtype/engines") > enginesTimestamp_ ||
+                entryFieldsStale()) {
                 event.accept();
             }
         });
@@ -335,6 +367,39 @@ InputMethodEngine::~InputMethodEngine() {
         !std::filesystem::exists(libraryPath_, errorCode)) {
         iconLinks_->removeAll();
     }
+    // The reload notice outlives any single reload on purpose, but its
+    // callbacks capture this; take it down with the addon. Never load the
+    // addon here — only close what an already-running one still holds.
+    if (reloadNotice_.id != 0) {
+        if (auto *notifications =
+                instance_->addonManager().addon("notifications")) {
+            notifications->call<fcitx::INotifications::closeNotification>(
+                reloadNotice_.id);
+        }
+    }
+}
+
+InputMethodEngine::EntryFields
+InputMethodEngine::entryFields(const EngineInfo &engine) const {
+    auto settings = engineSettings_.find(engine.id);
+    return {safeDisplayName(engine), engine.manifest.languageCode,
+            settings != engineSettings_.end() &&
+                settings->second->hasOptions()};
+}
+
+bool InputMethodEngine::entryDrifted(const EngineInfo &engine) const {
+    const auto *registered =
+        instance_->inputMethodManager().entry(uniqueNameForEngine(engine));
+    return registered != nullptr &&
+           entryFields(engine) != EntryFields{registered->name(),
+                                              registered->languageCode(),
+                                              registered->isConfigurable()};
+}
+
+bool InputMethodEngine::entryFieldsStale() const {
+    return std::any_of(
+        engines_.begin(), engines_.end(),
+        [this](const EngineInfo &engine) { return entryDrifted(engine); });
 }
 
 std::vector<fcitx::InputMethodEntry> InputMethodEngine::listInputMethods() {
@@ -344,17 +409,15 @@ std::vector<fcitx::InputMethodEntry> InputMethodEngine::listInputMethods() {
     rescanEngineFolders();
     std::vector<fcitx::InputMethodEntry> entries;
     for (const auto &engine : engines_) {
+        auto fields = entryFields(engine);
         fcitx::InputMethodEntry entry(uniqueNameForEngine(engine),
-                                      safeDisplayName(engine),
-                                      engine.manifest.languageCode,
+                                      fields.displayName, fields.languageCode,
                                       "macishtype");
         entry.setLabel(labelForEngine(engine));
         if (!engine.iconName.empty()) {
             entry.setIcon(engine.iconName);
         }
-        auto settings = engineSettings_.find(engine.id);
-        entry.setConfigurable(settings != engineSettings_.end() &&
-                              settings->second->hasOptions());
+        entry.setConfigurable(fields.configurable);
         entries.push_back(std::move(entry));
     }
     return entries;
@@ -985,13 +1048,10 @@ void InputMethodEngine::reconcileEngineFolder(const std::string &name) {
         // nothing else clears the bookkeeping.
         watcher_->unwatchStorage(name);
         chttransToggleStates_.erase(name);
-        failedHosts_[name] = true;
+        failedHosts_[name] = HostFailure::FolderGone;
         pendingReloads_.erase(name);
         MACISHTYPE_INFO() << "Engine folder removed: " << name;
-        notifyEngine(name, translated("Engine removed from disk"),
-                     safeDisplayName(*engine) + " · " +
-                         translated("Restore the folder to recover, or "
-                                    "restart fcitx5"));
+        noteEngineChange(name, EngineChange::Removed);
         return;
     }
     // Folder back (or the winning layer changed): refresh the cached
@@ -1084,7 +1144,7 @@ JsEngineHost *InputMethodEngine::hostForEngine(const EngineInfo &engine) {
         MACISHTYPE_ERROR() << "Engine failed to load, disabled until it "
                               "changes on disk: "
                            << engine.id;
-        failedHosts_[engine.id] = true;
+        failedHosts_[engine.id] = HostFailure::Load;
         chttransToggleStates_.erase(engine.id);
         return nullptr;
     }
@@ -1310,10 +1370,8 @@ void InputMethodEngine::reloadEngine(const std::string &engineId) {
         return;
     }
     // Manifest edits apply too (settings defaults, modules, candidate
-    // window). Display names are the exception: fcitx5's input method list
-    // only grows at runtime (loadDynamicEntries skips existing entries and
-    // nothing can update or remove one), so a rename shows after the next
-    // fcitx5 restart.
+    // window), except the fields fcitx froze at registration — see
+    // EntryFields.
     if (auto manifest =
             parseManifest(engine->root / "manifest.json", languages_)) {
         engine->manifest = std::move(*manifest);
@@ -1327,8 +1385,15 @@ void InputMethodEngine::reloadEngine(const std::string &engineId) {
     rebuildEngineSettings(*engine);
     rebuildEngineMenuActions(*engine);
 
+    if (entryDrifted(*engine)) {
+        MACISHTYPE_INFO() << "Entry fields changed, restart fcitx5 to update "
+                             "the input method list: "
+                          << engineId;
+    }
+
     auto *host = hostForEngine(*engine);
-    notifyReload(engineId, safeDisplayName(*engine), host != nullptr);
+    noteEngineChange(engineId, host != nullptr ? EngineChange::Reloaded
+                                               : EngineChange::LoadFailed);
     if (host == nullptr) {
         return;
     }
@@ -1348,34 +1413,118 @@ void InputMethodEngine::reloadEngine(const std::string &engineId) {
     }
 }
 
-void InputMethodEngine::notifyEngine(const std::string &engineId,
-                                     const std::string &summary,
-                                     const std::string &body) {
+bool InputMethodEngine::restartWouldHelp() const {
+    return entryFieldsStale() ||
+           std::any_of(failedHosts_.begin(), failedHosts_.end(),
+                       [](const auto &failure) {
+                           return failure.second == HostFailure::FolderGone;
+                       });
+}
+
+void InputMethodEngine::noteEngineChange(const std::string &engineId,
+                                         EngineChange change) {
+    if (!*config_.notifyOnReload ||
+        instance_->addonManager().addon("notifications", true) == nullptr) {
+        return;
+    }
+    auto &changes = reloadNotice_.changes;
+    changes.erase(std::remove_if(changes.begin(), changes.end(),
+                                 [&engineId](const auto &entry) {
+                                     return entry.first == engineId;
+                                 }),
+                  changes.end());
+    changes.emplace_back(engineId, change);
+    reloadNoticeTimer_ = instance_->eventLoop().addTimeEvent(
+        CLOCK_MONOTONIC,
+        fcitx::now(CLOCK_MONOTONIC) + kNoticeCoalesceMicroseconds, 0,
+        [this](fcitx::EventSourceTime *, uint64_t) {
+            // Resetting the timer destroys this closure; from here on touch
+            // only the stack copy.
+            InputMethodEngine *self = this;
+            self->reloadNoticeTimer_.reset();
+            self->publishReloadNotice();
+            return true;
+        });
+}
+
+void InputMethodEngine::publishReloadNotice() {
     auto *notifications = instance_->addonManager().addon("notifications",
                                                           true);
     if (notifications == nullptr) {
         return;
     }
-    if (!*config_.notifyOnReload) {
+    std::vector<std::string> lines;
+    std::string summary;
+    auto addGroup = [&](EngineChange kind, const char *lineFormat,
+                        const std::string &hint, const char *groupSummary) {
+        std::vector<std::string> names;
+        for (const auto &[engineId, change] : reloadNotice_.changes) {
+            if (change == kind) {
+                const auto *engine = engineById(engineId);
+                names.push_back(engine != nullptr ? safeDisplayName(*engine)
+                                                  : engineId);
+            }
+        }
+        if (names.empty()) {
+            return;
+        }
+        std::string line = fcitx::stringutils::replaceAll(
+            translated(lineFormat), "%1",
+            fcitx::stringutils::join(names, translated(", ")));
+        if (!hint.empty()) {
+            line += " · " + hint;
+        }
+        lines.push_back(std::move(line));
+        summary = translated(groupSummary);
+    };
+    addGroup(EngineChange::Reloaded, "%1 reloaded", {}, "Engine reloaded");
+    addGroup(EngineChange::LoadFailed, "%1 failed to load",
+             translated("See the fcitx5 log for details"),
+             "Engine load failed");
+    addGroup(EngineChange::Removed, "%1 removed from disk",
+             translated("Restore the folder to recover"),
+             "Engine removed from disk");
+    if (lines.empty()) {
         return;
     }
-    // Per-engine tip id: repeated tips for one engine replace in place, but
-    // different engines each get their own notification so none is silently
-    // overwritten (they queue in the notification center rather than merge).
-    notifications->call<fcitx::INotifications::showTip>(
-        "macishtype-reload-" + engineId, "MacishType", "input-keyboard",
-        summary, body, 3000);
-}
-
-void InputMethodEngine::notifyReload(const std::string &engineId,
-                                     const std::string &displayName,
-                                     bool succeeded) {
-    notifyEngine(engineId,
-                 succeeded ? translated("Engine reloaded")
-                           : translated("Engine load failed"),
-                 succeeded ? displayName
-                           : displayName + " · " +
-                                 translated("See the fcitx5 log for details"));
+    if (lines.size() > 1) {
+        summary = translated("Engine status changed");
+    }
+    // The restart line and action speak for every engine, not just this
+    // round's: a rename or a vanished folder from an earlier, dismissed
+    // notice still needs the restart.
+    const bool restartHelps = restartWouldHelp();
+    if (restartHelps) {
+        lines.push_back(
+            translated("Restart fcitx5 to update the input method list"));
+    }
+    // canRestart() false means restart() would be a no-op, which a button
+    // must not promise; desktops without the actions capability drop it.
+    std::vector<std::string> actions;
+    if (restartHelps && instance_->canRestart()) {
+        actions = {"restart", translated("Restart Now")};
+    }
+    // No timeout: the notice waits to be dismissed, and that dismissal is
+    // what ends the round it accumulates.
+    reloadNotice_.id =
+        notifications->call<fcitx::INotifications::sendNotification>(
+            "MacishType", reloadNotice_.id, "input-keyboard", summary,
+            escapeMarkup(fcitx::stringutils::join(lines, translated("; "))),
+            actions, 0,
+            [this](const std::string &action) {
+                if (action == "restart") {
+                    instance_->restart();
+                }
+            },
+            [this](uint32_t) {
+                // Changes still waiting on the timer have not been seen, so
+                // they stay; only the id goes, so the next send does not try
+                // to replace a closed notification.
+                reloadNotice_.id = 0;
+                if (!reloadNoticeTimer_) {
+                    reloadNotice_ = {};
+                }
+            });
 }
 
 fcitx::AddonInstance *

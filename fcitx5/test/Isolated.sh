@@ -82,9 +82,18 @@ export XDG_CONFIG_HOME="$config_root"
 # scratch unless the caller wants to reach in (storage tests do).
 export XDG_STATE_HOME="${ISOLATED_STATE_HOME:-$config_root/state}"
 
+# Frontends stay out. So does the notifications addon, unless the client
+# impersonates the daemon (--notifications): the isolated instance must never
+# reach the user's real one.
+disabled_addons=wayland,waylandim,xcb,classicui,notifications
+case " $* " in
+*" --notifications "*) disabled_addons=wayland,waylandim,xcb,classicui ;;
+esac
+export disabled_addons
+
 dbus-run-session -- sh -c '
     WAYLAND_DISPLAY= DISPLAY= fcitx5 \
-        --disable=wayland,waylandim,xcb,classicui,notifications \
+        --disable="$disabled_addons" \
         --verbose=default=4,macishtype=5 > "$1" 2>&1 &
     fcitx_pid=$!
     sleep 2
@@ -97,7 +106,25 @@ dbus-run-session -- sh -c '
         echo "--- fcitx5 log tail ---" >&2
         tail -30 "$log_file" >&2
     fi
+    # A restart hands over to a detached `fcitx5 -r` that neither
+    # $fcitx_pid nor its process group reaches; left alone it exits only
+    # when the bus goes away, saving into the scratch config while the
+    # homes are being removed. Stop whoever owns the name instead and wait
+    # for the name to drop, which follows that save.
+    owner="$(dbus-send --session --print-reply --dest=org.freedesktop.DBus \
+        / org.freedesktop.DBus.GetConnectionUnixProcessID \
+        string:org.fcitx.Fcitx5 2>/dev/null | sed -n "s/.*uint32 //p")"
     kill "$fcitx_pid" 2>/dev/null
     wait "$fcitx_pid" 2>/dev/null
+    if [ -n "$owner" ] && [ "$owner" != "$fcitx_pid" ]; then
+        kill "$owner" 2>/dev/null
+        i=0
+        while [ "$i" -lt 100 ] && dbus-send --session --print-reply \
+            --dest=org.freedesktop.DBus / org.freedesktop.DBus.NameHasOwner \
+            string:org.fcitx.Fcitx5 2>/dev/null | grep -q "boolean true"; do
+            i=$((i + 1))
+            sleep 0.05
+        done
+    fi
     exit $status
 ' "$script_dir/TypingClient.py" "$log_file" "macishtype-$engine_id" "$@"

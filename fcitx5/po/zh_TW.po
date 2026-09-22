@@ -16,11 +16,34 @@ msgstr "引擎載入失敗"
 msgid "See the fcitx5 log for details"
 msgstr "詳見 fcitx5 記錄"
 
+msgid "Restart fcitx5 to update the input method list"
+msgstr "重新啟動 fcitx5 以更新輸入法清單"
+
+msgid "Restart Now"
+msgstr "立即重新啟動"
+
 msgid "Engine removed from disk"
 msgstr "引擎已從磁碟移除"
 
-msgid "Restore the folder to recover, or restart fcitx5"
-msgstr "放回資料夾即可復原，或重新啟動 fcitx5"
+msgid "Engine status changed"
+msgstr "引擎狀態已變更"
+
+msgid "%1 reloaded"
+msgstr "%1 已重新載入"
+
+msgid "%1 failed to load"
+msgstr "%1 載入失敗"
+
+msgid "%1 removed from disk"
+msgstr "%1 已從磁碟移除"
+
+msgid "Restore the folder to recover"
+msgstr "放回資料夾即可復原"
+
+# Separator between the groups of one reload notice (engine names within a
+# group reuse the ", " entry below).
+msgid "; "
+msgstr "；"
 
 msgid "Auto-reload an engine when its files change"
 msgstr "編輯引擎後自動重新載入"

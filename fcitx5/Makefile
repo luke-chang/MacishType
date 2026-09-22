@@ -133,6 +133,8 @@ test: build
 	test/MenuBad.sh
 	test/MenuUi.sh
 	test/Discovery.sh
+	test/EntryFields.sh
+	test/RestartAction.sh
 	test/TextCodec.sh
 	test/ReverseLookup.sh
 	test/Modules.sh

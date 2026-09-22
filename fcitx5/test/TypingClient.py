@@ -28,6 +28,44 @@ IM_PATH = "/org/freedesktop/portal/inputmethod"
 IM_IFACE = "org.fcitx.Fcitx.InputMethod1"
 IC_IFACE = "org.fcitx.Fcitx.InputContext1"
 
+NOTIFY_NAME = "org.freedesktop.Notifications"
+NOTIFY_PATH = "/org/freedesktop/Notifications"
+# Just enough of the notification spec for fcitx5's notifications addon,
+# which probes capabilities on startup.
+NOTIFY_XML = """
+<node>
+  <interface name='org.freedesktop.Notifications'>
+    <method name='GetCapabilities'>
+      <arg type='as' name='capabilities' direction='out'/>
+    </method>
+    <method name='GetServerInformation'>
+      <arg type='s' name='name' direction='out'/>
+      <arg type='s' name='vendor' direction='out'/>
+      <arg type='s' name='version' direction='out'/>
+      <arg type='s' name='spec_version' direction='out'/>
+    </method>
+    <method name='Notify'>
+      <arg type='s' name='app_name' direction='in'/>
+      <arg type='u' name='replaces_id' direction='in'/>
+      <arg type='s' name='app_icon' direction='in'/>
+      <arg type='s' name='summary' direction='in'/>
+      <arg type='s' name='body' direction='in'/>
+      <arg type='as' name='actions' direction='in'/>
+      <arg type='a{sv}' name='hints' direction='in'/>
+      <arg type='i' name='expire_timeout' direction='in'/>
+      <arg type='u' name='id' direction='out'/>
+    </method>
+    <method name='CloseNotification'>
+      <arg type='u' name='id' direction='in'/>
+    </method>
+    <signal name='ActionInvoked'>
+      <arg type='u' name='id'/>
+      <arg type='s' name='action_key'/>
+    </signal>
+  </interface>
+</node>
+"""
+
 CAPABILITY_PREEDIT = 1 << 1
 CAPABILITY_FORMATTED_PREEDIT = 1 << 4
 # Lets the client push a selection via SetSurroundingText, the primary query
@@ -42,16 +80,52 @@ def emit(payload):
     print(json.dumps(payload, ensure_ascii=False), flush=True)
 
 
+def pump_until(predicate, timeout):
+    """Iterates the main context until predicate() holds; False on timeout.
+
+    Blocking would starve the DBus handlers this client serves (the
+    impersonated panel and daemon), so it polls instead.
+    """
+    context = GLib.MainContext.default()
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        if time.monotonic() >= deadline:
+            return False
+        while context.iteration(False):
+            pass
+        time.sleep(0.02)
+    return True
+
+
+def own_name(bus, name):
+    """Owns a well-known name and returns once the bus confirms it."""
+    acquired = {"done": False}
+    Gio.bus_own_name_on_connection(
+        bus, name, Gio.BusNameOwnerFlags.NONE,
+        lambda *_args: acquired.__setitem__("done", True), None)
+    context = GLib.MainContext.default()
+    while not acquired["done"]:
+        context.iteration(True)
+
+
 def main():
     im_name = sys.argv[1]
     keys = []
     kimpanel = False
+    notifications = False
     for spec in sys.argv[2:]:
         # "--kimpanel" impersonates the kimpanel panel (owns org.kde.impanel)
         # before anything else runs. Opt-in: owning that name changes which
         # UI addon fcitx5 selects for every test in the session.
         if spec == "--kimpanel":
             kimpanel = True
+            continue
+        # "--notifications" impersonates the desktop notification daemon
+        # (owns org.freedesktop.Notifications), emitting every Notify call
+        # so tests can assert its body and action buttons. Opt-in: owning
+        # that name makes fcitx5's notifications addon actually deliver.
+        if spec == "--notifications":
+            notifications = True
             continue
         # "props" dumps the last RegisterProperties payload received from
         # fcitx5's kimpanel addon (requires --kimpanel), with a sequence
@@ -126,6 +200,23 @@ def main():
         if spec == "refresh":
             keys.append(("refresh",))
             continue
+        # "invokeaction:KEY" presses a button on the most recent
+        # notification (requires --notifications).
+        if spec.startswith("invokeaction:"):
+            keys.append(("invokeaction", spec[len("invokeaction:"):]))
+            continue
+        # "closenotify" dismisses the most recent notification the way a
+        # user would (NotificationClosed, reason 2); requires
+        # --notifications.
+        if spec == "closenotify":
+            keys.append(("closenotify",))
+            continue
+        # "waitnotify:N" blocks until N Notify calls have arrived in total,
+        # so a test can sequence its next action after fcitx5's coalesced
+        # publish instead of guessing with sleeps.
+        if spec.startswith("waitnotify:"):
+            keys.append(("waitnotify", int(spec.split(":")[1])))
+            continue
         # "setgroupims:NAME1,NAME2,..." replaces the Default group's input
         # method list (SetCurrentIM silently ignores IMs outside the group).
         if spec.startswith("setgroupims:"):
@@ -146,17 +237,49 @@ def main():
 
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
+    latest_notification = {"id": 0, "next": 0, "count": 0}
+    if notifications:
+        node = Gio.DBusNodeInfo.new_for_xml(NOTIFY_XML)
+
+        def on_notify_call(_conn, _sender, _path, _iface, method, params,
+                           invocation):
+            if method == "GetCapabilities":
+                invocation.return_value(
+                    GLib.Variant("(as)", (["actions", "body"],)))
+            elif method == "GetServerInformation":
+                invocation.return_value(
+                    GLib.Variant("(ssss)",
+                                 ("typing-client", "macishtype", "1", "1.2")))
+            elif method == "Notify":
+                (_app, replaces, _icon, summary, body, actions, _hints,
+                 timeout) = params.unpack()
+                # A real server keeps the id when replacing, and fcitx5's
+                # global-to-internal id map relies on that.
+                if replaces:
+                    latest_notification["id"] = replaces
+                else:
+                    latest_notification["next"] += 1
+                    latest_notification["id"] = latest_notification["next"]
+                latest_notification["count"] += 1
+                emit({"event": "notify", "summary": summary, "body": body,
+                      "actions": list(actions), "timeout": timeout,
+                      "replaces": replaces,
+                      "id": latest_notification["id"]})
+                invocation.return_value(
+                    GLib.Variant("(u)", (latest_notification["id"],)))
+            else:
+                invocation.return_value(None)
+
+        bus.register_object(NOTIFY_PATH, node.interfaces[0], on_notify_call,
+                            None, None)
+        own_name(bus, NOTIFY_NAME)
+
     latest_properties = []
     if kimpanel:
         # The panel half: own the well-known name (fcitx5's kimpanel addon
         # resumes once org.kde.impanel has an owner), cache every
         # RegisterProperties payload, and announce the panel. fcitx5 signals
         # from /kimpanel; the panel signals from /org/kde/impanel.
-        acquired = {"done": False}
-        Gio.bus_own_name_on_connection(
-            bus, "org.kde.impanel", Gio.BusNameOwnerFlags.NONE,
-            lambda *_args: acquired.__setitem__("done", True), None)
-
         def on_kimpanel_signal(_bus, _sender, _path, _iface, signal, params):
             if signal == "RegisterProperties":
                 latest_properties[:] = list(params.unpack()[0])
@@ -164,9 +287,8 @@ def main():
         bus.signal_subscribe(None, "org.kde.kimpanel.inputmethod", None, None,
                              None, Gio.DBusSignalFlags.NONE,
                              on_kimpanel_signal)
+        own_name(bus, "org.kde.impanel")
         context = GLib.MainContext.default()
-        while not acquired["done"]:
-            context.iteration(True)
         for iface, name in (("org.kde.impanel", "PanelCreated"),
                             ("org.kde.impanel2", "PanelCreated2")):
             bus.emit_signal(None, "/org/kde/impanel", iface, name, None)
@@ -282,15 +404,10 @@ def main():
                 emit({"event": "triggered", "key": key})
                 continue
             if entry[0] == "sleep":
-                # Pump the main context while waiting so queued DBus
-                # signals (commit/preedit) reach stdout before the next
-                # action — event-driven tests react to those lines.
-                deadline = time.monotonic() + entry[1] / 1000
-                context = GLib.MainContext.default()
-                while time.monotonic() < deadline:
-                    while context.iteration(False):
-                        pass
-                    time.sleep(0.02)
+                # Pumped, so queued DBus signals (commit/preedit) reach
+                # stdout before the next action — event-driven tests react
+                # to those lines.
+                pump_until(lambda: False, entry[1] / 1000)
                 continue
             if entry[0] == "refocus":
                 ic_call("FocusOut")
@@ -362,6 +479,30 @@ def main():
                     "Refresh", None, None,
                     Gio.DBusCallFlags.NONE, 5000, None)
                 emit({"event": "refreshed"})
+                continue
+            if entry[0] == "invokeaction":
+                _kind, action = entry
+                bus.emit_signal(
+                    None, NOTIFY_PATH, NOTIFY_NAME, "ActionInvoked",
+                    GLib.Variant("(us)",
+                                 (latest_notification["id"], action)))
+                emit({"event": "action-invoked", "action": action,
+                      "id": latest_notification["id"]})
+                continue
+            if entry[0] == "closenotify":
+                bus.emit_signal(
+                    None, NOTIFY_PATH, NOTIFY_NAME, "NotificationClosed",
+                    GLib.Variant("(uu)", (latest_notification["id"], 2)))
+                emit({"event": "notify-closed",
+                      "id": latest_notification["id"]})
+                continue
+            if entry[0] == "waitnotify":
+                if not pump_until(
+                        lambda: latest_notification["count"] >= entry[1], 15):
+                    emit({"event": "waitnotify-timeout", "want": entry[1],
+                          "have": latest_notification["count"]})
+                    sys.exit(1)
+                emit({"event": "notify-count", "count": entry[1]})
                 continue
             if entry[0] == "setgroupims":
                 _kind, value = entry
@@ -435,8 +576,13 @@ def main():
     if failure:
         raise failure[0]
 
-    ic_call("FocusOut")
-    ic_call("DestroyIC")
+    try:
+        ic_call("FocusOut")
+        ic_call("DestroyIC")
+    except GLib.Error:
+        # A run that restarts fcitx5 (invokeaction on the restart notice)
+        # outlives its input context; there is nothing left to tear down.
+        pass
     emit({"event": "done"})
 
 
