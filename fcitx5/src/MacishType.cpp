@@ -630,9 +630,13 @@ void InputMethodEngine::showFailurePrompt(fcitx::InputContext *inputContext) {
     // DontCommit is load-bearing: fcitx commits the client preedit on
     // focus-out before any engine cleanup runs, and the prompt must never
     // land in the user's document.
-    preedit.append(translated("Engine load failed"),
+    std::string message = translated("Engine load failed");
+    const auto cursor = static_cast<int>(message.size());
+    preedit.append(std::move(message),
                    fcitx::TextFormatFlags{fcitx::TextFormatFlag::Underline,
                                           fcitx::TextFormatFlag::DontCommit});
+    // Caret after the message, as macOS places it; unset reads as 0.
+    preedit.setCursor(cursor);
     applyPromptPreedit(inputContext, std::move(preedit));
 }
 
@@ -1369,13 +1373,22 @@ void InputMethodEngine::reloadEngine(const std::string &engineId) {
     if (engine == nullptr) {
         return;
     }
+    // The manifest and the entry are one disk snapshot, so a manifest that
+    // no longer parses fails the reload; the failed-host retry path picks
+    // it up once it parses again.
+    auto manifest = parseManifest(engine->root / "manifest.json", languages_);
+    if (!manifest) {
+        MACISHTYPE_ERROR() << "Engine failed to load, its manifest does not "
+                              "parse: "
+                           << engineId;
+        failedHosts_[engineId] = HostFailure::Load;
+        noteEngineChange(engineId, EngineChange::LoadFailed);
+        return;
+    }
     // Manifest edits apply too (settings defaults, modules, candidate
     // window), except the fields fcitx froze at registration — see
     // EntryFields.
-    if (auto manifest =
-            parseManifest(engine->root / "manifest.json", languages_)) {
-        engine->manifest = std::move(*manifest);
-    }
+    engine->manifest = std::move(*manifest);
     // Icon file changes count too, even when the manifest kept its old
     // parse result; the subMode overrides serve the new value live.
     refreshEngineIcon(*engine);

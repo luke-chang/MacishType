@@ -3,9 +3,9 @@
 # last dismissed it folds into one notification (replaced in place), each
 # engine listed once in the group of its latest change, and the restart
 # action appears whenever a restart would apply something — a drifted entry
-# or a vanished folder — regardless of what this round changed. Pressing the
-# action restarts fcitx5, after which the entry finally carries the new
-# name.
+# or a vanished folder — regardless of what this round changed. A manifest
+# that stops parsing counts as a load failure. Pressing the action restarts
+# fcitx5, after which the entry finally carries the new name.
 #
 # The client impersonates the desktop notification daemon, so nothing here
 # touches the user's session or their running fcitx5. Each step waits for
@@ -100,11 +100,15 @@ write_index "$beta" b2
 # 2. Alpha again: it moves to the tail, and the notice is replaced in place.
 wait_for '"event": "notify-count", "count": 1}'
 write_index "$alpha" a3
-# 3. Alpha breaks: it leaves the reloaded group for the failed one.
+# 3. Alpha's manifest stops parsing: that is a load failure (the entry is
+#    never loaded against a stale manifest), so it leaves the reloaded group
+#    for the failed one.
 wait_for '"event": "notify-count", "count": 2}'
-printf 'export default class { handleKey( {\n' > "$alpha/index.js"
-# 4. The user dismissed the notice; the next change starts a fresh one.
+printf '{ "entry": "index.js", "name": {\n' > "$alpha/manifest.json"
+# 4. The user dismissed the notice; fixing the manifest starts a fresh one
+#    through the failed-engine retry path.
 wait_for '"event": "notify-closed"'
+write_manifest "$alpha" "Alpha"
 write_index "$alpha" a4
 # 5. Beta's folder vanishes: its entry is parked, which alone warrants the
 #    restart action (no entry field has drifted yet).
@@ -183,12 +187,12 @@ id1="$(notify_line 1 | sed 's/.*"id": //; s/}.*//')"
 check "the second notice replaces the first in place" "$(notify_line 2)" \
     "\"replaces\": $id1,"
 
-expect_body 3 "a failing engine leaves the reloaded group for the failed one" \
+expect_body 3 "an unparsable manifest is a load failure, not a silent skip" \
     "Beta &amp; Co reloaded; Alpha failed to load · See the fcitx5 log for details"
 check "mixed groups switch to the neutral summary" "$(notify_line 3)" \
     '"summary": "Engine status changed"'
 
-expect_body 4 "dismissing the notice starts the next round from scratch" \
+expect_body 4 "a repaired manifest reloads and starts the next round from scratch" \
     "Alpha reloaded"
 check "the fresh round is a new notification" "$(notify_line 4)" \
     '"replaces": 0,'

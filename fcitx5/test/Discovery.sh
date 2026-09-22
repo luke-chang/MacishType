@@ -144,7 +144,7 @@ check "editing with auto-reload on hot-reloads (default unchanged)" \
 check "the deferred edit applies on the next Refresh" \
     "$out" '"text": "dyn3"}'
 check "typing on the deleted engine shows the load-failure prompt" \
-    "$out" '"text": "Engine load failed"'
+    "$out" '"text": "Engine load failed", "cursor": 18,'
 check "restoring the folder recovers typing without re-activation" \
     "$out" '"text": "dyn4"}'
 ordered "the deferred edit keeps the old table until Refresh" \
