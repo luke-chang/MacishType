@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Log.h"
+#include "OneShotTimer.h"
 
 namespace MacishType::Fcitx5 {
 
@@ -219,25 +220,14 @@ void EngineWatcher::scheduleCallback(const std::string &engineId,
                                                     : "reload:";
     std::string slot = prefix + engineId;
     pendingPaths_[slot].insert(changedPath.string());
-    pending_[slot] = eventLoop_->addTimeEvent(
-        CLOCK_MONOTONIC, fcitx::now(CLOCK_MONOTONIC) + kDebounceMicroseconds,
-        0,
-        [this, engineId, slot, kind](fcitx::EventSourceTime *, uint64_t) {
-            // Erasing pending_[slot] destroys the unique_ptr that owns this
-            // very closure, taking its captures with it. Move everything
-            // needed onto the stack first; after the erase, touch only locals
-            // and the still-live EngineWatcher (reached through `self`).
-            EngineWatcher *self = this;
-            const WatchKind localKind = kind;
-            std::string localEngineId = engineId;
-            auto changed = std::move(self->pendingPaths_[slot]);
-            self->pendingPaths_.erase(slot);
-            self->pending_.erase(slot);
-            (localKind == WatchKind::Storage ? self->storageCallback_
-             : localKind == WatchKind::Root  ? self->rootCallback_
-                                             : self->callback_)(localEngineId,
-                                                                changed);
-            return true;
+    pending_[slot] = scheduleOneShot(
+        *eventLoop_, kDebounceMicroseconds, [this, engineId, slot, kind] {
+            auto changed = std::move(pendingPaths_[slot]);
+            pendingPaths_.erase(slot);
+            pending_.erase(slot);
+            (kind == WatchKind::Storage ? storageCallback_
+             : kind == WatchKind::Root  ? rootCallback_
+                                        : callback_)(engineId, changed);
         });
 }
 

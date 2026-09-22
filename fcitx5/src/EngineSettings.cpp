@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <set>
 
+#include <fcitx-utils/stringutils.h>
+
 #include <MacishType/JsonUtil.h>
 
 #include "I18n.h"
@@ -152,14 +154,6 @@ bool isIntegral(double value) {
     return std::floor(value) == value && value >= INT_MIN && value <= INT_MAX;
 }
 
-std::string replaceFirst(std::string text, const std::string &value) {
-    auto position = text.find("%1");
-    if (position != std::string::npos) {
-        text.replace(position, 2, value);
-    }
-    return text;
-}
-
 // The token the picker starts on: an explicit default (tag string or
 // option index), else the first option.
 std::string pickerDefaultToken(const SettingsField &field) {
@@ -248,8 +242,8 @@ void EngineSettings::materializeField(const SettingsField &field) {
         annotation.tooltip += text;
     };
     if (!field.placeholder.empty()) {
-        appendTooltipLine(
-            replaceFirst(translated("Placeholder: %1"), field.placeholder));
+        appendTooltipLine(fcitx::stringutils::replaceAll(
+            translated("Placeholder: %1"), "%1", field.placeholder));
     }
     appendTooltipLine(field.disabledWhenText);
     appendTooltipLine(field.hiddenWhenText);

@@ -28,6 +28,7 @@
 
 #include "I18n.h"
 #include "Log.h"
+#include "OneShotTimer.h"
 #include "VersionStamp.h"
 
 namespace MacishType::Fcitx5 {
@@ -1447,16 +1448,10 @@ void InputMethodEngine::noteEngineChange(const std::string &engineId,
                                  }),
                   changes.end());
     changes.emplace_back(engineId, change);
-    reloadNoticeTimer_ = instance_->eventLoop().addTimeEvent(
-        CLOCK_MONOTONIC,
-        fcitx::now(CLOCK_MONOTONIC) + kNoticeCoalesceMicroseconds, 0,
-        [this](fcitx::EventSourceTime *, uint64_t) {
-            // Resetting the timer destroys this closure; from here on touch
-            // only the stack copy.
-            InputMethodEngine *self = this;
-            self->reloadNoticeTimer_.reset();
-            self->publishReloadNotice();
-            return true;
+    reloadNoticeTimer_ = scheduleOneShot(
+        instance_->eventLoop(), kNoticeCoalesceMicroseconds, [this] {
+            reloadNoticeTimer_.reset();
+            publishReloadNotice();
         });
 }
 

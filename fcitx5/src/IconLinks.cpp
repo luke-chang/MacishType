@@ -9,6 +9,7 @@
 #include <fcitx-utils/standardpaths.h>
 
 #include "Log.h"
+#include "OneShotTimer.h"
 
 namespace MacishType::Fcitx5 {
 
@@ -261,16 +262,10 @@ void IconLinks::scheduleRefresh() {
     // Trailing debounce: startup installs every engine, and a reload storm can
     // reinstall several in a row. The desktop takes seconds to notice a rescan
     // anyway, so 250 ms costs nothing and collapses the burst into one nudge.
-    refreshTimer_ = eventLoop_->addTimeEvent(
-        CLOCK_MONOTONIC, fcitx::now(CLOCK_MONOTONIC) + 250000, 0,
-        [this](fcitx::EventSourceTime *, uint64_t) {
-            // Resetting the timer destroys the unique_ptr owning this closure;
-            // touch only `self` afterwards.
-            IconLinks *self = this;
-            self->refreshTimer_.reset();
-            self->refreshNow();
-            return true;
-        });
+    refreshTimer_ = scheduleOneShot(*eventLoop_, 250000, [this] {
+        refreshTimer_.reset();
+        refreshNow();
+    });
 }
 
 void IconLinks::refreshNow() {

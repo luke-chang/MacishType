@@ -16,6 +16,7 @@
 
 #include "I18n.h"
 #include "Log.h"
+#include "OneShotTimer.h"
 
 namespace MacishType::Fcitx5 {
 
@@ -39,19 +40,9 @@ private:
 ::MacishType::HostEventLoop::Handle
 HostEventLoop::postDelayed(std::chrono::microseconds delay,
                            std::function<void()> callback) {
-    auto source = eventLoop_->addTimeEvent(
-        CLOCK_MONOTONIC, fcitx::now(CLOCK_MONOTONIC) + delay.count(), 0,
-        [callback = std::move(callback)](fcitx::EventSourceTime *,
-                                         uint64_t) mutable {
-            // The callback may reset its own handle, destroying this
-            // closure; run a stack-local move so it survives its own
-            // cancelation.
-            auto localCallback = std::move(callback);
-            localCallback();
-            return true;
-        });
     return std::make_unique<SourceHandle<fcitx::EventSourceTime>>(
-        std::move(source));
+        scheduleOneShot(*eventLoop_, static_cast<uint64_t>(delay.count()),
+                        std::move(callback)));
 }
 
 ::MacishType::HostEventLoop::Handle
