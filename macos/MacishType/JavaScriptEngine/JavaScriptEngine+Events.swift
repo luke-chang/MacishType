@@ -231,7 +231,8 @@ extension JavaScriptEngine {
         // cursor: nil vs 0 are distinct (nil = default-to-text-count, 0 =
         // caret at start). emphasis is a half-open character-index range
         // (NOT UTF-16). See EngineAction.updateMarkedText for staged semantics.
-        let updateMarkedText: @convention(block) (String, JSValue?) -> Void = { text, options in
+        let updateMarkedText: @convention(block) (JSValue?, JSValue?) -> Void = { textValue, options in
+            let text = Self.resolved(textValue)?.toString() ?? ""
             let opts = Self.resolved(options)
             let cursor = Self.optInt(opts, "cursor")
             let staged = Self.optInt(opts, "staged") ?? 0
@@ -271,7 +272,8 @@ extension JavaScriptEngine {
                 configure: Self.parseCandidateWindowOverrides(opts)))
         }
         // Only anchorAt applies — how the row looks is the host's call.
-        let updateMessage: @convention(block) (String, JSValue?) -> Void = { text, options in
+        let updateMessage: @convention(block) (JSValue?, JSValue?) -> Void = { textValue, options in
+            let text = Self.resolved(textValue)?.toString() ?? ""
             let anchorAt = Self.optInt(Self.resolved(options), "anchorAt") ?? 0
             sink.actions.append(.updateMessage(text, anchorAt: anchorAt))
         }
@@ -297,7 +299,8 @@ extension JavaScriptEngine {
             let text = Self.resolved(append)?.toString() ?? ""
             sink.actions.append(.flushStaged(text))
         }
-        let enterAssociatedMode: @convention(block) (String, JSValue?) -> Void = { [weak self] heldText, candidatesValue in
+        let enterAssociatedMode: @convention(block) (JSValue?, JSValue?) -> Void = { [weak self] heldValue, candidatesValue in
+            let heldText = Self.resolved(heldValue)?.toString() ?? ""
             // Two-arg form uses the JS-supplied array; one-arg falls back to the
             // system AssociatedDictionary.
             let candidates: [String]
