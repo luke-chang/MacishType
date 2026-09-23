@@ -259,7 +259,7 @@ export interface EventMutators {
    */
   flushStaged(append?: string): void;
   /**
-   * Enter associated mode: `heldChar` (which may be more than one
+   * Enter associated mode: `heldChar` (non-empty; it may be more than one
    * character) becomes staged marked text, replacing any previously staged
    * text — fold `event.stagedText` in to carry it forward. `candidates`
    * appear as suggested follow-ups. Picking a candidate commits `heldChar`
@@ -275,6 +275,9 @@ export interface EventMutators {
    * Whenever the resolved list comes out empty — an explicit `[]`, a
    * dictionary miss, or the opt-in absent — the host commits `heldChar` and
    * ends the composition. Chained engines lean on this to finish a chain.
+   * An empty `heldChar` takes the same exit: the composition ends with
+   * nothing committed and any `candidates` supplied are dropped with a
+   * notice, since there is no marked text for them to anchor to.
    */
   enterAssociatedMode(heldChar: string, candidates?: readonly string[]): void;
   /**

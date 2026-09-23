@@ -80,7 +80,8 @@ enum EngineAction {
     // Enter associated mode: the held text (one or more characters) becomes
     // staged marked text, candidates are anchored past its end with
     // initialHighlight=-1. Payload carries pre-looked-up candidates so
-    // Controller doesn't re-query; an empty payload commits the held text.
+    // Controller doesn't re-query; an empty payload commits the held text,
+    // and an empty held text ends the composition with the payload dropped.
     case enterAssociatedMode(String, [String])
     // Play the desktop's alert sound, subject to the user's opt-out.
     case beep

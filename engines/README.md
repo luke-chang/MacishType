@@ -957,10 +957,11 @@ host enters associated mode automatically during
 only to supply a custom `candidates` list or to enter associated mode from a
 non-standard trigger.
 
-- `heldChar` *(string, required)* — the text to keep as the staged prefix;
-  may be more than one character (e.g. an accumulated prefix plus the
+- `heldChar` *(string, required, non-empty)* — the text to keep as the staged
+  prefix; may be more than one character (e.g. an accumulated prefix plus the
   just-committed candidate). It replaces any previously staged text — fold
-  `event.stagedText` in to carry it forward.
+  `event.stagedText` in to carry it forward. It is also the marked text the
+  follow-ups anchor to, which is why it has to be non-empty.
 - `candidates` *(string[], optional)* — follow-up suggestions. Omit to fall
   back to the host's `AssociatedDictionary` dictionary keyed by `heldChar`'s
   last character (grapheme cluster). That fallback needs the manifest to opt
@@ -971,7 +972,9 @@ Whenever the resolved list comes out empty — an explicit `[]`, a dictionary
 miss, or the opt-in absent — the host commits `heldChar` and ends the
 composition. Chained engines lean on this: each round re-enters with the
 accumulated text, and the round that finds no follow-ups commits the whole
-thing.
+thing. An empty `heldChar` takes the same exit: the composition ends with
+nothing committed, and any `candidates` supplied are dropped with a notice,
+since there is no marked text for them to anchor to.
 
 The window's selection keys and labels are a host policy — resolved from
 the host's selection-keys setting and the engine's

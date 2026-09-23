@@ -423,11 +423,18 @@ class InputController: IMKInputController {
             case .flushStaged(let append):
                 endComposition(client: client, insert: engineContext.stagedText + append)
             case .enterAssociatedMode(let heldText, let candidates):
+                // Nothing to hold means no marked text for the follow-ups to
+                // anchor to, so they are dropped like any unanchored list; say
+                // so, then take the same exit as an empty list.
+                if heldText.isEmpty, !candidates.isEmpty {
+                    Logger.inputController.notice(
+                        "enterAssociatedMode with an empty held text: \(candidates.count, privacy: .public) follow-ups dropped, composition ended")
+                }
                 // No follow-ups: commit what has accumulated rather than leave a
                 // preedit under a hidden window. Not .flushStaged — heldText
                 // already includes stagedText, which flushStaged would prepend
                 // a second time.
-                if candidates.isEmpty {
+                if heldText.isEmpty || candidates.isEmpty {
                     endComposition(client: client, insert: heldText)
                     break
                 }
