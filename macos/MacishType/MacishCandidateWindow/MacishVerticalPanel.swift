@@ -479,17 +479,6 @@ class MacishVerticalPanel: MacishBasePanel {
         }
     }
 
-    // MARK: - Commit
-
-    override func commitCandidate(at index: Int) {
-        guard index >= 0, index < pageSize else { return }
-        let candidateIndex = anchorIndex + index
-        guard candidateIndex < displayCount else { return }
-        let chosen = candidates[candidateIndex]
-        impl.candidateDelegate?.candidateConfirmed(
-            chosen.text, absoluteIndex: candidateIndex, raw: chosen)
-    }
-
     // MARK: - Frame Animation
 
     override func frameAnimationDidFinish() {

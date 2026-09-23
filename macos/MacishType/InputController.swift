@@ -413,7 +413,9 @@ class InputController: IMKInputController {
             case .commitSelectedCandidate:
                 CandidateWindow.shared.commitSelectedCandidate()
             case .commitCandidateAtIndex(let index):
-                CandidateWindow.shared.commitCandidate(at: index)
+                // An index the engine names past the page's last candidate is
+                // a no-op with no fallback.
+                _ = CandidateWindow.shared.commitCandidate(at: index)
             case .navigateCandidates(let direction, let wrapping):
                 CandidateWindow.shared.handleNavigation(direction: direction, wrapping: wrapping)
             case .resetContext:
@@ -662,11 +664,14 @@ private extension InputController {
 
         if cfg.handleIndexLabelKeys {
             let character = keyEvent.characters.flatMap { $0.count == 1 ? $0.first : nil }
+            // A label with no candidate behind it — the trailing slots of a
+            // short last page — is not the host's to eat: the commit declines
+            // and the key travels on to the engine like any other.
             if let index = cfg.candidateIndex(
                 forWebCode: KeyboardEventMapping.webCode(for: keyEvent.keyCode),
                 shift: pureMods.contains(.shift),
-                option: pureMods.contains(.option), character: character) {
-                CandidateWindow.shared.commitCandidate(at: index)
+                option: pureMods.contains(.option), character: character),
+               CandidateWindow.shared.commitCandidate(at: index) {
                 return true
             }
         }

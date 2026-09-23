@@ -208,8 +208,10 @@ class CINEngine: InputEngine {
         guard !isEffectivePreview, let table else { return false }
         let ctx = context as! CINEngineContext
         guard ctx.selecting, let char = inputChar(keyEvent) else { return false }
-        // selkeys are committed by the host (handleIndexLabelKeys); only real
-        // input keys (those that can begin a code) force a commit-and-restart.
+        // A selkey never restarts: the host commits it while a candidate sits
+        // behind it, and past the last candidate it is swallowed downstream.
+        // Only real input keys (those that can begin a code) force a
+        // commit-and-restart.
         if candidateWindow.configuration.candidateIndex(for: char) != nil { return false }
         return table.isCodeKey(char)
     }
@@ -352,7 +354,8 @@ class CINEngine: InputEngine {
                 break
             }
         }
-        // selkeys: host. Input keys: shouldFlushStagedBeforeHandling. Rest: swallow.
+        // selkeys with a candidate behind them: host. Input keys:
+        // shouldFlushStagedBeforeHandling. Rest, empty selkeys included: swallow.
         return .handled([])
     }
 

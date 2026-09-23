@@ -416,9 +416,7 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         guard !isAnimating else { return }
         guard impl.rowsSelectable else { return }
         if doubleClick {
-            let chosen = candidates[index]
-            impl.candidateDelegate?.candidateConfirmed(
-                chosen.text, absoluteIndex: index, raw: chosen)
+            confirm(candidateAt: index)
         } else {
             moveSelection(to: index)
         }
@@ -426,9 +424,21 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
 
     func commitSelectedCandidate() {
         guard hasSelection, selectedIndex < displayCount else { return }
-        let chosen = candidates[selectedIndex]
-        impl.candidateDelegate?.candidateConfirmed(
-            chosen.text, absoluteIndex: selectedIndex, raw: chosen)
+        confirm(candidateAt: selectedIndex)
+    }
+
+    /// Commits the candidate under a page-relative index. False when that slot
+    /// holds none — past the last candidate on a short page, or past
+    /// `pageSize` — which leaves the keystroke for the engine.
+    final func commitCandidate(at index: Int) -> Bool {
+        guard let candidateIndex = pageRange.absoluteIndex(forPageIndex: index) else { return false }
+        confirm(candidateAt: candidateIndex)
+        return true
+    }
+
+    private func confirm(candidateAt index: Int) {
+        let chosen = candidates[index]
+        impl.candidateDelegate?.candidateConfirmed(chosen.text, absoluteIndex: index, raw: chosen)
     }
 
     func updateCandidates(_ candidates: [Candidate], initialIndex: Int = 0) {
@@ -562,7 +572,6 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     /// Which candidates the index labels address right now; see
     /// `CandidateWindow.pageRange`. Built through `clampedPageRange`.
     var pageRange: Range<Int> { 0..<0 }
-    func commitCandidate(at index: Int) {}
     func ensureSelectionVisible(animated: Bool) {}
     func handleScrollerStyleChange() {}
 }

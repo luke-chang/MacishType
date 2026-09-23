@@ -15,4 +15,15 @@ struct PageRangeTests {
         // A full page passes through.
         #expect(MacishBasePanel.clampedPageRange(start: 0, count: 3, displayCount: 7) == 0..<3)
     }
+
+    /// A label position is only a candidate while its slot holds one; a short
+    /// last page leaves its tail empty.
+    @Test func absoluteIndexDeclinesEmptySlots() {
+        #expect((0..<3).absoluteIndex(forPageIndex: 2) == 2)
+        #expect((0..<2).absoluteIndex(forPageIndex: 2) == nil)   // the empty tail slot
+        #expect((6..<7).absoluteIndex(forPageIndex: 0) == 6)     // offset by pageStart
+        #expect((6..<7).absoluteIndex(forPageIndex: 1) == nil)
+        #expect((0..<0).absoluteIndex(forPageIndex: 0) == nil)   // no window
+        #expect((0..<3).absoluteIndex(forPageIndex: -1) == nil)
+    }
 }

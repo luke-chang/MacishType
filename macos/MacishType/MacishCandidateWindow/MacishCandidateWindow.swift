@@ -142,7 +142,7 @@ class MacishCandidateWindow: CandidateWindowImpl {
         activePanel.commitSelectedCandidate()
     }
 
-    override func commitCandidate(at index: Int) {
+    override func commitCandidate(at index: Int) -> Bool {
         activePanel.commitCandidate(at: index)
     }
 

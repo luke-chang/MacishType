@@ -163,6 +163,15 @@ extension Character {
     }
 }
 
+extension Range where Bound == Int {
+    /// The absolute candidate index a page-relative label position addresses,
+    /// nil when that slot holds no candidate.
+    nonisolated func absoluteIndex(forPageIndex index: Int) -> Int? {
+        let absolute = lowerBound + index
+        return contains(absolute) ? absolute : nil
+    }
+}
+
 protocol CandidateWindowDelegate: AnyObject {
     /// Called when a candidate is committed. `candidate` is the chosen
     /// string, or `""` when commitSelectedCandidate was invoked on a visible
@@ -421,9 +430,11 @@ class CandidateWindow {
         activeImpl.commitSelectedCandidate()
     }
 
-    func commitCandidate(at index: Int) {
-        guard hasCandidates else { return }
-        activeImpl.commitCandidate(at: index)
+    /// False when the index addresses no candidate, so the caller can leave
+    /// the keystroke alone.
+    func commitCandidate(at index: Int) -> Bool {
+        guard hasCandidates else { return false }
+        return activeImpl.commitCandidate(at: index)
     }
 
     // MARK: - Init
@@ -485,5 +496,5 @@ class CandidateWindowImpl {
 
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}
     func commitSelectedCandidate() {}
-    func commitCandidate(at index: Int) {}
+    func commitCandidate(at index: Int) -> Bool { false }
 }

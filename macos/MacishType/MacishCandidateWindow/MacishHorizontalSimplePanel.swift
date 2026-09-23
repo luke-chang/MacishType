@@ -317,17 +317,6 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
         switchToPage(pageIdx)
     }
 
-    // MARK: - Commit
-
-    override func commitCandidate(at index: Int) {
-        guard index >= 0, index < currentPageItems.count else { return }
-        let candidateIndex = currentPageItems[index].candidateIndex
-        guard candidateIndex < candidates.count else { return }
-        let chosen = candidates[candidateIndex]
-        impl.candidateDelegate?.candidateConfirmed(
-            chosen.text, absoluteIndex: candidateIndex, raw: chosen)
-    }
-
     // MARK: - Mask
 
     override func updateCorners() {
