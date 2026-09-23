@@ -512,8 +512,14 @@ class InputController: IMKInputController {
     private func measureCandidateAnchor(anchorAt: Int, client: IMKTextInput) -> CandidateAnchor? {
         let text = engineContext.markedText
         // Nothing to measure against, and the past-the-end branch below would
-        // take prefix(-1).
-        guard !text.isEmpty else { return nil }
+        // take prefix(-1). Callers only get here with something to show, so
+        // this is an engine declaring it with no composition — say so, since
+        // the window staying hidden is otherwise silent.
+        guard !text.isEmpty else {
+            Logger.inputController.notice(
+                "no marked text to anchor the candidate window to; the update stays hidden")
+            return nil
+        }
         let length = text.count
         let fontKey = NSAttributedString.Key.font.rawValue
 
