@@ -97,6 +97,10 @@ extension JavaScriptEngine {
                      forKeyedSubscript: "handleIndexLabelKeys" as NSString)
         cw.setObject(candidateWindow.configuration.indexLabelDigitsRequireShift,
                      forKeyedSubscript: "indexLabelDigitsRequireShift" as NSString)
+        cw.setObject(candidateWindow.pageRange.lowerBound,
+                     forKeyedSubscript: "pageStart" as NSString)
+        cw.setObject(candidateWindow.pageRange.upperBound,
+                     forKeyedSubscript: "pageEnd" as NSString)
         let candidateIndex: @convention(block) (JSValue) -> Any = { value in
             let configuration = candidateWindow.configuration
             // The string form matches by first character only.

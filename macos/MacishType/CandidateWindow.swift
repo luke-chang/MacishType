@@ -324,6 +324,11 @@ class CandidateWindow {
     /// navigation reveals one.
     var hasSelection: Bool { activeImpl.hasSelection }
 
+    /// Absolute range of the candidate list the current index labels address,
+    /// empty while no candidate window is up. Not always everything on screen:
+    /// the horizontal expandable panel labels one row at a time.
+    var pageRange: Range<Int> { hasCandidates ? activeImpl.pageRange : 0..<0 }
+
     /// Standalone path (engine activation, preview app).
     /// Short-circuits when unchanged.
     func configure(_ configuration: CandidateWindowConfiguration) {
@@ -465,6 +470,8 @@ class CandidateWindowImpl {
     // MARK: - Subclass Override Points
 
     var isVisible: Bool { false }
+    /// See `CandidateWindow.pageRange`.
+    var pageRange: Range<Int> { 0..<0 }
 
     func syncTheme() {}
 

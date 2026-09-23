@@ -706,14 +706,24 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
         gridRows.first?.items.count ?? 0
     }
 
+    /// The row the index labels address: the selected candidate's, or row 0
+    /// under a suspended highlight (only a collapsed window keeps one —
+    /// expanding reveals a selection).
+    private var labeledRowIndex: Int? {
+        findGridPosition(of: max(selectedIndex, 0))?.rowIndex
+    }
+
+    override var pageRange: Range<Int> {
+        guard let rowIdx = labeledRowIndex else { return 0..<0 }
+        let items = gridRows[rowIdx].items
+        guard let first = items.first?.candidateIndex else { return 0..<0 }
+        return Self.clampedPageRange(start: first, count: items.count, displayCount: displayCount)
+    }
+
     private static let collapseDirections: Set<NavigationDirection> = [.left, .up, .pageUp, .pageBackward, .itemBackward]
 
     private func findGridPosition(of candidateIndex: Int) -> (rowIndex: Int, item: GridItem)? {
-        findGridPosition(of: candidateIndex, in: gridRows)
-    }
-
-    private func findGridPosition(of candidateIndex: Int, in rows: [GridRow]) -> (rowIndex: Int, item: GridItem)? {
-        for (rowIdx, row) in rows.enumerated() {
+        for (rowIdx, row) in gridRows.enumerated() {
             if let item = row.items.first(where: { $0.candidateIndex == candidateIndex }) {
                 return (rowIdx, item)
             }
@@ -907,12 +917,10 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
             for item in row0ItemViews { item.showIndex = true }
         case .expanded:
             // Expanded mode normally has the grid built; bail safely if not.
-            guard !expandedGridRows.isEmpty else { return }
-            // selectedRowIdx is nil with no selection (-1 sentinel), so no row
-            // claims its index.
-            let selectedRowIdx = findGridPosition(of: selectedIndex, in: expandedGridRows)?.rowIndex
+            guard !gridRows.isEmpty else { return }
+            let selectedRowIdx = labeledRowIndex
             var rowForCandidate: [Int: Int] = [:]
-            for (rowIndex, row) in expandedGridRows.enumerated() {
+            for (rowIndex, row) in gridRows.enumerated() {
                 for gridItem in row.items {
                     rowForCandidate[gridItem.candidateIndex] = rowIndex
                 }

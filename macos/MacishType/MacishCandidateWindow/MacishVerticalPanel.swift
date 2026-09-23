@@ -73,7 +73,6 @@ class MacishVerticalPanel: MacishBasePanel {
         isBuildingLayout = true
         defer { isBuildingLayout = false }
         isFullyRendered = false
-        anchorIndex = -1
         removeAllItemViews()
         separatorViews.forEach { $0.removeFromSuperview() }
         separatorViews.removeAll()
@@ -133,7 +132,7 @@ class MacishVerticalPanel: MacishBasePanel {
         scrollView.contentView.scroll(to: .zero)
         scrollView.reflectScrolledClipView(scrollView.contentView)
 
-        updateNumbering()
+        updateNumbering(force: true)
         updateItemHighlights()
 
         let windowSize = NSSize(width: windowWidth, height: windowHeight)
@@ -273,10 +272,6 @@ class MacishVerticalPanel: MacishBasePanel {
         }
         if showChanged {
             showAnnotations = metrics.showAnnotations
-            // updateNumbering has an early-return guard on anchorIndex — force
-            // it to actually rerun so existing items get reconfigured with
-            // the new annotation-strip policy.
-            anchorIndex = -1
         }
 
         let cappedWidth = min(metrics.totalWidth, maxContentWidth)
@@ -300,7 +295,7 @@ class MacishVerticalPanel: MacishBasePanel {
             animateFrame(to: targetFrame)
         }
 
-        updateNumbering()
+        updateNumbering(force: showChanged)
         updateItemHighlights()
     }
 
@@ -328,14 +323,21 @@ class MacishVerticalPanel: MacishBasePanel {
 
     // MARK: - Numbering
 
-    private func updateNumbering() {
+    /// The rows `updateNumbering()` labels: `pageSize` rows from the scroll
+    /// anchor, cut short by the end of the list.
+    override var pageRange: Range<Int> {
+        Self.clampedPageRange(start: anchorIndex, count: pageSize, displayCount: displayCount)
+    }
+
+    /// `force` reconfigures every item even under an unchanged anchor — a
+    /// fresh layout, or an annotation policy that changed in place.
+    private func updateNumbering(force: Bool = false) {
         let scrollOffset = max(0, scrollView.contentView.bounds.origin.y)
         let newAnchor = max(0, Int(floor((scrollOffset + 0.5 * itemHeight) / rowHeight)))
-        guard newAnchor != anchorIndex else { return }
+        guard force || newAnchor != anchorIndex else { return }
         anchorIndex = newAnchor
 
-        let numberedStart = anchorIndex
-        let numberedEnd = min(anchorIndex + pageSize, displayCount)
+        let numbered = pageRange
 
         for item in itemViews {
             let i = item.absoluteIndex
@@ -345,11 +347,11 @@ class MacishVerticalPanel: MacishBasePanel {
             let candidate = showAnnotations
                 ? candidates[i]
                 : Candidate(candidates[i].text, annotation: nil)
-            if i >= numberedStart, i < numberedEnd {
+            if numbered.contains(i) {
                 item.showIndex = true
                 // Tail positions (past indexLabels.count) get "" labels but
                 // keep the slot reserved; the else branch hides the slot.
-                item.configure(label: label(for: i - anchorIndex), candidate: candidate)
+                item.configure(label: label(for: i - numbered.lowerBound), candidate: candidate)
             } else {
                 item.configure(label: "", candidate: candidate)
                 item.showIndex = false
@@ -363,7 +365,8 @@ class MacishVerticalPanel: MacishBasePanel {
         guard !candidates.isEmpty else { return }
 
         // moveSelection internally runs ensureSelectionVisible; jump-key
-        // branches use scrollToRow when explicit anchor placement is needed.
+        // branches place the anchor with scrollToRow first, so the selection
+        // hook fires against the settled page.
         switch direction {
         case .up, .itemBackward:
             let target: Int? = selectedIndex > 0 ? selectedIndex - 1
@@ -381,11 +384,11 @@ class MacishVerticalPanel: MacishBasePanel {
             let newAnchor = anchorIndex + pageSize
             if newAnchor < displayCount {
                 let target = min(newAnchor + visualOffset, displayCount - 1)
-                moveSelection(to: target)
                 scrollToRow(target, atVisiblePosition: min(visualOffset, target - newAnchor))
+                moveSelection(to: target)
             } else if wrapping {
-                moveSelection(to: 0)
                 scrollToRow(0, atVisiblePosition: 0)
+                moveSelection(to: 0)
             } else if selectedIndex < displayCount - 1 {
                 moveSelection(to: displayCount - 1)
             }
@@ -396,23 +399,23 @@ class MacishVerticalPanel: MacishBasePanel {
             let newAnchor = anchorIndex - pageSize
             if newAnchor >= 0 {
                 let target = newAnchor + visualOffset
-                moveSelection(to: target)
                 scrollToRow(target, atVisiblePosition: visualOffset)
+                moveSelection(to: target)
             } else if anchorIndex > 0 {
                 let target = min(visualOffset, displayCount - 1)
-                moveSelection(to: target)
                 scrollToRow(target, atVisiblePosition: min(visualOffset, target))
+                moveSelection(to: target)
             } else if wrapping {
                 moveSelection(to: displayCount - 1)
             } else if selectedIndex > 0 {
-                moveSelection(to: 0)
                 scrollToRow(0, atVisiblePosition: 0)
+                moveSelection(to: 0)
             }
 
         case .home:
             if selectedIndex != 0 {
-                moveSelection(to: 0)
                 scrollToRow(0, atVisiblePosition: 0)
+                moveSelection(to: 0)
             }
 
         case .end:
@@ -457,6 +460,9 @@ class MacishVerticalPanel: MacishBasePanel {
 
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
+        // Settle the anchor now rather than on the bounds notification, so a
+        // selection hook that follows reads the page the user will see.
+        updateNumbering()
     }
 
 

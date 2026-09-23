@@ -145,4 +145,6 @@ class MacishCandidateWindow: CandidateWindowImpl {
     override func commitCandidate(at index: Int) {
         activePanel.commitCandidate(at: index)
     }
+
+    override var pageRange: Range<Int> { activePanel.pageRange }
 }

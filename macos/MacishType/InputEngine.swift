@@ -44,6 +44,10 @@ struct CandidateWindowState {
     /// Message shown in place of candidates. A message is not a candidate
     /// window: `isVisible` stays false while one is up.
     let message: String?
+    /// Absolute range of the candidate list the current index labels address,
+    /// empty while no window is visible. Its count is how many of the page's
+    /// slots hold a candidate — a short last page fills fewer than `pageSize`.
+    let pageRange: Range<Int>
 }
 
 // MARK: - Engine Action

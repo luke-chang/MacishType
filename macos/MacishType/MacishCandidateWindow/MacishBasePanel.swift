@@ -477,6 +477,13 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
         CGFloat(rowIndex) * (itemHeight + Self.separatorHeight)
     }
 
+    /// The only way a panel builds its `pageRange`: a layout mid-rebuild can
+    /// hand in anything, and the result must still index `candidates` safely.
+    nonisolated static func clampedPageRange(start: Int, count: Int, displayCount: Int) -> Range<Int> {
+        let lower = min(max(0, start), displayCount)
+        return lower ..< min(lower + max(0, count), displayCount)
+    }
+
     func createItemView() -> MacishCandidateItemView {
         let item = MacishCandidateItemView(style: style)
         item.highlightColor = highlightColor
@@ -552,6 +559,9 @@ class MacishBasePanel: NSPanel, CandidateItemClickable {
     }
     func buildCandidateLayout() {}
     func handleNavigation(direction: NavigationDirection, wrapping: Bool) {}
+    /// Which candidates the index labels address right now; see
+    /// `CandidateWindow.pageRange`. Built through `clampedPageRange`.
+    var pageRange: Range<Int> { 0..<0 }
     func commitCandidate(at index: Int) {}
     func ensureSelectionVisible(animated: Bool) {}
     func handleScrollerStyleChange() {}

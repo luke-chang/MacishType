@@ -16,9 +16,15 @@ class MacishHorizontalSimplePanel: MacishHorizontalBasePanel {
     private var nextCandidateOffset: Int = 0
     private var remainingPagesBuilt = false
 
-    private var currentPageItems: [GridItem] { pages[currentPage] }
+    private var currentPageItems: [GridItem] { pages.indices.contains(currentPage) ? pages[currentPage] : [] }
     private var hasMultiplePages: Bool { pages.count > 1 || nextCandidateOffset < displayCount }
     private var hasNextPage: Bool { remainingPagesBuilt ? currentPage < pages.count - 1 : nextCandidateOffset < displayCount }
+
+    /// The page on screen; `packRow` lays its items out contiguously.
+    override var pageRange: Range<Int> {
+        guard let first = currentPageItems.first?.candidateIndex else { return 0..<0 }
+        return Self.clampedPageRange(start: first, count: currentPageItems.count, displayCount: displayCount)
+    }
 
     private var pageItemViews: [[MacishCandidateItemView]] = []
     private var pageArrowView: MacishPageArrowView!

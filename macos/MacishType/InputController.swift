@@ -648,7 +648,8 @@ private extension InputController {
         CandidateWindowState(
             isVisible: CandidateWindow.shared.hasCandidates,
             configuration: CandidateWindow.shared.currentConfiguration,
-            message: CandidateWindow.shared.messageText)
+            message: CandidateWindow.shared.messageText,
+            pageRange: CandidateWindow.shared.pageRange)
     }
 
     /// Policy-gated candidate-window dispatch. Returns true if the key
