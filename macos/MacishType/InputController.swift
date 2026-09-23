@@ -441,6 +441,8 @@ class InputController: IMKInputController {
                     .updateMarkedText(heldText, staged: -1),
                     .updateCandidates(candidates, anchorAt: heldText.count, initialHighlight: -1)
                 ], client: client)
+            case .beep:
+                AlertSound.play()
             }
         }
     }

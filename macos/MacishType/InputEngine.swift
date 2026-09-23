@@ -82,6 +82,8 @@ enum EngineAction {
     // initialHighlight=-1. Payload carries pre-looked-up candidates so
     // Controller doesn't re-query; an empty payload commits the held text.
     case enterAssociatedMode(String, [String])
+    // Play the desktop's alert sound, subject to the user's opt-out.
+    case beep
 }
 
 enum EngineHandleResult {

@@ -309,6 +309,13 @@ extension JavaScriptEngine {
             }
             sink.actions.append(.enterAssociatedMode(heldText, candidates))
         }
+        // One sound per event: repeat calls collapse, as in hostglue.js.
+        var beeped = false
+        let beep: @convention(block) () -> Void = {
+            guard !beeped else { return }
+            beeped = true
+            sink.actions.append(.beep)
+        }
 
         event.setObject(updateMarkedText, forKeyedSubscript: "updateMarkedText" as NSString)
         event.setObject(resetContext, forKeyedSubscript: "resetContext" as NSString)
@@ -320,6 +327,7 @@ extension JavaScriptEngine {
         event.setObject(navigateCandidates, forKeyedSubscript: "navigateCandidates" as NSString)
         event.setObject(flushStaged, forKeyedSubscript: "flushStaged" as NSString)
         event.setObject(enterAssociatedMode, forKeyedSubscript: "enterAssociatedMode" as NSString)
+        event.setObject(beep, forKeyedSubscript: "beep" as NSString)
     }
 
     private static func parseNavigationDirection(_ str: String) -> NavigationDirection {

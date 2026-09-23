@@ -1,6 +1,38 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Allow engines to play the alert sound" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow engines to play the alert sound"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允許引擎發出提示音"
+          }
+        }
+      }
+    },
+    "Engines decide when to play it. Whether it is heard depends on Sound settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Engines decide when to play it. Whether it is heard depends on Sound settings."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由引擎決定何時發聲。是否真的聽得到取決於系統的「聲音」設定。"
+          }
+        }
+      }
+    },
     "Completions here are selected with Shift + number keys — adjust in General settings." : {
       "localizations" : {
         "en" : {

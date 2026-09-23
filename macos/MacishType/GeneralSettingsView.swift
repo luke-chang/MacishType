@@ -4,11 +4,12 @@ import SwiftUI
 import UserNotifications
 
 /// The "General" settings page: the keyboard-layout override (which Roman
-/// layout keystrokes are read as), the predictive-completions selection-key
-/// policy, and how external engines respond to their files changing
-/// (automatic reload, notification).
+/// layout keystrokes are read as), whether engines may play the alert sound,
+/// the predictive-completions selection-key policy, and how external engines
+/// respond to their files changing (automatic reload, notification).
 struct GeneralSettingsView: View {
     @AppStorage(KeyboardLayouts.overrideDefaultsKey) private var layoutID = ""
+    @AppStorage(AlertSound.enabledKey) private var engineAlertSounds = AlertSound.defaultEnabled
     @AppStorage(InputEngine.associatedModeSelectionKeysKey)
     private var associatedSelectionKeys = InputEngine.AssociatedModeSelectionKeys.followEngine
     @AppStorage(InputEngine.autoReloadEnabledKey)
@@ -29,6 +30,12 @@ struct GeneralSettingsView: View {
                             }
                         }
                     }
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle("Allow engines to play the alert sound", isOn: $engineAlertSounds)
+                    Text("Engines decide when to play it. Whether it is heard depends on Sound settings.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
             }
             Section("Predictive completions") {
