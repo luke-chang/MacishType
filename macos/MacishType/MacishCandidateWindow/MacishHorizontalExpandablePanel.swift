@@ -30,6 +30,10 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     private var expandedColumnWidth: CGFloat = 0
     private var expandedPageSize: Int = 0
     private var expandedRowsBuilt = false
+    /// Window width the last `layoutItems()` produced. `layoutHighlight()`
+    /// sizes the bar from this rather than `frame.width`, which lags while
+    /// the expand animation is still widening the window.
+    private var layoutWindowWidth: CGFloat = 0
 
     private var row0ItemViews: [MacishCandidateItemView] = []
     private var expandedItemViews: [MacishCandidateItemView] = []
@@ -217,6 +221,7 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
             windowWidth += NSScroller.scrollerWidth(
                 for: .regular, scrollerStyle: NSScroller.preferredScrollerStyle)
         }
+        layoutWindowWidth = windowWidth
 
         if displayMode == .expanded, let (rowIdx, _) = findGridPosition(of: selectedIndex) {
             let y = yForRow(rowIdx)
@@ -349,6 +354,12 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
     // MARK: - Expand/Collapse
 
     private func expandWindow(animated: Bool) {
+        // Expanding reveals a selection: under a suspended highlight no row
+        // would claim the index labels while the digit keys still commit from
+        // row 0. Deferred so the selection hook fires on the finished
+        // transition, as it does for every other reveal.
+        defer { if !hasSelection { moveSelection(to: 0) } }
+
         // Capture state before changes
         let oldRow0Frames = row0ItemViews.map { ($0, $0.frame) }
         let oldChevronFrame = chevronView.frame
@@ -929,9 +940,11 @@ class MacishHorizontalExpandablePanel: MacishHorizontalBasePanel {
             rowHighlightView?.alphaValue = 0
             return
         }
-        rowHighlightView?.alphaValue = 1
+        // An expand transition owns the alpha and fades the bar in; forcing 1
+        // here would flash it for a frame.
+        if transitionState == nil { rowHighlightView?.alphaValue = 1 }
         let y = yForRow(rowIdx)
-        rowHighlightView?.frame = NSRect(x: 0, y: y, width: frame.width, height: itemHeight)
+        rowHighlightView?.frame = NSRect(x: 0, y: y, width: layoutWindowWidth, height: itemHeight)
     }
 
     // MARK: - Commit
