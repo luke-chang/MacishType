@@ -41,7 +41,10 @@ function makeCoverage(covered) {
 // so the existing tests' candidate counts are unchanged.
 let coverageOf = () => true;   // codePoint -> renderable?
 globalThis.manifest = {
-  settings: { characterSetScope: "displayable" },
+  settings: {
+    characterSetScope: "displayable",
+    showShortCodePlaceholders: false,
+  },
   modules: {
     fontCoverage: makeCoverage((codePoint) => coverageOf(codePoint)),
     symbolNames: makeModule({ "！": "驚嘆號" }, undefined),
@@ -83,6 +86,7 @@ function makeEvent(props = {}) {
     navigateCandidates: record("navigateCandidates"),
     resetContext: record("resetContext"),
     flushStaged: record("flushStaged"),
+    beep: record("beep"),
     calls,
     last(name) {
       for (let i = calls.length - 1; i >= 0; i--) {
@@ -96,6 +100,7 @@ function makeEvent(props = {}) {
 
 // Composition is read by position (event.code), so synthetic events need the
 // W3C code; wildcards (?/*) stay key-based.
+const SELECTION_DIGITS = "1234567890";
 const KEY_TO_CODE = { ",": "Comma", ".": "Period", "/": "Slash", ";": "Semicolon" };
 function codeForKey(key) {
   if (KEY_TO_CODE[key]) return KEY_TO_CODE[key];
@@ -355,6 +360,190 @@ test("full scope keeps candidates even when no font renders them", () => {
     coverageOf = () => true;
     manifest.settings.characterSetScope = "displayable";
   }
+});
+
+// The tables are generated from an upstream source, so these probes find a
+// code that meets each precondition instead of hard-coding one.
+const LETTERS = "abcdefghijklmnopqrstuvwxyz";
+
+function shortCodeViewOf(keys) {
+  const update = compose(freshEngine(), keys).last("updateCandidates");
+  return update ? update.args : undefined;
+}
+
+// A code whose short-code view leaves at least one slot empty. One-key codes
+// are all full in practice, so this reaches the two-key ones; symbol prefixes
+// are skipped because their group menus carry objects, not plain values.
+function findCodeWithEmptySlot() {
+  for (const first of LETTERS) {
+    for (const second of ["", ...LETTERS]) {
+      const keys = second ? [first, second] : [first];
+      const args = shortCodeViewOf(keys);
+      if (!args) continue;
+      const [candidates, options] = args;
+      if (!candidates.every((value) => typeof value === "string")) continue;
+      const labels = options?.indexLabels ?? "";
+      if (labels.length > 0 && labels.length < 10) return { keys, labels };
+    }
+  }
+  throw new Error("no code leaves a short-code slot empty");
+}
+
+// A two-key code with no short codes at all.
+function findCodeWithoutShortCodes() {
+  for (const first of LETTERS) {
+    for (const second of LETTERS) {
+      const args = shortCodeViewOf([first, second]);
+      if (args && args[0].length === 0) return [first, second];
+    }
+  }
+  throw new Error("every two-key code has short codes");
+}
+
+// A code that is a valid prefix but spells no character.
+function findCodeWithoutCharacters() {
+  for (const first of LETTERS) {
+    for (const second of LETTERS) {
+      const keys = [first, second, "i"];
+      const args = shortCodeViewOf(keys);
+      if (args && args[0].length === 0) return keys;
+    }
+  }
+  throw new Error("every probed three-key code spells a character");
+}
+
+const EMPTY_SLOT = findCodeWithEmptySlot();
+const NO_SHORT_CODES = findCodeWithoutShortCodes();
+const NO_CHARACTERS = findCodeWithoutCharacters();
+
+test("a digit that selects nothing restarts the composition", () => {
+  const { keys, labels } = EMPTY_SLOT;
+  const empty = [...SELECTION_DIGITS].find((digit) => !labels.includes(digit));
+  const engine = freshEngine();
+  compose(engine, keys);
+  const dead = makeEvent({
+    isComposing: true, key: empty, code: "Digit" + empty,
+  });
+  assert.equal(engine.handleKey(dead), true);
+  assert.ok(dead.last("beep"));
+  assert.ok(dead.last("resetContext"));
+  assert.equal(engine.code, "");
+});
+
+test("a keypad digit that selects nothing restarts it too", () => {
+  const { keys, labels } = EMPTY_SLOT;
+  const empty = [...SELECTION_DIGITS].find((digit) => !labels.includes(digit));
+  const engine = freshEngine();
+  compose(engine, keys);
+  const dead = makeEvent({
+    isComposing: true, key: empty, code: "Numpad" + empty,
+  });
+  assert.equal(engine.handleKey(dead), true);
+  assert.ok(dead.last("beep"));
+  assert.equal(engine.code, "");
+});
+
+test("a digit while idle still reaches the client", () => {
+  const engine = freshEngine();
+  const digit = makeEvent({ key: "5", code: "Digit5" });
+  assert.equal(engine.handleKey(digit), false);
+  assert.equal(digit.calls.length, 0);
+});
+
+test("Space with nothing to select beeps and clears", () => {
+  const engine = freshEngine();
+  compose(engine, NO_CHARACTERS);
+  const space = makeEvent({ isComposing: true, code: "Space" });
+  engine.handleKey(space);
+  assert.ok(space.last("beep"));
+  assert.ok(space.last("resetContext"));
+  assert.equal(engine.code, "");
+});
+
+test("a phrase lookup that finds nothing beeps", () => {
+  const engine = freshEngine();
+  compose(engine, NO_CHARACTERS);
+  const quote = makeEvent({ isComposing: true, code: "Quote" });
+  engine.handleKey(quote);
+  assert.ok(quote.last("beep"));
+  assert.equal(engine.code, "");
+});
+
+test("a fifth key other than the disambiguation key beeps", () => {
+  const engine = freshEngine();
+  compose(engine, ["a", "a", "a", "a"]);
+  const before = engine.code;
+  const fifth = makeEvent({ isComposing: true, key: "a", code: "KeyA" });
+  engine.handleKey(fifth);
+  assert.ok(fifth.last("beep"));
+  assert.equal(engine.code, before);
+});
+
+test("a symbol group with nothing renderable beeps", () => {
+  coverageOf = () => false;
+  try {
+    const engine = freshEngine();
+    compose(engine, ["w"]);
+    const confirm = makeEvent({
+      isComposing: true, candidate: "注音符號組", payload: "w0",
+    });
+    engine.candidateConfirmed(confirm);
+    assert.ok(confirm.last("beep"));
+    assert.ok(confirm.last("resetContext"));
+  } finally {
+    coverageOf = () => true;
+  }
+});
+
+test("short codes keep their own slots while placeholders are off", () => {
+  const { keys, labels } = EMPTY_SLOT;
+  const [candidates, options] = compose(freshEngine(), keys)
+    .last("updateCandidates").args;
+  assert.equal(options.indexLabels, labels);
+  assert.ok(candidates.every((value) => typeof value === "string"));
+});
+
+test("placeholders fill the empty short-code slots when enabled", () => {
+  const { keys, labels } = EMPTY_SLOT;
+  manifest.settings.showShortCodePlaceholders = true;
+  try {
+    const [candidates, options] = compose(freshEngine(), keys)
+      .last("updateCandidates").args;
+    assert.equal(candidates.length, 10);
+    assert.equal(options.indexLabels, SELECTION_DIGITS);
+    const filled = candidates.filter((value) => typeof value === "string");
+    assert.equal(filled.length, labels.length);
+    const empty = candidates.filter((value) => typeof value !== "string");
+    assert.ok(empty.length > 0);
+    assert.ok(empty.every((value) =>
+      value.candidate === "□" && value.payload === "placeholder"));
+  } finally {
+    manifest.settings.showShortCodePlaceholders = false;
+  }
+});
+
+test("a code with no short codes stays empty even with placeholders on", () => {
+  const keys = NO_SHORT_CODES;
+  manifest.settings.showShortCodePlaceholders = true;
+  try {
+    const update = compose(freshEngine(), keys).last("updateCandidates");
+    assert.equal(update.args[0].length, 0);
+  } finally {
+    manifest.settings.showShortCodePlaceholders = false;
+  }
+});
+
+test("confirming a placeholder beeps instead of committing", () => {
+  const engine = freshEngine();
+  compose(engine, EMPTY_SLOT.keys);
+  const confirm = makeEvent({
+    isComposing: true, candidate: "□", payload: "placeholder",
+  });
+  assert.equal(engine.candidateConfirmed(confirm), true);
+  assert.ok(confirm.last("beep"));
+  assert.ok(confirm.last("resetContext"));
+  assert.equal(engine.code, "");
+  assert.equal(confirm.last("updateMarkedText"), undefined);
 });
 
 test("reverse lookup renders main codes as radical readouts", () => {

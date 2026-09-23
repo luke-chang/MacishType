@@ -12,6 +12,10 @@ const MAX_CODE_LENGTH = 5;
 const DISAMBIGUATION_KEY = "i";
 // Cap on wildcard results so a broad pattern (e.g. "a*") stays cheap.
 const WILDCARD_LIMIT = 200;
+// Stand-in for a short-code slot nothing fills, shown only when the user asks
+// for it. The payload tells it apart from the same glyph in the main table.
+const PLACEHOLDER = "□";
+const PLACEHOLDER_PAYLOAD = "placeholder";
 
 // Composition key -> radical-code label for the marked text.
 const KEYNAME = new Map(Object.entries({
@@ -193,6 +197,13 @@ function mainCandidates(code) {
   return coverageFilter(mainTable.get(code) ?? []);
 }
 
+// A digit from the number row or the keypad, matched by character the way the
+// host matches index labels — so a layout that needs Shift for digits agrees.
+function isSelectionDigit(event) {
+  if (event.metaKey || event.ctrlKey || event.altKey) return false;
+  return event.key.length === 1 && event.key >= "0" && event.key <= "9";
+}
+
 // Escape or keypad Clear. Clear's web code is "NumLock" (W3C position
 // semantics), so match it by key.
 function isEscapeKey(event) {
@@ -201,9 +212,19 @@ function isEscapeKey(event) {
 
 function shortCodeView(code) {
   const entries = shortTable.get(code) ?? [];
+  if (entries.length === 0 || !manifest.settings.showShortCodePlaceholders) {
+    return {
+      candidates: entries.map((entry) => entry.value),
+      indexLabels: entries.map((entry) => entry.label).join(""),
+    };
+  }
+  // Fill every slot so the numbering reads straight down.
+  const bySlot = new Map(entries.map((entry) => [entry.label, entry.value]));
   return {
-    candidates: entries.map((entry) => entry.value),
-    indexLabels: entries.map((entry) => entry.label).join(""),
+    candidates: [...SELECTION_KEYS].map((digit) =>
+      bySlot.get(digit) ??
+      { candidate: PLACEHOLDER, payload: PLACEHOLDER_PAYLOAD }),
+    indexLabels: SELECTION_KEYS,
   };
 }
 
@@ -313,6 +334,17 @@ export default class ArrayEngine {
 
   /** @param {KeyEvent} event */
   handleKey(event) {
+    // Digits select candidates and the host consumed the ones that address
+    // one, so a digit reaching here mid-composition is a mistype — start over
+    // instead of swallowing it. A layout that puts a digit on a letter
+    // position still composes.
+    if (event.isComposing && isSelectionDigit(event) &&
+        !this.compositionChar(event)) {
+      event.beep();
+      this.reset();
+      event.resetContext();
+      return true;
+    }
     // Numeric-keypad rule: keypad character keys never compose (keypad `*`
     // must not start a wildcard) — swallow while composing, pass through
     // when idle. Modifier combos and NumpadEnter stay on their normal paths.
@@ -409,12 +441,18 @@ export default class ArrayEngine {
       if (this.canExtendWildcard()) {
         this.code += wild;
         this.renderWildcard(event);
+      } else {
+        event.beep();
       }
     } else {
       const composed = this.compositionChar(event);
-      if (composed && this.canExtend(composed)) {
-        this.code += composed;
-        this.render(event);
+      if (composed) {
+        if (this.canExtend(composed)) {
+          this.code += composed;
+          this.render(event);
+        } else {
+          event.beep();
+        }
       }
     }
     return true;
@@ -448,6 +486,7 @@ export default class ArrayEngine {
     symbols = coverageFilter(symbols);
     if (symbols.length === 0) {
       // Every symbol in this group is rare/unrenderable and hidden.
+      event.beep();
       this.reset();
       event.resetContext();
       return;
@@ -495,9 +534,13 @@ export default class ArrayEngine {
     // Composition key appends its position-derived char, wildcard key the typed
     // symbol — distinct sources, don't conflate to event.key.
     const key = this.compositionChar(event) ?? this.wildcardChar(event);
-    if (key && this.canExtendWildcard()) {
-      this.code += key;
-      this.renderWildcard(event);
+    if (key) {
+      if (this.canExtendWildcard()) {
+        this.code += key;
+        this.renderWildcard(event);
+      } else {
+        event.beep();
+      }
     }
     return true;
   }
@@ -517,6 +560,7 @@ export default class ArrayEngine {
     this.groupMenu = false;
     if (candidates.length === 0) {
       // A code prefix with no character: nothing to select.
+      event.beep();
       this.reset();
       event.resetContext();
     } else if (candidates.length === 1) {
@@ -581,6 +625,14 @@ export default class ArrayEngine {
         this.code = event.payload;
         this.enterSymbolGroup(event, symbolTable.get(event.payload) ?? []);
       }
+      return true;
+    }
+    if (event.payload === PLACEHOLDER_PAYLOAD) {
+      // An empty short-code slot selects nothing, same as a digit with no
+      // candidate behind it.
+      event.beep();
+      this.reset();
+      event.resetContext();
       return true;
     }
     // An empty confirm (commitSelectedCandidate with nothing highlighted):

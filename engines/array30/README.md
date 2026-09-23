@@ -59,6 +59,9 @@ JS engine API end to end.
   Debian-family), and stays absent without it.
 - **Character set** picker in the host's engine settings (standard / all
   displayable / full) that filters candidates by installed-font coverage.
+- **Error feedback** — input that leads nowhere beeps; a number that selects
+  nothing also clears the code. An optional setting marks a short code's empty
+  slots with `□`.
 - **Reverse lookup** (`capabilities.reverseLookup`) for the host's Find Input
   Code window: main codes as radical readouts, then short codes as
   `readout+selectionKey` annotated 簡碼. macOS opens it from the IME menu;
