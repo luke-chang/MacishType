@@ -7,10 +7,14 @@ import OSLog
 final class ArrayDictionary {
     // MARK: - Constants
 
-    static let selectionKeys: [Character] = Array("1234567890")
+    static let selectionKeyLabels = "1234567890"
+    static let selectionKeys: [Character] = Array(selectionKeyLabels)
     static let maxCodeLength = 5
     static let disambiguationKey: Character = "i"
     static let wildcardLimit = 200
+
+    /// A short code and the selection key its slot keeps.
+    typealias ShortCodeEntry = (label: Character, value: String)
 
     /// Composition key → radical-code label, shown in the marked text (e.g.
     /// `v` → `4⇣`). The data tables ship as plain `code<TAB>char`, so these
@@ -64,7 +68,7 @@ final class ArrayDictionary {
     private let phraseTable: ArrayByteTable
     /// Symbol groups (w0…/hg…); small map, filtered to the current scope.
     private var symbolTable: [String: [String]]
-    private let shortTable: [String: [(label: Character, value: String)]]
+    private let shortTable: [String: [ShortCodeEntry]]
     /// Current scope; `reloadTables` rebuilds the filtered tables when it changes.
     private var scope: InputEngine.CharacterSetScope
     /// `character → raw codes` for the lookup window, inverted on demand from
@@ -162,9 +166,9 @@ final class ArrayDictionary {
 
     /// Load `code+slotKey<TAB>value` into `code -> [(label, value)]`. The trailing
     /// digit splits off as the label — each candidate's fixed selection key.
-    private static func loadShortCode() -> [String: [(label: Character, value: String)]] {
+    private static func loadShortCode() -> [String: [ShortCodeEntry]] {
         guard let content = bundledTable("ArrayShortCode") else { return [:] }
-        var table: [String: [(label: Character, value: String)]] = [:]
+        var table: [String: [ShortCodeEntry]] = [:]
         forEachDataRow(in: content) { fields in
             guard fields.count >= 2, fields[0].count >= 2, !fields[1].isEmpty,
                   let label = fields[0].last else { return }
@@ -194,10 +198,8 @@ final class ArrayDictionary {
         return Self.selectionKeys.contains { hasSymbolGroup(code + String($0)) }
     }
 
-    /// A short-code entry's candidates and the fixed selection key each keeps.
-    func shortCodeView(_ code: String) -> (candidates: [String], indexLabels: String) {
-        let entries = shortTable[code] ?? []
-        return (entries.map(\.value), String(entries.map(\.label)))
+    func shortCodeEntries(_ code: String) -> [ShortCodeEntry] {
+        shortTable[code] ?? []
     }
 
     // MARK: - Reverse Lookup

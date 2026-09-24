@@ -19,6 +19,14 @@ func associatedMode(_ actions: [EngineAction]) -> (held: String, candidates: [St
     return (held, candidates)
 }
 
+func beeped(_ actions: [EngineAction]) -> Bool {
+    actions.contains { if case .beep = $0 { true } else { false } }
+}
+
+func resetsContext(_ actions: [EngineAction]) -> Bool {
+    actions.contains { if case .resetContext = $0 { true } else { false } }
+}
+
 /// The text and staged length of a lone `.updateMarkedText`, else nil.
 func markedText(_ actions: [EngineAction]) -> (text: String, staged: Int)? {
     guard actions.count == 1,

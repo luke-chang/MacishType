@@ -913,6 +913,22 @@
         }
       }
     },
+    "Pressing one clears the code you are typing, like any number with no candidate behind it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pressing one clears the code you are typing, like any number with no candidate behind it."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按下佔位符號會清除正在輸入的字根，與按下沒有候選字的數字相同。"
+          }
+        }
+      }
+    },
     "Preview candidates while typing" : {
       "localizations" : {
         "en" : {
@@ -1053,6 +1069,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "簡碼"
+          }
+        }
+      }
+    },
+    "Show placeholders for empty short-code slots" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show placeholders for empty short-code slots"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在簡碼空缺的位置顯示佔位符號"
           }
         }
       }

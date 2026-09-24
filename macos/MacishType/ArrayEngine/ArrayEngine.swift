@@ -27,7 +27,15 @@ final class ArrayEngine: InputEngine {
     static let shared = ArrayEngine()
     override var engineID: String { "Array" }
 
+    static let showShortCodePlaceholdersSubKey = "showShortCodePlaceholders"
+    static let defaultShowShortCodePlaceholders = false
+
+    /// The payload tells a placeholder apart from the same glyph in the main table.
+    static let placeholderPayload = "placeholder"
+    private static let placeholder = Candidate("□", payload: placeholderPayload)
+
     private var characterSetScope = ArrayEngine.defaultCharacterSetScope
+    private var showShortCodePlaceholders = ArrayEngine.defaultShowShortCodePlaceholders
     private var dictionary: ArrayDictionary?
     private var coverageObserver: (any NSObjectProtocol)?
     private var coverageDirty = false
@@ -36,6 +44,8 @@ final class ArrayEngine: InputEngine {
 
     override func reloadConfig() {
         super.reloadConfig()
+        showShortCodePlaceholders = defaultsValue(
+            Self.showShortCodePlaceholdersSubKey, fallback: Self.defaultShowShortCodePlaceholders)
         let value: InputEngine.CharacterSetScope =
             defaultsValue(Self.characterSetScopeSubKey, fallback: Self.defaultCharacterSetScope)
         if value != characterSetScope {
@@ -111,7 +121,7 @@ final class ArrayEngine: InputEngine {
 
     override var candidateWindowConfiguration: CandidateWindowConfiguration {
         var configuration = super.candidateWindowConfiguration
-        configuration.indexLabels = "1234567890"
+        configuration.indexLabels = ArrayDictionary.selectionKeyLabels
         configuration.pageSize = 10
         configuration.expandable = false
         return configuration
@@ -123,6 +133,7 @@ final class ArrayEngine: InputEngine {
                 InputEngine.CandidateWindowSection(engine: self)
                 Section("Typing") {
                     InputEngine.EnableAssociatedModeToggle(engine: self)
+                    ArrayShortCodePlaceholdersToggle(engine: self)
                     InputEngine.CharacterSetScopePicker(engine: self)
                 }
             }
@@ -135,11 +146,19 @@ final class ArrayEngine: InputEngine {
         context: InputEngineContext, keyEvent: KeyEventInput, candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
         guard let dictionary else { return .notHandled() }
+        let ctx = context as! ArrayEngineContext
+        // The host already consumed the selection keys that address a candidate,
+        // so one reaching here mid-composition is a mistype. Deliberately ahead
+        // of the keypad rule below, which would otherwise swallow keypad digits;
+        // the composition check keeps a layout whose digits sit on Array key
+        // positions composing.
+        if !ctx.code.isEmpty, Self.isSelectionKey(keyEvent), compositionChar(keyEvent) == nil {
+            return .handled([.beep, .resetContext])
+        }
         // Before wildcardChar: keypad `*` must not start a wildcard query.
         if let numericPad = Self.numericPadResult(for: keyEvent, context: context) {
             return numericPad
         }
-        let ctx = context as! ArrayEngineContext
 
         if !ctx.code.isEmpty {
             if ArrayDictionary.hasWildcard(ctx.code) {
@@ -205,11 +224,11 @@ final class ArrayEngine: InputEngine {
                 break
             }
         }
-        if let key = wildcardChar(event), canExtendWildcard(ctx) {
-            ctx.code.append(key)
-            return .handled(renderWildcardActions(ctx, dictionary))
+        if let key = wildcardChar(event) {
+            return extendWildcard(ctx, key, dictionary)
         }
-        if let key = compositionChar(event), canExtend(ctx, key) {
+        if let key = compositionChar(event) {
+            guard canExtend(ctx, key) else { return .handled([.beep]) }
             ctx.code.append(key)
             return .handled(renderActions(ctx, dictionary))
         }
@@ -268,11 +287,18 @@ final class ArrayEngine: InputEngine {
                 break
             }
         }
-        if let key = compositionChar(event) ?? wildcardChar(event), canExtendWildcard(ctx) {
-            ctx.code.append(key)
-            return .handled(renderWildcardActions(ctx, dictionary))
+        if let key = compositionChar(event) ?? wildcardChar(event) {
+            return extendWildcard(ctx, key, dictionary)
         }
         return .handled([])
+    }
+
+    private func extendWildcard(
+        _ ctx: ArrayEngineContext, _ key: Character, _ dictionary: ArrayDictionary
+    ) -> EngineHandleResult {
+        guard canExtendWildcard(ctx) else { return .handled([.beep]) }
+        ctx.code.append(key)
+        return .handled(renderWildcardActions(ctx, dictionary))
     }
 
     override func candidateConfirmed(
@@ -287,6 +313,10 @@ final class ArrayEngine: InputEngine {
                 return .handled(enterSymbolGroup(ctx, dictionary?.symbolGroup(groupCode) ?? []))
             }
             return .handled()
+        }
+        // An empty slot selects nothing, same as a digit with no candidate.
+        if raw?.payload as? String == Self.placeholderPayload {
+            return .handled([.beep, .resetContext])
         }
         // Nothing highlighted: in associated mode the host commits the held
         // text; otherwise there is nothing to confirm.
@@ -315,18 +345,34 @@ final class ArrayEngine: InputEngine {
             if dictionary.isSymbolPrefix(ctx.code) {
                 return actions + showGroupMenu(ctx, dictionary)
             }
-            let view = dictionary.shortCodeView(ctx.code)
-            let spaceTarget = dictionary.main(ctx.code).first
-            let highlight = spaceTarget.flatMap { view.candidates.firstIndex(of: $0) } ?? -1
+            let view = Self.shortCodeView(
+                entries: dictionary.shortCodeEntries(ctx.code),
+                placeholders: showShortCodePlaceholders,
+                highlighting: dictionary.main(ctx.code).first)
             actions.append(.updateCandidates(
-                view.candidates.map { Candidate($0) },
-                initialHighlight: highlight,
+                view.candidates,
+                initialHighlight: view.highlight,
                 configure: { $0.indexLabels = view.indexLabels }))
         } else {
             // An empty list (a prefix en route to a longer code) hides the window.
             actions.append(.updateCandidates(dictionary.main(ctx.code).map { Candidate($0) }))
         }
         return actions
+    }
+
+    /// Short codes under the selection key each one keeps, plus where the Space
+    /// target sits among them (-1 when it is absent). With placeholders on,
+    /// every slot is filled so the numbering reads straight down.
+    static func shortCodeView(
+        entries: [ArrayDictionary.ShortCodeEntry], placeholders: Bool, highlighting target: String?
+    ) -> (candidates: [Candidate], indexLabels: String, highlight: Int) {
+        let filled = placeholders && !entries.isEmpty
+        let values: [String?] = filled
+            ? ArrayDictionary.selectionKeys.map { digit in entries.last { $0.label == digit }?.value }
+            : entries.map { $0.value }
+        return (values.map { $0.map { Candidate($0) } ?? placeholder },
+                filled ? ArrayDictionary.selectionKeyLabels : String(entries.map(\.label)),
+                target.flatMap { values.firstIndex(of: $0) } ?? -1)
     }
 
     private func renderWildcardActions(_ ctx: ArrayEngineContext, _ dictionary: ArrayDictionary) -> [EngineAction] {
@@ -357,7 +403,7 @@ final class ArrayEngine: InputEngine {
     /// A symbol group: candidate-selection over the group's symbols, annotated
     /// with their names and laid out vertically.
     private func enterSymbolGroup(_ ctx: ArrayEngineContext, _ symbols: [String]) -> [EngineAction] {
-        guard !symbols.isEmpty else { return [.resetContext] }
+        guard !symbols.isEmpty else { return [.beep, .resetContext] }
         ctx.selecting = true
         ctx.symbolGroup = true
         ctx.groupMenu = false
@@ -374,7 +420,7 @@ final class ArrayEngine: InputEngine {
     private func enterSelecting(_ ctx: ArrayEngineContext, _ candidates: [String]) -> [EngineAction] {
         ctx.groupMenu = false
         if candidates.isEmpty {
-            return [.resetContext]
+            return [.beep, .resetContext]
         } else if candidates.count == 1 {
             return [.commit(Candidate(candidates[0]))]
         } else {
@@ -401,6 +447,15 @@ final class ArrayEngine: InputEngine {
         default:
             return nil
         }
+    }
+
+    /// A selection key from the number row or the keypad, matched by character
+    /// the way the host matches index labels, so both read a layout alike.
+    private static func isSelectionKey(_ event: KeyEventInput) -> Bool {
+        guard event.pureModifiers.isDisjoint(with: [.command, .control, .option]),
+              let characters = event.characters, characters.count == 1,
+              let char = characters.first else { return false }
+        return ArrayDictionary.selectionKeys.contains(char)
     }
 
     /// The Array key at `event`'s physical position; layout-independent. Routes
@@ -430,5 +485,25 @@ final class ArrayEngine: InputEngine {
 
     private func canExtendWildcard(_ ctx: ArrayEngineContext) -> Bool {
         ctx.code.count < ArrayDictionary.maxCodeLength
+    }
+}
+
+struct ArrayShortCodePlaceholdersToggle: View {
+    @AppStorage private var value: Bool
+
+    init(engine: InputEngine) {
+        self._value = AppStorage(
+            wrappedValue: ArrayEngine.defaultShowShortCodePlaceholders,
+            InputEngine.composedKey(
+                engineID: engine.engineID, subKey: ArrayEngine.showShortCodePlaceholdersSubKey))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Toggle("Show placeholders for empty short-code slots", isOn: $value)
+            Text("Pressing one clears the code you are typing, like any number with no candidate behind it.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
     }
 }

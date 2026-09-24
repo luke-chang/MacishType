@@ -6,13 +6,15 @@ import Testing
 @MainActor
 struct ArrayEngineConfirmTests {
     private func confirm(
-        _ candidate: String, associating: Bool = false
+        _ candidate: String, associating: Bool = false, groupMenu: Bool = false,
+        raw: Candidate? = nil
     ) -> EngineHandleResult {
         let engine = ArrayEngine.shared
-        let context = engine.createContext()
+        let context = engine.createContext() as! ArrayEngineContext
         context.isAssociating = associating
+        context.groupMenu = groupMenu
         return engine.candidateConfirmed(
-            context: context, candidate, absoluteIndex: 0, raw: nil,
+            context: context, candidate, absoluteIndex: 0, raw: raw,
             candidateWindow: visibleCandidateWindow)
     }
 
@@ -39,6 +41,23 @@ struct ArrayEngineConfirmTests {
         let result = confirm("文", associating: true)
         #expect(!result.isHandled)
         #expect(result.actions.isEmpty)
+    }
+
+    @Test func confirmingAPlaceholderBeepsInsteadOfCommitting() {
+        let result = confirm(
+            "□", raw: Candidate("□", payload: ArrayEngine.placeholderPayload))
+        #expect(result.isHandled)
+        #expect(beeped(result.actions))
+        #expect(resetsContext(result.actions))
+        #expect(result.actions.count == 2)
+    }
+
+    @Test func openingASymbolGroupWithNothingRenderableBeeps() {
+        let result = confirm(
+            "注音符號組", groupMenu: true, raw: Candidate("注音符號組", payload: "w0"))
+        #expect(result.isHandled)
+        #expect(beeped(result.actions))
+        #expect(resetsContext(result.actions))
     }
 
     // MARK: Selection change
