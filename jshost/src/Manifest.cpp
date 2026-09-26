@@ -326,16 +326,6 @@ parseSettingsSections(JSContext *ctx, JSValueConst settingsValue,
         JS_ToUint32(ctx, &count, length.get());
         return count;
     };
-    auto numberProperty = [&](JSValueConst object,
-                              const char *name) -> std::optional<double> {
-        Qjs::Value value(ctx, JS_GetPropertyStr(ctx, object, name));
-        if (!JS_IsNumber(value.get())) {
-            return std::nullopt;
-        }
-        double number = 0;
-        JS_ToFloat64(ctx, &number, value.get());
-        return number;
-    };
 
     // Condition sentences reference other fields' labels, so they render
     // in a second pass once the whole schema is assembled.
@@ -401,9 +391,9 @@ parseSettingsSections(JSContext *ctx, JSValueConst settingsValue,
                                              std::move(hiddenJson)});
             }
 
-            field.min = numberProperty(fieldValue.get(), "min");
-            field.max = numberProperty(fieldValue.get(), "max");
-            field.step = numberProperty(fieldValue.get(), "step");
+            field.min = Qjs::numberProperty(ctx, fieldValue.get(), "min");
+            field.max = Qjs::numberProperty(ctx, fieldValue.get(), "max");
+            field.step = Qjs::numberProperty(ctx, fieldValue.get(), "step");
 
             Qjs::Value options(
                 ctx, JS_GetPropertyStr(ctx, fieldValue.get(), "options"));

@@ -114,14 +114,15 @@
       // leaving it to the engine.
       navigationIntent(keyEvent) {
         if (!keyEvent || typeof keyEvent !== "object") return null;
-        if (keyEvent.altKey) return null;
+        if (keyEvent.altKey === true) return null;
         if (keyEvent.code === "Tab") {
           return {
-            direction: keyEvent.shiftKey ? "itemBackward" : "itemForward",
+            direction:
+              keyEvent.shiftKey === true ? "itemBackward" : "itemForward",
             options: { wrapping: true },
           };
         }
-        if (keyEvent.shiftKey) return null;
+        if (keyEvent.shiftKey === true) return null;
         switch (keyEvent.code) {
           case "ArrowUp": return { direction: "up" };
           case "ArrowDown": return { direction: "down" };

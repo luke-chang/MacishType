@@ -1,6 +1,8 @@
 #include "MacishType/EventData.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <optional>
 #include <variant>
 
@@ -26,7 +28,30 @@ void setIntField(JSContext *ctx, JSValueConst object, const char *name,
     JS_SetPropertyStr(ctx, object, name, JS_NewInt32(ctx, value));
 }
 
+bool isWholeNumber(double value) {
+    return std::isfinite(value) && std::trunc(value) == value;
+}
+
 } // namespace
+
+bool isValidPageSize(double pageSize) {
+    return isWholeNumber(pageSize) && pageSize >= 1 && pageSize <= 11;
+}
+
+bool isValidFontSize(double fontSize) {
+    return isWholeNumber(fontSize) && fontSize >= 8 &&
+           fontSize <= std::numeric_limits<int>::max();
+}
+
+bool isValidIndexLabels(const std::string &labels) {
+    return std::all_of(labels.begin(), labels.end(), [](unsigned char ch) {
+        return ch >= 0x20 && ch <= 0x7E;
+    });
+}
+
+bool isValidLayoutDirection(const std::string &direction) {
+    return direction == "horizontal" || direction == "vertical";
+}
 
 CandidateWindowConfig resolvedCandidateWindowConfig(const JsEngineHost &host) {
     CandidateWindowConfig config;
@@ -61,7 +86,7 @@ CandidateWindowConfig resolvedCandidateWindowConfig(const JsEngineHost &host) {
         config.indexLabels = *labels;
     }
     if (auto pageSize = numberField("pageSize")) {
-        config.pageSize = std::max(1, *pageSize);
+        config.pageSize = *pageSize;
     }
     if (auto direction = stringField("layoutDirection")) {
         config.vertical = *direction == "vertical";

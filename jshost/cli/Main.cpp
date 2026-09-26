@@ -367,21 +367,20 @@ bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
             emitLine("{\"event\":\"action\",\"name\":\"" + jsonEscape(name) +
                      "\",\"args\":[" + args + "]}");
             if (name == "updateMarkedText" && argc >= 1) {
-                staging.markedText = JS_IsString(argv[0])
-                                         ? Qjs::toString(ctx, argv[0])
-                                         : std::string();
+                staging.markedText = Qjs::textArgument(ctx, argc, argv, 0);
             } else if (name == "updateCandidates" && argc >= 1) {
-                JSValue length = JS_GetPropertyStr(ctx, argv[0], "length");
                 uint32_t count = 0;
-                JS_ToUint32(ctx, &count, length);
-                JS_FreeValue(ctx, length);
-                staging.candidateCount =
-                    JS_IsArray(argv[0]) ? static_cast<int>(count) : 0;
+                if (JS_IsArray(argv[0])) {
+                    // Reading `length` off a non-array throws, and the
+                    // exception would sit in the context unclaimed.
+                    Qjs::Value length(
+                        ctx, JS_GetPropertyStr(ctx, argv[0], "length"));
+                    JS_ToUint32(ctx, &count, length.get());
+                }
+                staging.candidateCount = static_cast<int>(count);
                 staging.message.clear();
             } else if (name == "updateMessage" && argc >= 1) {
-                staging.message = JS_IsString(argv[0])
-                                      ? Qjs::toString(ctx, argv[0])
-                                      : std::string();
+                staging.message = Qjs::textArgument(ctx, argc, argv, 0);
                 if (!staging.message.empty()) {
                     staging.candidateCount = 0;
                 }

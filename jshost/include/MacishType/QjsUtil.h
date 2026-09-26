@@ -1,8 +1,10 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -91,6 +93,10 @@ inline std::string toString(JSContext *ctx, JSValueConst value) {
     size_t len = 0;
     const char *cstr = JS_ToCStringLen(ctx, &len, value);
     if (cstr == nullptr) {
+        // A Symbol, or a toString that throws. Take the exception rather
+        // than leave it pending: the next error report to read the context
+        // would print this one in place of its own.
+        JS_FreeValue(ctx, JS_GetException(ctx));
         return {};
     }
     std::string result(cstr, len);
@@ -99,19 +105,56 @@ inline std::string toString(JSContext *ctx, JSValueConst value) {
     return result;
 }
 
-// Typed property reads: nullopt when the property is absent or of another
-// type; a failed number conversion also reads as absent.
-inline std::optional<int> intProperty(JSContext *ctx, JSValueConst object,
-                                      const char *name) {
-    Value value(ctx, JS_GetPropertyStr(ctx, object, name));
-    if (!JS_IsNumber(value.get())) {
-        return std::nullopt;
+// Text the engine supplied where the contract asks for a string. undefined
+// and null read as "not given" the way an omitted argument does; every other
+// type stringifies, as it would anywhere else in JavaScript.
+inline std::string optionalText(JSContext *ctx, JSValueConst value) {
+    if (JS_IsUndefined(value) || JS_IsNull(value)) {
+        return {};
     }
-    int32_t number = 0;
-    if (JS_ToInt32(ctx, &number, value.get()) != 0) {
+    return toString(ctx, value);
+}
+
+inline std::string textArgument(JSContext *ctx, int argc, JSValueConst *argv,
+                                int index) {
+    return argc <= index ? std::string() : optionalText(ctx, argv[index]);
+}
+
+inline std::optional<double> numberValue(JSContext *ctx, JSValueConst value) {
+    double number = 0;
+    if (!JS_IsNumber(value) || JS_ToFloat64(ctx, &number, value) != 0) {
         return std::nullopt;
     }
     return number;
+}
+
+// NaN reads as absent like a value of another type. Fractions truncate, and
+// a number beyond an int, either infinity included, saturates rather than
+// wrapping.
+inline std::optional<int> intValue(JSContext *ctx, JSValueConst value) {
+    auto number = numberValue(ctx, value);
+    if (!number || std::isnan(*number)) {
+        return std::nullopt;
+    }
+    return static_cast<int>(
+        std::clamp(*number,
+                   static_cast<double>(std::numeric_limits<int>::min()),
+                   static_cast<double>(std::numeric_limits<int>::max())));
+}
+
+// Typed property reads: nullopt when the property is absent or of another
+// type; numbers follow the value reads above.
+inline std::optional<double> numberProperty(JSContext *ctx,
+                                            JSValueConst object,
+                                            const char *name) {
+    Value value(ctx, JS_GetPropertyStr(ctx, object, name));
+    return numberValue(ctx, value.get());
+}
+
+inline std::optional<int> intProperty(JSContext *ctx, JSValueConst object,
+                                      const char *name) {
+    Value value(ctx, JS_GetPropertyStr(ctx, object, name));
+    return intValue(ctx, value.get());
 }
 
 inline std::optional<bool> boolProperty(JSContext *ctx, JSValueConst object,
@@ -131,6 +174,12 @@ inline std::optional<std::string> stringProperty(JSContext *ctx,
         return std::nullopt;
     }
     return toString(ctx, value.get());
+}
+
+inline std::string textProperty(JSContext *ctx, JSValueConst object,
+                                const char *name) {
+    Value value(ctx, JS_GetPropertyStr(ctx, object, name));
+    return optionalText(ctx, value.get());
 }
 
 // JSON text of a JS value; empty for undefined or stringify failure.

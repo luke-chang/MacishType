@@ -142,6 +142,9 @@ test: build
 	test/Message.sh
 	test/Beep.sh
 	test/HeldText.sh
+	test/TextArguments.sh
+	test/CandidateArguments.sh
+	test/IntegerOptions.sh
 
 # Development install into ~/.local plus a fcitx5 restart. Restarting
 # interrupts typing in the current session — run this yourself.

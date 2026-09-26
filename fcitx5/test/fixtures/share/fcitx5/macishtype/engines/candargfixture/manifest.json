@@ -1,0 +1,11 @@
+{
+  "entry": "index.js",
+  "name": {
+    "en": "Candidate Argument Fixture"
+  },
+  "candidateWindow": {
+    "layoutDirection": "vertical",
+    "pageSize": 3,
+    "indexLabels": "abc"
+  }
+}

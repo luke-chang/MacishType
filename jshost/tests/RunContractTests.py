@@ -340,6 +340,17 @@ def main():
     failures.check("PageRange", "the snapshot reports the first page's range",
                    "cw-range start=0 end=3 visible=true" in out, out)
 
+    # navigationIntent reads its modifiers as booleans, like candidateIndex
+    # beside it: a Shift of 1 does not reverse Tab and an Alt of "no" does not
+    # veto the arrow, while a true Shift still vetoes one.
+    out = run_verbs(cli, FIXTURE_ENGINES / "intentfixture", [
+        '{"do":"activate"}',
+        '{"do":"key","key":"z","code":"KeyZ"}',
+        '{"do":"quit"}',
+    ])
+    failures.check("Navigation", "navigationIntent ignores non-boolean modifiers",
+                   "intentfx loose itemForward up none" in out, out)
+
     # event.beep() reaches the host as a no-arg action, and repeat calls
     # within one event collapse: KeyA beeps once, KeyZ three times, so two
     # actions arrive in total.

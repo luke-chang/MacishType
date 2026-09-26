@@ -12,7 +12,9 @@
 //                       macish section itself, are unreadable, unwritable,
 //                       unlisted; top-level fields still seed the proxy
 //   indexlabels-*     - a non-ASCII indexLabels write is rejected
-//   pagesize-*        - a pageSize outside 1-11 is rejected, 11 is accepted
+//   pagesize-*        - a pageSize outside 1-11 is rejected, and so is a
+//                       fraction or NaN; 11 is accepted
+//   fontsize-*        - a fontSize below 8 or fractional is rejected
 //   toggle-nonchinese - capability outputToSimplified true cannot make the
 //                       toggle available when the host has no
 //                       Traditional->Simplified transform for the engine's
@@ -60,6 +62,13 @@ manifest.candidateWindow.pageSize = 11; // boundary, valid
 console.log(`pagesize-boundary ${manifest.candidateWindow.pageSize}`);
 manifest.candidateWindow.pageSize = 20; // out of range (1-11) -> ignored
 console.log(`pagesize-after-bad ${manifest.candidateWindow.pageSize}`);
+manifest.candidateWindow.pageSize = 2.5; // not an integer -> ignored
+manifest.candidateWindow.pageSize = NaN; // not an integer -> ignored
+console.log(`pagesize-after-fraction ${manifest.candidateWindow.pageSize}`);
+
+manifest.candidateWindow.fontSize = 5; // below 8 -> ignored
+manifest.candidateWindow.fontSize = 12.5; // not an integer -> ignored
+console.log(`fontsize-after-bad ${manifest.candidateWindow.fontSize}`);
 
 manifest.candidateWindow.indexLabelDigitsRequireShift = true;
 console.log(

@@ -110,7 +110,7 @@ PageRange EngineSession::currentPageRange() const {
 
 bool EngineSession::confirmCandidateOnPage(int pageIndex) {
     PageRange page = currentPageRange();
-    if (pageIndex < 0 || page.start + pageIndex >= page.end) {
+    if (pageIndex < 0 || pageIndex >= page.end - page.start) {
         return false;
     }
     confirmCandidateAt(static_cast<size_t>(page.start + pageIndex));
@@ -354,33 +354,23 @@ void EngineSession::queueAction(const std::string &name, int argc,
 
     auto candidateFromValue = [&](JSValueConst value) -> CandidateData {
         CandidateData candidate;
-        if (JS_IsString(value)) {
-            candidate.text = Qjs::toString(ctx, value);
+        if (!JS_IsObject(value)) {
+            candidate.text = Qjs::optionalText(ctx, value);
             return candidate;
         }
-        if (JS_IsObject(value)) {
-            if (auto text = Qjs::stringProperty(ctx, value, "candidate")) {
-                candidate.text = *text;
-            }
-            if (auto annotation =
-                    Qjs::stringProperty(ctx, value, "annotation")) {
-                candidate.annotation = *annotation;
-            }
-            Qjs::Value payload(ctx,
-                               JS_GetPropertyStr(ctx, value, "payload"));
-            if (!payload.isUndefined() && !payload.isException()) {
-                candidate.payload = payload.release();
-                candidate.hasPayload = true;
-            }
+        candidate.text = Qjs::textProperty(ctx, value, "candidate");
+        candidate.annotation = Qjs::textProperty(ctx, value, "annotation");
+        Qjs::Value payload(ctx, JS_GetPropertyStr(ctx, value, "payload"));
+        if (!payload.isUndefined() && !payload.isException()) {
+            candidate.payload = payload.release();
+            candidate.hasPayload = true;
         }
         return candidate;
     };
 
     if (name == "updateMarkedText") {
         UpdateMarkedTextAction action;
-        if (argc >= 1) {
-            action.text = Qjs::toString(ctx, argv[0]);
-        }
+        action.text = Qjs::textArgument(ctx, argc, argv, 0);
         if (argc >= 2 && JS_IsObject(argv[1])) {
             action.cursor = Qjs::intProperty(ctx, argv[1], "cursor");
             action.staged = Qjs::intProperty(ctx, argv[1], "staged");
@@ -418,12 +408,19 @@ void EngineSession::queueAction(const std::string &name, int argc,
         if (argc >= 2 && JS_IsObject(argv[1])) {
             action.options.initialHighlight =
                 Qjs::intProperty(ctx, argv[1], "initialHighlight");
-            action.options.pageSize =
-                Qjs::intProperty(ctx, argv[1], "pageSize");
-            action.options.indexLabels =
-                Qjs::stringProperty(ctx, argv[1], "indexLabels");
-            action.options.layoutDirection =
-                Qjs::stringProperty(ctx, argv[1], "layoutDirection");
+            if (auto pageSize = Qjs::numberProperty(ctx, argv[1], "pageSize");
+                pageSize && isValidPageSize(*pageSize)) {
+                action.options.pageSize = static_cast<int>(*pageSize);
+            }
+            if (auto labels = Qjs::stringProperty(ctx, argv[1], "indexLabels");
+                labels && isValidIndexLabels(*labels)) {
+                action.options.indexLabels = std::move(labels);
+            }
+            if (auto direction =
+                    Qjs::stringProperty(ctx, argv[1], "layoutDirection");
+                direction && isValidLayoutDirection(*direction)) {
+                action.options.vertical = *direction == "vertical";
+            }
             action.options.handleNavigationKeys =
                 Qjs::boolProperty(ctx, argv[1], "handleNavigationKeys");
             action.options.handleIndexLabelKeys =
@@ -436,9 +433,7 @@ void EngineSession::queueAction(const std::string &name, int argc,
     }
     if (name == "updateMessage") {
         UpdateMessageAction action;
-        if (argc >= 1 && JS_IsString(argv[0])) {
-            action.text = Qjs::toString(ctx, argv[0]);
-        }
+        action.text = Qjs::textArgument(ctx, argc, argv, 0);
         queue.push_back(std::move(action));
         return;
     }
@@ -455,12 +450,13 @@ void EngineSession::queueAction(const std::string &name, int argc,
         return;
     }
     if (name == "commitCandidateAtIndex") {
-        CommitAtIndexAction action;
-        int32_t index = 0;
-        if (argc >= 1 && JS_ToInt32(ctx, &index, argv[0]) == 0) {
-            action.index = index;
+        // A non-number is a no-op; confirmCandidateOnPage drops an index off
+        // the page.
+        if (argc >= 1) {
+            if (auto index = Qjs::intValue(ctx, argv[0])) {
+                queue.push_back(CommitAtIndexAction{*index});
+            }
         }
-        queue.push_back(action);
         return;
     }
     if (name == "navigateCandidates") {
@@ -481,17 +477,13 @@ void EngineSession::queueAction(const std::string &name, int argc,
     }
     if (name == "flushStaged") {
         FlushStagedAction action;
-        if (argc >= 1 && JS_IsString(argv[0])) {
-            action.append = Qjs::toString(ctx, argv[0]);
-        }
+        action.append = Qjs::textArgument(ctx, argc, argv, 0);
         queue.push_back(std::move(action));
         return;
     }
     if (name == "enterAssociatedMode") {
         EnterAssociatedAction action;
-        if (argc >= 1) {
-            action.heldChar = Qjs::toString(ctx, argv[0]);
-        }
+        action.heldChar = Qjs::textArgument(ctx, argc, argv, 0);
         if (argc >= 2 && JS_IsArray(argv[1])) {
             std::vector<std::string> candidates;
             Qjs::Value length(ctx,
@@ -506,7 +498,7 @@ void EngineSession::queueAction(const std::string &name, int argc,
             }
             for (uint32_t i = 0; i < count; i++) {
                 Qjs::Value item(ctx, JS_GetPropertyUint32(ctx, argv[1], i));
-                candidates.push_back(Qjs::toString(ctx, item.get()));
+                candidates.push_back(Qjs::optionalText(ctx, item.get()));
             }
             action.candidates = std::move(candidates);
         }
@@ -679,13 +671,13 @@ void EngineSession::applyUpdateCandidates(UpdateCandidatesAction action) {
                         ? associatedWindowConfig_
                         : resolvedCandidateWindowConfig(*host_);
     if (action.options.pageSize) {
-        windowConfig_.pageSize = std::max(1, *action.options.pageSize);
+        windowConfig_.pageSize = *action.options.pageSize;
     }
     if (action.options.indexLabels) {
         windowConfig_.indexLabels = *action.options.indexLabels;
     }
-    if (action.options.layoutDirection) {
-        windowConfig_.vertical = *action.options.layoutDirection == "vertical";
+    if (action.options.vertical) {
+        windowConfig_.vertical = *action.options.vertical;
     }
     if (action.options.handleNavigationKeys) {
         windowConfig_.handleNavigationKeys =

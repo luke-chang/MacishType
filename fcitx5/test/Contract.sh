@@ -41,6 +41,10 @@ check "pageSize 11 is accepted" "$out" \
     'pagesize-boundary 11'
 check "a pageSize above 11 is rejected, keeping the prior value" "$out" \
     'pagesize-after-bad 11'
+check "a fractional or NaN pageSize is rejected, keeping the prior value" "$out" \
+    'pagesize-after-fraction 11'
+check "a fontSize below 8 or fractional is rejected, keeping the prior value" "$out" \
+    'fontsize-after-bad 20'
 check "indexLabelDigitsRequireShift is writable and reads back" "$out" \
     'requireshift-write true'
 check "an out-of-vocabulary associatedModeIndexLabels write is rejected" "$out" \

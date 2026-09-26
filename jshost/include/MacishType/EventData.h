@@ -27,6 +27,14 @@ struct CandidateWindowConfig {
 
 CandidateWindowConfig resolvedCandidateWindowConfig(const JsEngineHost &host);
 
+// The contract's valid values for candidate window fields; the manifest,
+// manifest.candidateWindow writes and per-update options all test against
+// them. Numbers are the JS doubles they arrive as, so NaN and fractions fail.
+bool isValidPageSize(double pageSize);
+bool isValidFontSize(double fontSize);
+bool isValidIndexLabels(const std::string &labels);
+bool isValidLayoutDirection(const std::string &direction);
+
 // The host's associated-mode selection-keys setting.
 enum class AssociatedSelectionKeys { FollowEngine, Numbers, ShiftNumbers };
 

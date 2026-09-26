@@ -89,7 +89,7 @@ private:
         std::optional<int> initialHighlight;
         std::optional<int> pageSize;
         std::optional<std::string> indexLabels;
-        std::optional<std::string> layoutDirection;
+        std::optional<bool> vertical;
         std::optional<bool> handleNavigationKeys;
         std::optional<bool> handleIndexLabelKeys;
         std::optional<bool> indexLabelDigitsRequireShift;

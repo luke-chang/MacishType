@@ -192,6 +192,17 @@ check "a variation sequence renders as one whole-cluster row" \
 check_absent "the cluster is not split at its variation selector" \
     "$cluster" '"text": "⚙ —"'
 
+# --- Codes that are not plain strings ---------------------------------------
+# 丁's list mixes an empty string, a number, null, an object with a number code
+# and annotation, one with an empty code and one with no code; 戊's holds only
+# an empty string. Codes read like candidate text, and empty ones drop.
+odd="$("$root/test/Isolated.sh" reverselookupfixture "setsurrounding:丁戊" \
+    "$hotkey" sleep:1500)"
+check "number codes and annotations stringify, and empty codes drop" \
+    "$odd" '"text": "丁 5001  7 (8)"'
+check "a character whose codes are all empty shows the em-dash placeholder" \
+    "$odd" '"text": "戊 —"'
+
 # --- No capability: the hotkey is inert -------------------------------------
 # navfixture declares no reverseLookup capability, so the hotkey is not
 # intercepted (forwarded, handled=false) and no reverse window opens.

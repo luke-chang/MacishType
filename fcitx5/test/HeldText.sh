@@ -32,17 +32,15 @@ check_absent() {
 # KeyA (97:38) asks for associated mode with no held text, KeyZ (122:52)
 # reports the session state through the engine log, Escape (65307:9) shows
 # the associated tier is not holding the keys. KeyB (98:56) asks with no
-# follow-ups either. Each run needs its own log: Isolated.sh truncates the
-# one path it is given.
-supplied_log=/tmp/fcitx5-macishtype-heldtext-supplied.log
-supplied="$(ISOLATED_LOG="$supplied_log" "$root/test/Isolated.sh" \
+# follow-ups either. Each run rewrites the log, so read it before the next.
+log=/tmp/fcitx5-macishtype-heldtext.log
+supplied="$(ISOLATED_LOG="$log" "$root/test/Isolated.sh" \
     heldtextfixture 97:38 122:52 65307:9)"
-supplied_seen="$(cat "$supplied_log")"
+supplied_seen="$(cat "$log")"
 
-bare_log=/tmp/fcitx5-macishtype-heldtext-bare.log
-bare="$(ISOLATED_LOG="$bare_log" "$root/test/Isolated.sh" \
+bare="$(ISOLATED_LOG="$log" "$root/test/Isolated.sh" \
     heldtextfixture 98:56 122:52)"
-bare_seen="$(cat "$bare_log")"
+bare_seen="$(cat "$log")"
 
 check "the key is still handled" \
     "$supplied" '"keyval": 97, "handled": true'

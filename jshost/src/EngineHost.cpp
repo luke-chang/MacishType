@@ -7,6 +7,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "MacishType/EventData.h"
 #include "MacishType/FontCoverage.h"
 #include "MacishType/HostSeams.h"
 #include "MacishType/Log.h"
@@ -913,24 +914,18 @@ JsEngineHost::reverseLookup(const std::string &character) {
     for (uint32_t i = 0; i < limit; i++) {
         Qjs::Value item(ctx_, JS_GetPropertyUint32(ctx_, result.get(), i));
         ReverseCode code;
-        if (JS_IsString(item.get())) {
-            code.code = Qjs::toString(ctx_, item.get());
-        } else if (JS_IsObject(item.get())) {
-            Qjs::Value codeValue(
-                ctx_, JS_GetPropertyStr(ctx_, item.get(), "code"));
-            if (!JS_IsString(codeValue.get())) {
-                continue; // require a string `code`
-            }
-            code.code = Qjs::toString(ctx_, codeValue.get());
-            Qjs::Value annotation(
-                ctx_, JS_GetPropertyStr(ctx_, item.get(), "annotation"));
-            if (JS_IsString(annotation.get())) {
-                code.annotation = Qjs::toString(ctx_, annotation.get());
-            }
+        if (JS_IsObject(item.get())) {
+            code.code = Qjs::textProperty(ctx_, item.get(), "code");
+            code.annotation =
+                Qjs::textProperty(ctx_, item.get(), "annotation");
         } else {
-            continue;
+            code.code = Qjs::optionalText(ctx_, item.get());
         }
-        codes.push_back(std::move(code));
+        // Unlike a candidate, a code holds no index in place, so an empty
+        // one is dropped rather than kept as a blank.
+        if (!code.code.empty()) {
+            codes.push_back(std::move(code));
+        }
     }
     return codes;
 }
@@ -1411,19 +1406,23 @@ void JsEngineHost::setCandidateWindowField(const std::string &field,
         engineCandidateWindow_[field] = JS_ToBool(ctx_, value) == 1;
         return;
     case FieldType::Number: {
-        double number = 0;
-        if (!JS_IsNumber(value) || JS_ToFloat64(ctx_, &number, value) != 0 ||
-            number <= 0) {
+        auto number = Qjs::numberValue(ctx_, value);
+        if (!number) {
             MACISHTYPE_NOTICE() << "candidateWindow." << field
-                                << ": expected positive number, write ignored";
+                                << ": expected number, write ignored";
             return;
         }
-        if (field == "pageSize" && number > 11) {
-            MACISHTYPE_NOTICE() << "candidateWindow.pageSize: out of range "
-                                   "(1-11), write ignored";
+        if (field == "pageSize" && !isValidPageSize(*number)) {
+            MACISHTYPE_NOTICE() << "candidateWindow.pageSize: expected an "
+                                   "integer 1-11, write ignored";
             return;
         }
-        engineCandidateWindow_[field] = number;
+        if (field == "fontSize" && !isValidFontSize(*number)) {
+            MACISHTYPE_NOTICE() << "candidateWindow.fontSize: expected an "
+                                   "integer >= 8, write ignored";
+            return;
+        }
+        engineCandidateWindow_[field] = *number;
         return;
     }
     case FieldType::String: {
@@ -1433,8 +1432,7 @@ void JsEngineHost::setCandidateWindowField(const std::string &field,
             return;
         }
         std::string text = Qjs::toString(ctx_, value);
-        if (field == "layoutDirection" && text != "horizontal" &&
-            text != "vertical") {
+        if (field == "layoutDirection" && !isValidLayoutDirection(text)) {
             MACISHTYPE_NOTICE()
                 << "candidateWindow.layoutDirection: invalid value ignored: "
                 << text;
@@ -1448,15 +1446,10 @@ void JsEngineHost::setCandidateWindowField(const std::string &field,
                 << text;
             return;
         }
-        if (field == "indexLabels") {
-            for (unsigned char ch : text) {
-                if (ch < 0x20 || ch > 0x7E) {
-                    MACISHTYPE_NOTICE()
-                        << "candidateWindow.indexLabels: expected ASCII "
-                           "printable (0x20-0x7E), write ignored";
-                    return;
-                }
-            }
+        if (field == "indexLabels" && !isValidIndexLabels(text)) {
+            MACISHTYPE_NOTICE() << "candidateWindow.indexLabels: expected "
+                                   "ASCII printable (0x20-0x7E), write ignored";
+            return;
         }
         engineCandidateWindow_[field] = std::move(text);
         return;
