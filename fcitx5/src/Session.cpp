@@ -1175,6 +1175,18 @@ void EngineSession::enterAssociatedMode(
         : host_->associatedModeEnabled()
             ? host_->associatedFollowups(heldChar)
             : std::vector<std::string>{};
+    // The held text is what keeps the composition, and with it the keyboard,
+    // under the follow-ups; with none there is no mode to enter.
+    if (heldChar.empty()) {
+        if (!resolved.empty()) {
+            MACISHTYPE_NOTICE()
+                << host_->engineId()
+                << ": enterAssociatedMode with an empty held text: "
+                << resolved.size() << " follow-ups dropped, composition ended";
+        }
+        endComposition("");
+        return;
+    }
     if (resolved.empty()) {
         endComposition(heldChar);
         return;

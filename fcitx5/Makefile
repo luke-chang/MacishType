@@ -141,6 +141,7 @@ test: build
 	test/IconTheme.sh
 	test/Message.sh
 	test/Beep.sh
+	test/HeldText.sh
 
 # Development install into ~/.local plus a fcitx5 restart. Restarting
 # interrupts typing in the current session — run this yourself.
