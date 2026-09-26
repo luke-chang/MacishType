@@ -11,6 +11,7 @@ class InputController: IMKInputController {
     private var engine: InputEngine!
     private var engineContext: InputEngineContext!
     private var appearanceStale = true
+    private var noPositionReported = false
 
     // Dispatch routes for the toggle items built by the latest `menu()`,
     // indexed by the item's tag. The tag (a plain Int) survives whatever
@@ -237,6 +238,7 @@ class InputController: IMKInputController {
         #endif
         super.activateServer(sender)
         appearanceStale = true
+        noPositionReported = false
         hideCandidateWindow()
         applyKeyboardLayoutOverride(sender)
     }
@@ -423,9 +425,9 @@ class InputController: IMKInputController {
             case .flushStaged(let append):
                 endComposition(client: client, insert: engineContext.stagedText + append)
             case .enterAssociatedMode(let heldText, let candidates):
-                // Nothing to hold means no marked text for the follow-ups to
-                // anchor to, so they are dropped like any unanchored list; say
-                // so, then take the same exit as an empty list.
+                // The held text is what keeps the composition alive under the
+                // follow-ups; with none there is no mode to enter. Say so, then
+                // take the empty-list exit.
                 if heldText.isEmpty, !candidates.isEmpty {
                     Logger.inputController.notice(
                         "enterAssociatedMode with an empty held text: \(candidates.count, privacy: .public) follow-ups dropped, composition ended")
@@ -523,44 +525,51 @@ class InputController: IMKInputController {
         let font: NSFont?
     }
 
-    private func measureCandidateAnchor(anchorAt: Int, client: IMKTextInput) -> CandidateAnchor? {
+    /// A zero `nearRect` (the client reported no position) still shows the
+    /// window, at the screen's fallback corner: a misplaced list still takes
+    /// a selection.
+    private func measureCandidateAnchor(anchorAt: Int, client: IMKTextInput) -> CandidateAnchor {
         let text = engineContext.markedText
-        // Nothing to measure against, and the past-the-end branch below would
-        // take prefix(-1). Callers only get here with something to show, so
-        // this is an engine declaring it with no composition — say so, since
-        // the window staying hidden is otherwise silent.
-        guard !text.isEmpty else {
-            Logger.inputController.notice(
-                "no marked text to anchor the candidate window to; the update stays hidden")
-            return nil
-        }
         let length = text.count
         let index = Self.clampIndex(anchorAt, to: length)
         let fontKey = NSAttributedString.Key.font.rawValue
 
         var lineHeightRect = NSRect.zero
         var attrs: [AnyHashable: Any]?
-        if index < length {
-            // The anchor maps to the start of a real character; query directly.
-            let utf16Idx = text.prefix(index).utf16.count
-            attrs = client.attributes(forCharacterIndex: utf16Idx, lineHeightRectangle: &lineHeightRect)
-            if lineHeightRect.origin == .zero {
-                attrs = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &lineHeightRect)
-            }
-        } else {
-            // anchorAt == length (past end): simulate by querying the last
-            // character's rect and shifting x by its width. Avoids the cache
-            // poisoning caused by querying utf16 index == length directly.
+        if index == length, length > 0 {
+            // Past the end: simulate by querying the last character's rect and
+            // shifting x by its width. Avoids the cache poisoning caused by
+            // querying utf16 index == length directly.
             let lastUtf16 = text.prefix(length - 1).utf16.count
             attrs = client.attributes(forCharacterIndex: lastUtf16, lineHeightRectangle: &lineHeightRect)
-            let font = (attrs?[fontKey] as? NSFont)
-                ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
-            let lastChar = String(text.suffix(1))
-            lineHeightRect.origin.x += lastChar.size(withAttributes: [.font: font]).width
+            if lineHeightRect.origin != .zero {
+                let font = (attrs?[fontKey] as? NSFont)
+                    ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+                let lastChar = String(text.suffix(1))
+                lineHeightRect.origin.x += lastChar.size(withAttributes: [.font: font]).width
+            }
+        } else {
+            // Index 0 with no composition is past the end too, but with no
+            // session there is no cache to poison; clients answer with the
+            // live insertion point.
+            let utf16Idx = text.prefix(index).utf16.count
+            attrs = client.attributes(forCharacterIndex: utf16Idx, lineHeightRectangle: &lineHeightRect)
         }
 
         var startRect = NSRect.zero
-        _ = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &startRect)
+        var startAttrs: [AnyHashable: Any]?
+        if length > 0 {
+            startAttrs = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &startRect)
+        }
+        if lineHeightRect.origin == .zero {
+            lineHeightRect = startRect
+            attrs = startAttrs ?? attrs
+        }
+        if lineHeightRect.origin == .zero, !noPositionReported {
+            noPositionReported = true
+            Logger.inputController.notice(
+                "client reported no position for the candidate window; showing it at the fallback location")
+        }
         return CandidateAnchor(
             nearRect: lineHeightRect,
             startX: startRect.origin != .zero ? startRect.minX : lineHeightRect.minX,
@@ -630,13 +639,13 @@ class InputController: IMKInputController {
     /// Runs a window update between an anchor measurement and the reposition
     /// it feeds. Applying an update fires candidateSelectionChanged
     /// synchronously and that hook may rewrite marked text, while `anchorAt`
-    /// indexes the text as it is now; the hook may also have ended the
-    /// composition and hidden the window, and re-showing one with no
-    /// composition behind it would swallow the client's keys.
+    /// indexes the text as it is now. A hook that hides the window — ending
+    /// the composition does — must not see it shown again.
     private func anchored(anchorAt: Int, client: IMKTextInput, _ update: () -> Void) {
+        let hides = CandidateWindow.shared.hideCount
         let anchor = measureCandidateAnchor(anchorAt: anchorAt, client: client)
         update()
-        guard let anchor, !engineContext.markedText.isEmpty else { return }
+        if CandidateWindow.shared.hideCount != hides { return }
         applyCandidateAnchor(anchor, client: client)
     }
 }

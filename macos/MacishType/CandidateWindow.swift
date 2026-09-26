@@ -281,6 +281,9 @@ class CandidateWindow {
 
     /// Text of the message shown in place of candidates.
     private(set) var messageText: String?
+    /// Bumped by every `hide()`, so a caller can tell whether a synchronous
+    /// callback dismissed the window between two of its own steps.
+    private(set) var hideCount = 0
 
     private(set) var lastShowNearRect: NSRect = .zero
 
@@ -409,6 +412,7 @@ class CandidateWindow {
     }
 
     func hide() {
+        hideCount += 1
         compositionStartX = 0
         setCompositionEndXProvider(nil)
         messageText = nil

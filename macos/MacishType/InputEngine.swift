@@ -182,8 +182,8 @@ struct KeyEventInput {
     var isReturnKey: Bool { keyCode == KeyCode.return || keyCode == KeyCode.keypadEnter }
 
     /// Escape or keypad Clear. Clear's native meaning is "clear the current
-    /// entry", so while composing it follows the engine's Escape semantics;
-    /// when idle both pass through to the client.
+    /// entry", so it follows the engine's Escape semantics; with neither a
+    /// composition nor a window up, both pass through to the client.
     var isEscapeKey: Bool { keyCode == KeyCode.escape || keyCode == KeyCode.keypadClear }
 
     /// Keypad key that would type a character (digit / operator / decimal).
@@ -515,7 +515,9 @@ class InputEngine: ObservableObject {
         }
 
         if keyEvent.isEscapeKey {
-            return context.isComposing ? .handled([.flushStaged()]) : .notHandled()
+            // A window with no composition under it still ends the round.
+            return context.isComposing || candidateWindow.isVisible
+                ? .handled([.flushStaged()]) : .notHandled()
         }
 
         return .notHandled()

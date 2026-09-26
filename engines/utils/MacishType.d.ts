@@ -220,9 +220,11 @@ export interface EventMutators {
   /**
    * Replace the candidate list shown in the candidate window. Pass an
    * empty array to hide the window, clearing a message along with it.
-   * Declare candidates alongside a non-empty `markedText`: on macOS the
-   * window anchors to the composition, and some clients deliver keys to
-   * the input method only while a composition is active.
+   * Keep a short composition alive under the window: it makes the input
+   * method the owner of the keyboard and lets a click elsewhere dismiss
+   * the window. Candidates declared with no marked text are still shown
+   * at the caret, but some clients then withhold or duplicate non-text
+   * keys, and only a focus change or the engine dismisses the window.
    */
   updateCandidates(items: readonly CandidateInput[], options?: CandidateUpdateOptions): void;
   /**
@@ -231,7 +233,9 @@ export interface EventMutators {
    * no key (every key reaches the engine), cannot be clicked or
    * committed, and leaves `candidateWindow.isVisible` false. Its
    * appearance is the host's decision, hence no layout options.
-   * `updateCandidates` replaces it, as does the end of the composition.
+   * `updateCandidates` replaces it, as does the end of the composition;
+   * shown with no marked text it stays until a focus change or an empty
+   * string from the engine.
    */
   updateMessage(text: string, options?: MessageOptions): void;
   /** Engine-driven commit. Triggers `candidateConfirmed` if defined. */
@@ -278,7 +282,8 @@ export interface EventMutators {
    * ends the composition. Chained engines lean on this to finish a chain.
    * An empty `heldChar` takes the same exit: the composition ends with
    * nothing committed and any `candidates` supplied are dropped with a
-   * notice, since there is no marked text for them to anchor to.
+   * notice — the held text is what keeps the composition, and with it the
+   * keyboard, under the follow-ups.
    */
   enterAssociatedMode(heldChar: string, candidates?: readonly string[]): void;
   /**
@@ -294,6 +299,10 @@ export interface EventMutators {
 export interface EventContext {
   readonly markedText: string;
   readonly stagedText: string;
+  /**
+   * Whether marked text is non-empty. Independent of
+   * `candidateWindow.isVisible`: a window can be up with no composition.
+   */
   readonly isComposing: boolean;
   readonly isAssociating: boolean;
   /** Text of the message currently shown via `updateMessage`, null when none. */

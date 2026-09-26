@@ -766,8 +766,8 @@ Two named keypad keys:
   `event.key === "Enter"`, which covers both.
 - **Clear** has `code: "NumLock"` (W3C position semantics) and
   `key: "Clear"`. Treat it like Escape while composing (match
-  `event.key === "Clear"` alongside `"Escape"`); when idle let it pass
-  through for the client to handle.
+  `event.key === "Clear"` alongside `"Escape"`); when idle with no window
+  up, let it pass through for the client to handle.
 
 #### Host fallback
 
@@ -844,12 +844,29 @@ Replace the candidate list shown in the candidate window.
 - `options.handleIndexLabelKeys` *(boolean)* — override host index-label key handling for this update only.
 - `options.indexLabelDigitsRequireShift` *(boolean)* — override the digit-label Shift requirement for this update only. Same matching as the manifest field — see [Associated-mode selection keys](#associated-mode-selection-keys).
 
-Declare candidates alongside a non-empty `markedText`. On macOS the window
-anchors to the composition, and some clients deliver keys to the input method
-only while a composition is active — the arrow keys reach the window through it
-as well. A palette-style list keeps a short composition alive to hold the
-session; `enterAssociatedMode` works this way, carrying the held text as staged
-marked text.
+**Recommended convention: keep a short composition alive under the window.**
+`enterAssociatedMode` works this way, carrying the held text as staged marked
+text, and a palette-style list can do the same. The composition is what makes
+the input method the owner of the keyboard: with one up, arrows and Escape
+reach the engine in every client, and a click elsewhere in the field ends the
+composition and dismisses the window with it.
+
+Candidates declared with no marked text are still shown — the window anchors
+to the caret, and `anchorAt` resolves to `0` — but without a composition the
+host can only do so much:
+
+- Some clients withhold non-text keys (arrows, Escape) from the input method
+  while nothing is composing. Digit labels still select; navigation does not.
+- Some clients deliver those keys and act on them as well, so a navigation
+  key moves the highlight and the document caret together.
+- No client reports the click that moves the caret. A focus change dismisses
+  the window; nothing else does until the engine closes it.
+
+In this state `event.candidateWindow.isVisible` is `true` while
+`event.isComposing` is `false` — a combination a composition rules out. Keys
+go to the engine and, unconsumed, on to the client: an Escape the engine
+leaves alone reaches the client with the window still up, so close it from
+the engine with `updateCandidates([])` or `resetContext()`.
 
 #### `updateMessage(text, options?)`
 
@@ -886,6 +903,11 @@ the message when the composition ends (commit, `flushStaged`, `resetContext`,
 focus change). Anything else leaves it up: a message outlives
 `updateMarkedText`, so an engine need not re-emit it as the composition
 changes.
+
+A message shown with no marked text needs only the caret position, and none
+of the keyboard caveats of an unanchored candidate list apply — it takes no
+keys to begin with. With no composition to end, it stays until a focus change
+or the engine's own `updateMessage("")`.
 
 The two dismissals differ: `updateCandidates([])` clears the window whichever
 of the two is in it, while `updateMessage("")` retires a message and does
@@ -977,8 +999,9 @@ miss, or the opt-in absent — the host commits `heldChar` and ends the
 composition. Chained engines lean on this: each round re-enters with the
 accumulated text, and the round that finds no follow-ups commits the whole
 thing. An empty `heldChar` takes the same exit: the composition ends with
-nothing committed, and any `candidates` supplied are dropped with a notice,
-since there is no marked text for them to anchor to.
+nothing committed, and any `candidates` supplied are dropped with a notice —
+the held text is what keeps the composition, and with it the keyboard, under
+the follow-ups.
 
 The window's selection keys and labels are a host policy — resolved from
 the host's selection-keys setting and the engine's
@@ -1000,7 +1023,7 @@ being heard.
 |---|---|
 | `markedText` | Current composing text. |
 | `stagedText` | Prefix already staged for commit. |
-| `isComposing` | Whether marked text is non-empty. |
+| `isComposing` | Whether marked text is non-empty. Independent of `candidateWindow.isVisible`: a window can be up with no composition (see [`updateCandidates`](#updatecandidatesitems-options)). |
 | `isAssociating` | Whether the engine is in associated mode. |
 | `message` | Text of the message currently shown (see [`updateMessage`](#updatemessagetext-options)), `null` when none. |
 | `candidateWindow` | Snapshot of the candidate window state at method entry — see [Candidate window snapshot](#candidate-window-snapshot). |
