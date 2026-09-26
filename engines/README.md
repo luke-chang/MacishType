@@ -813,6 +813,10 @@ All character-index parameters (`cursor`, `staged`, `emphasis`, `anchorAt`)
 count **extended grapheme clusters**, not UTF-16 code units. See
 [Character indices](#character-indices) for the alignment helper.
 
+The positions — `cursor`, `emphasis`, `anchorAt` — are clamped into
+`0...markedText.length` as the host applies them. `staged` is a count, not a
+position, and keeps its own rule: negative stages the whole text.
+
 #### `updateMarkedText(text, options?)`
 
 Replace the composing (marked) text shown in the active text field.
@@ -831,7 +835,7 @@ Replace the candidate list shown in the candidate window.
   - `annotation` *(string)* — optional disambiguator shown beside the candidate (e.g. description of a symbol).
   - `payload` *(any)* — opaque value round-tripped back via `candidateConfirmed` / `candidateSelectionChanged`, so engines can attach IDs without parsing display text.
 - Pass an **empty array** to hide the window.
-- `options.anchorAt` *(integer, default `0`)* — cursor position in `markedText` where the window's left edge anchors. Range `0...markedText.length`: `0` = before the first character, `length` = after the last. The index resolves against the marked text as the host applies this update, which includes an `updateMarkedText` queued ahead of it in the same batch; marked-text rewrites that land later — from `candidateSelectionChanged`, for instance — leave the anchor where this update put it. Currently only supported by the macOS host — under fcitx5, window placement is frontend-driven.
+- `options.anchorAt` *(integer, default `0`)* — cursor position in `markedText` where the window's left edge anchors. Clamped into `0...markedText.length`: `0` = before the first character, `length` = after the last. The index resolves against the marked text as the host applies this update, which includes an `updateMarkedText` queued ahead of it in the same batch; marked-text rewrites that land later — from `candidateSelectionChanged`, for instance — leave the anchor where this update put it. Currently only supported by the macOS host — under fcitx5, window placement is frontend-driven.
 - `options.initialHighlight` *(integer, default `0`)* — initial selection. `0` highlights the first candidate; a positive `n` highlights absolute index `n` (clamped to the displayed range, independent of `pageSize`); `-1` suspends the initial highlight — the first navigation action reveals it and normal behavior resumes.
 - `options.layoutDirection` *(`"horizontal"` \| `"vertical"`)* — override the candidate window's layout direction for this update only.
 - `options.indexLabels` *(string)* — override the index-label characters for this update only. Same `""`-collapses-vs-`" "`-blank-slot semantics as the manifest field.
@@ -1116,8 +1120,9 @@ those keys without rebuilding the tables:
 
 ### Character indices
 
-`EmphasisRange`, `MarkedTextOptions.cursor`, and
-`CandidateUpdateOptions.anchorAt` count **extended grapheme clusters**, not
+`EmphasisRange`, `MarkedTextOptions.cursor`, `MarkedTextOptions.staged`,
+`CandidateUpdateOptions.anchorAt`, and `MessageOptions.anchorAt` count
+**extended grapheme clusters**, not
 UTF-16 code units. Use `Intl.Segmenter` to get aligned counts:
 
 ```js

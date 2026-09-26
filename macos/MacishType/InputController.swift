@@ -393,7 +393,7 @@ class InputController: IMKInputController {
             switch action {
             case .updateMarkedText(let text, let cursor, let emphasis, let staged):
                 setMarkedText(text, cursor: cursor, emphasis: emphasis, client: client)
-                let effective = staged < 0 ? text.count : min(max(staged, 0), text.count)
+                let effective = staged < 0 ? text.count : Self.clampIndex(staged, to: text.count)
                 engineContext.stagedText = String(text.prefix(effective))
             case .updateCandidates(let candidates, let anchorAt, let initialHighlight, let configure):
                 // Associated mode rebases every update on the session snapshot,
@@ -456,13 +456,20 @@ class InputController: IMKInputController {
 
     // MARK: - Marked Text
 
+    /// Engine indices arrive unchecked, and `String.prefix` traps on a
+    /// negative count. Clamp to `0...length` like the other hosts.
+    private static func clampIndex(_ index: Int, to length: Int) -> Int {
+        min(max(index, 0), length)
+    }
+
     private func setMarkedText(
         _ text: String, cursor: Int? = nil, emphasis: Range<Int>? = nil, client: IMKTextInput
     ) {
         // Substitution is 1-for-1, so character-based cursor/emphasis stay valid.
         let display = Self.displayableMarkedText(text)
         engineContext.markedText = display
-        let charIndex = cursor ?? display.count
+        let length = display.count
+        let charIndex = Self.clampIndex(cursor ?? length, to: length)
         let cursorPosition = display.prefix(charIndex).utf16.count
         let attr = NSMutableAttributedString(
             string: display,
@@ -471,7 +478,7 @@ class InputController: IMKInputController {
                 .markedClauseSegment: 0
             ]
         )
-        if let emphasis, !emphasis.isEmpty {
+        if let emphasis = emphasis?.clamped(to: 0..<length), !emphasis.isEmpty {
             let utf16Start = display.prefix(emphasis.lowerBound).utf16.count
             let utf16End = display.prefix(emphasis.upperBound).utf16.count
             attr.addAttribute(
@@ -528,13 +535,14 @@ class InputController: IMKInputController {
             return nil
         }
         let length = text.count
+        let index = Self.clampIndex(anchorAt, to: length)
         let fontKey = NSAttributedString.Key.font.rawValue
 
         var lineHeightRect = NSRect.zero
         var attrs: [AnyHashable: Any]?
-        if anchorAt < length {
-            // anchorAt maps to the start of a real character; query directly.
-            let utf16Idx = text.prefix(anchorAt).utf16.count
+        if index < length {
+            // The anchor maps to the start of a real character; query directly.
+            let utf16Idx = text.prefix(index).utf16.count
             attrs = client.attributes(forCharacterIndex: utf16Idx, lineHeightRectangle: &lineHeightRect)
             if lineHeightRect.origin == .zero {
                 attrs = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &lineHeightRect)

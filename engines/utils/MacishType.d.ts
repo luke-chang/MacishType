@@ -129,7 +129,8 @@ export type CandidateInput = string | Candidate;
  * clusters), NOT UTF-16 code units. Plain `str.length` / `str[i]` is
  * UTF-16-indexed and mis-aligns on surrogate pairs and ZWJ sequences;
  * use `Intl.Segmenter` with `granularity: "grapheme"` to align with
- * the host's character count.
+ * the host's character count. Both ends are clamped into
+ * `0...text.length` as the host applies them.
  *
  * @example
  *   const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -147,7 +148,7 @@ export interface MarkedTextOptions {
   /**
    * Caret position within the text. Omitted means "default to end-of-text".
    * `0` is distinct from omission — it explicitly places the caret at the
-   * start.
+   * start. Clamped into `0...text.length` as the host applies it.
    */
   cursor?: number;
   /**
@@ -163,7 +164,7 @@ export interface MarkedTextOptions {
 export interface CandidateUpdateOptions {
   /**
    * Cursor position in `markedText` where the candidate window's left
-   * edge anchors. Range `0...markedText.length` — `0` = before the
+   * edge anchors. Clamped into `0...markedText.length` — `0` = before the
    * first character, `length` = after the last. Grapheme clusters,
    * not UTF-16. Resolved against the marked text as the host applies
    * this update; rewrites that land later leave the anchor in place.
