@@ -6,6 +6,10 @@ let visibleCandidateWindow = CandidateWindowState(
     isVisible: true, configuration: CandidateWindowConfiguration(), message: nil,
     pageRange: 0..<CandidateWindowConfiguration().pageSize)
 
+let hiddenCandidateWindow = CandidateWindowState(
+    isVisible: false, configuration: CandidateWindowConfiguration(), message: nil,
+    pageRange: 0..<0)
+
 /// The appended string of a lone `.flushStaged(_)`, else nil.
 func flushedText(_ actions: [EngineAction]) -> String? {
     guard actions.count == 1, case .flushStaged(let text) = actions[0] else { return nil }

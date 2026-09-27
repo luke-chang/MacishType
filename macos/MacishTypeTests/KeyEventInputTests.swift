@@ -2,13 +2,20 @@ import AppKit
 import Carbon.HIToolbox
 import Testing
 
+/// `InputEngine.engineID` traps, so the kernel tests need a subclass.
+private final class KernelEngine: InputEngine {
+    override var engineID: String { "KernelTest" }
+}
+
 @MainActor
 struct KeyEventInputTests {
     private func makeKey(
-        _ keyCode: UInt16, modifiers: NSEvent.ModifierFlags = []
+        _ keyCode: UInt16, charactersIgnoringModifiers: String? = nil,
+        modifiers: NSEvent.ModifierFlags = []
     ) -> KeyEventInput {
         KeyEventInput(
-            keyCode: keyCode, characters: nil, charactersIgnoringModifiers: nil,
+            keyCode: keyCode, characters: nil,
+            charactersIgnoringModifiers: charactersIgnoringModifiers,
             modifiers: modifiers, isRepeat: false)
     }
 
@@ -87,5 +94,50 @@ struct KeyEventInputTests {
             for: makeKey(KeyCode.keypadEnter, modifiers: [.numericPad]), context: context) == nil)
         #expect(InputEngine.numericPadResult(
             for: makeKey(UInt16(kVK_ANSI_5)), context: context) == nil)
+    }
+
+    // MARK: Base kernel
+
+    @Test func kernelLeavesShiftedLettersToTheClient() {
+        let result = KernelEngine().handleKey(
+            context: InputEngineContext(),
+            keyEvent: makeKey(UInt16(kVK_ANSI_A), modifiers: [.shift]),
+            candidateWindow: hiddenCandidateWindow)
+        guard case .notHandled(let actions) = result else {
+            Issue.record("expected .notHandled so the client inserts the letter")
+            return
+        }
+        #expect(actions.isEmpty)
+    }
+
+    /// Pins the order: the full-width rule has to beat the modified-key one.
+    @Test func kernelCommitsOptionShiftedLettersAsFullwidth() {
+        let result = KernelEngine().handleKey(
+            context: InputEngineContext(),
+            keyEvent: makeKey(
+                UInt16(kVK_ANSI_A), charactersIgnoringModifiers: "A",
+                modifiers: [.option, .shift]),
+            candidateWindow: hiddenCandidateWindow)
+        guard case .handled(let actions) = result else {
+            Issue.record("expected .handled with the full-width commit")
+            return
+        }
+        #expect(flushedText(actions) == "Ａ")
+    }
+
+    /// Caps Lock leaves the key bare, so the case is the engine's call.
+    @Test func kernelDoesNotInterceptCapsLockedLetters() {
+        let engine = KernelEngine()
+        let key = makeKey(UInt16(kVK_ANSI_A), modifiers: [.capsLock])
+        let composing = InputEngineContext()
+        composing.markedText = "X"
+        for context in [InputEngineContext(), composing] {
+            guard case .notHandled(let actions) = engine.handleKey(
+                context: context, keyEvent: key, candidateWindow: hiddenCandidateWindow) else {
+                Issue.record("expected .notHandled so the engine decides")
+                return
+            }
+            #expect(actions.isEmpty)
+        }
     }
 }

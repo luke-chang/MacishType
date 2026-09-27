@@ -489,27 +489,16 @@ class InputEngine: ObservableObject {
         keyEvent: KeyEventInput,
         candidateWindow: CandidateWindowState
     ) -> EngineHandleResult {
-        let pureMods = keyEvent.pureModifiers
-
-        if !pureMods.intersection([.command, .control]).isEmpty {
-            return context.isComposing ? .handled() : .notHandled()
-        }
-
         if let numericPad = Self.numericPadResult(for: keyEvent, context: context) {
             return numericPad
-        }
-
-        // Text-producing combos run before the modified-key rule below.
-        if !pureMods.contains(.option),
-           let text = keyEvent.characters, text.count == 1,
-           let char = text.first, char.isUppercase, char.isLetter {
-            return context.isComposing ? .handled() : .handled([.flushStaged(text)])
         }
 
         if let optionFullwidth = Self.hostOptionFullwidthResult(for: keyEvent, context: context) {
             return optionFullwidth
         }
 
+        // Catches Cmd / Ctrl / Option / Shift alike. Option makes a key
+        // non-bare too, so the full-width rule has to run before this.
         if !keyEvent.isBareKey {
             return context.isComposing ? .handled() : .notHandled()
         }
