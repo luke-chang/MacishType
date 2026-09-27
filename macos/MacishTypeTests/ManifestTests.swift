@@ -400,6 +400,27 @@ struct ManifestTests {
             .resolved(languages: ["zh-Hant"]) == "H")
     }
 
+    /// The script key follows the script the tag implies, whatever the region.
+    @Test func localizableFindsTheScriptKeyForAnyChineseRegion() throws {
+        let map = #"{"zh-Hant": "H", "zh-Hans": "S", "en": "E"}"#
+        #expect(try makeLocalizable(map).resolved(languages: ["zh-Hant-GB"]) == "H")
+        #expect(try makeLocalizable(map).resolved(languages: ["zh-Hans-MY"]) == "S")
+        #expect(try makeLocalizable(map).resolved(languages: ["zh"]) == "S")
+    }
+
+    /// Even where the bare language implies the same script, as `zh` does Hans.
+    @Test func localizableKeepsABareScriptTag() throws {
+        #expect(try makeLocalizable(#"{"zh-Hans": "S", "en": "E"}"#)
+            .resolved(languages: ["zh-Hans"]) == "S")
+    }
+
+    /// Stripping these would hand the user the other script's text.
+    @Test func localizableKeepsAScriptTheRegionContradicts() throws {
+        let map = #"{"zh-Hant": "H", "zh-Hans": "S"}"#
+        #expect(try makeLocalizable(map).resolved(languages: ["zh-Hans-HK"]) == "S")
+        #expect(try makeLocalizable(map).resolved(languages: ["zh-Hant-CN"]) == "H")
+    }
+
     @Test func localizableFallsBackToBaseLanguage() throws {
         let map = #"{"ja": "J", "en": "E"}"#
         #expect(try makeLocalizable(map).resolved(languages: ["ja-JP"]) == "J")
@@ -410,8 +431,8 @@ struct ManifestTests {
         #expect(try makeLocalizable(map).resolved(languages: ["zh-TW"]) == "E")
     }
 
-    /// An earlier preference's alias probe beats a later preference's
-    /// exact match, pinning fcitx5's loop nesting.
+    /// An earlier preference's alias probe beats a later preference's exact
+    /// match: every host exhausts one preference before trying the next.
     @Test func localizableExhaustsOneLanguageBeforeTheNext() throws {
         let map = #"{"ja": "J", "zh-TW": "T"}"#
         #expect(try makeLocalizable(map).resolved(languages: ["zh-HK", "ja"]) == "T")

@@ -725,8 +725,8 @@ extension JavaScriptEngine {
     // MARK: Manifest helper types
 
     /// Manifest-resolved localized string: a literal `String` or a
-    /// `{ <locale>: <String> }` map. Map resolution mirrors fcitx5's
-    /// resolveLocalizedName; the final fallback sorts keys because
+    /// `{ <locale>: <String> }` map. Map resolution follows the contract's
+    /// Localizable rules; the final fallback sorts keys because
     /// `Dictionary.first` would flicker between launches.
     nonisolated enum Localizable: Decodable {
         case literal(String)
@@ -744,7 +744,12 @@ extension JavaScriptEngine {
             case .map(let dict):
                 var seen = Set<String>()
                 for language in languages {
-                    let tag = Self.stripScriptBeforeRegion(language)
+                    // A redundant script ahead of a region goes, leaving the
+                    // shape a POSIX locale yields (zh-TW) so every host probes
+                    // the map in the same order. A bare script tag is itself a
+                    // map key and stays.
+                    let tag = language.split(separator: "-").count > 2
+                        ? JavaScriptEngine.normalizeBCP47(language) : language
                     guard seen.insert(tag).inserted else { continue }
                     for key in Self.lookupKeysForLanguage(tag) {
                         if let value = dict[key] { return value }
@@ -755,27 +760,17 @@ extension JavaScriptEngine {
             }
         }
 
-        /// `zh-Hant-TW` → `zh-TW`: the shape fcitx5 derives from POSIX
-        /// locales, keeping probe order identical across hosts. Bare
-        /// script tags stay intact; alias expansion covers them.
-        private static func stripScriptBeforeRegion(_ tag: String) -> String {
-            let parts = tag.split(separator: "-")
-            guard parts.count == 3, parts[1].count == 4,
-                  parts[1].first?.isUppercase == true else { return tag }
-            return "\(parts[0])-\(parts[2])"
-        }
-
-        /// Mirrors fcitx5's lookupKeysForLanguage so a zh-TW preference
+        /// A Chinese preference also probes the script key its tag implies
+        /// and that script's representative region, so a zh-TW preference
         /// can pick a zh-Hant manifest value and vice versa.
         private static func lookupKeysForLanguage(_ language: String) -> [String] {
             var keys = [language]
-            let lower = language.lowercased()
-            if lower == "zh-tw" || lower == "zh-hk" || lower == "zh-mo"
-                || lower.hasPrefix("zh-hant") {
-                keys += ["zh-Hant", "zh-TW"]
-            } else if lower == "zh-cn" || lower == "zh-sg"
-                || lower.hasPrefix("zh-hans") {
-                keys += ["zh-Hans", "zh-CN"]
+            if language.split(separator: "-").first?.lowercased() == "zh" {
+                switch Locale.Language(identifier: language).script?.identifier {
+                case "Hant": keys += ["zh-Hant", "zh-TW"]
+                case "Hans": keys += ["zh-Hans", "zh-CN"]
+                default: break
+                }
             }
             if let dash = language.firstIndex(of: "-") {
                 keys.append(String(language[..<dash]))
