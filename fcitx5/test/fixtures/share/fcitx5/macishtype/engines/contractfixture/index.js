@@ -21,6 +21,12 @@
 //                       language (this manifest declares none)
 //   dynamic-import-*  - dynamic import() is rejected, both for a module the
 //                       static graph already loaded and for a loadable one
+//   intl-*            - Intl resolves an omitted locale to the preferred
+//                       languages, skips requested tags ICU has no data for
+//                       but keeps legacy codes ICU aliases, null arguments
+//                       and malformed locale lists throw, and localeCompare /
+//                       toLocaleString / toLocaleDateString / toLocaleUpperCase
+//                       go through Intl, even with frozen options
 import { MARKER } from "/util.js";
 
 console.log(`nav-languages ${JSON.stringify(navigator.languages)}`);
@@ -79,6 +85,65 @@ manifest.candidateWindow.associatedModeIndexLabels = "bogus"; // not one of the 
 manifest.candidateWindow.associatedModeIndexLabels = "system"; // retired token -> ignored
 console.log(
   `assocmode-after-bad ${manifest.candidateWindow.associatedModeIndexLabels}`,
+);
+
+console.log(
+  `intl-default ${new Intl.DateTimeFormat().resolvedOptions().locale} ` +
+    `${new Intl.Collator().resolvedOptions().locale}`,
+);
+console.log(
+  `intl-lookup ${new Intl.NumberFormat(["tlh", "de"]).resolvedOptions().locale}`,
+);
+console.log(
+  `intl-legacy ${new Intl.NumberFormat("iw").resolvedOptions().locale} ` +
+    `${new Intl.NumberFormat("tl").resolvedOptions().locale}`,
+);
+const intlError = (make) => {
+  try {
+    make();
+    return "none";
+  } catch (error) {
+    return error.name;
+  }
+};
+console.log(
+  `intl-null ${[
+    () => new Intl.Collator(null),
+    () => new Intl.Collator(undefined, null),
+    () => new Intl.DateTimeFormat(undefined, null),
+    () => new Intl.NumberFormat(undefined, null),
+    () => new Intl.PluralRules(undefined, null),
+    () => new Intl.Segmenter(undefined, "grapheme"),
+  ]
+    .map(intlError)
+    .join(",")}`,
+);
+console.log(
+  `intl-lists ${[
+    () => new Intl.NumberFormat("en_US"),
+    () => new Intl.NumberFormat([5]),
+    () => new Intl.NumberFormat(new String("de")),
+    () => new Intl.NumberFormat(["de", "en_US"]),
+  ]
+    .map(intlError)
+    .join(",")} ${new Intl.NumberFormat(new Set(["de"])).resolvedOptions().locale}`,
+);
+console.log(
+  `intl-case ${"i".toLocaleUpperCase("tr")} ${"I".toLocaleLowerCase("tr")} ` +
+    `${"i".toLocaleUpperCase("en-US")} ${"i".toLocaleUpperCase()} ` +
+    `${intlError(() => "i".toLocaleUpperCase("en_US"))}`,
+);
+console.log(
+  `intl-builtins ${Math.sign("a".localeCompare("B"))} ` +
+    `${Math.sign("ä".localeCompare("z", "de"))} ` +
+    `${(1234567.5).toLocaleString("de")} ` +
+    `${new Date(Date.UTC(2026, 8, 27)).toLocaleDateString(undefined, { timeZone: "UTC" })}`,
+);
+console.log(
+  `intl-frozen ${new Date(0).toLocaleDateString(
+    "en-US",
+    Object.freeze({ year: undefined, timeZone: "UTC" }),
+  )}`,
 );
 
 console.log(

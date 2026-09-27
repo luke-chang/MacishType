@@ -436,6 +436,19 @@ private:
     // resolvedOptions().
     static JSValue nativeIntlResolveLocale(JSContext *ctx, JSValueConst thisVal,
                                            int argc, JSValueConst *argv);
+    // Whether ICU has locale data for a tag, the test the shim's locale
+    // matching runs over the requested and preferred languages.
+    static JSValue nativeIntlSupportedLocale(JSContext *ctx,
+                                             JSValueConst thisVal, int argc,
+                                             JSValueConst *argv);
+    // Whether a string is a well-formed BCP-47 tag, which ECMA-402 requires
+    // of every requested locale.
+    static JSValue nativeIntlWellFormedTag(JSContext *ctx, JSValueConst thisVal,
+                                           int argc, JSValueConst *argv);
+    // Language-sensitive case mapping for toLocaleUpperCase/toLowerCase;
+    // quickjs-ng's own versions ignore the locale.
+    static JSValue nativeIntlChangeCase(JSContext *ctx, JSValueConst thisVal,
+                                        int argc, JSValueConst *argv);
     // Intl.NumberFormat. The shim compiles ECMA-402 options into an ICU number
     // skeleton; ICU formats. Numbers cross as decimal strings to keep BigInt
     // and large-integer precision. quickjs-ng has no Intl; JavaScriptCore

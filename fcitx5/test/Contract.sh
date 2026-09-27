@@ -49,6 +49,22 @@ check "indexLabelDigitsRequireShift is writable and reads back" "$out" \
     'requireshift-write true'
 check "an out-of-vocabulary associatedModeIndexLabels write is rejected" "$out" \
     'assocmode-after-bad shiftNumbers'
+check "an omitted Intl locale resolves to the preferred language" "$out" \
+    'intl-default zh-TW zh-TW'
+check "a requested locale ICU has no data for is skipped" "$out" \
+    'intl-lookup de'
+check "legacy language codes still reach the data ICU aliases them to" "$out" \
+    'intl-legacy he tl'
+check "null Intl locales and options, and primitive Segmenter options, throw TypeError" "$out" \
+    'intl-null TypeError,TypeError,TypeError,TypeError,TypeError,TypeError'
+check "malformed locale lists throw as ECMA-402 requires" "$out" \
+    'intl-lists RangeError,TypeError,RangeError,RangeError zh-TW'
+check "toLocaleUpperCase and toLocaleLowerCase follow the requested language" "$out" \
+    'intl-case İ ı I I RangeError'
+check "localeCompare and toLocale*String go through Intl" "$out" \
+    'intl-builtins -1 -1 1.234.567,5 2026/9/27'
+check "Date defaults are added over a frozen options object" "$out" \
+    'intl-frozen 1/1/1970'
 check "outputToSimplified stays unavailable without a Traditional-Chinese language" "$out" \
     'toggle-nonchinese value=undefined keys=[]'
 check "dynamic import() of an already-loaded module is rejected" "$out" \

@@ -2196,6 +2196,12 @@ void JsEngineHost::registerBridgeGlobals() {
            &JsEngineHost::nativeIntlDateTimeFormatToParts, 4);
     define("__MacishTypeHost_intlResolveLocale",
            &JsEngineHost::nativeIntlResolveLocale, 1);
+    define("__MacishTypeHost_intlSupportedLocale",
+           &JsEngineHost::nativeIntlSupportedLocale, 1);
+    define("__MacishTypeHost_intlWellFormedTag",
+           &JsEngineHost::nativeIntlWellFormedTag, 1);
+    define("__MacishTypeHost_intlChangeCase",
+           &JsEngineHost::nativeIntlChangeCase, 3);
     define("__MacishTypeHost_intlNumberFormat",
            &JsEngineHost::nativeIntlNumberFormat, 3);
     define("__MacishTypeHost_intlNumberFormatToParts",

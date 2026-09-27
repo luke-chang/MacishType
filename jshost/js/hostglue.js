@@ -185,6 +185,59 @@
   // offsets in UTF-16 code units, so `index` matches JavaScriptCore's.
   const intl = globalThis.Intl || (globalThis.Intl = {});
 
+  // ECMA-402 CanonicalizeLocaleList: a string or an array-like read by index,
+  // each entry a string or an object, each tag well formed.
+  function requestedLocales(locales) {
+    if (locales === undefined) return [];
+    if (locales === null) {
+      throw new TypeError("Cannot convert null to a locale list");
+    }
+    const entries = typeof locales === "string" ? [locales] : Object(locales);
+    const length = Math.min(Math.max(Math.trunc(entries.length) || 0, 0),
+      Number.MAX_SAFE_INTEGER);
+    const tags = [];
+    for (let index = 0; index < length; index++) {
+      if (!(index in entries)) continue;
+      const entry = entries[index];
+      if (typeof entry !== "string" && Object(entry) !== entry) {
+        throw new TypeError("Locale list entries must be strings or objects");
+      }
+      const tag = String(entry);
+      if (!__MacishTypeHost_intlWellFormedTag(tag)) {
+        throw new RangeError(`Incorrect locale information provided: ${tag}`);
+      }
+      tags.push(tag);
+    }
+    return tags;
+  }
+
+  // ECMA-402 locale resolution with the lookup matcher: the first requested
+  // tag ICU has data for, else the first such tag among the host's preferred
+  // languages (the default locale), else "en". navigator is read per call:
+  // globals.js defines it after this script runs.
+  function resolveLocale(locales) {
+    for (const tag of requestedLocales(locales)) {
+      if (__MacishTypeHost_intlSupportedLocale(tag)) {
+        return tag;
+      }
+    }
+    for (const tag of navigator.languages) {
+      if (__MacishTypeHost_intlSupportedLocale(tag)) {
+        return tag;
+      }
+    }
+    return "en";
+  }
+
+  // ECMA-402 CoerceOptionsToObject: undefined means no options, and null
+  // throws as ToObject(null) does.
+  function optionsObject(options) {
+    if (options === null) {
+      throw new TypeError("Cannot convert null to an options object");
+    }
+    return options === undefined ? {} : Object(options);
+  }
+
   function makeSegments(locale, granularity, input) {
     const { boundaries, wordLike } = __MacishTypeHost_intlSegment(
       locale,
@@ -232,6 +285,9 @@
     if (!(this instanceof Segmenter)) {
       throw new TypeError("Constructor Intl.Segmenter requires 'new'");
     }
+    if (options !== undefined && Object(options) !== options) {
+      throw new TypeError("Intl.Segmenter options must be an object");
+    }
     const granularity = (options && options.granularity) || "grapheme";
     if (
       granularity !== "grapheme" &&
@@ -244,8 +300,7 @@
           " out of range for Intl.Segmenter options property granularity",
       );
     }
-    const requested = Array.isArray(locales) ? locales[0] : locales;
-    const locale = typeof requested === "string" ? requested : "en";
+    const locale = resolveLocale(locales);
     this.segment = (input) => makeSegments(locale, granularity, String(input));
     this.resolvedOptions = () => ({ locale, granularity });
   };
@@ -307,13 +362,51 @@
     return s;
   }
 
+  // ECMA-402 ToDateTimeOptions: the fields a formatter shows when the caller
+  // names none of the kind it requires. Defaults are defined rather than
+  // assigned, so a read-only field inherited from the caller's object is no
+  // obstacle.
+  const DATE_FIELDS = ["weekday", "year", "month", "day"];
+  const TIME_FIELDS = ["dayPeriod", "hour", "minute", "second",
+    "fractionalSecondDigits"];
+  function dateTimeOptions(options, required, defaults) {
+    const adjusted = Object.create(optionsObject(options));
+    if (required === "date" && adjusted.timeStyle !== undefined) {
+      throw new TypeError("Invalid option : timeStyle");
+    }
+    if (required === "time" && adjusted.dateStyle !== undefined) {
+      throw new TypeError("Invalid option : dateStyle");
+    }
+    const named = (fields) =>
+      fields.some((field) => adjusted[field] !== undefined);
+    const needDefaults =
+      adjusted.dateStyle === undefined &&
+      adjusted.timeStyle === undefined &&
+      (required === "time" || !named(DATE_FIELDS)) &&
+      (required === "date" || !named(TIME_FIELDS));
+    if (needDefaults) {
+      const fields = [];
+      if (defaults !== "time") fields.push("year", "month", "day");
+      if (defaults !== "date") fields.push("hour", "minute", "second");
+      for (const field of fields) {
+        Object.defineProperty(adjusted, field, {
+          value: "numeric",
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+      }
+    }
+    return adjusted;
+  }
+
   intl.DateTimeFormat = function DateTimeFormat(locales, options) {
     // Callable with or without `new`, per ECMA-402.
     const self =
       this instanceof intl.DateTimeFormat
         ? this
         : Object.create(intl.DateTimeFormat.prototype);
-    const o = options ? Object(options) : {};
+    const o = dateTimeOptions(options, "any", "date");
 
     const weekday = dtfEnum("weekday", o.weekday, ["narrow", "short", "long"]);
     const era = dtfEnum("era", o.era, ["narrow", "short", "long"]);
@@ -381,16 +474,9 @@
       hour12,
       hourCycle,
     };
-    // Default when nothing is requested: numeric year, month, and day.
-    if (!dateStyle && !timeStyle && !hasComponent) {
-      comp.year = "numeric";
-      comp.month = "numeric";
-      comp.day = "numeric";
-    }
     const skeleton = dateStyle || timeStyle ? "" : dtfSkeleton(comp);
 
-    const requested = Array.isArray(locales) ? locales[0] : locales;
-    let localeTag = typeof requested === "string" ? requested : "en";
+    let localeTag = resolveLocale(locales);
     // Fold calendar/numberingSystem into the tag as -u- extensions; ICU maps
     // them to locale keywords.
     const ext = [];
@@ -568,7 +654,7 @@
       this instanceof intl.NumberFormat
         ? this
         : Object.create(intl.NumberFormat.prototype);
-    const o = options ? Object(options) : {};
+    const o = optionsObject(options);
     const style = o.style ? String(o.style) : "decimal";
     if (["decimal", "currency", "percent", "unit"].indexOf(style) === -1) {
       throw new RangeError(
@@ -577,8 +663,7 @@
     }
     const skeleton = nfSkeleton(Object.assign({}, o, { style }));
 
-    const requested = Array.isArray(locales) ? locales[0] : locales;
-    let localeTag = typeof requested === "string" ? requested : "en";
+    let localeTag = resolveLocale(locales);
     if (o.numberingSystem) {
       localeTag +=
         (/-u-/.test(localeTag) ? "-" : "-u-") + "nu-" + String(o.numberingSystem);
@@ -622,7 +707,7 @@
       this instanceof intl.PluralRules
         ? this
         : Object.create(intl.PluralRules.prototype);
-    const o = options ? Object(options) : {};
+    const o = optionsObject(options);
     const type = o.type ? String(o.type) : "cardinal";
     if (type !== "cardinal" && type !== "ordinal") {
       throw new RangeError(
@@ -640,8 +725,7 @@
       roundingMode: o.roundingMode,
     });
 
-    const requested = Array.isArray(locales) ? locales[0] : locales;
-    const localeTag = typeof requested === "string" ? requested : "en";
+    const localeTag = resolveLocale(locales);
     const resolved = __MacishTypeHost_intlResolveLocale(localeTag);
 
     self.select = (value) =>
@@ -662,7 +746,7 @@
       this instanceof intl.Collator
         ? this
         : Object.create(intl.Collator.prototype);
-    const o = options ? Object(options) : {};
+    const o = optionsObject(options);
 
     const usage = o.usage ? String(o.usage) : "sort";
     if (usage !== "sort" && usage !== "search") {
@@ -707,8 +791,7 @@
       ignorePunctuation ? 1 : 0,
     ].join(",");
 
-    const requested = Array.isArray(locales) ? locales[0] : locales;
-    let localeTag = typeof requested === "string" ? requested : "en";
+    let localeTag = resolveLocale(locales);
     if (o.collation) {
       localeTag +=
         (/-u-/.test(localeTag) ? "-" : "-u-") + "co-" + String(o.collation);
@@ -728,4 +811,103 @@
     });
     return self;
   };
+
+  // With Intl present, ECMA-402 routes the locale-sensitive built-ins through
+  // it; quickjs-ng's own versions ignore locales. Without options a call
+  // reuses its formatter until the preferred languages change, so a sort
+  // comparator does not build one per pair.
+  const cachedFormatters = new Map();
+  function localeFormatter(key, Constructor, locales, options,
+    adjust = (given) => given) {
+    if (options !== undefined ||
+        (locales !== undefined && typeof locales !== "string")) {
+      return new Constructor(locales, adjust(options));
+    }
+    const cacheKey = locales === undefined ? key : `${key}\0${locales}`;
+    let entry = cachedFormatters.get(cacheKey);
+    if (!entry || entry.languages !== navigator.languages) {
+      if (!entry && cachedFormatters.size >= 32) cachedFormatters.clear();
+      entry = {
+        languages: navigator.languages,
+        formatter: new Constructor(locales, adjust(undefined)),
+      };
+      cachedFormatters.set(cacheKey, entry);
+    }
+    return entry.formatter;
+  }
+
+  function defineMethods(prototype, methods) {
+    for (const name of Object.keys(methods)) {
+      Object.defineProperty(prototype, name, {
+        value: methods[name],
+        writable: true,
+        configurable: true,
+      });
+    }
+  }
+
+  // The `= undefined` parameters give each method the length the spec does.
+  defineMethods(String.prototype, {
+    localeCompare(that, locales = undefined, options = undefined) {
+      if (this === undefined || this === null) {
+        throw new TypeError(
+          "String.prototype.localeCompare called on null or undefined");
+      }
+      return localeFormatter("collator", intl.Collator, locales, options)
+        .compare(String(this), String(that));
+    },
+  });
+  // ECMA-402 TransformCase: only the first requested locale counts, and only
+  // its language, and only these languages case differently from the root.
+  const CASE_LANGUAGES = new Set(["az", "el", "lt", "tr"]);
+  function caseLanguage(locales) {
+    const [requested = navigator.languages[0] ?? "und"] =
+      requestedLocales(locales);
+    const language = requested.split(/[-_]/)[0].toLowerCase();
+    return CASE_LANGUAGES.has(language) ? language : null;
+  }
+  for (const [name, upper] of [
+    ["toLocaleUpperCase", true],
+    ["toLocaleLowerCase", false],
+  ]) {
+    defineMethods(String.prototype, {
+      [name](locales = undefined) {
+        if (this === undefined || this === null) {
+          throw new TypeError(
+            `String.prototype.${name} called on null or undefined`);
+        }
+        const text = String(this);
+        const language = caseLanguage(locales);
+        if (language === null) {
+          return upper ? text.toUpperCase() : text.toLowerCase();
+        }
+        return __MacishTypeHost_intlChangeCase(text, language, upper);
+      },
+    });
+  }
+  for (const Type of [Number, BigInt]) {
+    defineMethods(Type.prototype, {
+      toLocaleString(locales = undefined, options = undefined) {
+        const value = Type.prototype.valueOf.call(this);
+        return localeFormatter("number", intl.NumberFormat, locales, options)
+          .format(value);
+      },
+    });
+  }
+  for (const [name, required, defaults] of [
+    ["toLocaleString", "any", "all"],
+    ["toLocaleDateString", "date", "date"],
+    ["toLocaleTimeString", "time", "time"],
+  ]) {
+    const adjust = (options) => dateTimeOptions(options, required, defaults);
+    defineMethods(Date.prototype, {
+      [name](locales = undefined, options = undefined) {
+        if (Number.isNaN(Date.prototype.getTime.call(this))) {
+          return "Invalid Date";
+        }
+        return localeFormatter(name, intl.DateTimeFormat, locales, options,
+          adjust).format(this);
+      },
+    });
+  }
 })();

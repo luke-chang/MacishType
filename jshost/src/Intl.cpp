@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,48 @@ std::string canonicalLanguageTag(const std::string &icuLocale) {
         return icuLocale;
     }
     return std::string(buffer, length);
+}
+
+// ECMA-402's BestAvailableLocale over ICU's installed locales: the tag, or a
+// parent reached by dropping trailing subtags, has data. Root never counts;
+// uloc_getAvailable does not list it. Nor does it list legacy codes (iw, tl,
+// cmn), which ICU's own data loading follows as aliases; likely subtags map
+// them to the current ones.
+bool hasLocaleData(const std::string &icuLocale) {
+    static const std::set<std::string> available = [] {
+        std::set<std::string> locales;
+        int32_t count = uloc_countAvailable();
+        for (int32_t i = 0; i < count; i++) {
+            locales.insert(uloc_getAvailable(i));
+        }
+        return locales;
+    }();
+    auto availableOrParent = [&](std::string candidate) {
+        while (available.count(candidate) == 0) {
+            size_t cut = candidate.rfind('_');
+            if (cut == std::string::npos) {
+                return false;
+            }
+            candidate.resize(cut);
+        }
+        return true;
+    };
+    char base[ULOC_FULLNAME_CAPACITY];
+    UErrorCode status = U_ZERO_ERROR;
+    // A warning means the buffer filled without a terminator, which the
+    // likely-subtags call below would read past.
+    int32_t length =
+        uloc_getBaseName(icuLocale.c_str(), base, sizeof(base), &status);
+    if (status != U_ZERO_ERROR || length <= 0) {
+        return false;
+    }
+    if (availableOrParent(std::string(base, length))) {
+        return true;
+    }
+    char likely[ULOC_FULLNAME_CAPACITY];
+    length = uloc_addLikelySubtags(base, likely, sizeof(likely), &status);
+    return status == U_ZERO_ERROR && length > 0 &&
+           availableOrParent(std::string(likely, length));
 }
 
 // Maps an ECMA-402 Segmenter granularity to a UBreakIteratorType. The shim
@@ -742,6 +785,64 @@ JSValue JsEngineHost::nativeIntlResolveLocale(JSContext *ctx,
     JS_SetPropertyStr(ctx, result, "numberingSystem",
                       JS_NewString(ctx, numberingSystemName(icuLocale).c_str()));
     return result;
+}
+
+JSValue JsEngineHost::nativeIntlSupportedLocale(JSContext *ctx,
+                                                JSValueConst thisVal, int argc,
+                                                JSValueConst *argv) {
+    (void)thisVal;
+    std::string localeTag = argc > 0 ? Qjs::toString(ctx, argv[0]) : std::string();
+    return JS_NewBool(ctx, hasLocaleData(toIcuLocale(localeTag)));
+}
+
+JSValue JsEngineHost::nativeIntlWellFormedTag(JSContext *ctx,
+                                              JSValueConst thisVal, int argc,
+                                              JSValueConst *argv) {
+    (void)thisVal;
+    std::string localeTag = argc > 0 ? Qjs::toString(ctx, argv[0]) : std::string();
+    // ICU stops parsing at the first subtag that breaks the grammar, so a
+    // well-formed tag is one it consumes whole.
+    char buffer[ULOC_FULLNAME_CAPACITY];
+    UErrorCode status = U_ZERO_ERROR;
+    int32_t parsed = 0;
+    uloc_forLanguageTag(localeTag.c_str(), buffer, sizeof(buffer), &parsed,
+                        &status);
+    return JS_NewBool(ctx, !localeTag.empty() && U_SUCCESS(status) &&
+                               parsed == static_cast<int32_t>(localeTag.size()));
+}
+
+JSValue JsEngineHost::nativeIntlChangeCase(JSContext *ctx,
+                                           JSValueConst thisVal, int argc,
+                                           JSValueConst *argv) {
+    (void)thisVal;
+    if (argc < 3) {
+        return JS_ThrowTypeError(ctx, "intlChangeCase: expected 3 arguments");
+    }
+    std::string language = Qjs::toString(ctx, argv[1]);
+    bool upper = JS_ToBool(ctx, argv[2]) == 1;
+    // UTF-16 both ways, so lone surrogates pass through untouched.
+    size_t length = 0;
+    const uint16_t *text = JS_ToCStringLenUTF16(ctx, &length, argv[0]);
+    if (text == nullptr) {
+        return JS_EXCEPTION;
+    }
+    auto source = reinterpret_cast<const UChar *>(text);
+    auto sourceLength = static_cast<int32_t>(length);
+    auto convert = upper ? u_strToUpper : u_strToLower;
+    UErrorCode status = U_ZERO_ERROR;
+    int32_t needed = convert(nullptr, 0, source, sourceLength,
+                             language.c_str(), &status);
+    std::vector<UChar> result(static_cast<size_t>(needed));
+    status = U_ZERO_ERROR;
+    convert(result.data(), needed, source, sourceLength, language.c_str(),
+            &status);
+    JS_FreeCStringUTF16(ctx, text);
+    if (U_FAILURE(status)) {
+        return JS_ThrowPlainError(ctx, "intlChangeCase: ICU failed (%d)",
+                                  status);
+    }
+    return JS_NewStringUTF16(
+        ctx, reinterpret_cast<const uint16_t *>(result.data()), result.size());
 }
 
 JSValue JsEngineHost::nativeIntlNumberFormat(JSContext *ctx,
