@@ -51,17 +51,17 @@ std::string lowered(std::string text) {
 // vice versa.
 std::vector<std::string> lookupKeysForLanguage(const std::string &language) {
     std::vector<std::string> keys{language};
-    std::string lower = lowered(language);
-    if (lower == "zh-tw" || lower == "zh-hk" || lower == "zh-mo" ||
-        lower.rfind("zh-hant", 0) == 0) {
-        keys.push_back("zh-Hant");
-        keys.push_back("zh-TW");
-    } else if (lower == "zh-cn" || lower == "zh-sg" ||
-               lower.rfind("zh-hans", 0) == 0) {
-        keys.push_back("zh-Hans");
-        keys.push_back("zh-CN");
-    }
     auto dash = language.find('-');
+    if (lowered(language.substr(0, dash)) == "zh") {
+        std::string script = likelyScript(language);
+        if (script == "Hant") {
+            keys.push_back("zh-Hant");
+            keys.push_back("zh-TW");
+        } else if (script == "Hans") {
+            keys.push_back("zh-Hans");
+            keys.push_back("zh-CN");
+        }
+    }
     if (dash != std::string::npos) {
         keys.push_back(language.substr(0, dash));
     }

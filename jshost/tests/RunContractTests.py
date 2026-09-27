@@ -366,13 +366,18 @@ def main():
                    out.count('"name":"beep"') == 2, out)
 
     # Preferred languages as a platform spells them: navigator.languages keeps
-    # only the scripts a tag's language and region do not imply.
+    # only the scripts a tag's language and region do not imply, and a bare
+    # zh picks the zh-Hans manifest name. Turning glibc locale names into
+    # these tags is fcitx5's half, in fcitx5/test/Languages.sh.
     log_text = run_cli(cli, "contractfixture", (
         "--languages", "sr-Cyrl-RS,uz-Latn-UZ,zh-Hant-TW,sr-Latn-RS"))
     failures.check(
         "Languages", "redundant scripts drop and meaningful ones stay",
         'nav-languages ["sr-RS","sr","uz-UZ","uz","zh-TW","zh","sr-Latn-RS"]'
         in log_text, log_text)
+    log_text = run_cli(cli, "langfixture", ("--languages", "zh"))
+    failures.check("Languages", "a bare zh picks the zh-Hans manifest name",
+                   "langfx name 简" in log_text, log_text)
 
     # ExampleEngine end-to-end smoke: compose -> candidates -> commit
     # (engines/example has no other automated test).
