@@ -111,10 +111,11 @@ extension JavaScriptEngine {
                 }
                 return index
             }
-            let code = value.objectForKeyedSubscript("code")?.toString() ?? ""
-            let shift = value.objectForKeyedSubscript("shiftKey")?.toBool() ?? false
-            let option = value.objectForKeyedSubscript("altKey")?.toBool() ?? false
-            let keyText = value.objectForKeyedSubscript("key")?.toString()
+            guard value.isObject else { return NSNull() }
+            let code = Self.optString(value, "code") ?? ""
+            let shift = Self.optBool(value, "shiftKey") ?? false
+            let option = Self.optBool(value, "altKey") ?? false
+            let keyText = Self.optString(value, "key")
             guard let index = configuration.candidateIndex(
                 forWebCode: code, shift: shift, option: option,
                 character: keyText.flatMap { $0.count == 1 ? $0.first : nil }) else {
@@ -124,9 +125,10 @@ extension JavaScriptEngine {
         }
         cw.setObject(candidateIndex, forKeyedSubscript: "candidateIndex" as NSString)
         let navigationIntent: @convention(block) (JSValue) -> Any = { jsEvent in
-            let code = jsEvent.objectForKeyedSubscript("code")?.toString() ?? ""
-            let shift = jsEvent.objectForKeyedSubscript("shiftKey")?.toBool() ?? false
-            let option = jsEvent.objectForKeyedSubscript("altKey")?.toBool() ?? false
+            guard jsEvent.isObject else { return NSNull() }
+            let code = Self.optString(jsEvent, "code") ?? ""
+            let shift = Self.optBool(jsEvent, "shiftKey") ?? false
+            let option = Self.optBool(jsEvent, "altKey") ?? false
             guard let keyCode = KeyboardEventMapping.keyCode(forWebCode: code),
                   let intent = candidateWindow.configuration.navigationIntent(
                     keyCode: keyCode, shift: shift, option: option
@@ -167,11 +169,26 @@ extension JavaScriptEngine {
         return event
     }
 
-    /// Reads an Int from `obj[key]`. Returns nil for missing / non-number
-    /// values (vs `toInt32()` which silently coerces to 0).
+    /// Reads an Int from `obj[key]` by the `intValue` rule.
     private static func optInt(_ obj: JSValue?, _ key: String) -> Int? {
-        guard let v = resolved(obj?.objectForKeyedSubscript(key)), v.isNumber else { return nil }
-        return Int(v.toInt32())
+        intValue(obj?.objectForKeyedSubscript(key))
+    }
+
+    /// A number with no fractional part that fits an Int, else nil: the rule
+    /// for window fields, which reject what an integer option would truncate.
+    static func wholeNumber(_ value: JSValue?) -> Int? {
+        guard let value, value.isNumber else { return nil }
+        return Int(exactly: value.toDouble())
+    }
+
+    /// nil for a missing, non-number or NaN value. Fractions truncate, and a
+    /// number beyond an Int32, either infinity included, saturates rather
+    /// than wrapping.
+    static func intValue(_ value: JSValue?) -> Int? {
+        guard let value, value.isNumber else { return nil }
+        let number = value.toDouble()
+        guard !number.isNaN else { return nil }
+        return Int(min(max(number, Double(Int32.min)), Double(Int32.max)))
     }
 
     /// Reads a Bool from `obj[key]`. Returns nil for missing / non-boolean
@@ -181,17 +198,27 @@ extension JavaScriptEngine {
         return v.toBool()
     }
 
+    /// Reads a String from `obj[key]`. Returns nil for missing / non-string
+    /// values (vs `toString()` which silently stringifies).
+    private static func optString(_ obj: JSValue?, _ key: String) -> String? {
+        guard let v = resolved(obj?.objectForKeyedSubscript(key)), v.isString else { return nil }
+        return v.toString()
+    }
+
     /// Builds a `configure` closure for `EngineAction.updateCandidates` from
     /// flat JS options. Returns nil when no override fields are present so
     /// the engine default applies.
-    private static func parseCandidateWindowOverrides(
+    static func parseCandidateWindowOverrides(
         _ opts: JSValue?
     ) -> ((inout CandidateWindowConfiguration) -> Void)? {
         guard let opts else { return nil }
-        let layoutString = Self.resolved(opts.objectForKeyedSubscript("layoutDirection"))?.toString()
-        let layoutDirection = layoutString.flatMap(CandidateWindow.LayoutDirection.init(rawValue:))
-        let indexLabels = Self.resolved(opts.objectForKeyedSubscript("indexLabels"))?.toString()
-        let pageSize = Self.optInt(opts, "pageSize")
+        let layoutDirection = Self.optString(opts, "layoutDirection")
+            .flatMap(CandidateWindow.LayoutDirection.init(rawValue:))
+        // The configuration traps on labels or page sizes it can't hold.
+        let indexLabels = Self.optString(opts, "indexLabels")
+            .flatMap { CandidateWindowConfiguration.isValidIndexLabels($0) ? $0 : nil }
+        let pageSize = Self.wholeNumber(opts.objectForKeyedSubscript("pageSize"))
+            .flatMap { CandidateWindowConfiguration.isValidPageSize($0) ? $0 : nil }
         let handleNavigationKeys = Self.optBool(opts, "handleNavigationKeys")
         let handleIndexLabelKeys = Self.optBool(opts, "handleIndexLabelKeys")
         let indexLabelDigitsRequireShift = Self.optBool(opts, "indexLabelDigitsRequireShift")
@@ -214,17 +241,17 @@ extension JavaScriptEngine {
     }
 
     /// Builds a `Candidate` from either a JS string or `{candidate, annotation?, payload?}` object.
-    /// Falls back to `value.toString()` when the object lacks `candidate`.
-    private static func candidateFromJS(_ value: JSValue) -> Candidate {
+    static func candidateFromJS(_ value: JSValue?) -> Candidate {
+        guard let value = resolved(value) else { return Candidate("") }
         // Plain-string candidates skip the 3 property lookups — common path
         // when engines emit `[String]` or call `event.commit("text")`.
-        if value.isString { return Candidate(value.toString() ?? "") }
-        if let textVal = Self.resolved(value.objectForKeyedSubscript("candidate")) {
-            let annotation = Self.resolved(value.objectForKeyedSubscript("annotation"))?.toString()
-            let payload = Self.resolved(value.objectForKeyedSubscript("payload"))
-            return Candidate(textVal.toString() ?? "", annotation: annotation, payload: payload)
-        }
-        return Candidate(value.toString() ?? "")
+        guard value.isObject else { return Candidate(value.toString() ?? "") }
+        let text = resolved(value.objectForKeyedSubscript("candidate"))?.toString() ?? ""
+        let annotation = resolved(value.objectForKeyedSubscript("annotation"))?.toString()
+        // The payload is opaque: a null goes back to the engine as null.
+        let payload = value.objectForKeyedSubscript("payload")
+        return Candidate(text, annotation: annotation,
+                         payload: payload?.isUndefined == false ? payload : nil)
     }
 
     private func attachMutators(to event: JSValue, sink: ActionSink) {
@@ -248,22 +275,18 @@ extension JavaScriptEngine {
         let resetContext: @convention(block) () -> Void = {
             sink.actions.append(.resetContext)
         }
-        // items accepts [String] (backward-compatible) or [{text, annotation?,
-        // payload?}] objects — "text" key picks the object branch, otherwise
-        // toString fallback. First param is JSValue (whole array) not [JSValue]:
-        // JSC's ObjC bridge gives NSArray<NSString> for JS string arrays and
-        // Swift traps casting NSTaggedPointerString to JSValue.
-        // options may include layoutDirection / indexLabels / pageSize to
-        // override engine default config for this single update (mirrors
-        // Swift's `configure` closure on the action).
+        // First param is JSValue (whole array) not [JSValue]: JSC's ObjC
+        // bridge gives NSArray<NSString> for JS string arrays and Swift traps
+        // casting NSTaggedPointerString to JSValue. Window fields in options
+        // override the engine default for this one update.
         let updateCandidates: @convention(block) (JSValue, JSValue?) -> Void = { itemsArr, options in
             let opts = Self.resolved(options)
             let anchorAt = Self.optInt(opts, "anchorAt") ?? 0
             let initialHighlight = Self.optInt(opts, "initialHighlight") ?? 0
-            let count = Int(itemsArr.objectForKeyedSubscript("length")?.toInt32() ?? 0)
-            let candidates = (0..<count).compactMap { i -> Candidate? in
-                guard let item = itemsArr.objectAtIndexedSubscript(i) else { return nil }
-                return Self.candidateFromJS(item)
+            let count = itemsArr.isArray ? Self.listCount(of: itemsArr) : 0
+            // Keep every slot: `absoluteIndex` addresses this list.
+            let candidates = (0..<count).map {
+                Self.candidateFromJS(itemsArr.objectAtIndexedSubscript($0))
             }
             sink.actions.append(.updateCandidates(
                 candidates,
@@ -277,7 +300,7 @@ extension JavaScriptEngine {
             let anchorAt = Self.optInt(Self.resolved(options), "anchorAt") ?? 0
             sink.actions.append(.updateMessage(text, anchorAt: anchorAt))
         }
-        // Accepts either a plain string or `{text, annotation?, payload?}` —
+        // Accepts either a plain string or `{candidate, annotation?, payload?}` —
         // engines reusing a Candidate received in candidateConfirmed can pass
         // it back to preserve metadata.
         let commit: @convention(block) (JSValue) -> Void = { value in
@@ -286,13 +309,14 @@ extension JavaScriptEngine {
         let commitSelectedCandidate: @convention(block) () -> Void = {
             sink.actions.append(.commitSelectedCandidate)
         }
-        let commitCandidateAtIndex: @convention(block) (Int) -> Void = { index in
+        // A non-number is a no-op; the window drops an index off the page.
+        let commitCandidateAtIndex: @convention(block) (JSValue?) -> Void = { indexValue in
+            guard let index = Self.intValue(indexValue) else { return }
             sink.actions.append(.commitCandidateAtIndex(index))
         }
         let navigateCandidates: @convention(block) (String, JSValue?) -> Void = { dirStr, options in
-            let dir = Self.parseNavigationDirection(dirStr)
-            let wrapping = Self.resolved(options)?
-                .objectForKeyedSubscript("wrapping")?.toBool() ?? false
+            guard let dir = Self.parseNavigationDirection(dirStr) else { return }
+            let wrapping = Self.optBool(Self.resolved(options), "wrapping") ?? false
             sink.actions.append(.navigateCandidates(dir, wrapping: wrapping))
         }
         let flushStaged: @convention(block) (JSValue?) -> Void = { append in
@@ -301,15 +325,9 @@ extension JavaScriptEngine {
         }
         let enterAssociatedMode: @convention(block) (JSValue?, JSValue?) -> Void = { [weak self] heldValue, candidatesValue in
             let heldText = Self.resolved(heldValue)?.toString() ?? ""
-            // Two-arg form uses the JS-supplied array; one-arg falls back to the
-            // system AssociatedDictionary.
-            let candidates: [String]
-            if let resolved = Self.resolved(candidatesValue),
-               resolved.isArray, let arr = resolved.toArray() as? [String] {
-                candidates = arr
-            } else {
-                candidates = self?.lookupAssociatedCandidates(forHeldText: heldText) ?? []
-            }
+            // One-arg form falls back to the system AssociatedDictionary.
+            let candidates = Self.textArray(candidatesValue)
+                ?? self?.lookupAssociatedCandidates(forHeldText: heldText) ?? []
             sink.actions.append(.enterAssociatedMode(heldText, candidates))
         }
         // One sound per event: repeat calls collapse, as in hostglue.js.
@@ -333,7 +351,7 @@ extension JavaScriptEngine {
         event.setObject(beep, forKeyedSubscript: "beep" as NSString)
     }
 
-    private static func parseNavigationDirection(_ str: String) -> NavigationDirection {
+    private static func parseNavigationDirection(_ str: String) -> NavigationDirection? {
         switch str {
         case "up": return .up
         case "down": return .down
@@ -348,9 +366,9 @@ extension JavaScriptEngine {
         case "itemForward": return .itemForward
         case "itemBackward": return .itemBackward
         default:
-            Logger.javaScriptEngine.error(
-                "unknown navigation direction: \(str, privacy: .public), defaulting to .down")
-            return .down
+            Logger.javaScriptEngine.notice(
+                "unknown navigation direction: \(str, privacy: .public) — ignored")
+            return nil
         }
     }
 

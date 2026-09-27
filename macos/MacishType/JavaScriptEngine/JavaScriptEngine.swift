@@ -585,29 +585,27 @@ class JavaScriptEngine: InputEngine {
         }
         switch known {
         case .layoutDirection:
-            guard let s = jsValue.toString(),
+            guard jsValue.isString, let s = jsValue.toString(),
                   let dir = CandidateWindow.LayoutDirection(rawValue: s) else {
                 warnInvalidWrite(field, "must be \"horizontal\" or \"vertical\"", jsValue)
                 return
             }
             candidateWindowCache.layoutDirection = dir
         case .fontSize:
-            guard jsValue.isNumber,
-                  let n = Int(exactly: jsValue.toDouble()), n >= 8 else {
+            guard let n = Self.wholeNumber(jsValue), n >= 8 else {
                 warnInvalidWrite(field, "must be an integer >= 8", jsValue)
                 return
             }
             candidateWindowCache.fontSize = n
         case .indexLabels:
-            guard let s = jsValue.toString(),
+            guard jsValue.isString, let s = jsValue.toString(),
                   CandidateWindowConfiguration.isValidIndexLabels(s) else {
                 warnInvalidWrite(field, "must be ASCII printable (0x20-0x7E)", jsValue)
                 return
             }
             candidateWindowCache.indexLabels = s
         case .pageSize:
-            guard jsValue.isNumber,
-                  let n = Int(exactly: jsValue.toDouble()),
+            guard let n = Self.wholeNumber(jsValue),
                   CandidateWindowConfiguration.isValidPageSize(n) else {
                 warnInvalidWrite(
                     field,
@@ -632,7 +630,7 @@ class JavaScriptEngine: InputEngine {
             }
             candidateWindowCache.indexLabelDigitsRequireShift = jsValue.toBool()
         case .associatedModeIndexLabels:
-            guard let s = jsValue.toString(),
+            guard jsValue.isString, let s = jsValue.toString(),
                   let mode = AssociatedModeIndexLabels(rawValue: s) else {
                 warnInvalidWrite(
                     field,
@@ -1669,21 +1667,28 @@ class JavaScriptEngine: InputEngine {
         return Self.marshalReverseCodes(result)
     }
 
-    /// Accepts both shapes the contract allows: `string[]` and
-    /// `[{code, annotation?}]`. Anything else yields no codes.
-    private static func marshalReverseCodes(_ value: JSValue) -> [ReverseCode] {
-        guard value.isArray, let items = value.toArray() else { return [] }
-        return items.compactMap { item in
-            if let code = item as? String {
-                return code.isEmpty ? nil : ReverseCode(code)
+    /// Each item may run engine code to stringify, and the display truncates
+    /// far below this. Every host applies the same cap.
+    private static let maxReverseCodes = 4096
+
+    /// Accepts both shapes the contract allows, `string[]` and
+    /// `[{code, annotation?}]`, reading items like candidate text. Unlike a
+    /// candidate, a code holds no index in place, so an empty one is dropped.
+    static func marshalReverseCodes(_ value: JSValue) -> [ReverseCode] {
+        guard value.isArray else { return [] }
+        return (0..<min(listCount(of: value), maxReverseCodes)).compactMap { index in
+            guard let item = resolved(value.objectAtIndexedSubscript(index)) else { return nil }
+            let code: String
+            let annotation: String?
+            if item.isObject {
+                code = resolved(item.objectForKeyedSubscript("code"))?.toString() ?? ""
+                annotation = resolved(item.objectForKeyedSubscript("annotation"))?.toString()
+            } else {
+                code = item.toString() ?? ""
+                annotation = nil
             }
-            if let dict = item as? [String: Any],
-               let code = dict["code"] as? String, !code.isEmpty {
-                let annotation = dict["annotation"] as? String
-                return ReverseCode(
-                    code, annotation: annotation?.isEmpty == false ? annotation : nil)
-            }
-            return nil
+            guard !code.isEmpty else { return nil }
+            return ReverseCode(code, annotation: annotation?.isEmpty == false ? annotation : nil)
         }
     }
 
@@ -1824,8 +1829,8 @@ class JavaScriptEngine: InputEngine {
     }
 
     /// Invokes the named JS callback. `.handled` reflects the JS return value
-    /// alone (`true` → handled, anything else → fall back); the mutators queued
-    /// during the call ride along either way.
+    /// alone, read by ToBoolean (truthy → handled, else fall back); the
+    /// mutators queued during the call ride along either way.
     private func dispatchCandidate(
         _ jsMethod: String,
         context: InputEngineContext, candidate: String, absoluteIndex: Int, raw: Candidate?,
@@ -1896,6 +1901,28 @@ class JavaScriptEngine: InputEngine {
     static func resolved(_ value: JSValue?) -> JSValue? {
         guard let v = value, !v.isUndefined, !v.isNull else { return nil }
         return v
+    }
+
+    /// A JS `length` runs to 2^32-1 on a sparse array, and nothing interrupts
+    /// a native callback mid-decode. Every host applies the same cap.
+    static let maxListItems: UInt32 = 100_000
+
+    /// A JS array's length as a count worth iterating.
+    static func listCount(of array: JSValue) -> Int {
+        let length = array.objectForKeyedSubscript("length")?.toUInt32() ?? 0
+        guard length > maxListItems else { return Int(length) }
+        Logger.javaScriptEngine.notice(
+            "Truncating a JS list of \(length, privacy: .public) to \(maxListItems, privacy: .public)")
+        return Int(maxListItems)
+    }
+
+    /// `nil` only for a non-array, so callers can tell "no list given" from an
+    /// empty one. Every slot survives, odd elements included.
+    static func textArray(_ value: JSValue?) -> [String]? {
+        guard let array = resolved(value), array.isArray else { return nil }
+        return (0..<listCount(of: array)).map {
+            resolved(array.objectAtIndexedSubscript($0))?.toString() ?? ""
+        }
     }
 }
 
