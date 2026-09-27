@@ -1197,6 +1197,16 @@ subset of each, and output can vary with the platform's ICU version.
 `Intl.Locale`, `Intl.getCanonicalLocales`, and `Intl.supportedValuesOf` are
 not guaranteed.
 
+Recommended convention for text the user reads: pass `navigator.languages` as
+the locales argument, and reuse one `Intl.Collator` for a sort.
+
+```js
+const today = new Intl.DateTimeFormat(navigator.languages, { dateStyle: "medium" })
+  .format(new Date());
+const collator = new Intl.Collator(navigator.languages);
+words.sort(collator.compare);
+```
+
 #### Global events
 
 Host-emitted events (`storage`, `settingschange`, `menuchange`,
