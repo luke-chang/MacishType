@@ -1004,24 +1004,16 @@ class JavaScriptEngine: InputEngine {
         }
     }
 
-    /// Web-style BCP 47: drops script subtag when redundant.
-    /// `zh-Hant-TW` → `zh-TW` (3-segment),
-    /// `zh-Hant` → `zh` (2-segment with script),
-    /// `en-US` → `en-US` (no script, unchanged).
-    /// Matches what Safari's `navigator.languages` returns so engine
-    /// code from a browser context doesn't need to handle both forms.
-    nonisolated private static func normalizeBCP47(_ tag: String) -> String {
+    /// Web-style BCP 47: drops the script subtag only when the language and
+    /// region imply it. `zh-Hant-TW` → `zh-TW`, but `zh-Hans-HK` and `zh-Hant`
+    /// keep theirs: HK implies Hant, and a bare `zh` implies Hans.
+    nonisolated static func normalizeBCP47(_ tag: String) -> String {
         let parts = tag.split(separator: "-").map(String.init)
-        let isScript: (String) -> Bool = {
-            $0.count == 4 && $0.first?.isUppercase == true
-        }
-        if parts.count == 3, isScript(parts[1]) {
-            return "\(parts[0])-\(parts[2])"
-        }
-        if parts.count == 2, isScript(parts[1]) {
-            return parts[0]
-        }
-        return tag
+        guard parts.count >= 2, parts[1].count == 4, parts[1].first?.isUppercase == true
+        else { return tag }
+        let withoutScript = ([parts[0]] + parts.dropFirst(2)).joined(separator: "-")
+        let impliedScript = Locale.Language(identifier: withoutScript).script?.identifier
+        return impliedScript == parts[1] ? withoutScript : tag
     }
 
     /// macOS Settings UI tacks the user's region onto secondary
@@ -1030,8 +1022,10 @@ class JavaScriptEngine: InputEngine {
     /// `en-TW` is rarely meaningful; strip the region when it matches
     /// the user's region AND it's not the primary entry (which the
     /// user explicitly chose).
-    nonisolated private static func stripAutoTaggedRegions(_ tags: [String]) -> [String] {
-        guard let userRegion = Locale.current.region?.identifier else { return tags }
+    nonisolated private static func stripAutoTaggedRegions(
+        _ tags: [String], userRegion: String?
+    ) -> [String] {
+        guard let userRegion else { return tags }
         return tags.enumerated().map { (i, tag) in
             if i == 0 { return tag }
             let parts = tag.split(separator: "-").map(String.init)
@@ -1057,10 +1051,13 @@ class JavaScriptEngine: InputEngine {
         return result
     }
 
-    nonisolated private static func preferredLanguagesForJS() -> [String] {
-        let normalized = Locale.preferredLanguages.map(normalizeBCP47)
-        let stripped = stripAutoTaggedRegions(normalized)
-        return expandWithBases(stripped)
+    /// Regions come off before scripts are normalized: stripped the other way
+    /// round, a secondary `zh-Hant-TW` would end up as `zh`, which implies Hans.
+    nonisolated static func languagesForJS(
+        preferred: [String] = Locale.preferredLanguages,
+        userRegion: String? = Locale.current.region?.identifier
+    ) -> [String] {
+        expandWithBases(stripAutoTaggedRegions(preferred, userRegion: userRegion).map(normalizeBCP47))
     }
 
     private func dispatchLanguageChange() {
@@ -1394,9 +1391,9 @@ class JavaScriptEngine: InputEngine {
         }
         context.setObject(setStorageListening, forKeyedSubscript: "__MacishType_setStorageListening" as NSString)
 
-        // navigator bridges. Pipeline lives in preferredLanguagesForJS.
+        // navigator bridges. Pipeline lives in languagesForJS.
         let getLanguages: @convention(block) () -> [String] = {
-            Self.preferredLanguagesForJS()
+            Self.languagesForJS()
         }
         context.setObject(getLanguages, forKeyedSubscript: "__MacishType_getLanguages" as NSString)
 
