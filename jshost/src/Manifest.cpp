@@ -6,6 +6,7 @@
 
 #include <quickjs.h>
 
+#include "MacishType/LanguageTag.h"
 #include "MacishType/Log.h"
 #include "MacishType/HostSeams.h"
 #include "MacishType/QjsUtil.h"
@@ -83,8 +84,18 @@ std::string resolveLocalizedName(JSContext *ctx, JSValueConst nameValue,
         }
         return std::nullopt;
     };
+    std::vector<std::string> probed;
     for (const auto &language : languages) {
-        for (const auto &key : lookupKeysForLanguage(language)) {
+        // A redundant script ahead of a region goes, as macOS probes too; a
+        // bare language-script tag is itself a key and stays.
+        std::string tag = std::count(language.begin(), language.end(), '-') > 1
+                              ? withoutRedundantScript(language)
+                              : language;
+        if (std::find(probed.begin(), probed.end(), tag) != probed.end()) {
+            continue;
+        }
+        probed.push_back(tag);
+        for (const auto &key : lookupKeysForLanguage(tag)) {
             if (auto name = tryKey(key)) {
                 return *name;
             }

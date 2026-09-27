@@ -15,4 +15,5 @@ struct Checks {
 
 void testDictionaries(Checks &checks);
 void testGraphemeIndex(Checks &checks);
+void testLanguageTags(Checks &checks);
 void testUtf8Validation(Checks &checks);

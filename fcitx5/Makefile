@@ -127,6 +127,7 @@ test: build
 	test/AssociatedKeys.sh
 	test/Grapheme.sh
 	test/Contract.sh
+	test/Languages.sh
 	test/AsyncFetch.sh
 	test/Toggle.sh
 	test/Menu.sh

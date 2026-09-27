@@ -12,6 +12,7 @@ int main() {
 
     testDictionaries(checks);
     testGraphemeIndex(checks);
+    testLanguageTags(checks);
     testUtf8Validation(checks);
 
     if (checks.failures != 0) {

@@ -42,8 +42,10 @@ public:
     // interpreter and its version).
     virtual std::string userAgentPrefix() = 0;
 
-    // BCP-47 language preferences, most preferred first. Feeds
-    // navigator.languages and manifest name localization.
+    // BCP-47 language preferences, most preferred first, spelled as the
+    // platform has them; core drops the scripts a tag's language and region
+    // already imply. Feeds navigator.languages and manifest name
+    // localization.
     virtual std::vector<std::string> preferredLanguages() = 0;
 };
 

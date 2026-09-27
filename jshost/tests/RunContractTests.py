@@ -365,6 +365,15 @@ def main():
     failures.check("Beep", "repeat calls in one event collapse into one action",
                    out.count('"name":"beep"') == 2, out)
 
+    # Preferred languages as a platform spells them: navigator.languages keeps
+    # only the scripts a tag's language and region do not imply.
+    log_text = run_cli(cli, "contractfixture", (
+        "--languages", "sr-Cyrl-RS,uz-Latn-UZ,zh-Hant-TW,sr-Latn-RS"))
+    failures.check(
+        "Languages", "redundant scripts drop and meaningful ones stay",
+        'nav-languages ["sr-RS","sr","uz-UZ","uz","zh-TW","zh","sr-Latn-RS"]'
+        in log_text, log_text)
+
     # ExampleEngine end-to-end smoke: compose -> candidates -> commit
     # (engines/example has no other automated test).
     out = run_verbs(cli, REPO_ROOT / "engines" / "example", [

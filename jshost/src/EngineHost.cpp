@@ -10,6 +10,7 @@
 #include "MacishType/EventData.h"
 #include "MacishType/FontCoverage.h"
 #include "MacishType/HostSeams.h"
+#include "MacishType/LanguageTag.h"
 #include "MacishType/Log.h"
 #include "MacishType/QjsUtil.h"
 #include "MacishType/TableFile.h"
@@ -1985,7 +1986,8 @@ JSValue JsEngineHost::nativeGetLanguages(JSContext *ctx, JSValueConst thisVal,
             expanded.push_back(tag);
         }
     };
-    for (const auto &language : host->languages_) {
+    for (const auto &preferred : host->languages_) {
+        std::string language = withoutRedundantScript(preferred);
         push(language);
         auto dash = language.find('-');
         if (dash != std::string::npos) {

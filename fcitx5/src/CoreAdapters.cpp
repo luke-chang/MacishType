@@ -8,6 +8,8 @@
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
+#include <string_view>
+#include <utility>
 
 #include <fcitx/instance.h>
 
@@ -189,12 +191,63 @@ std::string distroLabel() {
     return name + " " + versionId;
 }
 
-// "zh_TW.UTF-8" → "zh-TW"; empty or "C"/"POSIX" → empty.
+struct ModifierSubtags {
+    std::string_view modifier;
+    std::string_view script;
+    std::string_view variant;
+};
+
+// glibc and gettext spell a script, and sometimes a variant, as a modifier
+// (sr_RS@latin, sr@ijekavianlatin).
+constexpr ModifierSubtags kModifiers[] = {
+    {"cyrillic", "Cyrl", ""},
+    {"devanagari", "Deva", ""},
+    {"ijekavian", "", "ijekavsk"},
+    {"ijekavianlatin", "Latn", "ijekavsk"},
+    {"iqtelif", "Latn", ""},
+    {"latin", "Latn", ""},
+    {"valencia", "", "valencia"},
+};
+
+// glibc locales written in a script other than the one CLDR's likely
+// subtags give their language and region.
+constexpr std::pair<std::string_view, std::string_view> kLocaleScripts[] = {
+    {"bhb_IN", "Latn"}, {"crh_UA", "Latn"}, {"hif_FJ", "Latn"},
+    {"sat_IN", "Deva"}, {"sd_IN", "Arab"},  {"sr_ME", "Cyrl"},
+};
+
+// A POSIX locale name, language[_territory][.codeset][@modifier], as BCP 47:
+// "sr_RS.UTF-8@latin" → "sr-Latn-RS"; empty or "C"/"POSIX" → empty. A script
+// stays even where it is redundant; core drops it there.
 std::string bcp47FromLocale(const std::string &locale) {
-    std::string tag = locale.substr(0, locale.find('.'));
-    tag = tag.substr(0, tag.find('@'));
-    if (tag.empty() || tag == "C" || tag == "POSIX") {
+    std::string_view name = locale;
+    ModifierSubtags subtags{};
+    if (size_t at = name.find('@'); at != std::string_view::npos) {
+        for (const auto &entry : kModifiers) {
+            if (entry.modifier == name.substr(at + 1)) {
+                subtags = entry;
+            }
+        }
+        name = name.substr(0, at);
+    }
+    name = name.substr(0, name.find('.'));
+    if (name.empty() || name == "C" || name == "POSIX") {
         return {};
+    }
+    std::string_view script = subtags.script;
+    for (const auto &[localeName, localeScript] : kLocaleScripts) {
+        if (script.empty() && localeName == name) {
+            script = localeScript;
+        }
+    }
+    size_t split = std::min(name.find('_'), name.size());
+    std::string tag(name.substr(0, split));
+    if (!script.empty()) {
+        tag.append("-").append(script);
+    }
+    tag.append(name.substr(split));
+    if (!subtags.variant.empty()) {
+        tag.append("-").append(subtags.variant);
     }
     std::replace(tag.begin(), tag.end(), '_', '-');
     return tag;

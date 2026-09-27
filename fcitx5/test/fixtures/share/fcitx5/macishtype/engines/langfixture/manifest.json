@@ -1,0 +1,8 @@
+{
+  "entry": "index.js",
+  "name": {
+    "en": "EN",
+    "zh-Hans": "简",
+    "zh-Hant": "繁"
+  }
+}
