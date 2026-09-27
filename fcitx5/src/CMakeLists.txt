@@ -10,6 +10,7 @@ add_library(macishtype SHARED
     WebKeyMap.cpp
     MacishType.cpp
     Session.cpp
+    SoundTheme.cpp
 )
 target_compile_definitions(macishtype PRIVATE
     FCITX_INSTALL_LOCALEDIR="${FCITX_INSTALL_LOCALEDIR}"
@@ -28,7 +29,8 @@ add_custom_target(versionstamp
         -P "${PROJECT_SOURCE_DIR}/cmake/VersionStamp.cmake")
 target_sources(macishtype PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/VersionStamp.cpp")
 add_dependencies(macishtype versionstamp)
-target_link_libraries(macishtype PRIVATE Fcitx5::Core Fcitx5::Module::Notifications
+target_link_libraries(macishtype PRIVATE Fcitx5::Core
+    Fcitx5::Module::DBus Fcitx5::Module::Notifications
     macishtype-jshost Fontconfig::Fontconfig)
 install(TARGETS macishtype DESTINATION "${FCITX_INSTALL_LIBDIR}/fcitx5")
 

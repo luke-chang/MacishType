@@ -9,3 +9,8 @@ Type=SharedLibrary
 # addons when collecting dynamic entries, so this must stay loaded eagerly.
 OnDemand=False
 Configurable=True
+
+# Optional: without it the alert sound cannot follow the desktop's choice,
+# which is a graceful degrade rather than a failure.
+[Addon/OptionalDependencies]
+0=dbus

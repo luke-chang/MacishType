@@ -30,8 +30,14 @@ using ProplistDestroy = int (*)(CaProplist *);
 using ProplistSets = int (*)(CaProplist *, const char *, const char *);
 
 constexpr const char *kSoname = "libcanberra.so.0";
-// freedesktop sound naming spec property key.
+// freedesktop sound naming spec property keys.
 constexpr const char *kEventIdKey = "event.id";
+constexpr const char *kThemeKey = "canberra.xdg-theme.name";
+// The window-system bell is the one id a desktop's alert-sound picker
+// overrides (GNOME writes the chosen file into a ~/.local/share/sounds
+// theme under this name), so it is what carries that choice through to the
+// engine's beep. Themes without it fall back to plain "bell".
+constexpr const char *kEventId = "bell-window-system";
 
 template <typename Fn>
 bool resolve(fcitx::Library &library, const char *name, Fn &slot) {
@@ -57,12 +63,15 @@ struct Canberra {
         }
     }
 
-    void play(const std::string &eventId) {
+    void play(const std::string &theme) {
         CaProplist *props = nullptr;
         if (proplistCreate(&props) != 0 || props == nullptr) {
             return;
         }
-        proplistSets(props, kEventIdKey, eventId.c_str());
+        proplistSets(props, kEventIdKey, kEventId);
+        if (!theme.empty()) {
+            proplistSets(props, kThemeKey, theme.c_str());
+        }
         // Id 0: nothing cancels a cue, so it needs no handle. A refused
         // playback goes unreported — the contract never promises the sound
         // is heard.
@@ -125,15 +134,20 @@ AlertSound::~AlertSound() {
     worker_.join();
 }
 
-void AlertSound::setEventId(std::string id) {
+void AlertSound::setEnabled(bool enabled) {
     std::lock_guard<std::mutex> lock(mutex_);
-    eventId_ = id == "none" ? std::string() : std::move(id);
+    enabled_ = enabled;
+}
+
+void AlertSound::setThemeName(std::string name) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    themeName_ = std::move(name);
 }
 
 void AlertSound::play() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (eventId_.empty()) {
+        if (!enabled_) {
             return;
         }
         pending_ = true;
@@ -149,7 +163,7 @@ void AlertSound::workerMain() {
     // to be closed on the thread that opened it.
     std::unique_ptr<Canberra> canberra = loadCanberra(dispatcher_);
     while (canberra) {
-        std::string eventId;
+        std::string theme;
         {
             std::unique_lock<std::mutex> lock(mutex_);
             wake_.wait(lock, [this] { return pending_ || stopping_; });
@@ -159,11 +173,9 @@ void AlertSound::workerMain() {
             // Taken before playing, so requests arriving during playback set
             // it again and collapse into one follow-up cue.
             pending_ = false;
-            eventId = eventId_;
+            theme = themeName_;
         }
-        if (!eventId.empty()) {
-            canberra->play(eventId);
-        }
+        canberra->play(theme);
     }
 }
 

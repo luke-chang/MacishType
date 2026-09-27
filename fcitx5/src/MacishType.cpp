@@ -216,6 +216,10 @@ InputMethodEngine::InputMethodEngine(fcitx::Instance *instance)
     : instance_(instance),
       hostEventLoop_(&instance->eventLoop(), &instance->eventDispatcher()),
       alertSound_(&instance->eventDispatcher()),
+      soundTheme_(instance,
+                  [this](const std::string &name) {
+                      alertSound_.setThemeName(name);
+                  }),
       languages_(preferredLanguages()), engines_(discoverEngines(languages_)) {
     MACISHTYPE_INFO() << "MacishType " << versionStampFull() << " loaded";
     MACISHTYPE_INFO() << "Discovered " << engines_.size()
@@ -229,7 +233,7 @@ InputMethodEngine::InputMethodEngine(fcitx::Instance *instance)
         libraryPath_ = dlInfo.dli_fname;
     }
     fcitx::readAsIni(config_, "conf/macishtype.conf");
-    alertSound_.setEventId(config_.alertSound.value());
+    alertSound_.setEnabled(*config_.alertSound);
     // Registered once; attached per input context only for engines that
     // declare the reverseLookup capability (see composeStatusActions).
     findInputCodeAction_.setShortText(translated("Find Input Code"));
@@ -430,7 +434,7 @@ void InputMethodEngine::setConfig(const fcitx::RawConfig &raw) {
     // Refresh the action's displayed hotkey (matching is read live in
     // keyEvent, so functional matching already tracks the new value).
     findInputCodeAction_.setHotkey(config_.findInputCodeKey.value());
-    alertSound_.setEventId(config_.alertSound.value());
+    alertSound_.setEnabled(*config_.alertSound);
 }
 
 void InputMethodEngine::refreshEngineIcon(EngineInfo &engine) {

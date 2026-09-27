@@ -27,8 +27,10 @@ public:
     AlertSound(const AlertSound &) = delete;
     AlertSound &operator=(const AlertSound &) = delete;
 
-    // A freedesktop event id, or "none" to stay silent.
-    void setEventId(std::string id);
+    void setEnabled(bool enabled);
+    // The desktop's XDG sound theme; empty leaves libcanberra on its own
+    // default.
+    void setThemeName(std::string name);
 
     // Returns immediately. Requests arriving while one is playing collapse
     // into a single follow-up.
@@ -41,11 +43,11 @@ private:
     std::thread worker_;
     std::mutex mutex_;
     std::condition_variable wake_;
-    // Guarded by mutex_. eventId_ is written by the event loop and read by
-    // the worker; empty means silent.
+    // Guarded by mutex_.
     bool pending_ = false;
     bool stopping_ = false;
-    std::string eventId_;
+    bool enabled_ = false;
+    std::string themeName_;
 };
 
 } // namespace MacishType::Fcitx5

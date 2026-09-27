@@ -23,7 +23,7 @@ endif()
 # error instead of a wall of missing-header output.
 find_package(Fcitx5Core 5.1.13 REQUIRED)
 find_package(Fontconfig REQUIRED)
-find_package(Fcitx5Module REQUIRED COMPONENTS Notifications)
+find_package(Fcitx5Module REQUIRED COMPONENTS DBus Notifications)
 find_package(Gettext REQUIRED)
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
 
