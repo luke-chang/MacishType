@@ -1034,7 +1034,14 @@ being heard.
 - `key` — layout-aware key value: the character produced (`"a"` / `"A"` /
   `"!"`) for printable keys, or a named string (`"Enter"` / `"Tab"` /
   `"ArrowLeft"` / `" "` for Space) for non-printable ones. Use this for
-  "what character did the user type".
+  "what character did the user type". Its case is the platform's own, and
+  platforms split on Caps Lock: with Caps Lock on, `Shift`+`a` reads `"A"`
+  on macOS and `"a"` on fcitx5 — the same split a browser reports on each.
+  Recommended convention for an engine that emits a letter directly: take the
+  letter from `key`, then pick the case from `shiftKey` and
+  `getModifierState("CapsLock")` under whatever rule the engine wants, rather
+  than inheriting whichever case `key` came with. That keeps one engine's
+  output identical on every host.
 - `code` — layout-independent physical key code keyed by US QWERTY position
   (`"KeyA"` / `"Digit1"` / `"Space"` / `"Enter"` / `"ArrowLeft"` /
   `"Numpad0"` / `"ShiftLeft"`). On Dvorak / AZERTY the same physical
@@ -1059,10 +1066,11 @@ being heard.
   the Linux convention. A key can still arrive while its state reads
   `false`, so detect those with `code`.
 - `keyIgnoringModifiers` *(host extension, not in the web spec)* — the
-  layout-aware character with Option / Command / Control stripped (Shift
-  preserved). Useful on macOS where Option doubles as a dead-key modifier
-  and rewrites `key`: Option+(Dvorak p position) gives `keyIgnoringModifiers
-  === "p"` even though `key === "π"`.
+  layout-aware character with Option / Command / Control stripped (Shift and
+  Caps Lock preserved, so its case is the one this key would type without
+  Option). Useful on macOS where Option doubles as a dead-key modifier and
+  rewrites `key`: Option+(Dvorak p position) gives `keyIgnoringModifiers ===
+  "p"` even though `key === "π"`.
 
 `ConfirmEvent` additionally has `candidate`, `absoluteIndex`,
 `annotation?`, and `payload?` (the last two round-tripped from the original

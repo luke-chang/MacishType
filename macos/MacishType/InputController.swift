@@ -342,8 +342,10 @@ class InputController: IMKInputController {
         // with Option and resolves dead keys to combining marks (Option+E → "´"
         // not "e"). characters(byApplyingModifiers:) routes through the OS
         // layout query and returns the expected base / shifted character.
-        let shiftOnly = event.modifierFlags.intersection(.shift)
-        let charactersIgnoringModifiers = event.characters(byApplyingModifiers: shiftOnly)
+        // Caps Lock stays in: the answer should be the character this key would
+        // type without Option, which is what the full-width commit converts.
+        let casingOnly = event.modifierFlags.intersection([.shift, .capsLock])
+        let charactersIgnoringModifiers = event.characters(byApplyingModifiers: casingOnly)
         let keyEvent = KeyEventInput(
             keyCode: event.keyCode,
             characters: event.characters,

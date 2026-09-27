@@ -331,6 +331,11 @@ export interface KeyEvent extends EventContext, EventMutators {
    *
    * Use `key` when you want the *character the user actually typed*. Use
    * `code` when you want the *physical key position*.
+   *
+   * The case is the platform's own, and platforms disagree on Caps Lock
+   * combined with Shift. An engine that emits a letter directly takes the
+   * letter from `key` and derives the case from `shiftKey` and
+   * `getModifierState("CapsLock")`.
    */
   readonly key: string;
   /**
@@ -398,7 +403,8 @@ export interface KeyEvent extends EventContext, EventMutators {
   getModifierState(key: string): boolean;
   /**
    * Host extension (not part of the web KeyboardEvent spec). The layout-aware
-   * character with Option / Command / Control stripped; Shift is preserved.
+   * character with Option / Command / Control stripped; Shift and Caps Lock
+   * are preserved, so its case is the one this key would type without Option.
    *
    * Useful on macOS where Option doubles as a dead-key modifier and rewrites
    * `key` (Option+a → `"å"` on US, `"π"` on Dvorak via the layout's Option
