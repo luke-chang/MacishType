@@ -294,11 +294,14 @@ extension JavaScriptEngine {
                 initialHighlight: initialHighlight,
                 configure: Self.parseCandidateWindowOverrides(opts)))
         }
-        // Only anchorAt applies — how the row looks is the host's call.
+        // Only where and for how long — how the row looks is the host's call.
         let updateMessage: @convention(block) (JSValue?, JSValue?) -> Void = { textValue, options in
             let text = Self.resolved(textValue)?.toString() ?? ""
-            let anchorAt = Self.optInt(Self.resolved(options), "anchorAt") ?? 0
-            sink.actions.append(.updateMessage(text, anchorAt: anchorAt))
+            let opts = Self.resolved(options)
+            sink.actions.append(.updateMessage(
+                text,
+                anchorAt: Self.optInt(opts, "anchorAt") ?? 0,
+                duration: Self.optInt(opts, "duration") ?? 0))
         }
         // Accepts either a plain string or `{candidate, annotation?, payload?}` —
         // engines reusing a Candidate received in candidateConfirmed can pass

@@ -65,7 +65,9 @@ enum EngineAction {
                           configure: ((inout CandidateWindowConfiguration) -> Void)? = nil)
     // A message shown in place of candidates: takes no key, cannot be clicked
     // or committed. Rendering is the host's call, hence no `configure` hook.
-    case updateMessage(String, anchorAt: Int = 0)
+    // `duration`: milliseconds until the host retires it; 0 or negative
+    // keeps it up.
+    case updateMessage(String, anchorAt: Int = 0, duration: Int = 0)
     // Engine-confirmed candidate: routes through engine.candidateConfirmed.
     case commit(Candidate)
     case commitSelectedCandidate

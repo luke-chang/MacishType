@@ -409,8 +409,8 @@ class InputController: IMKInputController {
                 updateCandidates(candidates, anchorAt: anchorAt,
                                  initialHighlight: initialHighlight,
                                  configuration: cfg, client: client)
-            case .updateMessage(let text, let anchorAt):
-                updateMessage(text, anchorAt: anchorAt, client: client)
+            case .updateMessage(let text, let anchorAt, let duration):
+                updateMessage(text, anchorAt: anchorAt, duration: duration, client: client)
             case .commit(let candidate):
                 // Engine-driven commit: no specific candidate-list index.
                 candidateConfirmed(candidate.text, absoluteIndex: -1, raw: candidate)
@@ -626,7 +626,8 @@ class InputController: IMKInputController {
         }
     }
 
-    private func updateMessage(_ text: String, anchorAt: Int, client: IMKTextInput) {
+    private func updateMessage(_ text: String, anchorAt: Int, duration: Int,
+                               client: IMKTextInput) {
         // Dismissal takes no anchor: measuring one would end in a reposition
         // that orders the just-hidden panel back on screen.
         guard !text.isEmpty else {
@@ -634,7 +635,7 @@ class InputController: IMKInputController {
             return
         }
         anchored(anchorAt: anchorAt, client: client) {
-            CandidateWindow.shared.updateMessage(text)
+            CandidateWindow.shared.updateMessage(text, duration: duration)
         }
     }
 

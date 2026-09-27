@@ -206,6 +206,12 @@ export interface NavigationOptions {
 export interface MessageOptions {
   /** Cursor position in `markedText` the message anchors to. Same as `CandidateUpdateOptions`. */
   anchorAt?: number;
+  /**
+   * Milliseconds the message stays up before the host retires it as an empty
+   * `updateMessage` would. Zero or negative keeps it up. Whatever takes the
+   * message down first cancels this, and every `updateMessage` starts anew.
+   */
+  duration?: number;
 }
 
 /**
@@ -233,9 +239,9 @@ export interface EventMutators {
    * no key (every key reaches the engine), cannot be clicked or
    * committed, and leaves `candidateWindow.isVisible` false. Its
    * appearance is the host's decision, hence no layout options.
-   * `updateCandidates` replaces it, as does the end of the composition;
-   * shown with no marked text it stays until a focus change or an empty
-   * string from the engine.
+   * `updateCandidates` replaces it, as does the end of the composition, and
+   * a `duration` retires it on its own; shown with no marked text it
+   * otherwise stays until a focus change or an empty string from the engine.
    */
   updateMessage(text: string, options?: MessageOptions): void;
   /** Engine-driven commit. Triggers `candidateConfirmed` if defined. */

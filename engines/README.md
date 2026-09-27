@@ -878,6 +878,9 @@ takes no key, cannot be clicked or committed, and never reaches
 - `text` *(string, required)* — the message. An empty string dismisses it.
 - `options.anchorAt` *(integer, default `0`)* — same meaning as in
   [`updateCandidates`](#updatecandidatesitems-options).
+- `options.duration` *(integer, milliseconds, default `0`)* — how long the
+  message stays up; the host then retires it exactly as `updateMessage("")`
+  would. `0` or a negative value keeps it up.
 
 ```js
 event.updateMarkedText(code);
@@ -900,14 +903,29 @@ While a message is up:
 Messages and candidates are mutually exclusive: `updateCandidates` replaces a
 message, and `updateMessage` replaces the candidate list. The host also clears
 the message when the composition ends (commit, `flushStaged`, `resetContext`,
-focus change). Anything else leaves it up: a message outlives
-`updateMarkedText`, so an engine need not re-emit it as the composition
-changes.
+focus change) and when its `duration` runs out. Anything else leaves it up: a
+message outlives `updateMarkedText`, so an engine need not re-emit it as the
+composition changes. Whatever takes a message down also stops its countdown,
+and each `updateMessage` starts a fresh one, even for the same text.
+
+Recommended convention: emit a message with a `duration` from the event that
+raises it, and let `event.message` tell whether it is still up.
+
+```js
+// The lookup that finds nothing raises the hint, once.
+event.updateMessage("No match", { duration: 1500 });
+
+// A later key asks whether it is still up.
+if (event.code === "Escape" && event.message) {
+  event.updateMessage("");
+  return true;
+}
+```
 
 A message shown with no marked text needs only the caret position, and none
 of the keyboard caveats of an unanchored candidate list apply — it takes no
-keys to begin with. With no composition to end, it stays until a focus change
-or the engine's own `updateMessage("")`.
+keys to begin with. With no composition to end, it stays until a focus change,
+the engine's own `updateMessage("")`, or its `duration` running out.
 
 The two dismissals differ: `updateCandidates([])` clears the window whichever
 of the two is in it, while `updateMessage("")` retires a message and does

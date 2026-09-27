@@ -252,7 +252,8 @@ class CandidateWindow {
         _impl = nil
         apply()
         if let message = messageText {
-            updateMessage(message)
+            // A redraw, not a new message: a running `duration` keeps counting.
+            renderMessage(message)
         } else if !savedCandidates.isEmpty {
             updateCandidates(savedCandidates, initialHighlight: 0)
         }
@@ -280,9 +281,19 @@ class CandidateWindow {
     // MARK: - State
 
     /// Text of the message shown in place of candidates.
-    private(set) var messageText: String?
+    private(set) var messageText: String? {
+        didSet {
+            if messageText == nil { messageDismissal = nil }
+        }
+    }
+    /// Replacing or clearing it cancels it, which releases it at once: engines
+    /// pick the deadline, and it can be days out.
+    private var messageDismissal: DispatchSourceTimer? {
+        didSet { oldValue?.cancel() }
+    }
     /// Bumped by every `hide()`, so a caller can tell whether a synchronous
-    /// callback dismissed the window between two of its own steps.
+    /// callback dismissed the window between two of its own steps. A message's
+    /// `duration` running out also hides, between events.
     private(set) var hideCount = 0
 
     private(set) var lastShowNearRect: NSRect = .zero
@@ -373,15 +384,32 @@ class CandidateWindow {
                                     configuration: pushable(engineConfiguration))
     }
 
-    /// Shows `text` in place of candidates; empty text dismisses it. Horizontal
-    /// so the row sizes to its text. `engineConfiguration` is left untouched,
-    /// so `currentConfiguration` keeps reporting what candidates would use.
-    func updateMessage(_ text: String) {
+    /// Shows `text` in place of candidates; empty text dismisses it. A positive
+    /// `duration` (milliseconds) dismisses it once it runs out, unless the
+    /// message is gone or replaced by then.
+    func updateMessage(_ text: String, duration: Int = 0) {
         guard !text.isEmpty else {
             // Nothing to dismiss: leave the candidate window alone.
             if messageText != nil { hide() }
             return
         }
+        messageDismissal = nil
+        if duration > 0 {
+            // It fires outside any IMK callback, so it stays on the panel,
+            // never reaching the client or the engine.
+            let dismissal = DispatchSource.makeTimerSource(queue: .main)
+            dismissal.schedule(deadline: .now() + .milliseconds(duration))
+            dismissal.setEventHandler { [weak self] in self?.updateMessage("") }
+            dismissal.resume()
+            messageDismissal = dismissal
+        }
+        renderMessage(text)
+    }
+
+    /// Horizontal so the row sizes to its text. `engineConfiguration` is left
+    /// untouched, so `currentConfiguration` keeps reporting what candidates
+    /// would use.
+    private func renderMessage(_ text: String) {
         messageText = text
         activeImpl.rowsSelectable = false
         var cfg = engineConfiguration
