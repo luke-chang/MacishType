@@ -8,6 +8,9 @@
 #     the staged prefix ourselves; the composing rest is dropped.
 #   reset (in-app commit, cursor move, select-all) — fcitx5 abandons the
 #     input, so the whole composition is discarded.
+#   context destroyed while focused (a client quitting) — outside any focus
+#     group, as here with no display, fcitx5 sends no focus-out, so the
+#     session goes on the destroy itself, running no engine hook.
 set -e
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,6 +29,10 @@ staged_switch="$("$root/test/Isolated.sh" stagefixture 97:38 \
     switchim:keyboard-us)"
 composing_switch="$("$root/test/Isolated.sh" stagefixture 98:56 \
     switchim:keyboard-us)"
+log=/tmp/fcitx5-macishtype-compositionend.log
+ISOLATED_LOG="$log" "$root/test/Isolated.sh" stagefixture 98:56 destroyic \
+    > /dev/null
+destroyed="$(cat "$log")"
 
 check() {
     if eval "$2"; then
@@ -55,4 +62,8 @@ check "switching input method commits the staged prefix once" \
     "$staged_switch"
 check "switching input method discards the composing rest" \
     '[ "$(commit_count "$composing_switch")" = 0 ]' "$composing_switch"
+check "a destroyed context takes its session along" \
+    'printf "%s\n" "$destroyed" |
+         grep -qF "input context destroyed with a live session"' \
+    "$(printf '%s\n' "$destroyed" | tail -20)"
 echo "Composition-end checks passed."

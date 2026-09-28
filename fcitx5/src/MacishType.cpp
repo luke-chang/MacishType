@@ -343,6 +343,24 @@ InputMethodEngine::InputMethodEngine(fcitx::Instance *instance)
                 }
             }
         });
+    // A context outside any focus group is destroyed without a focus-out, so
+    // deactivate never ends its session. It goes without running the engine's
+    // hooks: whatever they queued would touch the dying context.
+    contextDestroyedWatcher_ = instance_->watchEvent(
+        fcitx::EventType::InputContextDestroyed,
+        fcitx::EventWatcherPhase::Default, [this](fcitx::Event &event) {
+            auto *inputContext =
+                static_cast<fcitx::InputContextEvent &>(event).inputContext();
+            failurePromptShown_.erase(inputContext);
+            auto found = sessions_.find(inputContext);
+            if (found == sessions_.end()) {
+                return;
+            }
+            MACISHTYPE_INFO() << found->second->engineId()
+                              << ": input context destroyed with a live "
+                                 "session, which goes with it";
+            sessions_.erase(found);
+        });
     // Runtime additions are pull-based, matching how any fcitx IM package
     // surfaces: this accept makes configtool show its native "Found
     // updates" banner, whose Update button refreshes the IM list and

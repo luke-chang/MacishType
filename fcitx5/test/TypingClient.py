@@ -160,6 +160,12 @@ def main():
         if spec == "focusout":
             keys.append(("focusout",))
             continue
+        # "destroyic" destroys the input context while it still has focus,
+        # as a client that quits or crashes does; nothing can follow it but
+        # sleeps.
+        if spec == "destroyic":
+            keys.append(("destroyic",))
+            continue
         # "reset" asks the IM to reset (in-app commit: click elsewhere in
         # the same field, Ctrl+A) without losing focus.
         if spec == "reset":
@@ -419,6 +425,10 @@ def main():
             if entry[0] == "focusout":
                 ic_call("FocusOut")
                 emit({"event": "focused-out"})
+                continue
+            if entry[0] == "destroyic":
+                ic_call("DestroyIC")
+                emit({"event": "ic-destroyed"})
                 continue
             if entry[0] == "reset":
                 ic_call("Reset")

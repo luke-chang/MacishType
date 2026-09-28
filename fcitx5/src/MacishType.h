@@ -353,6 +353,8 @@ private:
     // renders no separators), so a panel handover has to recompose.
     std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>>
         uiChangedWatcher_;
+    std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>>
+        contextDestroyedWatcher_;
     // Contexts currently showing the load-failure prompt, so Escape/
     // Backspace know whether there is anything to clear.
     std::set<fcitx::InputContext *> failurePromptShown_;
