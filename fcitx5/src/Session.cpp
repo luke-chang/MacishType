@@ -15,6 +15,7 @@
 #include <MacishType/GraphemeIndex.h>
 #include <MacishType/QjsUtil.h>
 #include "Log.h"
+#include "OneShotTimer.h"
 
 namespace MacishType::Fcitx5 {
 
@@ -73,9 +74,10 @@ bool isDigitLabel(const std::string &text) {
 EngineSession::EngineSession(JsEngineHost *host,
                              fcitx::InputContext *inputContext,
                              IntlCache &intl, AlertSound &alertSound,
+                             fcitx::EventLoop &eventLoop,
                              AssociatedSelectionKeys selectionKeys)
     : host_(host), inputContext_(inputContext), intl_(intl),
-      alertSound_(alertSound) {
+      alertSound_(alertSound), eventLoop_(eventLoop) {
     // Unconditional, paired with the dtor's decrement: an invalid session
     // (createInstance fails below) is still destroyed by the caller, and an
     // unbalanced count would keep the host's fetch pipeline armed forever.
@@ -434,6 +436,10 @@ void EngineSession::queueAction(const std::string &name, int argc,
     if (name == "updateMessage") {
         UpdateMessageAction action;
         action.text = Qjs::textArgument(ctx, argc, argv, 0);
+        if (argc >= 2 && JS_IsObject(argv[1])) {
+            action.duration =
+                Qjs::intProperty(ctx, argv[1], "duration").value_or(0);
+        }
         queue.push_back(std::move(action));
         return;
     }
@@ -714,6 +720,23 @@ void EngineSession::applyUpdateMessage(UpdateMessageAction action) {
         return;
     }
     renderMessage(std::move(action.text));
+    if (action.duration > 0) {
+        messageTimer_ = scheduleOneShot(
+            eventLoop_, static_cast<uint64_t>(action.duration) * 1000,
+            [this] { expireMessage(); });
+    }
+}
+
+// The panel is shared: a picker another module drew over the message
+// (clipboard, quick phrase) is not ours to clear, so only the state goes.
+void EngineSession::expireMessage() {
+    const auto &inputPanel = inputContext_->inputPanel();
+    if (inputPanel.candidateList() ||
+        inputPanel.auxUp().toString() != message_) {
+        setPanelContent(PanelContent::None);
+        return;
+    }
+    applyUpdateMessage({});
 }
 
 // Candidate word pushed into the fcitx input panel; select() (mouse click)
@@ -867,9 +890,11 @@ void EngineSession::hideCandidates() {
     renderAuxOnly(PanelContent::None, {});
 }
 
-// A message only exists while the panel holds it.
+// A message and its countdown only exist while the panel holds it; a new
+// message starts a countdown of its own.
 void EngineSession::setPanelContent(PanelContent content) {
     panel_ = content;
+    messageTimer_.reset();
     if (content != PanelContent::Message) {
         message_.clear();
     }

@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
 #include <vector>
 
+#include <fcitx-utils/event.h>
 #include <fcitx/inputcontext.h>
 
 #include <MacishType/EngineHost.h>
@@ -39,6 +41,7 @@ class EngineSession {
 public:
     EngineSession(JsEngineHost *host, fcitx::InputContext *inputContext,
                   IntlCache &intl, AlertSound &alertSound,
+                  fcitx::EventLoop &eventLoop,
                   AssociatedSelectionKeys selectionKeys);
     ~EngineSession();
     EngineSession(const EngineSession &) = delete;
@@ -100,6 +103,7 @@ private:
     };
     struct UpdateMessageAction {
         std::string text;
+        int duration = 0; // milliseconds; zero or negative keeps it up
     };
     struct CommitAction {
         CandidateData candidate;
@@ -143,6 +147,7 @@ private:
     void publishPreedit(const fcitx::Text &preedit);
     void applyUpdateCandidates(UpdateCandidatesAction action);
     void applyUpdateMessage(UpdateMessageAction action);
+    void expireMessage();
     void navigate(const std::string &direction, bool wrapping);
     void confirmCandidateAt(size_t absoluteIndex);
     void confirmCandidate(const CandidateData &candidate, int absoluteIndex);
@@ -198,6 +203,7 @@ private:
     fcitx::InputContext *inputContext_;
     IntlCache &intl_;
     AlertSound &alertSound_;
+    fcitx::EventLoop &eventLoop_;
     uint64_t instanceId_ = 0;
 
     std::string markedText_;
@@ -205,6 +211,9 @@ private:
     // Engine message shown in place of candidates; non-empty exactly while
     // panel_ is Message (setPanelContent keeps the two in step).
     std::string message_;
+    // The message's duration countdown; only ever alive while panel_ is
+    // Message, likewise kept by setPanelContent.
+    std::unique_ptr<fcitx::EventSourceTime> messageTimer_;
     bool associating_ = false;
 
     // Candidate payloads (source for confirm/selection events), indexed

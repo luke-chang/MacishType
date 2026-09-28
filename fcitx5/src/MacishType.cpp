@@ -588,7 +588,7 @@ void InputMethodEngine::handleSessionlessKey(const EngineInfo &engine,
         reconcileChttransToggles();
         auto session = std::make_unique<EngineSession>(
             host, inputContext, intlCache_, alertSound_,
-            associatedSelectionKeys());
+            instance_->eventLoop(), associatedSelectionKeys());
         if (session->valid()) {
             clearFailurePrompt(inputContext);
             session->invokeActivateHook();
@@ -700,7 +700,7 @@ void InputMethodEngine::activate(const fcitx::InputMethodEntry &entry,
     reconcileChttransToggles();
     auto session = std::make_unique<EngineSession>(
         host, inputContext, intlCache_, alertSound_,
-        associatedSelectionKeys());
+        instance_->eventLoop(), associatedSelectionKeys());
     if (!session->valid()) {
         return;
     }
@@ -1436,7 +1436,7 @@ void InputMethodEngine::reloadEngine(const std::string &engineId) {
     for (auto *inputContext : affected) {
         auto session = std::make_unique<EngineSession>(
             host, inputContext, intlCache_, alertSound_,
-            associatedSelectionKeys());
+            instance_->eventLoop(), associatedSelectionKeys());
         if (!session->valid()) {
             continue;
         }
