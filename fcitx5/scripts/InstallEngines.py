@@ -8,12 +8,17 @@ as copies or as symlinks. No root needed; an engine keeps its source folder
 name, which is its identity to the addon.
 
 An engine that ships a setup.py has it run first, so generated data tables are
-in place. _storage/, where the JS storage API persists a user-layer engine's
+in place; re-picking symlink for an engine already linked runs it too, which
+is how a link gets updated. The installed listing marks this repo's engines
+that are out of date without changing anything: one whose setup.py --check
+finds its generated data stale, or a copy that no longer matches its source
+folder. _storage/, where the JS storage API persists a user-layer engine's
 data, belongs to the installed form: a copy owns its own and keeps it across a
 reinstall, while a symlink's lives in the source folder and is never touched
 here.
 """
 
+import filecmp
 import json
 import os
 import re
@@ -68,7 +73,54 @@ def discover():
     return found
 
 
-def show_installed(destination_root):
+def setup_is_current(engine):
+    """Whether the engine's setup.py --check finds its generated data current;
+    an engine without a setup.py has none."""
+    if not os.path.isfile(os.path.join(engine["source"], "setup.py")):
+        return True
+    return subprocess.run([sys.executable, "setup.py", "--check"],
+                          cwd=engine["source"],
+                          capture_output=True).returncode == 0
+
+
+def copied_files(root):
+    """Relative path -> path of every file a copy of `root` would carry."""
+    skip = shutil.ignore_patterns(*SKIP_PATTERNS)
+    found = {}
+    for directory, subdirectories, files in os.walk(root):
+        skipped = skip(directory, subdirectories + files)
+        subdirectories[:] = [name for name in subdirectories
+                             if name not in skipped]
+        for name in files:
+            if name not in skipped:
+                path = os.path.join(directory, name)
+                found[os.path.relpath(path, root)] = path
+    return found
+
+
+def copy_differs(copy, source):
+    installed, current = copied_files(copy), copied_files(source)
+    return installed.keys() != current.keys() or any(
+        not filecmp.cmp(installed[name], current[name], shallow=False)
+        for name in current)
+
+
+def staleness(path, engine):
+    """Why the installed `path` of this repo's `engine` is out of date, or ""
+    when it is current or not this repo's to judge."""
+    if engine is None:
+        return ""
+    if os.path.islink(path):
+        if os.path.realpath(path) != os.path.realpath(engine["source"]):
+            return ""
+        return "" if setup_is_current(engine) else "data tables outdated"
+    if os.path.isdir(path) and (not setup_is_current(engine)
+                                or copy_differs(path, engine["source"])):
+        return "outdated"
+    return ""
+
+
+def show_installed(destination_root, engines):
     """Everything the destination already serves, engines from elsewhere too."""
     try:
         entries = sorted(os.listdir(destination_root))
@@ -78,13 +130,21 @@ def show_installed(destination_root):
     if not entries:
         print("  (nothing yet)\n")
         return
+    by_id = {engine["id"]: engine for engine in engines}
     width = max(len(entry) for entry in entries)
+    any_outdated = False
     for entry in entries:
         path = os.path.join(destination_root, entry)
         kind = (f"symlink -> {os.path.realpath(path)}"
                 if os.path.islink(path) else "copy")
+        reason = staleness(path, by_id.get(entry))
+        if reason:
+            kind += f"  ({reason})"
+            any_outdated = True
         print(f"  {entry:<{width}}  {kind}")
     print()
+    if any_outdated:
+        print("Reinstall an outdated engine below to update it.\n")
 
 
 def installed_form(engine, destination_root):
@@ -161,13 +221,27 @@ def remove(path):
         shutil.rmtree(path)
 
 
+def run_setup(engine):
+    """Runs the engine's setup.py, if it ships one. Returns whether it
+    succeeded."""
+    if not os.path.isfile(os.path.join(engine["source"], "setup.py")):
+        return True
+    print("  running setup.py...", flush=True)
+    return subprocess.run([sys.executable, "setup.py"],
+                          cwd=engine["source"]).returncode == 0
+
+
 def install(engine, destination_root, mode):
     """Installs one engine folder. Returns whether it landed."""
     target = os.path.join(destination_root, engine["id"])
     if mode == "symlink":
         if os.path.islink(target) and \
                 os.path.realpath(target) == os.path.realpath(engine["source"]):
-            print("  already links to the source folder")
+            # The link serves the source folder, so setup is the whole update.
+            if run_setup(engine):
+                print("  already links to the source folder")
+            else:
+                print("  setup.py failed", file=sys.stderr)
             return False
         if not os.path.islink(target) \
                 and os.path.isdir(os.path.join(target, STORAGE_DIR)) \
@@ -177,12 +251,9 @@ def install(engine, destination_root, mode):
     elif os.path.islink(target):
         print("  replacing the symlink with a copy: later source edits stop"
               " reaching fcitx5")
-    if os.path.isfile(os.path.join(engine["source"], "setup.py")):
-        print("  running setup.py...")
-        if subprocess.run([sys.executable, "setup.py"],
-                          cwd=engine["source"]).returncode:
-            print("  setup.py failed; engine not installed", file=sys.stderr)
-            return False
+    if not run_setup(engine):
+        print("  setup.py failed; engine not installed", file=sys.stderr)
+        return False
     if mode == "symlink":
         remove(target)
         os.symlink(engine["source"], target)
@@ -216,7 +287,7 @@ def main():
         sys.exit(f"No engine folder with a manifest.json in {SOURCE_DIR}")
     destination_root = engines_dir()
     os.makedirs(destination_root, exist_ok=True)
-    show_installed(destination_root)
+    show_installed(destination_root, engines)
     for engine in engines:
         engine["installed"] = installed_form(engine, destination_root)
     selected = prompt_selection(engines)

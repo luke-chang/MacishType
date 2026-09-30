@@ -179,11 +179,9 @@ keystroke.
 - `make dev-uninstall` — remove that install; engines and settings stay
   (see [First-time setup](#first-time-setup)).
 - `make install-engines` — interactive engine installer, copy or symlink
-  (see [First install](#first-install)). An engine that ships a `setup.py`
-  has it run first, so generated data tables are in place. The engine's
-  `_storage/` belongs to the installed form: a copy keeps its own across a
-  reinstall, a symlink's lives in the source folder — so replacing a copy
-  with a symlink discards it, and asks before doing so.
+  (see [First install](#first-install)). Out-of-date engines are marked in
+  the list; reinstall one to update it. Replacing a copy with a symlink
+  discards the copy's `_storage/` (the engine's data), so it asks first.
 - `make pkg` — build a native package (`.deb` on Debian-family, `.rpm` on
   RPM-family) with CPack, into `build/`. The version carries a date-and-commit
   stamp (`0.2.0+20260805.93426bb`, `.dirty.<HHMM>` appended for an unclean
