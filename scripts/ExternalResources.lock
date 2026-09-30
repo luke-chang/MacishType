@@ -16,7 +16,7 @@ tables/WordFrequency.zh-Hant.txt https://raw.githubusercontent.com/openvanilla/M
 tables/McBopomofo.LICENSE.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/LICENSE.txt -
 tables/SymbolNames.zh-Hant.txt https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/cldr-json/cldr-annotations-full/annotations/zh-Hant/annotations.json GenerateSymbolNames.py
 tables/CLDR.LICENSE.txt https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/LICENSE -
-tables/Array30.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 ExtractCodeTable.py chardef
-tables/ArraySymbol.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 ExtractCodeTable.py symboldef
-tables/ArrayShortCode.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 ExtractCodeTable.py quick
-tables/ArrayPhrase.txt https://raw.githubusercontent.com/gontera/array30/1ea25b565c73ba4d29c0a41b3803ef8cd290bff0/cin2/ar30-big-v2026-1.04-20260530.cin2 ExtractCodeTable.py quickphrases
+tables/Array30.txt https://raw.githubusercontent.com/gontera/array30/7dc43ab48543b30fb33cc2a96fc35552cb26f9bf/cin2/ar30-big.cin2 ExtractCodeTable.py chardef
+tables/ArraySymbol.txt https://raw.githubusercontent.com/gontera/array30/7dc43ab48543b30fb33cc2a96fc35552cb26f9bf/cin2/ar30-big.cin2 ExtractCodeTable.py symboldef
+tables/ArrayShortCode.txt https://raw.githubusercontent.com/gontera/array30/7dc43ab48543b30fb33cc2a96fc35552cb26f9bf/cin2/ar30-big.cin2 ExtractCodeTable.py quick
+tables/ArrayPhrase.txt https://raw.githubusercontent.com/gontera/array30/7dc43ab48543b30fb33cc2a96fc35552cb26f9bf/cin2/ar30-big.cin2 ExtractCodeTable.py quickphrases
