@@ -31,8 +31,8 @@ ADDON_DIRS := $(USER_LIB):$(shell test/SystemAddonDir.sh)
 VERSION_STAMP ?= $(shell scripts/VersionStamp.sh)
 
 .PHONY: help prepare update-resources build test debug restart dev-install \
-	dev-uninstall install-engines install uninstall remove-icon-links pkg \
-	clean clean-resources log log-js log-history
+	dev-uninstall install-engines uninstall-engines install uninstall \
+	remove-icon-links pkg clean clean-resources log log-js log-history
 .DEFAULT_GOAL := help
 
 # Window for `make log-history`, systemd time syntax (override:
@@ -79,6 +79,7 @@ help:
 	@echo "  make dev-install       - Install into ~/.local (no restart)"
 	@echo "  make dev-uninstall     - Remove the ~/.local install (keeps engines)"
 	@echo "  make install-engines   - Install engines from ../engines/ as copies or symlinks"
+	@echo "  make uninstall-engines - Remove engines from ~/.local (symlinks leave their source)"
 	@echo "  make install           - Production install into /usr (sudo) + restart"
 	@echo "  make uninstall         - Remove the production install + restart"
 	@echo "  make pkg               - Build a native package (deb/rpm); PRELOAD_ENGINES=\"array30\" or =all to preload engines"
@@ -205,6 +206,11 @@ dev-uninstall:
 # and removed on their own.
 install-engines:
 	@scripts/InstallEngines.py
+
+# Its counterpart: removes picked entries from the user engines directory,
+# engines from elsewhere too. The system layer is left to `make uninstall`.
+uninstall-engines:
+	@scripts/InstallEngines.py --uninstall
 
 # Production install (addon .so, confs, shared runtime, and the prepared
 # module data). The distro fcitx5 only loads addons from /usr, so the

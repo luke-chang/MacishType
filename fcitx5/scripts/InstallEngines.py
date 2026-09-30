@@ -16,6 +16,11 @@ folder. _storage/, where the JS storage API persists a user-layer engine's
 data, belongs to the installed form: a copy owns its own and keeps it across a
 reinstall, while a symlink's lives in the source folder and is never touched
 here.
+
+With --uninstall it lists the same directory, engines from elsewhere too, and
+removes the picked entries from this layer only: a symlink goes alone, leaving
+its source folder, while a copy takes its _storage/ along, which the
+confirmation spells out.
 """
 
 import filecmp
@@ -157,32 +162,31 @@ def installed_form(engine, destination_root):
     return ""
 
 
-def prompt_selection(engines):
-    width = max(len(engine["id"]) for engine in engines)
-    print(f"Engines in {SOURCE_DIR}:\n")
-    for index, engine in enumerate(engines, 1):
-        installed = (f"installed ({engine['installed']})"
-                     if engine["installed"] else "")
-        columns = [f"  {index}) {engine['id']:<{width}}", engine["name"],
-                   installed]
+def prompt_selection(items, heading, verb):
+    """Numbered pick from `items`, each shown as its id, name and note."""
+    width = max(len(item["id"]) for item in items)
+    print(f"{heading}:\n")
+    for index, item in enumerate(items, 1):
+        columns = [f"  {index}) {item['id']:<{width}}", item["name"],
+                   item["note"]]
         print("  ".join(column for column in columns if column))
     print()
     while True:
-        answer = input('Install which? '
+        answer = input(f'{verb} which? '
                        '(numbers, "all", empty to cancel): ').strip()
         if not answer:
             return []
         if answer.lower() in ("all", "a"):
-            return list(engines)
+            return list(items)
         chosen = []
         for token in answer.replace(",", " ").split():
-            if not token.isdigit() or not 1 <= int(token) <= len(engines):
+            if not token.isdigit() or not 1 <= int(token) <= len(items):
                 print(f'  "{token}" is not one of the numbers above.')
                 chosen = None
                 break
-            engine = engines[int(token) - 1]
-            if engine not in chosen:
-                chosen.append(engine)
+            item = items[int(token) - 1]
+            if item not in chosen:
+                chosen.append(item)
         if chosen:
             return chosen
 
@@ -279,18 +283,93 @@ def install(engine, destination_root, mode):
     return True
 
 
+def installed_entries(destination_root):
+    """Everything the destination serves, as items to pick from."""
+    try:
+        names = sorted(os.listdir(destination_root))
+    except OSError:
+        names = []
+    entries = []
+    for name in names:
+        path = os.path.join(destination_root, name)
+        note = (f"symlink -> {os.path.realpath(path)}"
+                if os.path.islink(path) else "copy")
+        entries.append({"id": name, "path": path, "note": note,
+                        "name": display_name(
+                            os.path.join(path, "manifest.json"))})
+    return entries
+
+
+def system_install(engine_id):
+    """A system-layer folder that still serves `engine_id`, or None."""
+    data_dirs = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+    for data_dir in data_dirs.split(":"):
+        path = os.path.join(data_dir, "fcitx5", "macishtype", "engines",
+                            engine_id)
+        if data_dir and os.path.isdir(path):
+            return path
+    return None
+
+
+def uninstall(destination_root):
+    entries = installed_entries(destination_root)
+    if not entries:
+        print(f"Nothing installed in {destination_root}")
+        return
+    selected = prompt_selection(entries, f"Installed in {destination_root}",
+                                "Uninstall")
+    if not selected:
+        print("Nothing selected.")
+        return
+    print("\nThis removes:")
+    for entry in selected:
+        if os.path.islink(entry["path"]):
+            what = "the symlink only; its source folder stays"
+        elif os.path.isdir(os.path.join(entry["path"], STORAGE_DIR)):
+            what = (f"the copy, with its {STORAGE_DIR}/ (the engine's own"
+                    " data)")
+        else:
+            what = "the copy"
+        print(f"  {entry['id']}: {what}")
+    if input("Continue? [y/N] ").strip().lower() not in ("y", "yes"):
+        print("Nothing removed.")
+        return
+    gone = False
+    for entry in selected:
+        remove(entry["path"])
+        print(f"  ✓ removed {entry['path']}")
+        system = system_install(entry["id"])
+        if system:
+            print(f"    still served by the system install at {system}")
+        else:
+            gone = True
+    if gone:
+        print("\nfcitx5 keeps a removed engine's input method listed until"
+              " it restarts.")
+
+
 def main():
+    uninstalling = sys.argv[1:] == ["--uninstall"]
+    if sys.argv[1:] and not uninstalling:
+        print("Usage: InstallEngines.py [--uninstall]", file=sys.stderr)
+        sys.exit(2)
+    verb = "uninstall" if uninstalling else "install"
     if not sys.stdin.isatty():
-        sys.exit("install-engines needs a terminal to ask what to install.")
+        sys.exit(f"{verb}-engines needs a terminal to ask what to {verb}.")
+    destination_root = engines_dir()
+    if uninstalling:
+        uninstall(destination_root)
+        return
     engines = discover()
     if not engines:
         sys.exit(f"No engine folder with a manifest.json in {SOURCE_DIR}")
-    destination_root = engines_dir()
     os.makedirs(destination_root, exist_ok=True)
     show_installed(destination_root, engines)
     for engine in engines:
         engine["installed"] = installed_form(engine, destination_root)
-    selected = prompt_selection(engines)
+        engine["note"] = (f"installed ({engine['installed']})"
+                          if engine["installed"] else "")
+    selected = prompt_selection(engines, f"Engines in {SOURCE_DIR}", "Install")
     if not selected:
         print("Nothing selected.")
         return
@@ -315,6 +394,7 @@ if __name__ == "__main__":
     try:
         main()
     except (EOFError, KeyboardInterrupt):
-        # Ctrl-C / Ctrl-D at any prompt: nothing is removed until the
-        # replacement is staged, so bailing out here is always safe.
+        # Ctrl-C / Ctrl-D at any prompt is always safe: an install removes
+        # nothing until its replacement is staged, an uninstall nothing until
+        # its last answer.
         sys.exit("\nCancelled.")

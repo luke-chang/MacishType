@@ -119,7 +119,7 @@ User data stays behind, and is yours to remove:
 - `~/.config/fcitx5/conf/macishtype.conf` — addon settings
 - `~/.config/fcitx5/macishtype/` — per-engine settings and menu values
 
-Removing a single engine is the same thing: delete its folder.
+To remove engines, use `make uninstall-engines` or delete their folders.
 
 ## Development
 
@@ -182,6 +182,10 @@ keystroke.
   (see [First install](#first-install)). Out-of-date engines are marked in
   the list; reinstall one to update it. Replacing a copy with a symlink
   discards the copy's `_storage/` (the engine's data), so it asks first.
+- `make uninstall-engines` — interactive engine removal from `~/.local`;
+  it asks before removing. A symlink leaves its source folder, while a copy
+  takes its `_storage/` along. fcitx5 drops the input method on its next
+  restart.
 - `make pkg` — build a native package (`.deb` on Debian-family, `.rpm` on
   RPM-family) with CPack, into `build/`. The version carries a date-and-commit
   stamp (`0.2.0+20260805.93426bb`, `.dirty.<HHMM>` appended for an unclean
