@@ -6,8 +6,9 @@ Interface (external-resources processor convention):
     GenerateWordFrequency.py <input> <output> <source-url>
 
 Reads <input> (`entry<space>count` per line, the phrase.occ format), keeps
-only entries whose key is exactly one Unicode scalar, and writes them to
-<output> in the input's native order.
+only entries whose key is exactly one Unicode scalar and whose count is
+nonzero (a lookup miss already reads as 0), and writes them to <output> in the
+input's native order.
 """
 
 import sys
@@ -22,7 +23,7 @@ def main():
             if len(parts) != 2:
                 continue
             key, count = parts[0], parts[1].strip()
-            if len(key) == 1:
+            if len(key) == 1 and count != "0":
                 entries.append(f"{key}\t{count}")
 
     header = [

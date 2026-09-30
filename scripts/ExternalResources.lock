@@ -11,9 +11,9 @@
 # `make update-resources` queries the default-branch HEAD of each github.com
 # upstream and bumps the pinned SHA. Manual edits also work.
 
-tables/AssociatedDictionary.zh-Hant.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ GenerateAssociatedDictionary.py
-tables/WordFrequency.zh-Hant.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/Source/Data/phrase.occ GenerateWordFrequency.py
-tables/McBopomofo.LICENSE.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/20d86c571d183a7ce7d5f91419b815dea5c3efbc/LICENSE.txt -
+tables/AssociatedDictionary.zh-Hant.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/be6564acad6c4d3265c34a2e1a872d80f9db6068/Source/Data/phrase.occ GenerateAssociatedDictionary.py
+tables/WordFrequency.zh-Hant.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/be6564acad6c4d3265c34a2e1a872d80f9db6068/Source/Data/phrase.occ GenerateWordFrequency.py
+tables/McBopomofo.LICENSE.txt https://raw.githubusercontent.com/openvanilla/McBopomofo/be6564acad6c4d3265c34a2e1a872d80f9db6068/LICENSE.txt -
 tables/SymbolNames.zh-Hant.txt https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/cldr-json/cldr-annotations-full/annotations/zh-Hant/annotations.json GenerateSymbolNames.py
 tables/CLDR.LICENSE.txt https://raw.githubusercontent.com/unicode-org/cldr-json/a79b499916d486dca4b0f74fe423ea457705fdd9/LICENSE -
 tables/Array30.txt https://raw.githubusercontent.com/gontera/array30/7dc43ab48543b30fb33cc2a96fc35552cb26f9bf/cin2/ar30-big.cin2 ExtractCodeTable.py chardef
