@@ -77,13 +77,16 @@ sys.exit(0 if positions == sorted(positions) else 1)
 }
 
 # TriggerProperty defers the activate on a 30ms TimeEvent (kimpanel waits
-# for the ic to take focus), then the UI flush and RegisterProperties
-# re-send follow — hence the 300ms waits.
+# for the ic to take focus), but its zero accuracy lets sd-event coalesce
+# it onto a 250ms grid, so a flip can land ~280ms after the trigger. Each
+# flip is awaited through its menuchange line; the 300ms sleep then only
+# covers the UI flush and the RegisterProperties re-send.
 out="$(ISOLATED_LOG="$log" ISOLATED_CONFIG_HOME="$confhome" \
     "$root/test/Isolated.sh" menufixture --kimpanel \
     sleep:300 props \
-    trigger:macishtype-menu-menufixture-2 sleep:300 \
-    trigger:macishtype-menu-menufixture-0 sleep:300 props)"
+    trigger:macishtype-menu-menufixture-2 'waitlog:1:menufx menuchange' \
+    trigger:macishtype-menu-menufixture-0 'waitlog:2:menufx menuchange' \
+    sleep:300 props)"
 logtext="$(cat "$log")"
 
 props1="$(printf '%s\n' "$out" | grep -F '"seq": 1' || true)"
@@ -147,14 +150,35 @@ mkdir -p "$reload_fixture"
 cp "$root/test/fixtures/share/fcitx5/macishtype/engines/menufixture/"* \
     "$reload_fixture/"
 
+wait_for_log() {
+    i=0
+    while [ "$i" -lt 300 ]; do
+        if grep -qF "$1" "$log"; then
+            return 0
+        fi
+        if ! kill -0 "$client" 2>/dev/null; then
+            break
+        fi
+        i=$((i + 1))
+        sleep 0.1
+    done
+    echo "FAIL: timed out waiting for: $1" >&2
+    tail -20 "$log" >&2
+    kill "$client" 2>/dev/null
+    exit 1
+}
+
+# The flip is saved before the engine hears of it, so once its menuchange
+# is logged, the reload re-seeds the flipped value.
+: > "$log"
 out3="$(
     ISOLATED_LOG="$log" ISOLATED_CONFIG_HOME="$reload_config" \
         ISOLATED_DATA_HOME="$reload_data" \
         "$root/test/Isolated.sh" menufixture --kimpanel \
-        sleep:300 trigger:macishtype-menu-menufixture-0 sleep:500 \
-        sleep:4000 props &
+        sleep:300 trigger:macishtype-menu-menufixture-0 \
+        'waitlog:2:Engine loaded: menufixture' sleep:300 props &
     client=$!
-    sleep 5
+    wait_for_log 'menufx menuchange'
     printf '\n' >> "$reload_fixture/manifest.json"
     wait $client
 )"

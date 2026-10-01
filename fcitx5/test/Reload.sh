@@ -20,23 +20,48 @@ printf 'hi 甲,乙\n' > "$fixture/demo.txt"
 
 # The client types hi+space three times with idle gaps. During the first
 # gap the shell writes a file the engine never read — reloads are scoped to
-# the engine's tracked files, so nothing may happen. During the second gap
-# it rewrites demo.txt (tracked via fetch), which reloads the engine under
-# the still-focused context. h=104:43 i=105:31 space=32:65.
+# the engine's tracked files, so nothing may happen while the client outwaits
+# the watcher's debounce. During the second gap it rewrites demo.txt (tracked
+# via fetch), which reloads the engine under the still-focused context; the
+# client resumes once the reloaded table is in. h=104:43 i=105:31
+# space=32:65.
 log_file=/tmp/fcitx5-macishtype-reload.log
-output="$(
-    ISOLATED_LOG="$log_file" ISOLATED_DATA_HOME="$data_home" \
-        "$root/test/Isolated.sh" \
-        reloadtest \
-        104:43 105:31 32:65 sleep:2500 104:43 105:31 32:65 \
-        sleep:2500 104:43 105:31 32:65 &
-    client=$!
-    sleep 3
-    printf 'not read by the engine\n' > "$fixture/notes.txt"
-    sleep 2.5
-    printf 'hi 丙,丁\n' > "$fixture/demo.txt"
-    wait $client
-)"
+client_out=/tmp/fcitx5-macishtype-reload-client.log
+: > "$client_out"
+ISOLATED_LOG="$log_file" ISOLATED_DATA_HOME="$data_home" \
+    "$root/test/Isolated.sh" \
+    reloadtest \
+    104:43 105:31 32:65 "waitfile:$fixture/notes.txt" sleep:700 \
+    104:43 105:31 32:65 'waitlog:2:demo.txt loaded' \
+    104:43 105:31 32:65 > "$client_out" &
+client=$!
+
+# $1 a client output line, $2 how many of them to wait for.
+wait_for() {
+    i=0
+    while [ "$i" -lt 300 ]; do
+        if [ "$(grep -cF "$1" "$client_out")" -ge "$2" ]; then
+            return 0
+        fi
+        if ! kill -0 "$client" 2>/dev/null; then
+            break
+        fi
+        i=$((i + 1))
+        sleep 0.1
+    done
+    echo "FAIL: timed out waiting for: $1 x$2" >&2
+    tail -20 "$client_out" >&2
+    kill "$client" 2>/dev/null
+    exit 1
+}
+
+# Each gap opens with the commit before it.
+wait_for '{"event": "commit", "text": "甲"}' 1
+printf 'not read by the engine\n' > "$fixture/notes.txt"
+wait_for '{"event": "commit", "text": "甲"}' 2
+printf 'hi 丙,丁\n' > "$fixture/demo.txt"
+wait $client
+output="$(cat "$client_out")"
 
 check() {
     if printf '%s\n' "$output" | grep -qF "$2"; then

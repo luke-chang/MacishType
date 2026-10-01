@@ -17,6 +17,7 @@ implicit release after each press.
 """
 
 import json
+import os
 import sys
 import time
 
@@ -75,9 +76,20 @@ CAPABILITY_SURROUNDING_TEXT = 1 << 6
 # candidate lists and their comments.
 CAPABILITY_CLIENT_SIDE_INPUT_PANEL = 1 << 39
 
+# Activation and each call's signals arrive within a few ms; this beat lets
+# them land before the first key and before quitting. Anything slower (async
+# engine work, timers, the shell's file writes) is the test's to wait for
+# with waitevent:, waitlog:, waitnotify:, waitfile: or sleep:.
+SETTLE_MS = 50
+
+
+printed = []
+
 
 def emit(payload):
-    print(json.dumps(payload, ensure_ascii=False), flush=True)
+    line = json.dumps(payload, ensure_ascii=False)
+    printed.append(line)
+    print(line, flush=True)
 
 
 def pump_until(predicate, timeout):
@@ -106,6 +118,14 @@ def own_name(bus, name):
     context = GLib.MainContext.default()
     while not acquired["done"]:
         context.iteration(True)
+
+
+def name_has_owner(bus, name):
+    reply = bus.call_sync(
+        "org.freedesktop.DBus", "/org/freedesktop/DBus",
+        "org.freedesktop.DBus", "NameHasOwner", GLib.Variant("(s)", (name,)),
+        GLib.VariantType("(b)"), Gio.DBusCallFlags.NONE, 1000, None)
+    return reply.unpack()[0]
 
 
 def main():
@@ -223,6 +243,25 @@ def main():
         if spec.startswith("waitnotify:"):
             keys.append(("waitnotify", int(spec.split(":")[1])))
             continue
+        # "waitevent:N:TEXT" blocks until N of this client's own output
+        # lines contain TEXT, for what arrives asynchronously (a candidate
+        # frame drawn after a fetch, a commit).
+        if spec.startswith("waitevent:"):
+            count, _, text = spec[len("waitevent:"):].partition(":")
+            keys.append(("waitevent", int(count), text))
+            continue
+        # "waitfile:PATH" blocks until PATH exists: the shell's cue that a
+        # step only it can take (a file write) is done.
+        if spec.startswith("waitfile:"):
+            keys.append(("waitfile", spec[len("waitfile:"):]))
+            continue
+        # "waitlog:N:TEXT" blocks until TEXT has appeared N times in the
+        # fcitx5 log, for what fcitx5 only logs (a debounced reload, the icon
+        # rescan nudge).
+        if spec.startswith("waitlog:"):
+            count, _, text = spec[len("waitlog:"):].partition(":")
+            keys.append(("waitlog", int(count), text))
+            continue
         # "setgroupims:NAME1,NAME2,..." replaces the Default group's input
         # method list (SetCurrentIM silently ignores IMs outside the group).
         if spec.startswith("setgroupims:"):
@@ -242,6 +281,13 @@ def main():
         keys.append(("key", keyval, keycode, state))
 
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+
+    # Ready barrier: fcitx5 takes its name while loading addons but serves
+    # calls only once startup is complete, so the first call after this waits
+    # for a fully initialized instance.
+    if not pump_until(lambda: name_has_owner(bus, BUS_NAME), 10):
+        emit({"event": "fcitx5", "ready": False})
+        sys.exit(1)
 
     latest_notification = {"id": 0, "next": 0, "count": 0}
     if notifications:
@@ -294,24 +340,13 @@ def main():
                              None, Gio.DBusSignalFlags.NONE,
                              on_kimpanel_signal)
         own_name(bus, "org.kde.impanel")
-        context = GLib.MainContext.default()
         for iface, name in (("org.kde.impanel", "PanelCreated"),
                             ("org.kde.impanel2", "PanelCreated2")):
             bus.emit_signal(None, "/org/kde/impanel", iface, name, None)
         # Ready barrier: fcitx5's kimpanel requests this name in resume().
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            reply = bus.call_sync(
-                "org.freedesktop.DBus", "/org/freedesktop/DBus",
-                "org.freedesktop.DBus", "NameHasOwner",
-                GLib.Variant("(s)", ("org.kde.kimpanel.inputmethod",)),
-                GLib.VariantType("(b)"), Gio.DBusCallFlags.NONE, 1000, None)
-            if reply.unpack()[0]:
-                break
-            while context.iteration(False):
-                pass
-            time.sleep(0.05)
-        else:
+        if not pump_until(
+                lambda: name_has_owner(bus, "org.kde.kimpanel.inputmethod"),
+                10):
             emit({"event": "kimpanel", "ready": False})
             sys.exit(1)
         emit({"event": "kimpanel", "ready": True})
@@ -514,6 +549,39 @@ def main():
                     sys.exit(1)
                 emit({"event": "notify-count", "count": entry[1]})
                 continue
+            if entry[0] == "waitevent":
+                _kind, want, text = entry
+                if not pump_until(
+                        lambda: sum(text in line for line in printed) >= want,
+                        15):
+                    emit({"event": "waitevent-timeout", "want": want,
+                          "text": text})
+                    sys.exit(1)
+                # Success lines leave TEXT out: a later waitevent: would count
+                # them.
+                emit({"event": "waited", "count": want})
+                continue
+            if entry[0] == "waitfile":
+                _kind, path = entry
+                if not pump_until(lambda: os.path.exists(path), 15):
+                    emit({"event": "waitfile-timeout", "path": path})
+                    sys.exit(1)
+                emit({"event": "file-seen"})
+                continue
+            if entry[0] == "waitlog":
+                _kind, want, text = entry
+
+                def logged():
+                    with open(os.environ["ISOLATED_FCITX5_LOG"],
+                              errors="replace") as log:
+                        return log.read().count(text) >= want
+
+                if not pump_until(logged, 15):
+                    emit({"event": "waitlog-timeout", "want": want,
+                          "text": text})
+                    sys.exit(1)
+                emit({"event": "logged", "count": want})
+                continue
             if entry[0] == "setgroupims":
                 _kind, value = entry
                 ims = [(name, "") for name in value.split(",") if name]
@@ -578,10 +646,9 @@ def main():
                           "handled": reply.unpack()[0],
                           "ms": round(
                               (time.monotonic() - call_started) * 1000, 1)})
-        # Give queued signals a beat to arrive before quitting.
-        GLib.timeout_add(300, loop.quit)
+        GLib.timeout_add(SETTLE_MS, loop.quit)
 
-    GLib.timeout_add(300, send_keys_guarded)
+    GLib.timeout_add(SETTLE_MS, send_keys_guarded)
     loop.run()
     if failure:
         raise failure[0]

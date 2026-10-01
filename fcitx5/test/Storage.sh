@@ -11,19 +11,42 @@ make -s -C "$root" dev-install > /dev/null
 
 state_dir="$(mktemp -d)"
 log_file=/tmp/fcitx5-macishtype-storage.log
+client_out=/tmp/fcitx5-macishtype-storage-client.log
 trap 'rm -rf "$state_dir"' EXIT
 storage_dir="$state_dir/fcitx5/macishtype/fixture"
 
-# The client activates the fixture (whose activate() writes key "own"),
-# idles while the shell drops key "ext" plus a foreign file into the
-# storage directory, then idles again so the dispatched event's log line
-# lands before exit. digit5=53:14 keeps the timeline; the fixture handles
-# no keys. Key files carry the cross-platform localStorage_ prefix.
+# The client activates the fixture (whose activate() writes key "own") and
+# idles past the watcher's debounce, then presses digit5=53:14, which the
+# fixture leaves unhandled, as the shell's cue to drop key "ext" plus a
+# foreign file into the storage directory. It waits for the dispatched event,
+# then idles once more so any event that should not exist would surface. Key
+# files carry the cross-platform localStorage_ prefix.
+: > "$client_out"
 ISOLATED_LOG="$log_file" ISOLATED_STATE_HOME="$state_dir" \
-    "$root/test/Isolated.sh" fixture sleep:2500 53:14 sleep:1500 \
-    > /dev/null &
+    "$root/test/Isolated.sh" fixture sleep:600 53:14 \
+    'waitlog:1:storage-event ext=external' sleep:500 \
+    > "$client_out" &
 client=$!
-sleep 4
+
+wait_for() {
+    i=0
+    while [ "$i" -lt 300 ]; do
+        if grep -qF "$1" "$client_out"; then
+            return 0
+        fi
+        if ! kill -0 "$client" 2>/dev/null; then
+            break
+        fi
+        i=$((i + 1))
+        sleep 0.1
+    done
+    echo "FAIL: timed out waiting for: $1" >&2
+    tail -20 "$client_out" >&2
+    kill "$client" 2>/dev/null
+    exit 1
+}
+
+wait_for '"keyval": 53'
 printf 'external' > "$storage_dir/localStorage_ext"
 printf 'not a key file' > "$storage_dir/foreign"
 wait $client

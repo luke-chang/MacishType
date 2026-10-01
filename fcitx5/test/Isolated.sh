@@ -66,6 +66,13 @@ Layout=
 [GroupOrder]
 0=Default
 EOF
+# fcitx5's input method popup shares the client-side panel with the engines,
+# and one instance of it comes from a startup timer that can fire after the
+# client has begun; keep every candidate frame the engine's own.
+cat > "$config_root/fcitx5/config" <<EOF
+[Behavior]
+ShowInputMethodInformation=False
+EOF
 
 # ISOLATED_ADDON_DIRS lets a test load the addon from a scratch copy (the
 # uninstall-cleanup test deletes it mid-run).
@@ -91,15 +98,36 @@ case " $* " in
 esac
 export disabled_addons
 
-dbus-run-session -- sh -c '
+# The private bus activates nothing, so a name no test process owns stays
+# unowned. Otherwise the desktop's services (portals, keyring, gvfs) start on
+# demand inside it — a restarted fcitx5 drops the --disable list above — and
+# reach the developer's own session.
+bus_config="$(mktemp)"
+scratch_dirs="$scratch_dirs $bus_config"
+cat > "$bus_config" <<EOF
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <keep_umask/>
+  <listen>unix:tmpdir=/tmp</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+EOF
+
+dbus-run-session --config-file="$bus_config" -- sh -c '
     WAYLAND_DISPLAY= DISPLAY= fcitx5 \
         --disable="$disabled_addons" \
         --verbose=default=4,macishtype=5 > "$1" 2>&1 &
     fcitx_pid=$!
-    sleep 2
     log_file="$1"
     shift
-    if python3 "$0" "$@"; then
+    if ISOLATED_FCITX5_LOG="$log_file" python3 "$0" "$@"; then
         status=0
     else
         status=$?

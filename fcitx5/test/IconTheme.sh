@@ -68,9 +68,12 @@ EOF
     fi
 }
 
+# Runs whose checks read the nudge (below) wait for its debounced timer.
+nudged='waitlog:1:for an icon theme rescan'
+
 # --- The fixture engine ships icon-symbolic.svg: name served, link installed --
 out="$(ISOLATED_DATA_HOME="$data_home" ISOLATED_LOG="$log" \
-    "$root/test/Isolated.sh" fixture iminfo)"
+    "$root/test/Isolated.sh" fixture iminfo "$nudged")"
 
 check "a symbolic SVG is served as a theme name, not a path" \
     "$out" '"icon": "macishtype-fixture-symbolic"'
@@ -124,7 +127,7 @@ check "an engine without an icon serves an empty icon" \
 printf '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"/>\n' \
     > "$engines/plainicon/icon-symbolic.svg"
 out="$(ISOLATED_DATA_HOME="$data_home" \
-    "$root/test/Isolated.sh" plainicon iminfo)"
+    "$root/test/Isolated.sh" plainicon iminfo "$nudged")"
 check "a variant switch serves the new name" \
     "$out" '"icon": "macishtype-plainicon-symbolic"'
 check_shell "the new entry exists" \
@@ -175,7 +178,8 @@ write_engine parkme icon-symbolic.svg
 # C locale: the wait below keys on the load-failure prompt, which is translated.
 LANGUAGE= LANG=C LC_ALL=C LC_MESSAGES=C \
     ISOLATED_DATA_HOME="$data_home" ISOLATED_LOG="$log" \
-    "$root/test/Isolated.sh" parkme a sleep:2500 a sleep:1500 \
+    "$root/test/Isolated.sh" parkme a 'waitlog:1:Engine folder removed: parkme' \
+    a 'waitevent:1:Engine load failed' \
     > "$client_out" 2>&1 &
 runner_pid=$!
 wait_for() {
@@ -210,23 +214,27 @@ check_shell "the next start sweeps the vanished engine's entry" \
 addon_scratch="$(mktemp -d)"
 keep_home="$(mktemp -d)"
 gone_home="$(mktemp -d)"
-trap 'rm -rf "$data_home" "$addon_scratch" "$keep_home" "$gone_home"' EXIT
+# The shell's marker that the library is gone, for the client's waitfile:.
+marks="$(mktemp -d)"
+trap 'rm -rf "$data_home" "$addon_scratch" "$keep_home" "$gone_home" "$marks"' \
+    EXIT
 cp "$HOME/.local/lib/fcitx5/libmacishtype.so" "$addon_scratch/"
 scratch_addon_dirs="$addon_scratch:$("$root/test/SystemAddonDir.sh")"
 
 ISOLATED_DATA_HOME="$keep_home" ISOLATED_ADDON_DIRS="$scratch_addon_dirs" \
-    ISOLATED_LOG="$log" "$root/test/Isolated.sh" fixture sleep:200 \
-    > /dev/null
+    ISOLATED_LOG="$log" "$root/test/Isolated.sh" fixture > /dev/null
 check_shell "links survive a shutdown while the library remains on disk" \
     "ls '$keep_home/icons/hicolor/scalable/apps/' | grep -q '^macishtype-'"
 
+: > "$client_out"
 ISOLATED_DATA_HOME="$gone_home" ISOLATED_ADDON_DIRS="$scratch_addon_dirs" \
-    ISOLATED_LOG="$log" "$root/test/Isolated.sh" fixture sleep:3000 \
-    > /dev/null &
-client=$!
-sleep 3
+    ISOLATED_LOG="$log" "$root/test/Isolated.sh" fixture \
+    "waitfile:$marks/removed" > "$client_out" &
+runner_pid=$!
+wait_for '"event": "im-switched"'
 rm "$addon_scratch/libmacishtype.so"
-wait $client
+touch "$marks/removed"
+wait "$runner_pid"
 check_shell "links are removed when the library is gone at shutdown" \
     "! ls '$gone_home/icons/hicolor/scalable/apps/' 2> /dev/null \
         | grep -q '^macishtype-'"

@@ -70,7 +70,7 @@ ISOLATED_LOG="$log" ISOLATED_DATA_HOME="$data_home" \
     waitnotify:7 \
     iminfo \
     invokeaction:restart \
-    sleep:6000 \
+    'waitlog:2:Service name change: org.fcitx.Fcitx5' \
     iminfo \
     > "$client_out" 2>&1 &
 runner_pid=$!

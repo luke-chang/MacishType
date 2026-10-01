@@ -28,8 +28,10 @@ write_manifest() {
 EOF
 }
 
+# Each version logs its load, so the client can wait on the one it needs.
 write_index() {
     cat > "$1/index.js" <<EOF
+console.log("loaded $2");
 export default class {
   handleKey(event) {
     if (event.key === "a") {
@@ -104,7 +106,7 @@ run_case() {
         "$root/test/Isolated.sh" "$2" \
         checkupdate \
         a \
-        sleep:2000 \
+        "waitlog:1:[$2] loaded after" \
         a \
         checkupdate \
         refresh \

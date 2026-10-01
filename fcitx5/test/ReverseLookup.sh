@@ -14,6 +14,8 @@ make -s -C "$root" dev-install > /dev/null
 # (state 12); fcitx normalizes that to the configured Control+Alt+L. Escape is
 # 65307, PageDown 65366 (matching Navigation.sh).
 hotkey=108:46:12
+# The window for a 甲 selection, drawn once the fetch-backed prepare resolves.
+shown='waitevent:1:"text": "甲 ab'
 
 check() {
     if printf '%s\n' "$2" | grep -qF "$3"; then
@@ -59,7 +61,8 @@ line_of() { grep -nF "$2" "$1" | head -1 | cut -d: -f1; }
 # 丙 has 14 codes (over the per-character cap).
 log=/tmp/fcitx5-macishtype-reverselookup.log
 out="$(ISOLATED_LOG="$log" "$root/test/Isolated.sh" reverselookupfixture \
-    setsurrounding:甲乙丙 "$hotkey" sleep:1500 65366:117 sleep:300)"
+    setsurrounding:甲乙丙 "$hotkey" "$shown" 65366:117 \
+    'waitevent:1:"text": "丙 ')"
 
 check "a character's codes render, the annotated one parenthesized" \
     "$out" '"text": "甲 ab  cd (alt)"'
@@ -102,7 +105,8 @@ fi
 # --- Idempotent re-prepare: a second trigger reuses the built index ----------
 idem_log=/tmp/fcitx5-macishtype-reverselookup-idem.log
 ISOLATED_LOG="$idem_log" "$root/test/Isolated.sh" reverselookupfixture \
-    setsurrounding:甲 "$hotkey" sleep:1500 "$hotkey" sleep:1500 > /dev/null
+    setsurrounding:甲 "$hotkey" "$shown" "$hotkey" \
+    'waitlog:1:revfix prepare:cached' > /dev/null
 built_count="$(grep -c 'revfix prepare:built' "$idem_log" || true)"
 cached_count="$(grep -c 'revfix prepare:cached' "$idem_log" || true)"
 if [ "$built_count" = "1" ] && [ "$cached_count" -ge 1 ]; then
@@ -119,8 +123,8 @@ fi
 rel_log=/tmp/fcitx5-macishtype-reverselookup-release.log
 MACISHTYPE_REVERSE_LOOKUP_RELEASE_MS=200 ISOLATED_LOG="$rel_log" \
     "$root/test/Isolated.sh" reverselookupfixture \
-    setsurrounding:甲 "$hotkey" sleep:1200 switchim:keyboard-us sleep:1000 \
-    > /dev/null
+    setsurrounding:甲 "$hotkey" "$shown" switchim:keyboard-us \
+    'waitlog:1:revfix end' > /dev/null
 if grep -qF 'revfix end' "$rel_log"; then
     echo "PASS: the host releases the reverse index after an idle grace period"
 else
@@ -134,7 +138,7 @@ fi
 debounce_log=/tmp/fcitx5-macishtype-reverselookup-debounce.log
 MACISHTYPE_REVERSE_LOOKUP_RELEASE_MS=600 ISOLATED_LOG="$debounce_log" \
     "$root/test/Isolated.sh" reverselookupfixture \
-    setsurrounding:甲 "$hotkey" sleep:1200 switchim:keyboard-us sleep:300 \
+    setsurrounding:甲 "$hotkey" "$shown" switchim:keyboard-us sleep:300 \
     switchim:macishtype-reverselookupfixture sleep:800 > /dev/null
 if grep -qF 'revfix end' "$debounce_log"; then
     echo "FAIL: re-activation within the grace period cancels the release" >&2
@@ -146,7 +150,7 @@ fi
 
 # --- Dismissal: Escape closes with nothing committed ------------------------
 escaped="$("$root/test/Isolated.sh" reverselookupfixture \
-    setsurrounding:甲 "$hotkey" sleep:1500 65307:9 sleep:300)"
+    setsurrounding:甲 "$hotkey" "$shown" 65307:9)"
 check_absent "Escape dismisses the window without committing" \
     "$escaped" '"event": "commit"'
 check "the candidate window is cleared after Escape" \
@@ -154,12 +158,12 @@ check "the candidate window is cleared after Escape" \
 
 # --- Typing is never blocked: a normal key dismisses and then composes -------
 typed="$("$root/test/Isolated.sh" reverselookupfixture \
-    setsurrounding:甲 "$hotkey" sleep:1500 97:38 sleep:300)"
+    setsurrounding:甲 "$hotkey" "$shown" 97:38)"
 check "a keystroke while shown dismisses and composes (not blocked)" \
     "$typed" '{"event": "commit", "text": "Z"}'
 
 # --- Empty selection teaches the operation ----------------------------------
-hint="$("$root/test/Isolated.sh" reverselookupfixture "$hotkey" sleep:400)"
+hint="$("$root/test/Isolated.sh" reverselookupfixture "$hotkey")"
 check_re "an empty selection shows the select-text hint on the aux line" \
     "$hint" '"auxUp": "(先選取文字再執行尋找輸入碼|Select text first, then run Find Input Code)"'
 
@@ -167,14 +171,14 @@ check_re "an empty selection shows the select-text hint on the aux line" \
 # up — ASCII is typed directly — so it shows the same hint, not a window of
 # dashes.
 blank="$("$root/test/Isolated.sh" reverselookupfixture "setsurrounding:ab 12" \
-    "$hotkey" sleep:400)"
+    "$hotkey")"
 check_re "an ASCII-only selection shows the select-text hint" \
     "$blank" '"auxUp": "(先選取文字再執行尋找輸入碼|Select text first, then run Find Input Code)"'
 
 # A mixed selection looks up only its non-ASCII characters (the ASCII 'a'/'b'
 # are dropped, so no dash rows for them).
 mixed="$("$root/test/Isolated.sh" reverselookupfixture "setsurrounding:a甲b" \
-    "$hotkey" sleep:1500)"
+    "$hotkey" "$shown")"
 check "a mixed selection looks up its non-ASCII character" \
     "$mixed" '"text": "甲 ab  cd (alt)"'
 check_absent "a mixed selection drops its ASCII characters" \
@@ -186,7 +190,7 @@ check_absent "a mixed selection drops its ASCII characters" \
 # editors silently normalize variation sequences.
 gear="$(printf '\342\232\231\357\270\216')"
 cluster="$("$root/test/Isolated.sh" reverselookupfixture \
-    "setsurrounding:a${gear}b" "$hotkey" sleep:1500)"
+    "setsurrounding:a${gear}b" "$hotkey" "waitevent:1:\"text\": \"${gear} —\"")"
 check "a variation sequence renders as one whole-cluster row" \
     "$cluster" "\"text\": \"${gear} —\""
 check_absent "the cluster is not split at its variation selector" \
@@ -197,7 +201,7 @@ check_absent "the cluster is not split at its variation selector" \
 # and annotation, one with an empty code and one with no code; 戊's holds only
 # an empty string. Codes read like candidate text, and empty ones drop.
 odd="$("$root/test/Isolated.sh" reverselookupfixture "setsurrounding:丁戊" \
-    "$hotkey" sleep:1500)"
+    "$hotkey" 'waitevent:1:"text": "丁 ')"
 check "number codes and annotations stringify, and empty codes drop" \
     "$odd" '"text": "丁 5001  7 (8)"'
 check "a character whose codes are all empty shows the em-dash placeholder" \
@@ -206,8 +210,7 @@ check "a character whose codes are all empty shows the em-dash placeholder" \
 # --- No capability: the hotkey is inert -------------------------------------
 # navfixture declares no reverseLookup capability, so the hotkey is not
 # intercepted (forwarded, handled=false) and no reverse window opens.
-noop="$("$root/test/Isolated.sh" navfixture setsurrounding:甲 "$hotkey" \
-    sleep:400)"
+noop="$("$root/test/Isolated.sh" navfixture setsurrounding:甲 "$hotkey")"
 check "the hotkey is inert on an engine without the capability" \
     "$noop" '"keyval": 108, "handled": false'
 check_absent "no reverse window opens without the capability" \

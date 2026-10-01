@@ -7,8 +7,8 @@
 # recovers typing on the context the user stayed on (lazy session rebuild).
 #
 # The client run is event-driven: folder mutations fire on observed client
-# output rather than absolute timing, so only the watcher debounce (300ms)
-# needs the sleep margins below.
+# output, and the client resumes on what each one produces (a log line, or
+# the shell's marker file) rather than on absolute timing.
 set -e
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,8 +18,10 @@ log=/tmp/fcitx5-macishtype-discovery.log
 client_out=/tmp/fcitx5-macishtype-discovery-client.log
 data_home="$(mktemp -d)"
 data_home2="$(mktemp -d)"
+# Markers the shell drops once a step is written, for the client's waitfile:.
+marks="$(mktemp -d)"
 engine_dir="$data_home/fcitx5/macishtype/engines/dynFixture"
-trap 'rm -rf "$data_home" "$data_home2"' EXIT
+trap 'rm -rf "$data_home" "$data_home2" "$marks"' EXIT
 
 write_engine() {
     mkdir -p "$engine_dir"
@@ -29,8 +31,11 @@ EOF
     edit_engine "$1"
 }
 
+# Each version logs its load: one edit can reload more than once, so the
+# client waits on the version it needs rather than counting reloads.
 edit_engine() {
     cat > "$engine_dir/index.js" <<EOF
+console.log("loaded $1");
 export default class {
   handleKey(event) {
     if (event.key === "a") {
@@ -50,24 +55,24 @@ LANGUAGE= LANG=C LC_ALL=C LC_MESSAGES=C \
 ISOLATED_LOG="$log" ISOLATED_DATA_HOME="$data_home" \
     "$root/test/Isolated.sh" fixture \
     checkupdate \
-    sleep:2000 \
+    "waitfile:$marks/dyn" \
     checkupdate \
     refresh \
     "setgroupims:keyboard-us,macishtype-fixture,macishtype-dynFixture" \
     switchim:macishtype-dynFixture \
     a \
-    sleep:2500 \
+    'waitlog:1:[dynFixture] loaded dyn2' \
     a \
     "setaddonopt:macishtype:AutoReloadEngines=False" \
-    sleep:2500 \
+    'waitlog:1:reload deferred to the next update: dynFixture' \
     a \
     checkupdate \
     refresh \
     a \
-    sleep:2500 \
+    'waitlog:1:Engine folder removed: dynFixture' \
     a \
     65307:9:0 \
-    sleep:2500 \
+    'waitlog:1:[dynFixture] loaded dyn4' \
     a \
     > "$client_out" 2>&1 &
 runner_pid=$!
@@ -90,10 +95,14 @@ wait_for() {
     exit 1
 }
 
-# Each trigger reacts to an observed client event, keeping the schedule
-# deterministic; the client's sleeps cover the 300ms watcher debounce.
+# Each trigger reacts to an observed client event, and the client resumes on
+# the log line the trigger produces, keeping the schedule deterministic.
 wait_for '"value": false'            # step 1 passed the clean baseline
+# CheckUpdate compares whole-second mtimes against the startup scan, so the
+# new folder must land in a later second.
+sleep 1
 write_engine dyn                     # -> step 2 discovers it via Refresh
+touch "$marks/dyn"
 wait_for '"text": "dyn"}'
 edit_engine dyn2                     # -> step 3: default hot reload
 wait_for '"event": "addon-opt-set"'
@@ -183,7 +192,7 @@ ISOLATED_LOG=/tmp/fcitx5-macishtype-discovery2.log \
 ISOLATED_DATA_HOME="$data_home2" \
     "$root/test/Isolated.sh" fixture \
     checkupdate \
-    sleep:2000 \
+    "waitfile:$marks/fixed" \
     refresh \
     "setgroupims:keyboard-us,macishtype-fixture,macishtype-brokenfix" \
     switchim:macishtype-brokenfix \
@@ -192,10 +201,11 @@ ISOLATED_DATA_HOME="$data_home2" \
     > "$client_out" 2>&1 &
 runner_pid=$!
 
-# Fix the manifest during the client's sleep, before its refresh.
+# Fix the manifest while the client waits, before its refresh.
 wait_for '"event": "checkupdate"'
 printf '{ "entry": "index.js", "name": { "en": "Broken Fix" } }\n' \
     > "$broken_dir/manifest.json"
+touch "$marks/fixed"
 wait "$runner_pid"
 
 out2="$(cat "$client_out")"

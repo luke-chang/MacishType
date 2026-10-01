@@ -42,7 +42,7 @@ check_absent() {
 # Run 1: schema description, initial push, mid-session safety, persistence.
 out1="$(ISOLATED_LOG="$log1" ISOLATED_CONFIG_HOME="$config_home" \
     "$root/test/Isolated.sh" fixture \
-    getconfig setconfig:mode=alpha sleep:800)"
+    getconfig setconfig:mode=alpha sleep:300)"
 log1content="$(cat "$log1")"
 
 check "description carries picker tags as enum values" "$out1" '"Enum": {"0": "alpha"'
@@ -59,13 +59,13 @@ check "the changed value persists as ini" \
 # Run 2: the change takes effect at the next activate boundary (refocus).
 ISOLATED_LOG="$log2" ISOLATED_CONFIG_HOME="$(mktemp -d)" \
     "$root/test/Isolated.sh" fixture \
-    setconfig:mode=alpha refocus sleep:800 > /dev/null
+    setconfig:mode=alpha refocus 'waitlog:1:settings-changed' > /dev/null
 check "the change applies at the next activate, not before" "$(cat "$log2")" \
     'settings-changed {"flag":true,"note":"hello","mode":{"kind":"a"}}'
 
 # Run 3: a fresh daemon over the persisted config starts from the new value.
 ISOLATED_LOG="$log3" ISOLATED_CONFIG_HOME="$config_home" \
-    "$root/test/Isolated.sh" fixture sleep:300 > /dev/null
+    "$root/test/Isolated.sh" fixture > /dev/null
 check "persisted values apply on the next load" "$(cat "$log3")" \
     'settings {"flag":true,"note":"hello","mode":{"kind":"a"}}'
 

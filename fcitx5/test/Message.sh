@@ -52,15 +52,18 @@ retired="$("$root/test/Isolated.sh" messagefixture 97:38 99:54)"
 kept="$("$root/test/Isolated.sh" messagefixture 97:38 98:56 99:54)"
 reset="$("$root/test/Isolated.sh" messagefixture 97:38 65307:9)"
 focusout="$("$root/test/Isolated.sh" messagefixture 97:38 focusout)"
-# The expiry run ends on the sleep: a later key would flush a pending panel
-# update on its own. The other cases read the state through a trailing KeyD,
-# which the engine sees whether or not the panel was redrawn; one run chains
-# them, the fourth re-sending KeyE halfway through its countdown.
-expired="$("$root/test/Isolated.sh" messagefixture 101:26 sleep:1500)"
+# The expiry run ends on the cleared frame (the second empty aux line, after
+# activation's): a later key would flush a pending panel update on its own.
+# The other cases read the state through a trailing KeyD, which the engine
+# sees whether or not the panel was redrawn; one run chains them, the fourth
+# re-sending KeyE halfway through its countdown. Where nothing may change,
+# the sleeps outlast the countdown, timer slack included.
+cleared='waitevent:2:"auxUp": ""'
+expired="$("$root/test/Isolated.sh" messagefixture 101:26 "$cleared")"
 # The clipboard picker draws on the same panel without the engine knowing.
 picker="$("$root/test/Isolated.sh" messagefixture 101:26 59:47:4 sleep:1500)"
 ISOLATED_LOG="$log" "$root/test/Isolated.sh" messagefixture \
-    101:26 sleep:1500 100:40 \
+    101:26 "$cleared" 100:40 \
     101:26 97:38 sleep:1500 100:40 \
     101:26 98:56 sleep:1500 100:40 \
     101:26 sleep:500 101:26 sleep:500 100:40 \

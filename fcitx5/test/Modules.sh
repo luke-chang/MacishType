@@ -11,8 +11,8 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 make -s -C "$root" dev-install > /dev/null
 
 log=/tmp/fcitx5-macishtype-modules.log
-ISOLATED_LOG="$log" "$root/test/Isolated.sh" modulesfixture sleep:600 \
-    > /dev/null
+ISOLATED_LOG="$log" "$root/test/Isolated.sh" modulesfixture \
+    'waitlog:1:modulesfix fontCoverage-type=' > /dev/null
 
 check() {
     if grep -qF "$2" "$log"; then
