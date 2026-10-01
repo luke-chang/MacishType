@@ -6,7 +6,7 @@
 set -e
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-make -s -C "$root" dev-install > /dev/null
+[ -n "$MACISHTYPE_TEST_INSTALLED" ] || make -s -C "$root" dev-install > /dev/null
 
 # Key specs are keyval:keycode[:state]; state is a fcitx KeyStates bitmask
 # (Shift=1, NumLock=16). KeyA=97:38 commits 中 (dict: 中 -> 文 國 心);

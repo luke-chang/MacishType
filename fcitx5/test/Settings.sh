@@ -8,7 +8,7 @@
 set -e
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-make -s -C "$root" dev-install > /dev/null
+[ -n "$MACISHTYPE_TEST_INSTALLED" ] || make -s -C "$root" dev-install > /dev/null
 
 # Labels resolve against the daemon's locale; pin it so assertions hold
 # everywhere.

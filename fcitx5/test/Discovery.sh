@@ -12,7 +12,7 @@
 set -e
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-make -s -C "$root" dev-install > /dev/null
+[ -n "$MACISHTYPE_TEST_INSTALLED" ] || make -s -C "$root" dev-install > /dev/null
 
 log=/tmp/fcitx5-macishtype-discovery.log
 client_out=/tmp/fcitx5-macishtype-discovery-client.log

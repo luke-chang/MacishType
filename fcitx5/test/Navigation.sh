@@ -5,7 +5,7 @@
 set -e
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-make -s -C "$root" dev-install > /dev/null
+[ -n "$MACISHTYPE_TEST_INSTALLED" ] || make -s -C "$root" dev-install > /dev/null
 
 # navfixture: KeyA=97:38 shows c0..c8 suspended, pageSize 3 (3 pages).
 # PageDown=65366:117, ArrowDown=65364:116.

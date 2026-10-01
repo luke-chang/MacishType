@@ -6,7 +6,7 @@
 set -e
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-make -s -C "$root" dev-install > /dev/null
+[ -n "$MACISHTYPE_TEST_INSTALLED" ] || make -s -C "$root" dev-install > /dev/null
 
 # The associated-words header is asserted translated; pin the daemon's locale
 # so that holds outside a zh_TW session (see Orientation.sh for why LC_ALL).

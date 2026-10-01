@@ -6,7 +6,7 @@
 set -e
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-make -s -C "$root" dev-install > /dev/null
+[ -n "$MACISHTYPE_TEST_INSTALLED" ] || make -s -C "$root" dev-install > /dev/null
 
 log=/tmp/fcitx5-macishtype-contract.log
 LANGUAGE="zh_TW:en_US" LANG=C LC_ALL=C LC_MESSAGES=C ISOLATED_LOG="$log" \

@@ -107,8 +107,12 @@ build: prepare
 	    -DMACISHTYPE_PRELOAD_ENGINES="$(PRELOAD_ENGINES)"
 	cmake --build $(BUILD_DIR) -j $(JOBS)
 
-# Acceptance suite against an isolated fcitx5; safe to run any time.
+# Acceptance suite against an isolated fcitx5; safe to run any time. The
+# scripts install the addon themselves when run on their own; here it is
+# installed once up front instead.
+test: export MACISHTYPE_TEST_INSTALLED := 1
 test: build
+	@$(MAKE) -s dev-install > /dev/null
 	test/Acceptance.sh
 	test/Navigation.sh
 	test/Modifier.sh
