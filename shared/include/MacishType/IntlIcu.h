@@ -1,9 +1,9 @@
 #pragma once
 
 // Single include/link isolation point for ICU. The ICU C API
-// (ubrk_/udat_/ucal_/udatpg_/unumf_/ucol_/uplrules_/uloc_) is identical across
-// platforms — only this header differs, so every call site in intl.cpp stays
-// byte-for-byte portable. The Windows system icu.dll exports unversioned
+// (ubrk_/udat_/ucal_/udatpg_/unumf_/ucol_/uplrules_/uloc_/ures_) is identical
+// across platforms — only this header differs, so every call site in intl.cpp
+// stays byte-for-byte portable. The Windows system icu.dll exports unversioned
 // symbols, so U_DISABLE_RENAMING must precede the combined <icu.h> (the
 // formatter APIs used here need Windows 10 1903+, ICU 64); elsewhere —
 // including a vcpkg ICU on Windows — the conventional per-component headers
@@ -18,6 +18,7 @@
 #include <unicode/ustring.h>
 #include <unicode/utext.h>
 #include <unicode/uloc.h>
+#include <unicode/ures.h>
 #include <unicode/ubrk.h>
 #include <unicode/ucal.h>
 #include <unicode/udat.h>

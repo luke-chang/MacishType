@@ -44,11 +44,31 @@ std::string canonicalLanguageTag(const std::string &icuLocale) {
     return std::string(buffer, length);
 }
 
+// The locale whose bundle ICU's own data loading opens for `locale`, aliases
+// followed (iw → he, tl → fil); empty when it would land on the default
+// locale instead.
+std::string bundleLocale(const char *locale) {
+    UErrorCode status = U_ZERO_ERROR;
+    UResourceBundle *bundle = ures_open(nullptr, locale, &status);
+    std::string actual;
+    if (status == U_ZERO_ERROR || status == U_USING_FALLBACK_WARNING) {
+        UErrorCode localeStatus = U_ZERO_ERROR;
+        const char *name =
+            ures_getLocaleByType(bundle, ULOC_ACTUAL_LOCALE, &localeStatus);
+        if (U_SUCCESS(localeStatus) && name != nullptr) {
+            actual = name;
+        }
+    }
+    ures_close(bundle);
+    return actual;
+}
+
 // ECMA-402's BestAvailableLocale over ICU's installed locales: the tag, or a
 // parent reached by dropping trailing subtags, has data. Root never counts;
 // uloc_getAvailable does not list it. Nor does it list legacy codes (iw, tl,
-// cmn), which ICU's own data loading follows as aliases; likely subtags map
-// them to the current ones.
+// cmn): the bundle ICU opens for one follows its alias, and likely subtags
+// map the ones without an alias bundle, in ICU releases whose likely-subtags
+// data covers legacy codes.
 bool hasLocaleData(const std::string &icuLocale) {
     static const std::set<std::string> available = [] {
         std::set<std::string> locales;
@@ -78,6 +98,10 @@ bool hasLocaleData(const std::string &icuLocale) {
         return false;
     }
     if (availableOrParent(std::string(base, length))) {
+        return true;
+    }
+    if (std::string aliased = bundleLocale(base);
+        !aliased.empty() && availableOrParent(aliased)) {
         return true;
     }
     char likely[ULOC_FULLNAME_CAPACITY];
