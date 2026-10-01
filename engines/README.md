@@ -809,6 +809,12 @@ and applied after the engine method returns — reading `event.markedText`
 right after `event.updateMarkedText(…)` still returns the snapshot from
 method entry.
 
+An event's mutators act only during the method call that received it,
+including the promise jobs that run before control returns to the host.
+After that — a continuation awaiting `fetch(…)`, or a call through a kept
+event — they have no effect. `activate()`, `deactivate()`, and
+`compositionEnded()` receive no event.
+
 All character-index parameters (`cursor`, `staged`, `emphasis`, `anchorAt`)
 count **extended grapheme clusters**, not UTF-16 code units. See
 [Character indices](#character-indices) for the alignment helper.

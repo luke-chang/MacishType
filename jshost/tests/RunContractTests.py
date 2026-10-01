@@ -365,6 +365,28 @@ def main():
     failures.check("Beep", "repeat calls in one event collapse into one action",
                    out.count('"name":"beep"') == 2, out)
 
+    # An event's mutators act only during the call that received it. KeyA's
+    # kept event commits from KeyZ and from each lifecycle hook, all with a
+    # handler installed, so jshost itself has to refuse them; only KeyZ's own
+    # commit may arrive.
+    out = run_verbs(cli, FIXTURE_ENGINES / "staleeventfixture", [
+        '{"do":"activate"}',
+        '{"do":"key","key":"a","code":"KeyA"}',
+        '{"do":"key","key":"z","code":"KeyZ"}',
+        '{"do":"hook","name":"activate"}',
+        '{"do":"hook","name":"compositionEnded"}',
+        '{"do":"hook","name":"deactivate"}',
+        '{"do":"quit"}',
+    ])
+    failures.check("StaleEvent", "the running call's own event still acts",
+                   '{"event":"action","name":"commit","args":["fresh"]}'
+                   in out, out)
+    failures.check("StaleEvent", "a kept event acts in no later call",
+                   '"args":["stale-' not in out, out)
+    failures.check("StaleEvent", "each ignored call is logged",
+                   out.count("called on an event whose hook has returned")
+                   == 4, out)
+
     # Preferred languages as a platform spells them: navigator.languages keeps
     # only the scripts a tag's language and region do not imply, and a bare
     # zh picks the zh-Hans manifest name. Turning glibc locale names into

@@ -218,7 +218,10 @@ export interface MessageOptions {
  * Mutator surface attached to every event object. Calls queue actions
  * that the host applies only after the engine method returns; reading
  * `event.markedText` or other context fields after a mutator call still
- * returns the snapshot from method entry, not the queued value.
+ * returns the snapshot from method entry, not the queued value. Mutators
+ * act only during the method call that received the event, including
+ * promise jobs that run before control returns to the host; calls through
+ * the event after that have no effect.
  */
 export interface EventMutators {
   /** Replace the composing (marked) text shown in the active text field. */

@@ -286,11 +286,12 @@ EngineSession::navigationDirectionFor(const WebKeyEvent &web) {
 
 // Session lifecycle ---------------------------------------------------------
 
+// Lifecycle hooks receive no event, so they run without an action queue.
 void EngineSession::invokeActivateHook() {
     if (!valid()) {
         return;
     }
-    invokeEngineMethod("activate", JS_UNDEFINED);
+    host_->invokeHook(instanceId_, "activate", JS_UNDEFINED);
 }
 
 void EngineSession::resetFromClient() {
@@ -305,7 +306,7 @@ void EngineSession::resetFromClient() {
     // platform convention. Unlike focus-out, reset does not auto-commit
     // the preedit, so nothing is left behind.
     endComposition("");
-    invokeEngineMethod("compositionEnded", JS_UNDEFINED);
+    host_->invokeHook(instanceId_, "compositionEnded", JS_UNDEFINED);
 }
 
 void EngineSession::endFromDeactivate(bool preeditAlreadyCommitted) {
@@ -322,8 +323,8 @@ void EngineSession::endFromDeactivate(bool preeditAlreadyCommitted) {
     // deactivation — switching input method by hand — gets no such
     // auto-commit, so we commit the staged prefix ourselves.
     endComposition(preeditAlreadyCommitted ? std::string() : stagedText_);
-    invokeEngineMethod("compositionEnded", JS_UNDEFINED);
-    invokeEngineMethod("deactivate", JS_UNDEFINED);
+    host_->invokeHook(instanceId_, "compositionEnded", JS_UNDEFINED);
+    host_->invokeHook(instanceId_, "deactivate", JS_UNDEFINED);
 }
 
 // Invocation plumbing -------------------------------------------------------

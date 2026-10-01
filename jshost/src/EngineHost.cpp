@@ -802,6 +802,14 @@ std::optional<bool> JsEngineHost::invokeHook(uint64_t instanceId,
     if (!hook.isFunction()) {
         return std::nullopt;
     }
+    // Declared ahead of the entry so it unwinds after ~Entry: the
+    // microtasks the call queued still run with its event current.
+    struct HookEventScope {
+        JsEngineHost &host;
+        JSValue previous;
+        ~HookEventScope() { host.hookEvent_ = previous; }
+    } hookEventScope{*this, hookEvent_};
+    hookEvent_ = argumentGuard.get();
     Entry entry(*this);
     int argc = JS_IsUndefined(argumentGuard.get()) ? 0 : 1;
     JSValue argv = argumentGuard.get();
@@ -2065,16 +2073,27 @@ JSValue JsEngineHost::nativeAction(JSContext *ctx, JSValueConst thisVal,
                                    int argc, JSValueConst *argv) {
     (void)thisVal;
     auto *host = hostOf(ctx);
-    if (argc < 1) {
+    // hostglue passes the event first, then the mutator name and arguments.
+    if (argc < 2 || !JS_IsObject(argv[0])) {
+        MACISHTYPE_FAULT() << host->engineId_
+                           << ": mutator dispatched without its event; "
+                              "hostglue.js does not match this host";
         return JS_UNDEFINED;
     }
-    std::string name = Qjs::toString(ctx, argv[0]);
+    std::string name = Qjs::toString(ctx, argv[1]);
+    if (!JS_IsStrictEqual(ctx, argv[0], host->hookEvent_)) {
+        MACISHTYPE_NOTICE() << host->engineId_ << ": mutator '" << name
+                            << "' called on an event whose hook has "
+                               "returned, ignored";
+        return JS_UNDEFINED;
+    }
     if (!host->actionHandler_) {
         MACISHTYPE_NOTICE() << host->engineId_ << ": mutator '" << name
-                            << "' called outside an engine hook, ignored";
+                            << "' called with no action handler installed, "
+                               "ignored";
         return JS_UNDEFINED;
     }
-    host->actionHandler_(name, argc - 1, argv + 1);
+    host->actionHandler_(name, argc - 2, argv + 2);
     return JS_UNDEFINED;
 }
 
@@ -2214,7 +2233,7 @@ void JsEngineHost::registerBridgeGlobals() {
            &JsEngineHost::nativeIntlPluralCategories, 2);
     define("__MacishTypeHost_intlCollatorCompare",
            &JsEngineHost::nativeIntlCollatorCompare, 4);
-    define("__MacishTypeHost_action", &JsEngineHost::nativeAction, 1);
+    define("__MacishTypeHost_action", &JsEngineHost::nativeAction, 2);
     JS_SetPropertyStr(ctx_, global.get(), "__MacishType_userAgent",
                       JS_NewString(ctx_, userAgent_.c_str()));
 }

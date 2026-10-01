@@ -54,6 +54,8 @@
   // Assembles the event object handed to engine hooks. `data` is built by
   // the C++ session per invocation; mutators queue through the
   // __MacishTypeHost_action dispatcher and apply after the hook returns.
+  // Each passes its own event first: the dispatcher acts only for the event
+  // of the hook running now.
   const digitKeyPattern = /^(?:Digit|Numpad)([0-9])$/;
 
   globalThis.__MacishTypeHost_makeEvent = function (data) {
@@ -140,41 +142,41 @@
 
     const act = globalThis.__MacishTypeHost_action;
     event.updateMarkedText = (text, options) => {
-      act("updateMarkedText", text, options);
+      act(event, "updateMarkedText", text, options);
     };
     event.updateCandidates = (items, options) => {
-      act("updateCandidates", items, options);
+      act(event, "updateCandidates", items, options);
     };
     event.updateMessage = (text, options) => {
-      act("updateMessage", text, options);
+      act(event, "updateMessage", text, options);
     };
     event.commit = (candidate) => {
-      act("commit", candidate);
+      act(event, "commit", candidate);
     };
     event.commitSelectedCandidate = () => {
-      act("commitSelectedCandidate");
+      act(event, "commitSelectedCandidate");
     };
     event.commitCandidateAtIndex = (index) => {
-      act("commitCandidateAtIndex", index);
+      act(event, "commitCandidateAtIndex", index);
     };
     event.navigateCandidates = (direction, options) => {
-      act("navigateCandidates", direction, options);
+      act(event, "navigateCandidates", direction, options);
     };
     event.resetContext = () => {
-      act("resetContext");
+      act(event, "resetContext");
     };
     event.flushStaged = (append) => {
-      act("flushStaged", append);
+      act(event, "flushStaged", append);
     };
     event.enterAssociatedMode = (heldChar, candidates) => {
-      act("enterAssociatedMode", heldChar, candidates);
+      act(event, "enterAssociatedMode", heldChar, candidates);
     };
     // One sound per event: repeat calls collapse.
     let beeped = false;
     event.beep = () => {
       if (beeped) return;
       beeped = true;
-      act("beep");
+      act(event, "beep");
     };
     return event;
   };

@@ -553,6 +553,9 @@ private:
     std::chrono::seconds watchdogBudget_{};
     std::map<void *, std::string> pendingRejections_;
     ActionHandler actionHandler_;
+    // The event the running hook received (borrowed). Mutators act only
+    // through it, so an event kept past its call reaches no later one.
+    JSValue hookEvent_ = JS_UNDEFINED;
 
     // ICU-backed Intl handle cache, owned by the platform host and shared
     // with whatever else in the process segments text. ICU types stay

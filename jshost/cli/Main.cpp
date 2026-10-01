@@ -17,6 +17,7 @@
 //   {"do":"key","key":"h","code":"KeyH","shift":false,"ctrl":false,
 //    "alt":false,"meta":false}
 //   {"do":"activate"} {"do":"deactivate"}
+//   {"do":"hook","name":"compositionEnded"}   (a lifecycle hook, no event)
 //   {"do":"menu"} {"do":"menu-flip","key":"..."}
 //   {"do":"wait-quiescent"}
 //   {"do":"quit"}
@@ -303,6 +304,61 @@ std::string serializeJsValue(JSContext *ctx, JSValueConst value) {
     return json.empty() ? "null" : json;
 }
 
+// Dumps every mutator call as an event, and tracks the minimal staging the
+// next event's shape depends on.
+JsEngineHost::ActionHandler dumpingActionHandler(JSContext *ctx,
+                                                 CliStaging &staging) {
+    return [ctx, &staging](const std::string &name, int argc,
+                           JSValueConst *argv) {
+        std::string args;
+        for (int i = 0; i < argc; i++) {
+            if (i != 0) {
+                args += ",";
+            }
+            args += serializeJsValue(ctx, argv[i]);
+        }
+        emitLine("{\"event\":\"action\",\"name\":\"" + jsonEscape(name) +
+                 "\",\"args\":[" + args + "]}");
+        if (name == "updateMarkedText" && argc >= 1) {
+            staging.markedText = Qjs::textArgument(ctx, argc, argv, 0);
+        } else if (name == "updateCandidates" && argc >= 1) {
+            uint32_t count = 0;
+            if (JS_IsArray(argv[0])) {
+                // Reading `length` off a non-array throws, and the
+                // exception would sit in the context unclaimed.
+                Qjs::Value length(ctx,
+                                  JS_GetPropertyStr(ctx, argv[0], "length"));
+                JS_ToUint32(ctx, &count, length.get());
+            }
+            staging.candidateCount = static_cast<int>(count);
+            staging.message.clear();
+        } else if (name == "updateMessage" && argc >= 1) {
+            staging.message = Qjs::textArgument(ctx, argc, argv, 0);
+            if (!staging.message.empty()) {
+                staging.candidateCount = 0;
+            }
+        } else if (name == "commit" || name == "resetContext") {
+            staging.markedText.clear();
+            staging.message.clear();
+            staging.candidateCount = 0;
+        }
+    };
+}
+
+// A lifecycle hook takes no event. Platform sessions run these with no
+// handler; one stays installed here so whatever reaches it gets dumped.
+void dispatchLifecycleHook(JsEngineHost &host, uint64_t instanceId,
+                           CliStaging &staging, const std::string &name) {
+    if (!host.instanceHasHook(instanceId, name.c_str())) {
+        emitLine("{\"event\":\"error\",\"text\":\"no such hook: " +
+                 jsonEscape(name) + "\"}");
+        return;
+    }
+    JsEngineHost::ScopedActionHandler scoped(
+        host, dumpingActionHandler(host.context(), staging));
+    host.invokeHook(instanceId, name.c_str(), JS_UNDEFINED);
+}
+
 bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
                  JSValueConst keyFields) {
     JSContext *ctx = host.context();
@@ -353,43 +409,8 @@ bool dispatchKey(JsEngineHost &host, uint64_t instanceId, CliStaging &staging,
         event = data.release();
     }
 
-    // Dump every mutator call as an event, and track the minimal staging the
-    // next event's shape depends on.
     JsEngineHost::ScopedActionHandler scoped(
-        host, [&](const std::string &name, int argc, JSValueConst *argv) {
-            std::string args;
-            for (int i = 0; i < argc; i++) {
-                if (i != 0) {
-                    args += ",";
-                }
-                args += serializeJsValue(ctx, argv[i]);
-            }
-            emitLine("{\"event\":\"action\",\"name\":\"" + jsonEscape(name) +
-                     "\",\"args\":[" + args + "]}");
-            if (name == "updateMarkedText" && argc >= 1) {
-                staging.markedText = Qjs::textArgument(ctx, argc, argv, 0);
-            } else if (name == "updateCandidates" && argc >= 1) {
-                uint32_t count = 0;
-                if (JS_IsArray(argv[0])) {
-                    // Reading `length` off a non-array throws, and the
-                    // exception would sit in the context unclaimed.
-                    Qjs::Value length(
-                        ctx, JS_GetPropertyStr(ctx, argv[0], "length"));
-                    JS_ToUint32(ctx, &count, length.get());
-                }
-                staging.candidateCount = static_cast<int>(count);
-                staging.message.clear();
-            } else if (name == "updateMessage" && argc >= 1) {
-                staging.message = Qjs::textArgument(ctx, argc, argv, 0);
-                if (!staging.message.empty()) {
-                    staging.candidateCount = 0;
-                }
-            } else if (name == "commit" || name == "resetContext") {
-                staging.markedText.clear();
-                staging.message.clear();
-                staging.candidateCount = 0;
-            }
-        });
+        host, dumpingActionHandler(ctx, staging));
 
     auto handled = host.invokeHook(instanceId, "handleKey", event);
     emitLine(std::string("{\"event\":\"key-result\",\"handled\":") +
@@ -623,6 +644,16 @@ int main(int argc, char **argv) {
                     activate();
                 }
                 dispatchKey(*host, instanceId, staging, command.get());
+            } else if (action == "hook") {
+                if (instanceId == 0) {
+                    activate();
+                }
+                Qjs::Value name(ctx,
+                                JS_GetPropertyStr(ctx, command.get(), "name"));
+                dispatchLifecycleHook(*host, instanceId, staging,
+                                      JS_IsString(name.get())
+                                          ? Qjs::toString(ctx, name.get())
+                                          : "");
             } else if (action == "menu") {
                 std::string json = "{\"event\":\"menu\",\"items\":[";
                 bool first = true;
