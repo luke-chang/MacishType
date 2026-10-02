@@ -88,4 +88,22 @@ console.log(
   `tzname-longgeneric-found ${!!tzName && typeof tzName.value === "string" && tzName.value.length > 0}`,
 );
 
+// Each option is read once, resolvedOptions included.
+let timeZoneReads = 0;
+new Intl.DateTimeFormat("en-US", {
+  get timeZone() {
+    timeZoneReads++;
+    return "UTC";
+  },
+}).resolvedOptions();
+console.log(`timezone-reads ${timeZoneReads}`);
+
+// The reported locale leaves out a calendar the options added, but keeps one
+// the tag carried.
+const reportedLocales = [
+  new Intl.DateTimeFormat("en-US", { calendar: "japanese" }).resolvedOptions().locale,
+  new Intl.DateTimeFormat("en-US-u-ca-japanese").resolvedOptions().locale,
+];
+console.log(`reported-locale ${reportedLocales.join("|")}`);
+
 export default class {};

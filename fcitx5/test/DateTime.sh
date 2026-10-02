@@ -51,4 +51,8 @@ check "an invalid time zone throws RangeError" "$out" \
     'invalid-tz RangeError'
 check "the timezone macro finds a generic time-zone name" "$out" \
     'tzname-longgeneric-found true'
+check "the timeZone option is read once" "$out" \
+    'timezone-reads 1'
+check "the reported locale leaves out an options calendar" "$out" \
+    'reported-locale en-US|en-US-u-ca-japanese'
 echo "Intl.DateTimeFormat checks passed."

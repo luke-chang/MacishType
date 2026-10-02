@@ -387,7 +387,8 @@ UPluralRules *pluralRules(IntlCache &cache, const std::string &localeTag,
 // get-or-open a UCollator for (localeTag, signature). The signature is the
 // comma-joined option tuple "strength,caseLevel,numeric,caseFirst,alternate"
 // the shim derives from ECMA-402 options; it is parsed once, on the miss that
-// opens the collator, then reused as the cache key.
+// opens the collator, then reused as the cache key. A negative numeric,
+// caseFirst or alternate leaves that attribute to the locale.
 UCollator *collator(IntlCache &cache, const std::string &localeTag,
                     const std::string &signature, int *errorOut) {
     std::string key = localeTag + "\x01" + signature;
@@ -406,9 +407,9 @@ UCollator *collator(IntlCache &cache, const std::string &localeTag,
     }
     int strength = 2;
     int caseLevel = 0;
-    int numeric = 0;
-    int caseFirst = 0;
-    int alternate = 0;
+    int numeric = -1;
+    int caseFirst = -1;
+    int alternate = -1;
     std::sscanf(signature.c_str(), "%d,%d,%d,%d,%d", &strength, &caseLevel,
                 &numeric, &caseFirst, &alternate);
     UColAttributeValue strengthValue = strength == 0   ? UCOL_PRIMARY
@@ -419,15 +420,22 @@ UCollator *collator(IntlCache &cache, const std::string &localeTag,
     UErrorCode attr = U_ZERO_ERROR;
     ucol_setAttribute(coll, UCOL_CASE_LEVEL, caseLevel ? UCOL_ON : UCOL_OFF,
                       &attr);
-    ucol_setAttribute(coll, UCOL_NUMERIC_COLLATION,
-                      numeric ? UCOL_ON : UCOL_OFF, &attr);
-    ucol_setAttribute(coll, UCOL_CASE_FIRST,
-                      caseFirst == 1   ? UCOL_UPPER_FIRST
-                      : caseFirst == 2 ? UCOL_LOWER_FIRST
-                                       : UCOL_OFF,
-                      &attr);
-    ucol_setAttribute(coll, UCOL_ALTERNATE_HANDLING,
-                      alternate ? UCOL_SHIFTED : UCOL_NON_IGNORABLE, &attr);
+    if (numeric >= 0) {
+        ucol_setAttribute(coll, UCOL_NUMERIC_COLLATION,
+                          numeric ? UCOL_ON : UCOL_OFF, &attr);
+    }
+    if (caseFirst >= 0) {
+        ucol_setAttribute(coll, UCOL_CASE_FIRST,
+                          caseFirst == 1   ? UCOL_UPPER_FIRST
+                          : caseFirst == 2 ? UCOL_LOWER_FIRST
+                                           : UCOL_OFF,
+                          &attr);
+    }
+    if (alternate >= 0) {
+        ucol_setAttribute(coll, UCOL_ALTERNATE_HANDLING,
+                          alternate ? UCOL_SHIFTED : UCOL_NON_IGNORABLE,
+                          &attr);
+    }
     cache.put(IntlCache::kCollator, key, coll);
     return coll;
 }

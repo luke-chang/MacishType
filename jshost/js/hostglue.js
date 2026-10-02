@@ -290,18 +290,12 @@
     if (options !== undefined && Object(options) !== options) {
       throw new TypeError("Intl.Segmenter options must be an object");
     }
-    const granularity = (options && options.granularity) || "grapheme";
-    if (
-      granularity !== "grapheme" &&
-      granularity !== "word" &&
-      granularity !== "sentence"
-    ) {
-      throw new RangeError(
-        "Value " +
-          granularity +
-          " out of range for Intl.Segmenter options property granularity",
-      );
-    }
+    const granularity =
+      optionReader("Segmenter", options ?? {}).choice("granularity", [
+        "grapheme",
+        "word",
+        "sentence",
+      ]) ?? "grapheme";
     const locale = resolveLocale(locales);
     this.segment = (input) => makeSegments(locale, granularity, String(input));
     this.resolvedOptions = () => ({ locale, granularity });
@@ -322,18 +316,67 @@
     longGeneric: "vvvv",
   };
 
-  function dtfEnum(name, value, allowed) {
+  // `allowed` is a list of values or a table keyed by them.
+  function enumOption(type, name, value, allowed) {
     if (value === undefined) return undefined;
     const s = String(value);
-    if (allowed.indexOf(s) === -1) {
+    const known = Array.isArray(allowed)
+      ? allowed.includes(s)
+      : Object.hasOwn(allowed, s);
+    if (!known) {
       throw new RangeError(
         "Value " +
           s +
-          " out of range for Intl.DateTimeFormat options property " +
+          " out of range for Intl." +
+          type +
+          " options property " +
           name,
       );
     }
     return s;
+  }
+
+  // ECMA-402 DefaultNumberOption.
+  function numberOption(type, name, value, lo, hi, fallback) {
+    if (value === undefined) return fallback;
+    const n = Number(value);
+    if (isNaN(n) || n < lo || n > hi) {
+      throw new RangeError(name + " value is out of range for Intl." + type);
+    }
+    return Math.floor(n);
+  }
+
+  // Reads the options `o` of one Intl.<type> constructor; an option omitted
+  // reads as undefined.
+  function optionReader(type, o) {
+    return {
+      choice: (name, allowed) => enumOption(type, name, o[name], allowed),
+      number: (name, lo, hi, fallback) =>
+        numberOption(type, name, o[name], lo, hi, fallback),
+      string(name) {
+        const value = o[name];
+        return value === undefined ? undefined : String(value);
+      },
+      flag(name) {
+        const value = o[name];
+        return value === undefined ? undefined : !!value;
+      },
+    };
+  }
+
+  // Appends Unicode extension keywords, given as key, value, ..., to a tag.
+  function withExtensions(tag, keywords) {
+    if (keywords.length === 0) return tag;
+    return tag + (/-u-/.test(tag) ? "-" : "-u-") + keywords.join("-");
+  }
+
+  // The locale resolvedOptions reports: `reportedTag` leaves out the
+  // extensions that only the options added, so resolve it separately when it
+  // differs from the tag ICU was given.
+  function reportedLocale(reportedTag, localeTag, resolvedLocale) {
+    return reportedTag === localeTag
+      ? resolvedLocale
+      : __MacishTypeHost_intlResolveLocale(reportedTag).locale;
   }
 
   function dtfHourLetter(o) {
@@ -364,15 +407,25 @@
     return s;
   }
 
+  // Every option DateTimeFormat reads, in ECMA-402's order; one missing here
+  // never reaches the constructor.
+  const DTF_OPTIONS = ["calendar", "numberingSystem", "hour12", "hourCycle",
+    "timeZone", "weekday", "era", "year", "month", "day", "dayPeriod", "hour",
+    "minute", "second", "fractionalSecondDigits", "timeZoneName", "dateStyle",
+    "timeStyle"];
+
   // ECMA-402 ToDateTimeOptions: the fields a formatter shows when the caller
-  // names none of the kind it requires. Defaults are defined rather than
-  // assigned, so a read-only field inherited from the caller's object is no
-  // obstacle.
+  // names none of the kind it requires.
   const DATE_FIELDS = ["weekday", "year", "month", "day"];
   const TIME_FIELDS = ["dayPeriod", "hour", "minute", "second",
     "fractionalSecondDigits"];
   function dateTimeOptions(options, required, defaults) {
-    const adjusted = Object.create(optionsObject(options));
+    const source = optionsObject(options);
+    const adjusted = {};
+    for (const name of DTF_OPTIONS) {
+      const value = source[name];
+      if (value !== undefined) adjusted[name] = value;
+    }
     if (required === "date" && adjusted.timeStyle !== undefined) {
       throw new TypeError("Invalid option : timeStyle");
     }
@@ -390,14 +443,7 @@
       const fields = [];
       if (defaults !== "time") fields.push("year", "month", "day");
       if (defaults !== "date") fields.push("hour", "minute", "second");
-      for (const field of fields) {
-        Object.defineProperty(adjusted, field, {
-          value: "numeric",
-          writable: true,
-          enumerable: true,
-          configurable: true,
-        });
-      }
+      for (const field of fields) adjusted[field] = "numeric";
     }
     return adjusted;
   }
@@ -409,37 +455,29 @@
         ? this
         : Object.create(intl.DateTimeFormat.prototype);
     const o = dateTimeOptions(options, "any", "date");
+    const { choice, number, flag, string } = optionReader("DateTimeFormat", o);
 
-    const weekday = dtfEnum("weekday", o.weekday, ["narrow", "short", "long"]);
-    const era = dtfEnum("era", o.era, ["narrow", "short", "long"]);
-    const year = dtfEnum("year", o.year, ["numeric", "2-digit"]);
-    const month = dtfEnum("month", o.month, [
+    const weekday = choice("weekday", ["narrow", "short", "long"]);
+    const era = choice("era", ["narrow", "short", "long"]);
+    const year = choice("year", ["numeric", "2-digit"]);
+    const month = choice("month", [
       "numeric",
       "2-digit",
       "narrow",
       "short",
       "long",
     ]);
-    const day = dtfEnum("day", o.day, ["numeric", "2-digit"]);
-    const hour = dtfEnum("hour", o.hour, ["numeric", "2-digit"]);
-    const minute = dtfEnum("minute", o.minute, ["numeric", "2-digit"]);
-    const second = dtfEnum("second", o.second, ["numeric", "2-digit"]);
-    const dayPeriod = dtfEnum("dayPeriod", o.dayPeriod, ["narrow", "short", "long"]);
-    const timeZoneName = dtfEnum("timeZoneName", o.timeZoneName, Object.keys(DTF_TZNAME));
-    const hourCycle = dtfEnum("hourCycle", o.hourCycle, ["h11", "h12", "h23", "h24"]);
-    const dateStyle = dtfEnum("dateStyle", o.dateStyle, Object.keys(DTF_STYLE));
-    const timeStyle = dtfEnum("timeStyle", o.timeStyle, Object.keys(DTF_STYLE));
-    let fractionalSecondDigits;
-    if (o.fractionalSecondDigits !== undefined) {
-      const n = Math.floor(Number(o.fractionalSecondDigits));
-      if (!(n >= 1 && n <= 3)) {
-        throw new RangeError(
-          "fractionalSecondDigits value is out of range for Intl.DateTimeFormat",
-        );
-      }
-      fractionalSecondDigits = n;
-    }
-    const hour12 = o.hour12 === undefined ? undefined : !!o.hour12;
+    const day = choice("day", ["numeric", "2-digit"]);
+    const hour = choice("hour", ["numeric", "2-digit"]);
+    const minute = choice("minute", ["numeric", "2-digit"]);
+    const second = choice("second", ["numeric", "2-digit"]);
+    const dayPeriod = choice("dayPeriod", ["narrow", "short", "long"]);
+    const timeZoneName = choice("timeZoneName", DTF_TZNAME);
+    const hourCycle = choice("hourCycle", ["h11", "h12", "h23", "h24"]);
+    const dateStyle = choice("dateStyle", DTF_STYLE);
+    const timeStyle = choice("timeStyle", DTF_STYLE);
+    const fractionalSecondDigits = number("fractionalSecondDigits", 1, 3);
+    const hour12 = flag("hour12");
 
     const hasComponent = !!(
       weekday ||
@@ -478,26 +516,23 @@
     };
     const skeleton = dateStyle || timeStyle ? "" : dtfSkeleton(comp);
 
-    let localeTag = resolveLocale(locales);
-    // Fold calendar/numberingSystem into the tag as -u- extensions; ICU maps
-    // them to locale keywords.
     const ext = [];
     if (o.calendar) ext.push("ca", String(o.calendar));
     if (o.numberingSystem) ext.push("nu", String(o.numberingSystem));
-    if (ext.length) {
-      localeTag += (/-u-/.test(localeTag) ? "-" : "-u-") + ext.join("-");
-    }
+    const baseTag = resolveLocale(locales);
+    const localeTag = withExtensions(baseTag, ext);
 
+    const timeZone = string("timeZone") ?? "";
     const resolved = __MacishTypeHost_intlDateTimeResolve(
       localeTag,
       skeleton,
-      o.timeZone ? String(o.timeZone) : "",
+      timeZone,
       dateStyle ? DTF_STYLE[dateStyle] : -1,
       timeStyle ? DTF_STYLE[timeStyle] : -1,
     );
     if (!resolved.ok) {
       if (resolved.error === "invalid-timezone") {
-        throw new RangeError("Invalid time zone specified: " + o.timeZone);
+        throw new RangeError("Invalid time zone specified: " + timeZone);
       }
       throw new Error("Intl.DateTimeFormat: " + (resolved.error || "failed"));
     }
@@ -520,7 +555,7 @@
       );
     self.resolvedOptions = () => {
       const r = {
-        locale: resolved.locale,
+        locale: reportedLocale(baseTag, localeTag, resolved.locale),
         calendar: resolved.calendar,
         numberingSystem: resolved.numberingSystem,
         timeZone: resolved.timeZone,
@@ -566,14 +601,132 @@
     halfTrunc: "rounding-mode-half-down",
     halfEven: "rounding-mode-half-even",
   };
+  const NF_CURRENCY_DISPLAY = {
+    code: "unit-width-iso-code",
+    name: "unit-width-full-name",
+    narrowSymbol: "unit-width-narrow",
+    symbol: "",
+  };
+  const NF_UNIT_DISPLAY = {
+    long: "unit-width-full-name",
+    narrow: "unit-width-narrow",
+    short: "",
+  };
+  const NF_SIGN_DISPLAY = {
+    always: "sign-always",
+    never: "sign-never",
+    exceptZero: "sign-except-zero",
+    negative: "sign-negative",
+    auto: "",
+  };
+  const NF_UNITS = new Set(["acre", "bit", "byte", "celsius", "centimeter",
+    "day", "degree", "fahrenheit", "fluid-ounce", "foot", "gallon", "gigabit",
+    "gigabyte", "gram", "hectare", "hour", "inch", "kilobit", "kilobyte",
+    "kilogram", "kilometer", "liter", "megabit", "megabyte", "meter",
+    "microsecond", "mile", "mile-scandinavian", "milliliter", "millimeter",
+    "millisecond", "minute", "month", "nanosecond", "ounce", "percent",
+    "petabyte", "pound", "second", "stone", "terabit", "terabyte", "week",
+    "yard", "year"]);
 
-  function nfClampInt(value, lo, hi, fallback) {
+  // ECMA-402 IsWellFormedUnitIdentifier; NF_UNITS is its sanctioned list.
+  function nfWellFormedUnit(unit) {
+    const [numerator, denominator, ...rest] = unit.split("-per-");
+    return (
+      NF_UNITS.has(numerator) &&
+      (denominator === undefined || NF_UNITS.has(denominator)) &&
+      rest.length === 0
+    );
+  }
+
+  // ECMA-402 GetBooleanOrStringNumberFormatOption for useGrouping.
+  function nfUseGrouping(value, fallback) {
     if (value === undefined) return fallback;
-    let n = Math.floor(Number(value));
-    if (isNaN(n)) return fallback;
-    if (n < lo) n = lo;
-    if (n > hi) n = hi;
-    return n;
+    if (value === true) return "always";
+    if (!value) return false;
+    const s = String(value);
+    if (s === "true" || s === "false") return fallback;
+    return enumOption("NumberFormat", "useGrouping", s, [
+      "min2",
+      "auto",
+      "always",
+    ]);
+  }
+
+  // ECMA-402 SetNumberFormatDigitOptions. With compact notation and no digit
+  // options, ICU's default compact precision is ECMA-402's compact rounding.
+  function nfDigitOptions(o, type, mnfdDefault, mxfdDefault, notation) {
+    const digits = {
+      minimumIntegerDigits: numberOption(
+        type,
+        "minimumIntegerDigits",
+        o.minimumIntegerDigits,
+        1,
+        21,
+        1,
+      ),
+    };
+    let mnfd = o.minimumFractionDigits;
+    let mxfd = o.maximumFractionDigits;
+    const mnsd = o.minimumSignificantDigits;
+    const mxsd = o.maximumSignificantDigits;
+    digits.roundingMode = enumOption(
+      type,
+      "roundingMode",
+      o.roundingMode,
+      NF_ROUNDING,
+    );
+    if (mnsd !== undefined || mxsd !== undefined) {
+      const min = numberOption(
+        type,
+        "minimumSignificantDigits",
+        mnsd,
+        1,
+        21,
+        1,
+      );
+      digits.minimumSignificantDigits = min;
+      digits.maximumSignificantDigits = numberOption(
+        type,
+        "maximumSignificantDigits",
+        mxsd,
+        min,
+        21,
+        21,
+      );
+    } else if (mnfd !== undefined || mxfd !== undefined) {
+      mnfd = numberOption(type, "minimumFractionDigits", mnfd, 0, 100);
+      mxfd = numberOption(type, "maximumFractionDigits", mxfd, 0, 100);
+      if (mnfd === undefined) mnfd = Math.min(mnfdDefault, mxfd);
+      else if (mxfd === undefined) mxfd = Math.max(mxfdDefault, mnfd);
+      else if (mnfd > mxfd) {
+        throw new RangeError(
+          "maximumFractionDigits value is out of range for Intl." + type,
+        );
+      }
+      digits.minimumFractionDigits = mnfd;
+      digits.maximumFractionDigits = mxfd;
+    } else if (notation !== "compact") {
+      digits.minimumFractionDigits = mnfdDefault;
+      digits.maximumFractionDigits = mxfdDefault;
+    }
+    return digits;
+  }
+
+  // ECMA-402 CurrencyDigits. ICU's default currency precision is the
+  // currency's own digit count, so read it off a formatted zero.
+  const currencyDigitsByCode = new Map();
+  function nfCurrencyDigits(currency) {
+    let digits = currencyDigitsByCode.get(currency);
+    if (digits === undefined) {
+      const fraction = __MacishTypeHost_intlNumberFormatToParts(
+        "und",
+        "currency/" + currency,
+        "0",
+      ).find((part) => part.type === "fraction");
+      digits = fraction ? fraction.value.length : 0;
+      currencyDigitsByCode.set(currency, digits);
+    }
+    return digits;
   }
 
   function nfNumberString(value) {
@@ -582,71 +735,51 @@
     return String(Number(value));
   }
 
-  function nfSkeleton(o) {
+  // Enum values in record are validated, so the tables are only indexed by
+  // own keys.
+  function nfSkeleton(record) {
     const tokens = [];
-    if (o.style === "percent") {
+    if (record.style === "percent") {
       tokens.push("percent", "scale/100");
-    } else if (o.style === "currency") {
-      if (!o.currency || !/^[A-Za-z]{3}$/.test(String(o.currency))) {
-        throw new RangeError("Invalid currency code: " + o.currency);
-      }
-      tokens.push("currency/" + String(o.currency).toUpperCase());
-      const width = {
-        code: "unit-width-iso-code",
-        name: "unit-width-full-name",
-        narrowSymbol: "unit-width-narrow",
-      }[o.currencyDisplay];
+    } else if (record.style === "currency") {
+      tokens.push("currency/" + record.currency);
+      const width = NF_CURRENCY_DISPLAY[record.currencyDisplay];
       if (width) tokens.push(width);
-    } else if (o.style === "unit") {
-      if (!o.unit) throw new TypeError("unit style requires a unit");
-      tokens.push("unit/" + String(o.unit));
-      const width = { long: "unit-width-full-name", narrow: "unit-width-narrow" }[
-        o.unitDisplay
-      ];
+    } else if (record.style === "unit") {
+      tokens.push("unit/" + record.unit);
+      const width = NF_UNIT_DISPLAY[record.unitDisplay];
       if (width) tokens.push(width);
     }
 
-    if (o.notation === "scientific") tokens.push("scientific");
-    else if (o.notation === "engineering") tokens.push("engineering");
-    else if (o.notation === "compact")
-      tokens.push(o.compactDisplay === "long" ? "compact-long" : "compact-short");
+    if (record.notation === "scientific") tokens.push("scientific");
+    else if (record.notation === "engineering") tokens.push("engineering");
+    else if (record.notation === "compact")
+      tokens.push(
+        record.compactDisplay === "long" ? "compact-long" : "compact-short",
+      );
 
-    if (
-      o.minimumSignificantDigits !== undefined ||
-      o.maximumSignificantDigits !== undefined
-    ) {
-      const min = nfClampInt(o.minimumSignificantDigits, 1, 21, 1);
-      const max = nfClampInt(o.maximumSignificantDigits, min, 21, 21);
-      tokens.push("@".repeat(min) + "#".repeat(Math.max(0, max - min)));
-    } else {
-      const isCurrency = o.style === "currency";
-      const defMin = isCurrency ? 2 : 0;
-      const defMax = isCurrency ? 2 : o.style === "percent" ? 0 : 3;
-      const min = nfClampInt(o.minimumFractionDigits, 0, 100, defMin);
-      const max = nfClampInt(o.maximumFractionDigits, min, 100, Math.max(min, defMax));
+    if (record.minimumSignificantDigits !== undefined) {
+      const min = record.minimumSignificantDigits;
+      const max = record.maximumSignificantDigits;
+      tokens.push("@".repeat(min) + "#".repeat(max - min));
+    } else if (record.minimumFractionDigits !== undefined) {
+      const min = record.minimumFractionDigits;
+      const max = record.maximumFractionDigits;
       if (max === 0) tokens.push("precision-integer");
-      else tokens.push("." + "0".repeat(min) + "#".repeat(Math.max(0, max - min)));
+      else tokens.push("." + "0".repeat(min) + "#".repeat(max - min));
     }
 
-    if (o.minimumIntegerDigits !== undefined) {
-      tokens.push("integer-width/+" + "0".repeat(nfClampInt(o.minimumIntegerDigits, 1, 21, 1)));
+    if (record.minimumIntegerDigits > 1) {
+      tokens.push("integer-width/+" + "0".repeat(record.minimumIntegerDigits));
     }
 
-    if (o.useGrouping === false || o.useGrouping === "false")
-      tokens.push("group-off");
-    else if (o.useGrouping === "always" || o.useGrouping === true)
-      tokens.push("group-on-aligned");
+    if (record.useGrouping === false) tokens.push("group-off");
+    else if (record.useGrouping === "always") tokens.push("group-on-aligned");
+    else if (record.useGrouping === "min2") tokens.push("group-min2");
 
-    const sign = {
-      always: "sign-always",
-      never: "sign-never",
-      exceptZero: "sign-except-zero",
-      negative: "sign-negative",
-    }[o.signDisplay];
+    const sign = NF_SIGN_DISPLAY[record.signDisplay ?? "auto"];
     if (sign) tokens.push(sign);
-
-    if (o.roundingMode && NF_ROUNDING[o.roundingMode])
-      tokens.push(NF_ROUNDING[o.roundingMode]);
+    tokens.push(NF_ROUNDING[record.roundingMode ?? "halfExpand"]);
 
     return tokens.join(" ");
   }
@@ -657,19 +790,70 @@
         ? this
         : Object.create(intl.NumberFormat.prototype);
     const o = optionsObject(options);
-    const style = o.style ? String(o.style) : "decimal";
-    if (["decimal", "currency", "percent", "unit"].indexOf(style) === -1) {
-      throw new RangeError(
-        "Value " + style + " out of range for Intl.NumberFormat options property style",
-      );
+    const { choice, string } = optionReader("NumberFormat", o);
+    const numberingSystem = string("numberingSystem");
+    const style =
+      choice("style", ["decimal", "percent", "currency", "unit"]) ??
+      "decimal";
+    const currencyOption = string("currency");
+    if (
+      currencyOption !== undefined &&
+      !/^[A-Za-z]{3}$/.test(currencyOption)
+    ) {
+      throw new RangeError("Invalid currency code: " + currencyOption);
     }
-    const skeleton = nfSkeleton(Object.assign({}, o, { style }));
+    const currency = currencyOption?.toUpperCase();
+    const currencyDisplay =
+      choice("currencyDisplay", NF_CURRENCY_DISPLAY) ?? "symbol";
+    const unit = string("unit");
+    if (unit !== undefined && !nfWellFormedUnit(unit)) {
+      throw new RangeError("Invalid unit argument: " + unit);
+    }
+    const unitDisplay = choice("unitDisplay", NF_UNIT_DISPLAY) ?? "short";
+    if (style === "currency" && currency === undefined) {
+      throw new TypeError("Currency code is required with currency style.");
+    }
+    if (style === "unit" && unit === undefined) {
+      throw new TypeError("unit style requires a unit");
+    }
+    const notation = choice("notation", [
+      "standard",
+      "scientific",
+      "engineering",
+      "compact",
+    ]);
+    const currencyDigits =
+      style === "currency" && (notation ?? "standard") === "standard"
+        ? nfCurrencyDigits(currency)
+        : undefined;
+    const record = {
+      style,
+      currency,
+      currencyDisplay,
+      unit,
+      unitDisplay,
+      notation,
+      ...nfDigitOptions(
+        o,
+        "NumberFormat",
+        currencyDigits ?? 0,
+        currencyDigits ?? (style === "percent" ? 0 : 3),
+        notation,
+      ),
+      compactDisplay: choice("compactDisplay", ["short", "long"]),
+      useGrouping: nfUseGrouping(
+        o.useGrouping,
+        notation === "compact" ? "min2" : "auto",
+      ),
+      signDisplay: choice("signDisplay", NF_SIGN_DISPLAY),
+    };
+    const skeleton = nfSkeleton(record);
 
-    let localeTag = resolveLocale(locales);
-    if (o.numberingSystem) {
-      localeTag +=
-        (/-u-/.test(localeTag) ? "-" : "-u-") + "nu-" + String(o.numberingSystem);
-    }
+    const baseTag = resolveLocale(locales);
+    const localeTag = withExtensions(
+      baseTag,
+      numberingSystem ? ["nu", numberingSystem] : [],
+    );
     const resolved = __MacishTypeHost_intlResolveLocale(localeTag);
 
     self.format = (value) =>
@@ -682,21 +866,21 @@
       );
     self.resolvedOptions = () => {
       const r = {
-        locale: resolved.locale,
+        locale: reportedLocale(baseTag, localeTag, resolved.locale),
         numberingSystem: resolved.numberingSystem,
         style,
       };
       if (style === "currency") {
-        r.currency = String(o.currency).toUpperCase();
-        r.currencyDisplay = o.currencyDisplay || "symbol";
+        r.currency = record.currency;
+        r.currencyDisplay = record.currencyDisplay;
       }
       if (style === "unit") {
-        r.unit = String(o.unit);
-        r.unitDisplay = o.unitDisplay || "short";
+        r.unit = record.unit;
+        r.unitDisplay = record.unitDisplay;
       }
-      if (o.notation) r.notation = String(o.notation);
-      if (o.signDisplay) r.signDisplay = String(o.signDisplay);
-      r.useGrouping = o.useGrouping === undefined ? "auto" : o.useGrouping;
+      if (record.notation) r.notation = record.notation;
+      if (record.signDisplay) r.signDisplay = record.signDisplay;
+      r.useGrouping = record.useGrouping;
       return r;
     };
     return self;
@@ -710,22 +894,13 @@
         ? this
         : Object.create(intl.PluralRules.prototype);
     const o = optionsObject(options);
-    const type = o.type ? String(o.type) : "cardinal";
-    if (type !== "cardinal" && type !== "ordinal") {
-      throw new RangeError(
-        "Value " + type + " out of range for Intl.PluralRules options property type",
-      );
-    }
+    const type =
+      optionReader("PluralRules", o).choice("type", ["cardinal", "ordinal"]) ??
+      "cardinal";
     const typeCode = type === "ordinal" ? 1 : 0;
-    const skeleton = nfSkeleton({
-      style: "decimal",
-      minimumIntegerDigits: o.minimumIntegerDigits,
-      minimumFractionDigits: o.minimumFractionDigits,
-      maximumFractionDigits: o.maximumFractionDigits,
-      minimumSignificantDigits: o.minimumSignificantDigits,
-      maximumSignificantDigits: o.maximumSignificantDigits,
-      roundingMode: o.roundingMode,
-    });
+    const skeleton = nfSkeleton(
+      nfDigitOptions(o, "PluralRules", 0, 3, "standard"),
+    );
 
     const localeTag = resolveLocale(locales);
     const resolved = __MacishTypeHost_intlResolveLocale(localeTag);
@@ -743,6 +918,9 @@
   // Intl.Collator. ECMA-402 options collapse to a strength/case/numeric
   // signature that both configures ICU's collator and keys its cache; compare
   // then defers to ucol_strcoll. macOS engines get this from JavaScriptCore.
+  // Indexed by the caseFirst code the collator signature carries.
+  const COLLATOR_CASE_FIRST = ["false", "upper", "lower"];
+
   intl.Collator = function Collator(locales, options) {
     const self =
       this instanceof intl.Collator
@@ -750,30 +928,16 @@
         : Object.create(intl.Collator.prototype);
     const o = optionsObject(options);
 
-    const usage = o.usage ? String(o.usage) : "sort";
-    if (usage !== "sort" && usage !== "search") {
-      throw new RangeError(
-        "Value " + usage + " out of range for Intl.Collator options property usage",
-      );
-    }
-    const sensitivity = o.sensitivity ? String(o.sensitivity) : "variant";
-    if (["base", "accent", "case", "variant"].indexOf(sensitivity) === -1) {
-      throw new RangeError(
-        "Value " +
-          sensitivity +
-          " out of range for Intl.Collator options property sensitivity",
-      );
-    }
-    const caseFirst = o.caseFirst ? String(o.caseFirst) : "false";
-    if (["upper", "lower", "false"].indexOf(caseFirst) === -1) {
-      throw new RangeError(
-        "Value " +
-          caseFirst +
-          " out of range for Intl.Collator options property caseFirst",
-      );
-    }
-    const numeric = !!o.numeric;
-    const ignorePunctuation = !!o.ignorePunctuation;
+    const { choice, flag } = optionReader("Collator", o);
+    const usage = choice("usage", ["sort", "search"]) ?? "sort";
+    const collationOption = o.collation;
+    const collation = collationOption ? String(collationOption) : undefined;
+    const numeric = flag("numeric");
+    const caseFirst = choice("caseFirst", COLLATOR_CASE_FIRST);
+    const sensitivity =
+      choice("sensitivity", ["base", "accent", "case", "variant"]) ??
+      "variant";
+    const ignorePunctuation = flag("ignorePunctuation");
 
     // sensitivity → (strength, case level).
     let strength = 2; // variant -> tertiary
@@ -784,32 +948,38 @@
       strength = 0;
       caseLevel = 1;
     }
-    const cf = caseFirst === "upper" ? 1 : caseFirst === "lower" ? 2 : 0;
+    // -1 leaves an option the caller did not give to the locale's default.
+    const tri = (value) => (value === undefined ? -1 : value ? 1 : 0);
+    const cf = COLLATOR_CASE_FIRST.indexOf(caseFirst);
     const signature = [
       strength,
       caseLevel,
-      numeric ? 1 : 0,
+      tri(numeric),
       cf,
-      ignorePunctuation ? 1 : 0,
+      tri(ignorePunctuation),
     ].join(",");
 
-    let localeTag = resolveLocale(locales);
-    if (o.collation) {
-      localeTag +=
-        (/-u-/.test(localeTag) ? "-" : "-u-") + "co-" + String(o.collation);
-    }
+    const baseTag = resolveLocale(locales);
+    const reportedTag = withExtensions(
+      baseTag,
+      collation ? ["co", collation] : [],
+    );
+    const localeTag =
+      usage === "search"
+        ? withExtensions(baseTag, ["co", "search"])
+        : reportedTag;
     const resolved = __MacishTypeHost_intlResolveLocale(localeTag);
 
     self.compare = (a, b) =>
       __MacishTypeHost_intlCollatorCompare(localeTag, signature, String(a), String(b));
     self.resolvedOptions = () => ({
-      locale: resolved.locale,
+      locale: reportedLocale(reportedTag, localeTag, resolved.locale),
       usage,
       sensitivity,
-      numeric,
-      caseFirst,
-      ignorePunctuation,
-      collation: o.collation ? String(o.collation) : "default",
+      numeric: numeric ?? false,
+      caseFirst: caseFirst ?? "false",
+      ignorePunctuation: ignorePunctuation ?? false,
+      collation: collation ?? "default",
     });
     return self;
   };

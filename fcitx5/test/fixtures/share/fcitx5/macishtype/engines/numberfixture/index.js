@@ -70,4 +70,96 @@ try {
 }
 console.log(`invalid-currency ${currencyError}`);
 
+// Options are read like any property, inherited ones included.
+let inherited;
+try {
+  inherited = new Intl.NumberFormat(
+    "en-US",
+    Object.create({ style: "currency", currency: "USD" }),
+  ).format(1);
+} catch (error) {
+  inherited = error.constructor.name;
+}
+console.log(`inherited-options ${inherited}`);
+
+// Out-of-range values are a RangeError, including Object.prototype names and
+// "uſd", which is ASCII only after toUpperCase.
+const optionErrors = [
+  ["NumberFormat", { style: "currency", currency: "USD", currencyDisplay: "constructor" }],
+  ["NumberFormat", { roundingMode: "toString" }],
+  ["PluralRules", { roundingMode: "toString" }],
+  ["NumberFormat", { notation: "bogus" }],
+  ["NumberFormat", { compactDisplay: "bogus" }],
+  ["NumberFormat", { style: "" }],
+  ["PluralRules", { type: "" }],
+  ["NumberFormat", { style: "currency", currency: "uſd" }],
+].map(([type, options]) => {
+  try {
+    new Intl[type]("en-US", options);
+    return "no-throw";
+  } catch (error) {
+    return error.constructor.name;
+  }
+});
+console.log(`invalid-option ${optionErrors.join(",")}`);
+
+// Each option is read once, at construction.
+let currencyDisplayReads = 0;
+const counted = {
+  style: "currency",
+  currency: "USD",
+  get currencyDisplay() {
+    currencyDisplayReads++;
+    return "code";
+  },
+};
+const countedFormat = new Intl.NumberFormat("en-US", counted);
+counted.currency = "EUR";
+countedFormat.format(1);
+const countedCurrency = countedFormat.resolvedOptions().currency;
+console.log(`option-reads ${currencyDisplayReads} ${countedCurrency}`);
+
+const outcome = (run) => {
+  try {
+    const result = run();
+    return typeof result === "string" ? result : "ok";
+  } catch (error) {
+    return error.constructor.name;
+  }
+};
+
+// Digit options follow ECMA-402: compact rounding, the currency's own digit
+// count, halfExpand rounding, and option errors.
+const digitOptions = [
+  () => new Intl.NumberFormat("en-US", { notation: "compact" }).format(1234),
+  () =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    }).format(1234.5),
+  () => new Intl.NumberFormat("en-US", { style: "currency", currency: "JPY" }).format(1234),
+  () => new Intl.NumberFormat("en-US", { maximumFractionDigits: 101 }),
+  () => new Intl.NumberFormat("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 1 }),
+  () => new Intl.NumberFormat("en-US", { style: "currency" }),
+].map(outcome);
+console.log(`digit-options ${digitOptions.join("|")}`);
+
+// A unit is validated before it reaches the ICU skeleton.
+const groupingAndUnits = [
+  () => new Intl.NumberFormat("en-US", { useGrouping: "false" }).format(12345),
+  () => new Intl.NumberFormat("en-US", { useGrouping: "min2" }).format(1234),
+  () => new Intl.NumberFormat("en-US", { useGrouping: 0 }).format(12345),
+  () => new Intl.NumberFormat("en-US", { useGrouping: "bogus" }),
+  () =>
+    new Intl.NumberFormat("en-US", { style: "unit", unit: "kilometer-per-hour" }).format(50),
+  () => new Intl.NumberFormat("en-US", { style: "unit", unit: "meter rounding-mode-floor" }),
+].map(outcome);
+console.log(`grouping-and-units ${groupingAndUnits.join("|")}`);
+
+// The reported locale leaves out a numbering system the options added.
+console.log(
+  `reported-locale ${new Intl.NumberFormat("en-US", { numberingSystem: "arab" }).resolvedOptions().locale}`,
+);
+
 export default class {};

@@ -41,4 +41,42 @@ try {
 }
 console.log(`invalid-sensitivity ${error}`);
 
+// Empty values are out of range too, not the defaults.
+const emptyErrors = ["usage", "sensitivity", "caseFirst"].map((name) => {
+  try {
+    new Intl.Collator("en", { [name]: "" });
+    return "no-throw";
+  } catch (e) {
+    return e.constructor.name;
+  }
+});
+console.log(`empty-options ${emptyErrors.join(",")}`);
+
+// Each option is read once, resolvedOptions included.
+let collationReads = 0;
+new Intl.Collator("de", {
+  get collation() {
+    collationReads++;
+    return "phonebk";
+  },
+}).resolvedOptions();
+console.log(`collation-reads ${collationReads}`);
+
+// Options the caller leaves out keep the locale's defaults (Danish sorts
+// upper case first; a -u-kn- tag turns numeric on), and usage "search" uses
+// the search collation.
+const localeDefaults = [
+  ["a", "A"].sort(new Intl.Collator("da").compare).join(""),
+  ["a10", "a2"].sort(new Intl.Collator("en-u-kn-true").compare).join(","),
+  new Intl.Collator("de", { usage: "search", sensitivity: "base" }).compare("a", "ä"),
+];
+console.log(`locale-defaults ${localeDefaults.join("|")}`);
+
+// The reported locale shows a collation option but not usage "search".
+const reportedLocales = [
+  new Intl.Collator("de", { usage: "search" }).resolvedOptions().locale,
+  new Intl.Collator("de", { collation: "phonebk" }).resolvedOptions().locale,
+];
+console.log(`reported-locale ${reportedLocales.join("|")}`);
+
 export default class {};

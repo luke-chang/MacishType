@@ -40,4 +40,12 @@ check "resolvedOptions echoes sensitivity, numeric, and usage" "$out" \
     'resolved accent true sort'
 check "an unknown sensitivity throws RangeError" "$out" \
     'invalid-sensitivity RangeError'
+check "empty option values throw RangeError rather than defaulting" "$out" \
+    'empty-options RangeError,RangeError,RangeError'
+check "the collation option is read once" "$out" \
+    'collation-reads 1'
+check "omitted options keep the locale defaults, and search uses its collation" "$out" \
+    'locale-defaults Aa|a2,a10|-1'
+check "the reported locale shows collation but not usage search" "$out" \
+    'reported-locale de|de-u-co-phonebk'
 echo "Intl.Collator checks passed."

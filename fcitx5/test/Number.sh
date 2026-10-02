@@ -45,4 +45,16 @@ check "resolvedOptions reports numbering, style, and currency" "$out" \
     'resolved latn currency USD'
 check "an invalid currency code throws RangeError" "$out" \
     'invalid-currency RangeError'
+check "inherited options are read like own ones" "$out" \
+    'inherited-options $1.00'
+check "an out-of-range option value throws RangeError at construction" "$out" \
+    'invalid-option RangeError,RangeError,RangeError,RangeError,RangeError,RangeError,RangeError,RangeError'
+check "each option is read once, at construction" "$out" \
+    'option-reads 1 USD'
+check "digit options round and range-check as ECMA-402 does" "$out" \
+    'digit-options 1.2K|$1,235|¥1,234|RangeError|RangeError|TypeError'
+check "useGrouping and unit follow ECMA-402" "$out" \
+    'grouping-and-units 12,345|1234|12345|RangeError|50 km/h|RangeError'
+check "the reported locale leaves out an options numbering system" "$out" \
+    'reported-locale en-US'
 echo "Intl.NumberFormat checks passed."

@@ -38,6 +38,8 @@ check "sentence segments reconstruct the input" "$out" \
     'sentence-rejoin true'
 check "an unknown granularity throws RangeError" "$out" \
     'bad-granularity RangeError'
+check "an empty granularity throws RangeError rather than defaulting" "$out" \
+    'empty-granularity RangeError'
 check "resolvedOptions reports the locale and granularity" "$out" \
     'resolved {"locale":"zh-Hant","granularity":"grapheme"}'
 echo "Intl.Segmenter checks passed."

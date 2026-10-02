@@ -53,6 +53,16 @@ try {
 }
 console.log(`bad-granularity ${badResult}`);
 
+// An empty granularity is out of range too, not the default.
+let emptyResult;
+try {
+  new Intl.Segmenter(undefined, { granularity: "" });
+  emptyResult = "no-throw";
+} catch (error) {
+  emptyResult = error.constructor.name;
+}
+console.log(`empty-granularity ${emptyResult}`);
+
 console.log(
   `resolved ${JSON.stringify(new Intl.Segmenter("zh-Hant").resolvedOptions())}`,
 );
