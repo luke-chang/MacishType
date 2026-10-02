@@ -9,6 +9,7 @@ add_library(macishtype SHARED
     IconLinks.cpp
     WebKeyMap.cpp
     MacishType.cpp
+    OptionName.cpp
     Session.cpp
     SoundTheme.cpp
 )

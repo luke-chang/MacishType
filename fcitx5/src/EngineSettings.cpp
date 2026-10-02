@@ -12,6 +12,7 @@
 
 #include "I18n.h"
 #include "Log.h"
+#include "OptionName.h"
 
 namespace MacishType::Fcitx5 {
 
@@ -200,33 +201,32 @@ EngineSettings::EngineSettings(const std::vector<SettingsSection> &sections,
                                bool associatedAvailable,
                                bool layoutDirectionFixed)
     : associatedAvailable_(associatedAvailable) {
-    std::set<std::string> usedKeys;
+    std::set<std::string> usedNames;
     // The orientation picker takes the candidate-window section first (macOS
     // parity), and only when the manifest does not fix the direction. Its key
     // is reserved so a colliding manifest field is skipped rather than
     // throwing in addOption.
     if (!layoutDirectionFixed) {
         materializeOrientation();
-        usedKeys.insert("orientation");
+        usedNames.insert("orientation");
     }
     for (const auto &section : sections) {
         for (const auto &field : section.fields) {
-            // '/' is reserved by fcitx option paths; duplicates would
-            // throw in addOption.
-            if (field.key.empty() ||
-                field.key.find('/') != std::string::npos ||
-                !usedKeys.insert(field.key).second) {
+            std::string name = encodeOptionName(field.key);
+            // Duplicates would throw in addOption.
+            if (field.key.empty() || !usedNames.insert(name).second) {
                 MACISHTYPE_NOTICE()
-                    << "Settings field skipped (invalid or duplicate key): "
+                    << "Settings field skipped (empty or duplicate key): "
                     << field.key;
                 continue;
             }
-            materializeField(field);
+            materializeField(field, name);
         }
     }
 }
 
-void EngineSettings::materializeField(const SettingsField &field) {
+void EngineSettings::materializeField(const SettingsField &field,
+                                      const std::string &name) {
     BoundField bound;
     bound.schema = field;
 
@@ -258,7 +258,7 @@ void EngineSettings::materializeField(const SettingsField &field) {
         // fields stay gated — no option, no value pushed.
         if (field.key == "enableAssociatedMode" && associatedAvailable_) {
             auto option = std::make_unique<ToggleOption>(
-                this, field.key, translated("Enable associated words"),
+                this, name, translated("Enable associated words"),
                 boolFromJson(field.defaultJson).value_or(false),
                 fcitx::NoConstrain<bool>{}, fcitx::DefaultMarshaller<bool>{},
                 annotation);
@@ -272,7 +272,7 @@ void EngineSettings::materializeField(const SettingsField &field) {
         }
     } else if (field.type == "toggle") {
         auto option = std::make_unique<ToggleOption>(
-            this, field.key, label,
+            this, name, label,
             boolFromJson(field.defaultJson).value_or(false),
             fcitx::NoConstrain<bool>{}, fcitx::DefaultMarshaller<bool>{},
             annotation);
@@ -281,7 +281,7 @@ void EngineSettings::materializeField(const SettingsField &field) {
         options_.push_back(std::move(option));
     } else if (field.type == "textField") {
         auto option = std::make_unique<TextOption>(
-            this, field.key, label,
+            this, name, label,
             stringFromJson(field.defaultJson).value_or(""),
             fcitx::NoConstrain<std::string>{},
             fcitx::DefaultMarshaller<std::string>{}, annotation);
@@ -326,7 +326,7 @@ void EngineSettings::materializeField(const SettingsField &field) {
                         << field.key;
                 }
                 auto option = std::make_unique<NumberOption>(
-                    this, field.key, label, clamped,
+                    this, name, label, clamped,
                     fcitx::IntConstrain(low, high),
                     fcitx::DefaultMarshaller<int>{}, annotation);
                 bound.kind = Kind::Number;
@@ -347,7 +347,7 @@ void EngineSettings::materializeField(const SettingsField &field) {
                 annotation.enumLabels.push_back(choice.label);
             }
             auto option = std::make_unique<PickerOption>(
-                this, field.key, label, pickerDefaultToken(field),
+                this, name, label, pickerDefaultToken(field),
                 fcitx::NoConstrain<std::string>{},
                 fcitx::DefaultMarshaller<std::string>{}, annotation);
             bound.kind = Kind::Picker;

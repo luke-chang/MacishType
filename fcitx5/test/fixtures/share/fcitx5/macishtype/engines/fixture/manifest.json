@@ -38,6 +38,12 @@
           ]
         },
         {
+          "key": "#[odd]/key= ",
+          "type": "toggle",
+          "label": { "en": "Odd" },
+          "default": true
+        },
+        {
           "key": "enableAssociatedMode",
           "type": "system",
           "default": true

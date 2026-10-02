@@ -29,6 +29,7 @@
 #include "I18n.h"
 #include "Log.h"
 #include "OneShotTimer.h"
+#include "OptionName.h"
 #include "VersionStamp.h"
 
 namespace MacishType::Fcitx5 {
@@ -57,59 +58,6 @@ std::string settingsConfigPath(const std::string &engineId) {
 // "<id>-menu" would collide with (ids allow '-').
 std::string menuConfigPath(const std::string &engineId) {
     return "macishtype/menu/" + engineId + ".conf";
-}
-
-// Menu keys are contract-free-form, but fcitx's ini writer escapes values
-// only — a key holding '=', '#', '[', ']', '%', a control byte, or '/' (the
-// RawConfig path separator) would corrupt the file or nest, and its reader
-// trims each line, which would eat leading or trailing spaces. Percent-
-// encode all of those into the option name.
-std::string encodeMenuKey(const std::string &key) {
-    static constexpr char hexDigits[] = "0123456789ABCDEF";
-    std::string encoded;
-    encoded.reserve(key.size());
-    for (unsigned char byte : key) {
-        if (byte <= 0x20 || byte == '%' || byte == '=' || byte == '#' ||
-            byte == '[' || byte == ']' || byte == '/') {
-            encoded += '%';
-            encoded += hexDigits[byte >> 4];
-            encoded += hexDigits[byte & 0xF];
-        } else {
-            encoded += static_cast<char>(byte);
-        }
-    }
-    return encoded;
-}
-
-// Inverse of encodeMenuKey, so a stored entry can be matched against the
-// declared keys. Needed to spot entries whose item is gone: handing those
-// to the host (which drops unknown keys) is what makes its seeding notice
-// the difference and rewrite the file without them.
-std::string decodeMenuKey(const std::string &name) {
-    auto hexDigit = [](char digit) -> int {
-        if (digit >= '0' && digit <= '9') {
-            return digit - '0';
-        }
-        if (digit >= 'A' && digit <= 'F') {
-            return digit - 'A' + 10;
-        }
-        return -1;
-    };
-    std::string decoded;
-    decoded.reserve(name.size());
-    for (size_t i = 0; i < name.size(); i++) {
-        if (name[i] == '%' && i + 2 < name.size()) {
-            int high = hexDigit(name[i + 1]);
-            int low = hexDigit(name[i + 2]);
-            if (high >= 0 && low >= 0) {
-                decoded += static_cast<char>((high << 4) | low);
-                i += 2;
-                continue;
-            }
-        }
-        decoded += name[i];
-    }
-    return decoded;
 }
 
 // Resolves the per-input-method orientation token to a concrete direction.
@@ -829,7 +777,7 @@ InputMethodEngine::menuStoreForEngine(const EngineInfo &engine) {
     for (const auto &name : raw.subItems()) {
         const auto *value = raw.valueByPath(name);
         if (value != nullptr && (*value == "True" || *value == "False")) {
-            store.initial[decodeMenuKey(name)] = *value == "True";
+            store.initial[decodeOptionName(name)] = *value == "True";
         }
     }
     store.onChange = [this, engineId = engine.id](
@@ -847,7 +795,7 @@ void InputMethodEngine::handleMenuValuesChanged(
     // JsEngineHost::load(), before hosts_ holds the entry.
     fcitx::RawConfig raw;
     for (const auto &[key, value] : values) {
-        raw.setValueByPath(encodeMenuKey(key), value ? "True" : "False");
+        raw.setValueByPath(encodeOptionName(key), value ? "True" : "False");
     }
     fcitx::safeSaveAsIni(raw, fcitx::StandardPathsType::PkgConfig,
                          menuConfigPath(engineId));

@@ -76,7 +76,7 @@ private:
         fcitx::OptionBase *option = nullptr;
     };
 
-    void materializeField(const SettingsField &field);
+    void materializeField(const SettingsField &field, const std::string &name);
     void materializeOrientation();
 
     bool associatedAvailable_ = false;
