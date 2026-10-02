@@ -6,9 +6,29 @@
     "zz": "ZZ"
   },
   "capabilities": { "outputToSimplified": true },
+  "modules": { "__proto__": true },
+  "menu": [
+    { "key": "toString", "type": "toggle", "label": { "en": "To string" }, "default": true }
+  ],
   "candidateWindow": {
     "fontSize": 20,
     "moveOnExpand": true,
     "macish": { "expandable": false }
-  }
+  },
+  "settings": [
+    {
+      "title": { "en": "Test" },
+      "fields": [
+        {
+          "key": "__proto__",
+          "type": "picker",
+          "label": { "en": "Proto" },
+          "default": "only",
+          "options": [
+            { "text": { "en": "Only" }, "tag": "only", "value": { "evil": 1 } }
+          ]
+        }
+      ]
+    }
+  ]
 }

@@ -8,6 +8,16 @@
 //   key-order         - localStorage.key(index) reports keys alphabetically
 //   lone-surrogate    - an unpaired surrogate reaches the host as U+FFFD,
 //                       not as the WTF-8 bytes quickjs holds it in
+//   settings-proto    - a "__proto__" settings key is an ordinary entry, and
+//                       inherited members are not reported as own
+//   proxy-shape       - the manifest proxies inherit Object.prototype, and a
+//                       host value shadows a member of the same name
+//   proxy-sealed      - defining on, deleting a host key from, freezing, or
+//                       re-prototyping a manifest proxy throws (deleting an
+//                       absent key or setting the prototype it already has
+//                       does not), and the proxy keeps working afterwards
+//   proxy-wrapped     - a write through a transparent wrapper reaches the host
+//   modules-proto     - a "__proto__" module name is an ordinary entry
 //   cw-impl           - per-implementation candidateWindow fields, and the
 //                       macish section itself, are unreadable, unwritable,
 //                       unlisted; top-level fields still seed the proxy
@@ -36,6 +46,59 @@ console.log(`root-import ${MARKER}`);
 // Every engine string reaches the host through one funnel, which repairs
 // the WTF-8 quickjs keeps an unpaired surrogate in.
 console.log(`lone-surrogate a\uD800b`);
+
+const { settings } = manifest;
+console.log(
+  `settings-proto keys=${JSON.stringify(Object.keys(settings))} ` +
+    `value=${JSON.stringify(settings.__proto__)} evil=${String(settings.evil)} ` +
+    `toString=${"toString" in settings},${Object.hasOwn(settings, "toString")} ` +
+    `constructor=${typeof settings.constructor}`,
+);
+console.log(
+  `proxy-shape ${[settings, manifest.candidateWindow, manifest.menu, manifest.toggle]
+    .map((proxy) => Object.getPrototypeOf(proxy) === Object.prototype)
+    .join(",")} ` +
+    `menu.toString=${typeof manifest.menu.toString} string=${String(manifest.candidateWindow)}`,
+);
+const sealed = [
+  () => Object.defineProperty(manifest.menu, "sealed", { value: 1 }),
+  () => Object.freeze(settings),
+  () => Object.setPrototypeOf(manifest.toggle, null),
+  () => delete manifest.menu.toString,
+  () => delete manifest.menu.absent,
+  () => Object.setPrototypeOf(manifest.toggle, Object.prototype),
+  () => Object.setPrototypeOf(settings, Object.prototype),
+].map((action) => {
+  try {
+    action();
+    return "ok";
+  } catch (error) {
+    return error.constructor.name;
+  }
+});
+let afterSealing;
+try {
+  afterSealing = JSON.stringify([
+    Object.keys(manifest.menu),
+    Object.keys(settings),
+    typeof manifest.menu.sealed,
+  ]);
+} catch (error) {
+  afterSealing = error.constructor.name;
+}
+console.log(`proxy-sealed ${sealed.join(",")} after=${afterSealing}`);
+let wrappedWrite;
+try {
+  new Proxy(manifest.menu, {}).toString = false;
+  wrappedWrite = String(manifest.menu.toString);
+} catch (error) {
+  wrappedWrite = error.constructor.name;
+}
+console.log(`proxy-wrapped ${wrappedWrite}`);
+console.log(
+  `modules-proto keys=${JSON.stringify(Object.keys(manifest.modules))} ` +
+    `inherits=${Object.getPrototypeOf(manifest.modules) === Object.prototype}`,
+);
 
 // Ahead of the writes further down, so the key list is still exactly what
 // the manifest seeded.

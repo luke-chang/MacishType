@@ -636,7 +636,10 @@ void JsEngineHost::loadModuleTable(JSValue table, const std::string &fileBase,
             } else {
                 entry = JS_NewStringLen(ctx_, value.data(), value.size());
             }
-            JS_SetPropertyStr(ctx_, table, std::string(key).c_str(), entry);
+            // Assignment would run the inherited "__proto__" setter instead
+            // of storing an entry.
+            JS_DefinePropertyValueStr(ctx_, table, std::string(key).c_str(),
+                                      entry, JS_PROP_C_W_E);
             count++;
         });
     if (!read) {

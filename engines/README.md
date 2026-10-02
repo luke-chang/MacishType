@@ -1268,8 +1268,9 @@ Engine-wide info injected by the host.
 ##### `manifest.candidateWindow`
 
 Live candidate-window configuration. Reads return what engine code wrote
-(if any), else the manifest declaration, else `undefined`. Writes
-override individual fields by direct assignment.
+(if any), else the manifest declaration, else `undefined` (inherited
+`Object.prototype` members aside). Writes override individual fields by
+direct assignment.
 
 The view holds the top-level `candidateWindow` fields only.
 Per-implementation fields — declared at the top level or under
@@ -1411,8 +1412,9 @@ engine-global state shared with the IME menu's checkmarks, not
 per-session configuration.
 
 Keys are the declared items only. Reads of anything else return
-`undefined`; writes to them (or non-boolean writes) are logged and
-silently ignored, same policy as `manifest.candidateWindow`.
+`undefined` (inherited `Object.prototype` members aside); writes to them
+(or non-boolean writes) are logged and silently ignored, same policy as
+`manifest.candidateWindow`.
 
 ##### Event: `menuchange`
 
@@ -1444,8 +1446,9 @@ manifest.toggle.outputToSimplified = true;  // flip it
 
 **Writes act immediately** and persist across sessions, same as
 `manifest.menu` — the value is engine-global state shared with the IME
-menu's checkmark. Reads of unavailable keys return `undefined`; writes to
-them (or non-boolean writes) are logged and silently ignored.
+menu's checkmark. Reads of unavailable keys return `undefined` (inherited
+`Object.prototype` members aside); writes to them (or non-boolean writes)
+are logged and silently ignored.
 
 ##### Event: `togglechange`
 

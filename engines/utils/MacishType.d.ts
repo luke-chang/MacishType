@@ -608,8 +608,8 @@ export interface ToggleChangeEvent {
  * and shared with the IME menu's checkmarks.
  *
  * Unlike `manifest.candidateWindow`, writes act immediately — the very
- * next commit reflects them. Undeclared keys read `undefined`; writes
- * to them are logged and ignored.
+ * next commit reflects them. Undeclared keys read `undefined` (inherited
+ * `Object.prototype` members aside); writes to them are logged and ignored.
  */
 export interface Menu {
   [key: string]: boolean | undefined;
@@ -623,8 +623,8 @@ export interface Menu {
  * toggle exists on a given host.
  *
  * Writes act immediately and persist host-side, shared with the IME
- * menu's checkmark. Unavailable keys read `undefined`; writes to them
- * are logged and ignored.
+ * menu's checkmark. Unavailable keys read `undefined` (inherited
+ * `Object.prototype` members aside); writes to them are logged and ignored.
  */
 export interface Toggle {
   /** Traditional→Simplified commit transform. */
@@ -633,7 +633,8 @@ export interface Toggle {
 
 /**
  * Live candidate-window configuration. Reads return engine writes (if
- * any), else manifest declarations, else `undefined`. Writes take effect
+ * any), else manifest declarations, else `undefined` (inherited
+ * `Object.prototype` members aside). Writes take effect
  * at the next session activate.
  *
  * Invalid writes — wrong type, out of range, unknown field — are logged

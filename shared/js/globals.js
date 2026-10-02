@@ -147,15 +147,27 @@ function __MacishType_dispatchGlobal(event) {
   // freeze — that would prevent the in-place update).
   const settings = {};
 
-  // Shallow read-only Proxy: top-level writes throw, reads forward to
-  // the internal `settings` object. Nested objects/arrays aren't frozen
-  // (deep mutation possible but pointless — next host push clobbers).
+  // Assignment would run the inherited "__proto__" setter instead of storing
+  // an entry.
+  function defineEntry(object, key, value) {
+    Object.defineProperty(object, key, {
+      value,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+  }
+
+  const readOnly = () => {
+    throw new TypeError("manifest.settings is read-only");
+  };
+  // Nested values are frozen by __MacishType_setSettings.
   const settingsProxy = new Proxy({}, {
     get(_, prop, recv) { return Reflect.get(settings, prop, recv); },
     has(_, prop) { return Reflect.has(settings, prop); },
     ownKeys() { return Reflect.ownKeys(settings); },
     getOwnPropertyDescriptor(_, prop) {
-      if (!(prop in settings)) return undefined;
+      if (!Object.hasOwn(settings, prop)) return undefined;
       return {
         value: settings[prop],
         writable: false,
@@ -163,9 +175,13 @@ function __MacishType_dispatchGlobal(event) {
         configurable: true,
       };
     },
-    set() { throw new TypeError("manifest.settings is read-only"); },
-    deleteProperty() { throw new TypeError("manifest.settings is read-only"); },
-    defineProperty() { throw new TypeError("manifest.settings is read-only"); },
+    set: readOnly,
+    deleteProperty: readOnly,
+    defineProperty: readOnly,
+    preventExtensions: readOnly,
+    setPrototypeOf(target, proto) {
+      return proto === Object.getPrototypeOf(target) || readOnly();
+    },
   });
 
   // Host-injected data tables, populated by __MacishType_setModuleData before
@@ -175,7 +191,6 @@ function __MacishType_dispatchGlobal(event) {
   const modules = {};
 
   globalThis.manifest = {
-    // null (name absent) → undefined, mirroring candidateWindow below.
     get name() {
       const value = __MacishType_manifestName();
       return value === null ? undefined : value;
@@ -184,114 +199,79 @@ function __MacishType_dispatchGlobal(event) {
     get modules() { return modules; },
   };
 
-  // manifest.candidateWindow — Proxy-backed cache the engine can read/write.
-  // The host holds the source of truth; this object forwards all access
-  // through bridge calls. Writes that fail (read-only field, unknown name,
-  // invalid value) are logged host-side and silently ignored — the set trap
-  // always returns true so engine code never sees an exception.
-  const candidateWindowProxy = new Proxy({}, {
-    get(_, prop) {
-      if (typeof prop !== "string") return undefined;
-      const value = __MacishType_getCandidateWindowField(prop);
-      return value === null ? undefined : value;
-    },
-    set(_, prop, value) {
-      if (typeof prop === "string") {
-        __MacishType_setCandidateWindowField(prop, value);
-      }
-      return true;
-    },
-    has(_, prop) {
-      if (typeof prop !== "string") return false;
-      return __MacishType_getCandidateWindowField(prop) !== null;
-    },
-    ownKeys() {
-      return __MacishType_candidateWindowFields();
-    },
-    getOwnPropertyDescriptor(_, prop) {
-      if (typeof prop !== "string") return undefined;
-      const value = __MacishType_getCandidateWindowField(prop);
-      if (value === null) return undefined;
-      return { value, writable: true, enumerable: true, configurable: true };
-    },
-  });
-  Object.defineProperty(globalThis.manifest, "candidateWindow", {
-    get() { return candidateWindowProxy; },
-    enumerable: true,
-    configurable: false,
-  });
+  // Failed writes are logged host-side; set still returns true so assignments
+  // never throw in strict mode.
+  function defineBridgeProxy(property, getValue, setValue, listKeys) {
+    const lookup = (prop) => (typeof prop === "string" ? getValue(prop) : null);
+    const proxy = new Proxy({}, {
+      get(target, prop, receiver) {
+        const value = lookup(prop);
+        return value !== null ? value : Reflect.get(target, prop, receiver);
+      },
+      set(_, prop, value) {
+        if (typeof prop === "string") {
+          setValue(prop, value);
+        }
+        return true;
+      },
+      has(target, prop) {
+        return lookup(prop) !== null || Reflect.has(target, prop);
+      },
+      ownKeys() {
+        return listKeys();
+      },
+      getOwnPropertyDescriptor(_, prop) {
+        const value = lookup(prop);
+        if (value === null) return undefined;
+        return { value, writable: true, enumerable: true, configurable: true };
+      },
+      // Absent keys delete as on any object.
+      deleteProperty(_, prop) {
+        return lookup(prop) === null;
+      },
+      // The target must stay an empty, extensible {} for the other traps to
+      // satisfy Proxy invariants.
+      defineProperty() { return false; },
+      preventExtensions() { return false; },
+      setPrototypeOf(target, proto) {
+        return proto === Object.getPrototypeOf(target);
+      },
+    });
+    Object.defineProperty(globalThis.manifest, property, {
+      get() { return proxy; },
+      enumerable: true,
+      configurable: false,
+    });
+  }
 
-  // manifest.menu — Proxy-backed live menu-item values, read/write. Same
-  // forwarding model as candidateWindow above, but writes act immediately
-  // (and persist host-side) rather than at next activate.
-  const menuProxy = new Proxy({}, {
-    get(_, prop) {
-      if (typeof prop !== "string") return undefined;
-      const value = __MacishType_getMenuValue(prop);
-      return value === null ? undefined : value;
-    },
-    set(_, prop, value) {
-      if (typeof prop === "string") {
-        __MacishType_setMenuValue(prop, value);
-      }
-      return true;
-    },
-    has(_, prop) {
-      if (typeof prop !== "string") return false;
-      return __MacishType_getMenuValue(prop) !== null;
-    },
-    ownKeys() {
-      return __MacishType_menuKeys();
-    },
-    getOwnPropertyDescriptor(_, prop) {
-      if (typeof prop !== "string") return undefined;
-      const value = __MacishType_getMenuValue(prop);
-      if (value === null) return undefined;
-      return { value, writable: true, enumerable: true, configurable: true };
-    },
-  });
-  Object.defineProperty(globalThis.manifest, "menu", {
-    get() { return menuProxy; },
-    enumerable: true,
-    configurable: false,
-  });
+  // The bridges are looked up per call: a context may evaluate this file
+  // without defining them.
+  defineBridgeProxy(
+    "candidateWindow",
+    (name) => __MacishType_getCandidateWindowField(name),
+    (name, value) => __MacishType_setCandidateWindowField(name, value),
+    () => __MacishType_candidateWindowFields(),
+  );
 
-  // manifest.toggle — Proxy-backed capability-toggle values, read/write,
-  // same forwarding model as menu above. Keys come from the host's
+  // Unlike candidateWindow, menu writes act immediately (and persist
+  // host-side) rather than at next activate.
+  defineBridgeProxy(
+    "menu",
+    (name) => __MacishType_getMenuValue(name),
+    (name, value) => __MacishType_setMenuValue(name, value),
+    () => __MacishType_menuKeys(),
+  );
+
+  // Like menu, writes act immediately and persist. Keys come from the host's
   // capability availability, not a manifest.json declaration. IME-menu
-  // changes dispatch "togglechange" carrying the changed key; writes
-  // made here never echo one.
-  const toggleProxy = new Proxy({}, {
-    get(_, prop) {
-      if (typeof prop !== "string") return undefined;
-      const value = __MacishType_getToggleValue(prop);
-      return value === null ? undefined : value;
-    },
-    set(_, prop, value) {
-      if (typeof prop === "string") {
-        __MacishType_setToggleValue(prop, value);
-      }
-      return true;
-    },
-    has(_, prop) {
-      if (typeof prop !== "string") return false;
-      return __MacishType_getToggleValue(prop) !== null;
-    },
-    ownKeys() {
-      return __MacishType_toggleKeys();
-    },
-    getOwnPropertyDescriptor(_, prop) {
-      if (typeof prop !== "string") return undefined;
-      const value = __MacishType_getToggleValue(prop);
-      if (value === null) return undefined;
-      return { value, writable: true, enumerable: true, configurable: true };
-    },
-  });
-  Object.defineProperty(globalThis.manifest, "toggle", {
-    get() { return toggleProxy; },
-    enumerable: true,
-    configurable: false,
-  });
+  // changes dispatch "togglechange" carrying the changed key; writes made
+  // here never echo one.
+  defineBridgeProxy(
+    "toggle",
+    (name) => __MacishType_getToggleValue(name),
+    (name, value) => __MacishType_setToggleValue(name, value),
+    () => __MacishType_toggleKeys(),
+  );
 
   function deepFreeze(v) {
     if (v === null || typeof v !== "object" || Object.isFrozen(v)) return v;
@@ -302,12 +282,9 @@ function __MacishType_dispatchGlobal(event) {
   // Private updater — host bridge entrypoint. The host gates pushes on
   // actual change, so this unconditionally replaces and dispatches.
   globalThis.__MacishType_setSettings = function (next) {
+    const entries = Object.entries(next);
     for (const k of Object.keys(settings)) delete settings[k];
-    Object.assign(settings, next);
-    // Top-level stays mutable for the next push's clear+assign; the Proxy
-    // blocks engine top-level writes. Freeze nested values so engine
-    // can't mutate them either — full deep read-only as seen by JS.
-    for (const k of Object.keys(settings)) deepFreeze(settings[k]);
+    for (const [k, v] of entries) defineEntry(settings, k, deepFreeze(v));
     __MacishType_dispatchGlobal({ type: "settingschange" });
   };
 
@@ -319,9 +296,9 @@ function __MacishType_dispatchGlobal(event) {
   // distinguishes a stored falsy value from a genuine miss.
   globalThis.__MacishType_setModuleData = function (name, data, miss) {
     const inner = new Map(Object.entries(data));
-    modules[name] = Object.freeze({
+    defineEntry(modules, name, Object.freeze({
       query: (key) => (inner.has(key) ? inner.get(key) : miss),
-    });
+    }));
   };
 
   // Base64 → Uint8Array. Pure JSC has no atob, so decode by hand. Skips any
@@ -381,12 +358,12 @@ function __MacishType_dispatchGlobal(event) {
       const within = codePoint & 0xffff;
       return (plane[within >> 3] & (1 << (within & 7))) !== 0;
     };
-    modules[name] = Object.freeze({
+    defineEntry(modules, name, Object.freeze({
       query(value) {
         for (const ch of value) if (!covers(ch.codePointAt(0))) return false;
         return true;
       },
-    });
+    }));
   };
 
   // Host bridge — swap the holder's bitmap, then notify. The host only calls

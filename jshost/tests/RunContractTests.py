@@ -166,8 +166,11 @@ def main():
         # throwfixture throws at load; the assertions target the failure log.
         ("ErrorStack", "throwfixture", (), True),
         # Contract.sh pins LANGUAGE=zh_TW:en_US; jshost expands the
-        # region->base chain itself, so the two tags reproduce it.
-        ("Contract", "contractfixture", ("--languages", "zh-TW,en-US"), False),
+        # region->base chain itself, so the two tags reproduce it. The
+        # settings are what the daemon pushes for the manifest's defaults.
+        ("Contract", "contractfixture",
+         ("--languages", "zh-TW,en-US",
+          "--settings", '{"__proto__":{"evil":1}}'), False),
     ]
     for sh_name, fixture, extra, allow_failure in parsed_suites:
         checks = parse_checks(sh_name)

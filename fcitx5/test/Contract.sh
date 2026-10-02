@@ -33,6 +33,16 @@ check "localStorage.key(index) reports keys alphabetically" "$out" \
     'key-order apple,mango,zebra'
 check "an unpaired surrogate reaches the host as U+FFFD" "$out" \
     'lone-surrogate a�b'
+check "a __proto__ settings key is an entry, and inherited members are not own" "$out" \
+    'settings-proto keys=["__proto__"] value={"evil":1} evil=undefined toString=true,false constructor=function'
+check "the manifest proxies inherit Object.prototype, host values first" "$out" \
+    'proxy-shape true,true,true,true menu.toString=boolean string=[object Object]'
+check "mutating a manifest proxy directly throws and leaves it intact" "$out" \
+    'proxy-sealed TypeError,TypeError,TypeError,TypeError,ok,ok,ok after=[["toString"],["__proto__"],"undefined"]'
+check "a write through a transparent wrapper reaches the host" "$out" \
+    'proxy-wrapped false'
+check "a __proto__ module name is an entry, not the container's prototype" "$out" \
+    'modules-proto keys=["__proto__"] inherits=true'
 check "per-implementation candidateWindow fields never reach the proxy" "$out" \
     'cw-impl expandable=undefined moveOnExpand=undefined macish=undefined fontSize=20 keys=["fontSize"]'
 check "a non-ASCII indexLabels write is rejected, keeping the prior value" "$out" \

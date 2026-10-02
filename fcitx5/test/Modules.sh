@@ -29,7 +29,7 @@ check() {
 # SymbolNames drops a comment and a tab-less row, WordFrequency drops the row
 # whose value is not a number.
 check "a module's table loads from its file base name" \
-    "SymbolNames.zz: 2 entries"
+    "SymbolNames.zz: 3 entries"
 check "a numeric module drops rows whose value is not a number" \
     "WordFrequency.zz: 2 entries"
 
@@ -41,6 +41,8 @@ check "a commented row is not a key" \
     "modulesfix symbolNames-comment=undefined"
 check "a tab-less row is not a key" \
     "modulesfix symbolNames-notab=undefined"
+check "a __proto__ row is an ordinary key" \
+    "modulesfix symbolNames-proto=proto-name"
 
 check "a numeric module answers a hit with its count" \
     "modulesfix wordFrequency-hit=615175"

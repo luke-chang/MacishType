@@ -9,6 +9,7 @@ console.log(`modulesfix symbolNames-hit=${symbolNames.query("！")}`);
 console.log(`modulesfix symbolNames-miss=${symbolNames.query("＄")}`);
 console.log(`modulesfix symbolNames-comment=${symbolNames.query("#＠")}`);
 console.log(`modulesfix symbolNames-notab=${symbolNames.query("no-tab-line")}`);
+console.log(`modulesfix symbolNames-proto=${symbolNames.query("__proto__")}`);
 console.log(`modulesfix wordFrequency-hit=${wordFrequency.query("的")}`);
 console.log(`modulesfix wordFrequency-type=${typeof wordFrequency.query("的")}`);
 console.log(`modulesfix wordFrequency-miss=${wordFrequency.query("＄")}`);
