@@ -24,6 +24,15 @@ this host and on the macOS one ([`macos/`](../macos/)).
 
 - Linux with fcitx5 ≥ 5.1.13 — the release that added the `StandardPaths`
   API the addon builds on; older versions do not compile
+- fcitx5 started at login. On Ubuntu 26.04 nothing starts it in a Wayland
+  session: the `fcitx5` package ships no autostart entry, and im-config no
+  longer acts on Wayland sessions since 0.59. Add the entry once, as the
+  [Fcitx 5 setup guide](https://fcitx-im.org/wiki/Setup_Fcitx_5#XDG_Autostart)
+  describes:
+
+  ```sh
+  mkdir -p ~/.config/autostart && cp /usr/share/applications/org.fcitx.Fcitx5.desktop ~/.config/autostart
+  ```
 - `fcitx5-chinese-addons` — engine capabilities delegate to its modules:
   `chttrans` backs `outputToSimplified` and `fullwidth` backs
   `fullwidthInput` (Debian also splits them out as
@@ -35,7 +44,8 @@ this host and on the macOS one ([`macos/`](../macos/)).
   (`kimpanel@kde.org`) from extensions.gnome.org. Without it fcitx5 falls
   back to its own classicui window, which works in regular apps but cannot
   appear in GNOME Shell's own text fields (the Overview search, the Alt+F2
-  run dialog). A layout bug you may hit after installing it is described in
+  run dialog). On GNOME 47 and earlier, the version extensions.gnome.org
+  offers carries a layout bug described in
   [Known issue: kimpanel on GNOME](#known-issue-kimpanel-on-gnome).
 
 ### Development
@@ -259,12 +269,14 @@ Host notes for this platform:
 
 ## Known issue: kimpanel on GNOME
 
-The kimpanel Shell extension ([required on GNOME](#runtime)) has a layout
+The kimpanel Shell extension ([required on GNOME](#runtime)) had a layout
 bug: when an engine flips `layoutDirection` per update, the
 frame that switches direction renders broken — the panel sits at the wrong
 position with a mis-sized backdrop. Tracked upstream as
-[gnome-shell-extension-kimpanel#107](https://github.com/wengxt/gnome-shell-extension-kimpanel/issues/107);
-until it lands, apply the two-line patch from the issue locally:
+[gnome-shell-extension-kimpanel#107](https://github.com/wengxt/gnome-shell-extension-kimpanel/issues/107).
+Version 92 of the extension fixes it, but extensions.gnome.org offers older
+versions for GNOME 47 and earlier, which still carry it. There, apply the
+two-line patch from the issue locally:
 
 1. Edit `~/.local/share/gnome-shell/extensions/kimpanel@kde.org/extension.js`
    as described in the issue.
