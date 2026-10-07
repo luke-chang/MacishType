@@ -271,7 +271,8 @@ uninstall:
 	sudo xargs rm -f < $(BUILD_DIR)/install_manifest.txt
 	sudo rm -rf /usr/share/fcitx5/macishtype/engines
 	@sudo rmdir /usr/share/fcitx5/macishtype/tables \
-	    /usr/share/fcitx5/macishtype 2> /dev/null || true
+	    /usr/share/fcitx5/macishtype /usr/share/doc/fcitx5-macishtype \
+	    2> /dev/null || true
 	$(MAKE) restart
 
 # Crash backstop. The addon removes its own icon theme links when it shuts
