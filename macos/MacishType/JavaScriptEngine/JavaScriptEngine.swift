@@ -417,18 +417,35 @@ class JavaScriptEngine: InputEngine {
         FileManager.default.fileExists(atPath: folder.appending(path: manifestFileName).path)
     }
 
-    // MARK: Settings → JS bridge
+    // MARK: Dictionaries → JS
 
-    private static func marshal(_ value: JSONValue) -> Any {
-        switch value {
-        case .null:            return NSNull()
-        case .bool(let b):     return b
-        case .number(let n):   return n
-        case .string(let s):   return s
-        case .array(let arr):  return arr.map { marshal($0) }
-        case .object(let obj): return obj.mapValues { marshal($0) }
+    /// Built with JSC's JSON parser because the ObjC bridge stores keys by
+    /// assignment: a `"__proto__"` key would hit the inherited setter and swap
+    /// the object's prototype instead of becoming an own property.
+    /// `sortingKeys` is for objects whose key order engines can observe, so
+    /// it doesn't follow Swift's per-process hash seed.
+    static func jsObject(
+        _ dictionary: [String: some Encodable], sortingKeys: Bool, in context: JSContext
+    ) -> JSValue {
+        let encoder = JSONEncoder()
+        if sortingKeys { encoder.outputFormatting = .sortedKeys }
+        do {
+            let json = String(decoding: try encoder.encode(dictionary), as: UTF8.self)
+            let string = json.withCString(JSStringCreateWithUTF8CString)
+            defer { JSStringRelease(string) }
+            if let ref = JSValueMakeFromJSONString(context.jsGlobalContextRef, string) {
+                return JSValue(jsValueRef: ref, in: context)
+            }
+            Logger.javaScriptEngine.fault("JSC rejected the JSON handoff")
+        } catch {
+            Logger.javaScriptEngine.fault(
+                "JSON handoff encoding failed: \(String(describing: error), privacy: .public)"
+            )
         }
+        return JSValue(newObjectIn: context)
     }
+
+    // MARK: Settings → JS bridge
 
     /// No-op when `jsContext` is nil (engine not yet loaded). In the live
     /// path, globals.js has already registered `__MacishType_setSettings`
@@ -441,7 +458,6 @@ class JavaScriptEngine: InputEngine {
         // context's JS-side dict empty despite the Swift cache looking up
         // to date.
         guard lastPushedSettings != settings else { return }
-        let dict = settings.mapValues { Self.marshal($0) }
         guard let updater = context.objectForKeyedSubscript("__MacishType_setSettings"),
               updater.isObject else {
             Logger.javaScriptEngine.fault(
@@ -449,7 +465,7 @@ class JavaScriptEngine: InputEngine {
             )
             return
         }
-        updater.call(withArguments: [dict])
+        updater.call(withArguments: [Self.jsObject(settings, sortingKeys: true, in: context)])
         lastPushedSettings = settings
     }
 
@@ -484,22 +500,27 @@ class JavaScriptEngine: InputEngine {
         // Resolved language may be nil (no manifest field and no plist value);
         // a declared module still gets a view below, just an empty one.
         let language = intendedLanguage
+        // Engines reach a table only through `query()`, so its key order is
+        // unobservable.
+        func table(_ entries: [String: some Encodable]) -> JSValue {
+            Self.jsObject(entries, sortingKeys: false, in: context)
+        }
         for name in names {
             switch name {
             case "fontCoverage":
                 injectCoverageModule(name)
             case "symbolNames":
-                updater.call(withArguments: [name, moduleData(name, language) {
+                updater.call(withArguments: [name, table(moduleData(name, language) {
                     SymbolNameDictionary.isAvailable(for: $0)
                         ? SymbolNameDictionary.acquire(for: $0).entries : nil
-                }])
+                })])
             case "wordFrequency":
                 // miss = 0: an absent char has frequency 0 (matches
                 // WordFrequencyDictionary.frequency's `?? 0`).
-                updater.call(withArguments: [name, moduleData(name, language) {
+                updater.call(withArguments: [name, table(moduleData(name, language) {
                     WordFrequencyDictionary.isAvailable(for: $0)
                         ? WordFrequencyDictionary.acquire(for: $0).entries : nil
-                }, 0])
+                }), 0])
             default:
                 // `enabledNames` listed it but no case handles it: a new flag
                 // was added to Modules without wiring its dictionary here. No
@@ -515,9 +536,7 @@ class JavaScriptEngine: InputEngine {
     /// Resolve one module's table. A declared module always yields a dictionary
     /// so its `manifest.modules.<name>` view is always present — engine code
     /// needn't guard for absence. An unresolvable language, or a missing table
-    /// for that language, yields an empty one (logged). The dictionary bridges
-    /// to a JS object consumed by `__MacishType_setModuleData`; acquired
-    /// handles release at end of scope since the data is copied into JS.
+    /// for that language, yields an empty one.
     private func moduleData<Value>(
         _ name: String, _ language: String?, _ load: (String) -> [String: Value]?
     ) -> [String: Value] {
