@@ -140,21 +140,23 @@ Same flow as [Installation](#installation), but use `make debug` instead of
 with `FCITX_ADDON_DIRS` pointing there.
 
 The dev install only works while that variable is set, and fcitx5's
-autostart won't have it after a re-login. Make it persistent once — adjust
-the home path and the system addon directory (`/usr/lib/<multiarch>/fcitx5`
-on Debian-family, `/usr/lib64/fcitx5` on RPM-family) to your system:
+autostart won't have it after a re-login. Make it persistent once:
 
 ```sh
-cat > ~/.config/environment.d/90-fcitx5-macishtype.conf <<'EOF'
-FCITX_ADDON_DIRS=/home/YOU/.local/lib/fcitx5:/usr/lib/x86_64-linux-gnu/fcitx5
-EOF
+make dev-env
 ```
+
+It writes the same value `make restart` uses to
+`~/.config/environment.d/90-fcitx5-macishtype.conf`.
 
 Notes:
 
-- The variable REPLACES fcitx5's default search path; keep the system
-  directory listed or every other addon breaks.
-- `environment.d` is read at login; use `make restart` to apply immediately.
+- The variable REPLACES fcitx5's default search path, so the value lists
+  the system addon directory too (`/usr/lib/<multiarch>/fcitx5` on
+  Debian-family, `/usr/lib64/fcitx5` on RPM-family). If you edit the file
+  by hand, keep that directory or every other addon breaks.
+- `environment.d` is read at login; until then `make restart` passes the
+  variable itself.
 - **Skipping this bites after the next re-login**: the autostarted fcitx5
   comes up without the variable, fails to load the addon, and prunes its
   input methods from `~/.config/fcitx5/profile` on save.
@@ -188,6 +190,8 @@ keystroke.
   the install half of `make debug`.
 - `make dev-uninstall` — remove that install; engines and settings stay
   (see [First-time setup](#first-time-setup)).
+- `make dev-env` — keep the dev install loaded across logins (run once; see
+  [First-time setup](#first-time-setup)).
 - `make install-engines` — interactive engine installer, copy or symlink
   (see [First install](#first-install)). Out-of-date engines are marked in
   the list; reinstall one to update it. Replacing a copy with a symlink

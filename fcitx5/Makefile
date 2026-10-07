@@ -23,6 +23,9 @@ ICON_LINK_DIR := $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)/ic
 # FCITX_ADDON_DIRS replaces fcitx5's default addon search path, so the
 # system directory must stay listed.
 ADDON_DIRS := $(USER_LIB):$(shell test/SystemAddonDir.sh)
+# Where `make dev-env` persists ADDON_DIRS for login sessions (systemd reads
+# environment.d under the XDG config home).
+ENV_CONF := $(if $(XDG_CONFIG_HOME),$(XDG_CONFIG_HOME),$(HOME)/.config)/environment.d/90-fcitx5-macishtype.conf
 # Build stamp for `make pkg`, computed by scripts/VersionStamp.sh (date plus
 # commit, `.dirty.<HHMM>` when the tree carries uncommitted changes). Handed
 # to the build as an environment variable so the binary and the package share
@@ -31,7 +34,7 @@ ADDON_DIRS := $(USER_LIB):$(shell test/SystemAddonDir.sh)
 VERSION_STAMP ?= $(shell scripts/VersionStamp.sh)
 
 .PHONY: help prepare update-resources build test debug restart dev-install \
-	dev-uninstall install-engines uninstall-engines install uninstall \
+	dev-uninstall dev-env install-engines uninstall-engines install uninstall \
 	remove-icon-links pkg clean clean-resources log log-js log-history
 .DEFAULT_GOAL := help
 
@@ -78,6 +81,7 @@ help:
 	@echo "  make restart           - Restart the live fcitx5 (LOG_DEBUG=1 enables per-key Debug logging)"
 	@echo "  make dev-install       - Install into ~/.local (no restart)"
 	@echo "  make dev-uninstall     - Remove the ~/.local install (keeps engines)"
+	@echo "  make dev-env           - Keep the ~/.local install loaded across logins (run once)"
 	@echo "  make install-engines   - Install engines from ../engines/ as copies or symlinks"
 	@echo "  make uninstall-engines - Remove engines from ~/.local (symlinks leave their source)"
 	@echo "  make install           - Production install into /usr (sudo) + restart"
@@ -191,7 +195,7 @@ dev-install:
 # Reverses dev-install but keeps user data (the engines folder). Run this
 # before switching to `make install`: user-dir files shadow the system
 # install, so a stale dev copy would keep winning. The FCITX_ADDON_DIRS
-# entry in ~/.config/environment.d is not an install artifact and stays.
+# entry `make dev-env` writes is not an install artifact and stays.
 dev-uninstall:
 	rm -f $(USER_LIB)/libmacishtype.so
 	rm -f $(USER_SHARE)/addon/macishtype.conf
@@ -203,6 +207,16 @@ dev-uninstall:
 	rm -f $(HOME)/.local/share/locale/*/LC_MESSAGES/fcitx5-macishtype.mo
 	@rmdir $(USER_SHARE)/macishtype/engines $(USER_SHARE)/macishtype \
 	    2> /dev/null || true
+
+# Persists ADDON_DIRS for login sessions. Without it the session-autostarted
+# fcitx5 comes up unable to see the dev install and prunes its input methods
+# from the profile on save. Read at the next login; until then `make restart`
+# passes the same value itself.
+dev-env:
+	@mkdir -p $(dir $(ENV_CONF))
+	@printf 'FCITX_ADDON_DIRS=%s\n' "$(ADDON_DIRS)" > $(ENV_CONF)
+	@echo "Wrote $(ENV_CONF):"
+	@cat $(ENV_CONF)
 
 # Interactive engine installer: lists the engine folders in ../engines/ and
 # installs the picked ones into the user engines directory, as copies or as
