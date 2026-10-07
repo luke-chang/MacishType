@@ -304,29 +304,21 @@ class JSExternalEngine: JavaScriptEngine {
         }
     }
 
-    /// Editor / metadata noise that's never in `loadedFilePaths` and
-    /// should short-circuit before paying the `canonicalPath` syscall.
-    /// `_storage/` paths get explicit routing in `handleFSEvents`
-    /// (not here) so they reach the storage event pipeline.
-    nonisolated private static func isFSEventsNoise(_ path: String) -> Bool {
-        let name = (path as NSString).lastPathComponent
-        if name == ".DS_Store" { return true }
-        if name.hasPrefix(".") { return true }
-        if name.hasSuffix("~") { return true }
-        return false
-    }
-
     /// `_storage/` paths route to the storage-event pipeline; other
     /// import-graph hits trigger reload via markStale.
     private func handleFSEvents(paths: [String]) {
         let storagePrefix = storagePathPrefix()
+        // FSEvents reports a tracked file under its canonical name, so other
+        // names skip the canonicalPath syscalls.
+        let trackedNames = Set(loadedFilePaths.map { ($0 as NSString).lastPathComponent })
         var trackedHit: String?
+        var sawNonStorage = false
         for path in paths {
-            // Substring pre-check is cheap; only canonicalize when
-            // the path is a storage candidate or could be a tracked
-            // import. .DS_Store et al. short-circuit before realpath.
             let maybeStorage = path.contains("/_storage/")
-            if !maybeStorage && Self.isFSEventsNoise(path) { continue }
+            sawNonStorage = sawNonStorage || !maybeStorage
+            if !maybeStorage, !trackedNames.contains((path as NSString).lastPathComponent) {
+                continue
+            }
             let canonical = Self.canonicalPath(for: URL(fileURLWithPath: path))
             if maybeStorage, let storagePrefix,
                canonical.hasPrefix(storagePrefix) {
@@ -337,6 +329,11 @@ class JSExternalEngine: JavaScriptEngine {
             if trackedHit == nil, loadedFilePaths.contains(canonical) {
                 trackedHit = path
             }
+        }
+        // Storage writes, the most frequent batches, can't make a failed fetch
+        // target fetchable.
+        if trackedHit == nil, sawNonStorage {
+            trackedHit = claimRecoveredFetchTarget()?.path
         }
         if let trackedHit {
             // Notify on every change, independent of the loaded→stale guard, so

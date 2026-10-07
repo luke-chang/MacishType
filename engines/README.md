@@ -20,6 +20,9 @@ Optional files (loaded only if your `index.js` imports them) live wherever
 you like inside the folder; `import "./foo.js"` works relative to the
 importing file. Static `import` is supported; dynamic `import()` is not.
 
+Recommended convention: keep engine files outside folders whose names start
+with `.` (such as `.git/`), so hot reload covers them on every host.
+
 ## manifest.json
 
 ```jsonc
@@ -1349,7 +1352,7 @@ const showAssoc = manifest.settings.enableAssociatedMode;
 
 Populated before engine module evaluation (read at module top level
 works). Refreshes at two boundaries: any host-driven manifest reload
-(folder change, a watched file in the import graph) and the start of each
+(folder change, an imported or fetched file changing) and the start of each
 new text-field session (the host re-reads its settings store on activate). UI
 edits made between sessions are visible to the engine on the next
 session boundary; mid-composition edits aren't pushed in real time.
@@ -1372,8 +1375,8 @@ no spurious events). The callback receives `{ type: 'settingschange' }`
 
 Attach at module scope, not on an instance — settings are engine-wide
 and the listener registry only resets on engine reload (folder change,
-file edit), so per-instance attach both confuses ownership and leaks
-`this` across text-field sessions.
+an imported or fetched file changing), so per-instance attach both
+confuses ownership and leaks `this` across text-field sessions.
 
 Most code should just read `manifest.settings` at the point of use:
 
@@ -1558,7 +1561,7 @@ const blob = await fetch('./model.bin').then(r => r.arrayBuffer());
 | Body | `text()` / `json()` / `arrayBuffer()` — calling any one synchronously locks the body; a second body method call (including a second call to the same method) rejects immediately with `Error("Body has already been consumed")`. Recoverable failures (UTF-8 decode fail / read fail / ArrayBuffer alloc fail) un-lock so engines can fall back or retry. |
 | Init arg | Declared `init?: unknown` for signature parity with the Web fetch API. Completely ignored at runtime; passing a non-undefined value emits `console.warn`. No headers / method / body / streams / abort. |
 | Threading | `fetch()` returns once a background stat confirms the file is readable — disk reads run inside the body methods, off the main thread. |
-| Hot-reload | Fetched files are watched alongside imports — modifying one outside the engine triggers a full module reload. See example below for the recommended pattern. |
+| Hot-reload | Fetched files are watched alongside imports — modifying one outside the engine triggers a full module reload, and so does a file becoming readable at a path whose fetch failed. See example below for the recommended pattern. |
 | Errors | `fetch()` rejects on invalid path / missing file / non-regular file. `text()` / `json()` reject on non-UTF-8 body or malformed JSON. `arrayBuffer()` rejects on read failure or ArrayBuffer construction failure. |
 
 The TypeScript return type is named `FetchResponse` (not `Response`)

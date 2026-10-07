@@ -961,9 +961,9 @@ declare global {
    * resolving with `ok: false` for these errors.
    *
    * Fetched files are tracked alongside imports — modifying one outside
-   * the engine (e.g. the user editing the file in a text editor)
-   * triggers a module reload. Kick off fetches at module top level so
-   * they begin on engine load and store the result into a module-scoped
+   * the engine, or a file becoming readable at a path whose fetch failed,
+   * triggers a module reload. Kick off fetches at module top level so they
+   * begin on engine load and store the result into a module-scoped
    * variable via `.then(...)`; class methods read via closure. Fetching
    * inside `activate()` or the class constructor would re-read on every
    * text-field focus.

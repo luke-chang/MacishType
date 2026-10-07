@@ -1147,10 +1147,9 @@ class JavaScriptEngine: InputEngine {
     var moduleSourceByIdentifier: [String: (source: String, url: URL)] = [:]
 
     /// Canonical absolute paths of files the engine has expressed interest
-    /// in — manifest.json, entry script, every dynamically-imported module,
-    /// and every successfully-stat'd fetched resource. Reset at the start
-    /// of `load()` and on teardown. Consumed by file-watching subclasses
-    /// (e.g. `JSExternalEngine`) to scope reloads.
+    /// in — manifest.json, entry script, every imported module, and every
+    /// successfully-stat'd fetched resource. Cleared on teardown. Consumed by
+    /// file-watching subclasses (e.g. `JSExternalEngine`) to scope reloads.
     ///
     /// Import paths are recorded post-read-success (an import failing
     /// reading faults the whole load, leaving no half-watched file).
@@ -1161,6 +1160,13 @@ class JavaScriptEngine: InputEngine {
     /// manifest entry before any `load()`; that's harmless because
     /// watchers only run post-`load`.
     private(set) var loadedFilePaths: Set<String> = []
+
+    /// Fetch targets that failed, rechecked against the same bar the fetch
+    /// had (`isFetchable`) rather than by path: one becoming fetchable as a
+    /// symlink, inside a moved-in folder, or in other letter case reloads the
+    /// engine too, while one that stays unfetchable never does. Cleared on
+    /// teardown.
+    private var failedFetchTargets: Set<URL> = []
 
     // JSModuleLoaderDelegate is an ObjC protocol requiring NSObjectProtocol
     // conformance; InputEngine isn't NSObject-derived. Use a small NSObject
@@ -1739,6 +1745,7 @@ class JavaScriptEngine: InputEngine {
         jsInstances.removeAllObjects()
         moduleSourceByIdentifier.removeAll()
         loadedFilePaths.removeAll()
+        failedFetchTargets.removeAll()
         moduleLoader.invalidateRootCache()
         cachedEngineFolderRoot = nil
         // self.manifest intentionally NOT cleared — see its doc comment.
@@ -1885,6 +1892,20 @@ class JavaScriptEngine: InputEngine {
 
     func recordLoadedFile(_ url: URL) {
         loadedFilePaths.insert(Self.canonicalPath(for: url))
+    }
+
+    func recordFailedFetch(_ url: URL) {
+        failedFetchTargets.insert(url)
+    }
+
+    /// Removed once found, so later watcher batches don't report it again.
+    func claimRecoveredFetchTarget() -> URL? {
+        guard let rootPath = engineFolderRootPath(),
+              let recovered = failedFetchTargets.first(where: {
+                  Self.isFetchable($0, inFolder: rootPath)
+              }) else { return nil }
+        failedFetchTargets.remove(recovered)
+        return recovered
     }
 
     /// Trailing-slash prefix match so `/foo` doesn't accept `/foobar`,

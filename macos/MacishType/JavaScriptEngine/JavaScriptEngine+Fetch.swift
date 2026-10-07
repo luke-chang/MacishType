@@ -87,7 +87,6 @@ extension JavaScriptEngine {
             Self.rejectWith(reject, message: "fetch: path '\(path)' escapes engine folder")
             return
         }
-
         guard let token = registerFetchReject(reject) else {
             Self.rejectWith(reject, message: "fetch aborted by engine teardown")
             return
@@ -101,25 +100,29 @@ extension JavaScriptEngine {
             // Engine gone (theoretical): settle as before. Claim lost:
             // teardown already rejected; drop the result.
             if let self, !self.claimFetchReject(token) { return }
-            switch result {
-            case .success(let type):
-                guard type == .regular else {
+            guard case .success(.regular) = result else {
+                self?.recordFailedFetch(target)
+                switch result {
+                case .success(.symbolicLink):
+                    Self.rejectWith(
+                        reject, message: "fetch: not reachable '\(path)': unresolvable symbolic link")
+                case .success:
                     Self.rejectWith(reject, message: "fetch: '\(path)' is not a regular file")
-                    return
+                case .failure(let error):
+                    Self.rejectWith(
+                        reject,
+                        message: "fetch: not reachable '\(path)': \(error.localizedDescription)")
                 }
-                self?.recordLoadedFile(target)
-                let displayURL = syntheticInput
-                    ?? Self.syntheticURL(forRelativePath: String(path.dropFirst(2)))
-                guard let ctx = resolve.context else { return }
-                resolve.call(withArguments: [
-                    Self.makeFetchResponse(
-                        in: ctx, engine: self, realURL: target, displayURL: displayURL)
-                ])
-            case .failure(let error):
-                Self.rejectWith(
-                    reject,
-                    message: "fetch: not reachable '\(path)': \(error.localizedDescription)")
+                return
             }
+            self?.recordLoadedFile(target)
+            let displayURL = syntheticInput
+                ?? Self.syntheticURL(forRelativePath: String(path.dropFirst(2)))
+            guard let ctx = resolve.context else { return }
+            resolve.call(withArguments: [
+                Self.makeFetchResponse(
+                    in: ctx, engine: self, realURL: target, displayURL: displayURL)
+            ])
         }
     }
 
@@ -297,23 +300,27 @@ extension JavaScriptEngine {
         }
     }
 
-    /// Stat on background queue using URL.resourceValues, which follows
-    /// symlinks (symlink-to-regular returns .regular, matching what
-    /// `Data(contentsOf:)` will see at read time).
     private static func statFile(
         url: URL,
         completion: @escaping (Result<URLFileResourceType, Error>) -> Void
     ) {
         DispatchQueue.global(qos: .userInitiated).async {
-            let result: Result<URLFileResourceType, Error>
-            do {
-                let values = try url.resourceValues(forKeys: [.fileResourceTypeKey])
-                result = .success(values.fileResourceType ?? .unknown)
-            } catch {
-                result = .failure(error)
-            }
+            let result = Result { try resolvedFileType(of: url) }
             DispatchQueue.main.async { completion(result) }
         }
+    }
+
+    /// What `url` names once symlinks resolve, as `Data(contentsOf:)` reads it;
+    /// `resourceValues` alone reports a link itself. A link that doesn't
+    /// resolve (dangling or looping) stays `.symbolicLink`.
+    nonisolated static func resolvedFileType(of url: URL) throws -> URLFileResourceType {
+        try url.resolvingSymlinksInPath()
+            .resourceValues(forKeys: [.fileResourceTypeKey]).fileResourceType ?? .unknown
+    }
+
+    /// The bar a fetch has to clear: a regular file inside the engine folder.
+    nonisolated static func isFetchable(_ url: URL, inFolder rootPath: String) -> Bool {
+        (try? resolvedFileType(of: url)) == .regular && isContained(url: url, in: rootPath)
     }
 
     /// Read + UTF-8 decode on background, deliver Result on main.

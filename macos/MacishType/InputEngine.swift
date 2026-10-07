@@ -743,9 +743,20 @@ class InputEngine: ObservableObject {
 
     /// Same on-disk file → same string regardless of how callers spelled
     /// the URL. Lets FSEvents paths, recorded load paths, and containment
-    /// checks compare against each other cleanly.
+    /// checks compare against each other cleanly. A missing path resolves its
+    /// longest existing prefix (`..` included) the way the OS would, then
+    /// appends the rest.
     nonisolated static func canonicalPath(for url: URL) -> String {
-        url.resolvingSymlinksInPath().standardizedFileURL.path
+        let components = url.pathComponents
+        var existing = components.count
+        while existing > 1, !FileManager.default.fileExists(
+            atPath: NSString.path(withComponents: Array(components[..<existing]))) {
+            existing -= 1
+        }
+        let prefix = URL(fileURLWithPath: NSString.path(withComponents: Array(components[..<existing])))
+        return components[existing...]
+            .reduce(prefix.resolvingSymlinksInPath()) { $0.appending(path: $1) }
+            .standardizedFileURL.path
     }
 
     // MARK: - Output Conversion

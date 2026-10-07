@@ -197,7 +197,11 @@ final class CINExternalEngine: CINEngine {
 
     private func handleFSEvents(paths: [String]) {
         guard let target = watchedCanonicalPath else { return }
-        for path in paths where Self.canonicalPath(for: URL(fileURLWithPath: path)) == target {
+        // The watched directory may be as busy as ~/Downloads; changes to the
+        // target are reported under its own name.
+        let targetName = (target as NSString).lastPathComponent
+        for path in paths where (path as NSString).lastPathComponent == targetName
+            && Self.canonicalPath(for: URL(fileURLWithPath: path)) == target {
             // Notify on every change, independent of the stale guard, so
             // repeated edits while a reload is pending still surface.
             notifyExternalModified(changedFile: path)
