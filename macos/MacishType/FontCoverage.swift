@@ -86,7 +86,7 @@ final class FontCoverage {
     /// build inline. Best-effort — dropped if a query builds it first.
     func preheat() {
         guard !isReady else { return }
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let start = Date()
             let set = Self.buildUnion()
             let bitmap = set.bitmapRepresentation
@@ -180,7 +180,7 @@ final class FontCoverage {
     }
 
     private func rebuild() {
-        DispatchQueue.global(qos: .utility).async {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
             let newSet = Self.buildUnion()
             let newBitmap = newSet.bitmapRepresentation
             DispatchQueue.main.async { [weak self] in
