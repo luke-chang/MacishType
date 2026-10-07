@@ -3,6 +3,8 @@
 #include <sys/inotify.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -16,17 +18,27 @@ namespace {
 constexpr uint64_t kDebounceMicroseconds = 300 * 1000;
 constexpr uint32_t kWatchMask = IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM |
                                 IN_CREATE | IN_DELETE | IN_DONT_FOLLOW;
+// A chmod raises only IN_ATTRIB, and it can make an engine file readable.
+// IN_ONLYDIR (with IN_DONT_FOLLOW) refuses a directory that was replaced by a
+// symlink before its event got handled.
+constexpr uint32_t kEngineWatchMask = kWatchMask | IN_ATTRIB | IN_ONLYDIR;
 
-bool isNoiseName(const std::string &name) {
-    if (name.empty() || name[0] == '.') {
-        return true;
+// Engine-private persistence; its traffic feeds storage events, not reloads.
+constexpr std::string_view kStorageName = "_storage";
+
+// Dot folders such as `.git` would exhaust the inotify budget.
+bool isUnwatchedDirectoryName(const std::string &name) {
+    return name.empty() || name[0] == '.' || name == kStorageName;
+}
+
+// Engine files keep any name, since reloads are scoped to the files the
+// engine loaded. Folder and storage-key names never start with a dot or end
+// with a tilde, so those are editor droppings.
+bool isIgnoredName(bool engineFile, const std::string &name) {
+    if (engineFile) {
+        return name.empty() || name == kStorageName;
     }
-    if (name.back() == '~') {
-        return true;
-    }
-    // Engine-private persistence; its traffic feeds storage events, not
-    // reloads.
-    return name == "_storage";
+    return name.empty() || name[0] == '.' || name.back() == '~';
 }
 
 } // namespace
@@ -122,10 +134,11 @@ void EngineWatcher::unwatchStorage(const std::string &engineId) {
     storageWatchDescriptors_.erase(found);
 }
 
-void EngineWatcher::watchDirectoryTree(
-    const std::string &engineId, const std::filesystem::path &directory) {
+void EngineWatcher::watchDirectoryTree(const std::string &engineId,
+                                       const std::filesystem::path &directory,
+                                       bool skipWatched) {
     int descriptor =
-        inotify_add_watch(inotifyFd_, directory.c_str(), kWatchMask);
+        inotify_add_watch(inotifyFd_, directory.c_str(), kEngineWatchMask);
     if (descriptor < 0) {
         return;
     }
@@ -144,9 +157,34 @@ void EngineWatcher::watchDirectoryTree(
         if (entry.is_symlink(errorCode)) {
             continue;
         }
-        if (entry.is_directory(errorCode) &&
-            !isNoiseName(entry.path().filename().string())) {
-            watchDirectoryTree(engineId, entry.path());
+        if (!entry.is_directory(errorCode) ||
+            isUnwatchedDirectoryName(entry.path().filename().string())) {
+            continue;
+        }
+        if (skipWatched) {
+            int existing = inotify_add_watch(
+                inotifyFd_, entry.path().c_str(), kEngineWatchMask);
+            if (existing >= 0 && watches_.count(existing) != 0) {
+                continue;
+            }
+        }
+        watchDirectoryTree(engineId, entry.path(), skipWatched);
+    }
+}
+
+void EngineWatcher::unwatchDirectoryTree(
+    const std::filesystem::path &directory) {
+    for (auto it = watches_.begin(); it != watches_.end();) {
+        const auto &watched = it->second.directory;
+        auto [prefixEnd, watchedEnd] =
+            std::mismatch(directory.begin(), directory.end(),
+                          watched.begin(), watched.end());
+        if (it->second.kind == WatchKind::Engine &&
+            prefixEnd == directory.end()) {
+            inotify_rm_watch(inotifyFd_, it->first);
+            it = watches_.erase(it);
+        } else {
+            ++it;
         }
     }
 }
@@ -172,7 +210,7 @@ void EngineWatcher::handleEvents() {
             // emitting IN_IGNORED (empty name). Reclaim the bookkeeping so a
             // descriptor freed by a folder deletion cannot later be matched
             // to a reused wd (inotify allocates them cyclically). This must
-            // precede the noise filter, which would otherwise drop it.
+            // precede the name filters, which would otherwise drop it.
             if (event->mask & IN_IGNORED) {
                 for (auto it = storageWatchDescriptors_.begin();
                      it != storageWatchDescriptors_.end();) {
@@ -184,10 +222,10 @@ void EngineWatcher::handleEvents() {
                 continue;
             }
             std::string name = event->len > 0 ? event->name : "";
-            if (isNoiseName(name)) {
+            const auto &[engineId, directory, kind] = watch->second;
+            if (isIgnoredName(kind == WatchKind::Engine, name)) {
                 continue;
             }
-            const auto &[engineId, directory, kind] = watch->second;
             if (kind == WatchKind::Root) {
                 // Folder-level churn only. No IN_ISDIR gate: symlinked
                 // engine folders (the dev workflow) raise these events
@@ -200,10 +238,19 @@ void EngineWatcher::handleEvents() {
                 scheduleCallback(name, directory / name, kind);
                 continue;
             }
-            // A new subdirectory (e.g. unpacked data) joins the watch set.
-            if (kind == WatchKind::Engine && (event->mask & IN_CREATE) &&
-                (event->mask & IN_ISDIR)) {
-                watchDirectoryTree(engineId, directory / name);
+            if (kind == WatchKind::Engine && (event->mask & IN_ISDIR) &&
+                !isUnwatchedDirectoryName(name)) {
+                if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
+                    watchDirectoryTree(engineId, directory / name);
+                } else if (event->mask & IN_MOVED_FROM) {
+                    // A watch follows its directory, which would keep
+                    // reporting from outside the engine folder.
+                    unwatchDirectoryTree(directory / name);
+                } else if (event->mask & IN_ATTRIB) {
+                    // A chmod may open up a directory, or subdirectories of
+                    // one, that the walk could not enter before.
+                    watchDirectoryTree(engineId, directory / name, true);
+                }
             }
             scheduleCallback(engineId, directory / name, kind);
         }

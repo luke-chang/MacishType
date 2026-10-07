@@ -120,13 +120,11 @@ public:
     void incrementActive();
     void decrementActive();
 
-    // Canonical paths of files the engine expressed interest in: manifest,
-    // entry, every imported module, every fetched resource. Consumed by
-    // the reload policy to scope hot reloads to relevant edits, mirroring
-    // the macOS host's loadedFilePaths.
-    const std::set<std::string> &loadedFilePaths() const {
-        return loadedFilePaths_;
-    }
+    // Whether a change touched a loaded file, or let a failed fetch target
+    // resolve to a regular file inside the engine folder now. The latter is
+    // checked on disk whatever the changed paths are, so the file appearing
+    // as a symlink or inside a moved-in folder counts too.
+    bool isAffectedBy(const std::set<std::string> &changedPaths) const;
 
     // Engine-private persistence directory (one file per localStorage
     // key); resolved by discovery, see EngineInfo::storageRoot.
@@ -334,13 +332,20 @@ private:
 
     // engine:///-style path resolution with realpath containment. Returns
     // the on-disk path and normalized "engine:///…" URL, or an error
-    // message suitable for a thrown Error.
+    // message suitable for a thrown Error. Failures other than an
+    // unsupported form or an escape also carry the path's unresolved
+    // location, for rechecking against the same bar later.
     struct ResolvedPath {
         std::filesystem::path fileSystemPath;
         std::string url;
     };
-    std::variant<ResolvedPath, std::string>
+    struct PathError {
+        std::string message;
+        std::filesystem::path target = {};
+    };
+    std::variant<ResolvedPath, PathError>
     resolveEnginePath(const std::string &input) const;
+    bool isInsideEngineRoot(const std::filesystem::path &path) const;
 
     // Bridge state ------------------------------------------------------
 
@@ -513,7 +518,10 @@ private:
     // Last values pushed as manifest.settings (the updateSettings dedup
     // gate).
     std::string settingsValuesJson_;
+    // Canonical paths of files the engine expressed interest in: manifest,
+    // entry, every imported module, every fetched resource.
     std::set<std::string> loadedFilePaths_;
+    std::set<std::filesystem::path> failedFetchTargets_;
     std::map<std::string, StorageFileState> recentSelfWrites_;
     bool storageListening_ = false;
     std::function<void(bool)> storageListeningObserver_;

@@ -13,9 +13,9 @@ namespace MacishType::Fcitx5 {
 
 // inotify watcher over engine folders. File changes fire the callback once
 // per engine after a short debounce, carrying the affected canonical paths
-// so the reload policy can scope its reaction; `_storage/` traffic and
-// editor droppings are ignored. Watches the resolved folder, so symlinked
-// engine folders (the dev workflow) see edits at the link target.
+// so the reload policy can scope its reaction; `_storage/` and dot folders
+// are ignored. Watches the resolved folder, so symlinked engine folders
+// (the dev workflow) see edits at the link target.
 class EngineWatcher {
 public:
     using Callback = std::function<void(
@@ -60,8 +60,12 @@ private:
         WatchKind kind = WatchKind::Engine;
     };
 
+    // With skipWatched, subdirectories that already have a watch are not
+    // walked again.
     void watchDirectoryTree(const std::string &engineId,
-                            const std::filesystem::path &directory);
+                            const std::filesystem::path &directory,
+                            bool skipWatched = false);
+    void unwatchDirectoryTree(const std::filesystem::path &directory);
     void handleEvents();
     void scheduleCallback(const std::string &engineId,
                           const std::filesystem::path &changedPath,

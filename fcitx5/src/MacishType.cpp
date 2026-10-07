@@ -1287,11 +1287,8 @@ bool InputMethodEngine::shouldReload(
     if (found == hosts_.end()) {
         return true;
     }
-    const auto &tracked = found->second->loadedFilePaths();
-    for (const auto &path : changedPaths) {
-        if (tracked.count(path) != 0) {
-            return true;
-        }
+    if (found->second->isAffectedBy(changedPaths)) {
+        return true;
     }
     for (const auto &engine : engines_) {
         if (engine.id != engineId) {

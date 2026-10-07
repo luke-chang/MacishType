@@ -673,8 +673,8 @@ JsEngineHost::associatedFollowups(const std::string &heldChar) {
 
 bool JsEngineHost::evaluateEntryModule() {
     auto resolved = resolveEnginePath("./" + manifest_.entry);
-    if (auto *error = std::get_if<std::string>(&resolved)) {
-        MACISHTYPE_ERROR() << "Entry module: " << *error;
+    if (auto *error = std::get_if<PathError>(&resolved)) {
+        MACISHTYPE_ERROR() << "Entry module: " << error->message;
         return false;
     }
     auto &entryPath = std::get<ResolvedPath>(resolved);
@@ -1264,7 +1264,7 @@ void JsEngineHost::reportRejections() {
 
 // Path containment -------------------------------------------------------
 
-std::variant<JsEngineHost::ResolvedPath, std::string>
+std::variant<JsEngineHost::ResolvedPath, JsEngineHost::PathError>
 JsEngineHost::resolveEnginePath(const std::string &input) const {
     std::string relative;
     if (input.rfind("./", 0) == 0) {
@@ -1272,36 +1272,62 @@ JsEngineHost::resolveEnginePath(const std::string &input) const {
     } else if (input.rfind(kEngineUrlPrefix, 0) == 0) {
         relative = input.substr(kEngineUrlPrefix.size());
     } else {
-        return "unsupported path (want ./relative or engine:///path): " +
-               input;
+        return PathError{
+            "unsupported path (want ./relative or engine:///path): " + input};
     }
     if (relative.find('?') != std::string::npos ||
         relative.find('#') != std::string::npos) {
-        return "query strings and fragments are not allowed: " + input;
+        return PathError{"query strings and fragments are not allowed: " +
+                         input};
     }
     auto normalized = normalizeRelativePath(relative);
     if (!normalized || normalized->empty()) {
-        return "path escapes the engine folder: " + input;
+        return PathError{"path escapes the engine folder: " + input};
     }
 
+    auto target = canonicalRoot_ / *normalized;
     std::error_code errorCode;
-    auto fullPath =
-        std::filesystem::canonical(canonicalRoot_ / *normalized, errorCode);
+    auto fullPath = std::filesystem::canonical(target, errorCode);
     if (errorCode) {
-        return "file not found: " + input;
+        bool missing = errorCode == std::errc::no_such_file_or_directory ||
+                       errorCode == std::errc::not_a_directory;
+        return PathError{missing ? "file not found: " + input
+                                 : input + ": " + errorCode.message(),
+                         std::move(target)};
     }
-    // Component-wise containment (path separators differ across platforms):
-    // the root must be a proper prefix of the resolved path.
-    auto [rootMismatch, fullMismatch] =
-        std::mismatch(canonicalRoot_.begin(), canonicalRoot_.end(),
-                      fullPath.begin(), fullPath.end());
-    if (rootMismatch != canonicalRoot_.end() || fullMismatch == fullPath.end()) {
-        return "path escapes the engine folder: " + input;
+    if (!isInsideEngineRoot(fullPath)) {
+        return PathError{"path escapes the engine folder: " + input};
     }
     if (!std::filesystem::is_regular_file(fullPath, errorCode)) {
-        return "not a regular file: " + input;
+        return PathError{"not a regular file: " + input, std::move(target)};
     }
     return ResolvedPath{fullPath, std::string(kEngineUrlPrefix) + *normalized};
+}
+
+bool JsEngineHost::isInsideEngineRoot(const std::filesystem::path &path) const {
+    // Component-wise containment (path separators differ across platforms):
+    // the root must be a proper prefix of the path.
+    auto [rootMismatch, pathMismatch] = std::mismatch(
+        canonicalRoot_.begin(), canonicalRoot_.end(), path.begin(), path.end());
+    return rootMismatch == canonicalRoot_.end() && pathMismatch != path.end();
+}
+
+bool JsEngineHost::isAffectedBy(
+    const std::set<std::string> &changedPaths) const {
+    for (const auto &path : changedPaths) {
+        if (loadedFilePaths_.count(path) != 0) {
+            return true;
+        }
+    }
+    for (const auto &path : failedFetchTargets_) {
+        std::error_code errorCode;
+        auto resolved = std::filesystem::canonical(path, errorCode);
+        if (!errorCode && isInsideEngineRoot(resolved) &&
+            std::filesystem::is_regular_file(resolved, errorCode)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 char *JsEngineHost::moduleNormalize(JSContext *ctx, const char *baseName,
@@ -1353,9 +1379,9 @@ JSModuleDef *JsEngineHost::moduleLoad(JSContext *ctx, const char *moduleName,
                                       void *opaque) {
     auto *host = static_cast<JsEngineHost *>(opaque);
     auto resolved = host->resolveEnginePath(moduleName);
-    if (auto *error = std::get_if<std::string>(&resolved)) {
+    if (auto *error = std::get_if<PathError>(&resolved)) {
         JS_ThrowReferenceError(ctx, "could not load module '%s': %s",
-                               moduleName, error->c_str());
+                               moduleName, error->message.c_str());
         return nullptr;
     }
     auto &modulePath = std::get<ResolvedPath>(resolved);
@@ -2024,12 +2050,15 @@ JSValue JsEngineHost::nativeBeginFetch(JSContext *ctx, JSValueConst thisVal,
                                  "reject)");
     }
     auto resolved = host->resolveEnginePath(Qjs::toString(ctx, argv[0]));
-    if (auto *errorText = std::get_if<std::string>(&resolved)) {
+    if (auto *pathError = std::get_if<PathError>(&resolved)) {
+        if (!pathError->target.empty()) {
+            host->failedFetchTargets_.insert(pathError->target);
+        }
         // Path-level failures reject at fetch() time (the spec's "background
         // stat" semantics); only the disk read is deferred. Call the reject
         // function directly — the JS wrapper is a thin forwarder with no
         // try/catch left around this native.
-        std::string message = "fetch: " + *errorText;
+        std::string message = "fetch: " + pathError->message;
         JSValue error = JS_NewError(ctx);
         JS_SetPropertyStr(
             ctx, error, "message",
