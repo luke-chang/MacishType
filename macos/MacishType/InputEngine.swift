@@ -694,7 +694,7 @@ class InputEngine: ObservableObject {
 
     // MARK: Utilities
 
-    static func toFullwidth(_ char: Character) -> Character? {
+    nonisolated static func toFullwidth(_ char: Character) -> Character? {
         if char == " " { return "\u{3000}" }
         guard let ascii = char.asciiValue, ascii >= 0x21, ascii <= 0x7E else { return nil }
         return Character(UnicodeScalar(UInt32(ascii) + 0xFEE0)!)
