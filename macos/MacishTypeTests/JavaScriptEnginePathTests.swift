@@ -69,6 +69,17 @@ struct JavaScriptEnginePathTests {
             url: viaLink, in: JavaScriptEngine.canonicalPath(for: real)))
     }
 
+    @Test func aSymlinkedEntryValidates() throws {
+        let base = newTemporaryBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let engine = try makeDirectory("engine", in: base)
+        try Data().write(to: engine.appendingPathComponent("real.js"))
+        try FileManager.default.createSymbolicLink(
+            atPath: engine.appendingPathComponent("index.js").path, withDestinationPath: "real.js")
+        #expect(JavaScriptEngine.validateEntry("index.js", in: engine) == nil)
+        #expect(JavaScriptEngine.validateEntry("absent.js", in: engine) != nil)
+    }
+
     @Test func onlyRegularFilesInsideTheFolderAreFetchable() throws {
         let base = newTemporaryBase()
         defer { try? FileManager.default.removeItem(at: base) }

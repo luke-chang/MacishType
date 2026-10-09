@@ -282,14 +282,15 @@ class JavaScriptEngine: InputEngine {
 
     /// Author-facing failure reason, nil when the entry is valid. Same
     /// containment semantics as the full load.
-    nonisolated private static func validateEntry(
+    nonisolated static func validateEntry(
         _ entry: String, in folder: URL
     ) -> String? {
         let entryURL = folder.appending(path: entry)
         guard isContained(url: entryURL, in: canonicalPath(for: folder)) else {
             return "entry '\(entry)' escapes the engine folder"
         }
-        guard let values = try? entryURL.resourceValues(
+        // Resolved as the load reads it; a symlinked entry is a regular file.
+        guard let values = try? entryURL.resolvingSymlinksInPath().resourceValues(
                   forKeys: [.isRegularFileKey, .isReadableKey]),
               values.isRegularFile == true, values.isReadable == true else {
             return "entry '\(entry)' missing or unreadable"
