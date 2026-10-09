@@ -111,7 +111,11 @@ wait_for '"text": "dyn3"}'
 rm -rf "$engine_dir"                 # -> step 5: defunct + typing prompt
 wait_for 'Engine load failed'
 write_engine dyn4                    # -> step 6: automatic recovery
-wait "$runner_pid"
+if ! wait "$runner_pid"; then
+    echo "FAIL: the client run exited with an error" >&2
+    grep -a . "$client_out" | tail -60 >&2
+    exit 1
+fi
 
 out="$(cat "$client_out")"
 flog="$(cat "$log")"
@@ -206,7 +210,11 @@ wait_for '"event": "checkupdate"'
 printf '{ "entry": "index.js", "name": { "en": "Broken Fix" } }\n' \
     > "$broken_dir/manifest.json"
 touch "$marks/fixed"
-wait "$runner_pid"
+if ! wait "$runner_pid"; then
+    echo "FAIL: the client run exited with an error" >&2
+    grep -a . "$client_out" | tail -60 >&2
+    exit 1
+fi
 
 out2="$(cat "$client_out")"
 checkupdates2="$(printf '%s\n' "$out2" | grep -aF '"event": "checkupdate"' |

@@ -125,7 +125,11 @@ write_index "$beta" b3
 wait_for '"event": "notify-count", "count": 6}'
 write_manifest "$alpha" "Alpha Renamed"
 write_index "$alpha" a5
-wait "$runner_pid"
+if ! wait "$runner_pid"; then
+    echo "FAIL: the client run exited with an error" >&2
+    grep -a . "$client_out" | tail -60 >&2
+    exit 1
+fi
 
 out="$(cat "$client_out")"
 flog="$(cat "$log")"

@@ -121,7 +121,11 @@ run_case() {
     wait_for '"text": "before"}'
     "$3" "$engine_dir"
     write_index "$engine_dir" after
-    wait "$runner_pid"
+    if ! wait "$runner_pid"; then
+        echo "FAIL: the client run exited with an error" >&2
+        grep -a . "$client_out" | tail -60 >&2
+        exit 1
+    fi
 
     out="$(cat "$client_out")"
     sequence="$(printf '%s\n' "$out" | grep -aF '"event": "checkupdate"' |
