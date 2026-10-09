@@ -1,7 +1,7 @@
 # The bound comes from jshost/, folded in below; this project's own files ask
 # for far less. Declaring it here keeps the real requirement discoverable.
 cmake_minimum_required(VERSION 3.25)
-project(fcitx5-macishtype VERSION 0.3.0)
+project(fcitx5-macishtype VERSION 0.4.0)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../shared/cmake/SourcePathMap.cmake")
 
